@@ -18,8 +18,19 @@ describe('mcp gateway alpha', () => {
         'connections.upsert',
         'connections.set_status',
         'capture.text',
+        'connections.sync',
       ]),
     );
+  });
+
+  it('returns offline stub for connections.sync', async () => {
+    const mcp = createMcpHandlers();
+    const result = (await mcp.call('connections.sync', {
+      workspace_id: workspaceId,
+      actor_subject_id: cursor,
+    })) as { count: number; backend?: string };
+    expect(result.count).toBe(0);
+    expect(result.backend).toBe('memory-store');
   });
 
   it('captures text offline into candidate memory', async () => {

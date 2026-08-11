@@ -10,6 +10,16 @@ describe('retrieval stub', () => {
     expect(hits[0]?.memory.memoryType).toBe('decision');
   });
 
+  it('matches multi-word queries by token coverage', () => {
+    const store = createSeededStore();
+    const hits = searchMemories(
+      [...store.memories.values()],
+      'demo slice kickoff audit',
+    );
+    expect(hits.length).toBeGreaterThan(0);
+    expect(hits[0]?.memory.title).toMatch(/Slice/i);
+  });
+
   it('builds project context', () => {
     const store = createSeededStore();
     const ctx = projectContext(

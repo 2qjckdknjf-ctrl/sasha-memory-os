@@ -100,11 +100,12 @@
     },
     {
       "id": "gr-015",
-      "query": "SSRF",
+      "query": "link capture SSRF",
       "expect_content_includes": "SSRF",
       "actor": "cursor",
       "must_allow": true
     },
+
     {
       "id": "gr-016",
       "query": "vault refs only",
@@ -128,11 +129,12 @@
     },
     {
       "id": "gr-019",
-      "query": "Slice 01",
+      "query": "demo slice kickoff audit",
       "expect_memory_title_includes": "Slice",
       "actor": "chatgpt",
       "must_allow": true
     },
+
     {
       "id": "gr-020",
       "query": "processing job ingest",

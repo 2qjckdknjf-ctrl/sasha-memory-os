@@ -163,6 +163,19 @@ export const mcpTools: McpTool[] = [
       ],
     },
   },
+  {
+    name: 'connections.sync',
+    description: 'Enqueue connector_sync jobs for connected accounts (stub)',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        workspace_id: { type: 'string' },
+        connection_id: { type: 'string' },
+        actor_subject_id: { type: 'string' },
+      },
+      required: ['workspace_id', 'actor_subject_id'],
+    },
+  },
 ];
 
 export function createMcpHandlers(options?: {
@@ -335,8 +348,27 @@ export function createMcpHandlers(options?: {
             sensitivity: input.sensitivity,
           });
         }
-        default:
-          throw new Error(`Unknown tool: ${name}`);
+        case 'connections.sync': {
+          if (!gateway) {
+            return {
+              count: 0,
+              enqueued: [],
+              backend: 'memory-store',
+              note: 'connector sync requires supabase backend',
+            };
+          }
+          return gateway.enqueueConnectorSync({
+            subjectId: String(args.actor_subject_id),
+            workspaceId: String(args.workspace_id),
+            connectionId: args.connection_id
+              ? String(args.connection_id)
+              : null,
+          });
+        }
+        default: {
+          const _exhaustive: never = name as never;
+          throw new Error(`Unknown tool: ${_exhaustive}`);
+        }
       }
     },
   };
