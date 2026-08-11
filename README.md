@@ -45,7 +45,7 @@ OAuth broker (stub): `POST /v1/oauth/start` → `POST /v1/oauth/callback` stores
 
 ## Следующий шаг
 
-- Wire real GitHub/Google OAuth clients + vault/KMS secret material
+- Set `MEMORY_OS_OAUTH_GITHUB_CLIENT_ID` / `MEMORY_OS_OAUTH_GOOGLE_CLIENT_ID` (+ vault/KMS) for real broker redirects
+- Web Auth: copy anon key into `apps/web/.env` (`VITE_MEMORY_OS_SUPABASE_*`) from root `.env`
 - Expand golden retrieval set toward 100–200 cases (20 seeded now)
-- Production OCR: install system `tesseract` and set `MEMORY_OS_OCR_ENGINE=tesseract` (or `fixture` for UTF-8 image fixtures)
-- Connector providers: consume vault refs from `connector_sync` jobs
+- Connector providers: replace stub complete with real vault-backed delta pull
