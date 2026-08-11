@@ -241,6 +241,7 @@ export function createApp(options?: {
       workspace_id?: string;
       connection_id?: string;
       actor_subject_id?: string;
+      complete_now?: boolean;
     };
     const authz = c.get('authz');
     const workspaceId = body.workspace_id ?? seedWorkspace;
@@ -253,6 +254,7 @@ export function createApp(options?: {
       return c.json({
         count: 0,
         enqueued: [],
+        completed: [],
         backend: 'memory-store',
         note: 'connector sync requires supabase backend',
       });
@@ -263,7 +265,20 @@ export function createApp(options?: {
         workspaceId,
         connectionId: body.connection_id ?? null,
       });
-      return c.json(result, 202);
+      const completed: Array<Record<string, unknown>> = [];
+      if (body.complete_now !== false) {
+        for (const item of result.enqueued ?? []) {
+          if (!item.jobId) continue;
+          completed.push(
+            await gw.completeConnectorSync({
+              subjectId: actorSubjectId,
+              jobId: item.jobId,
+              status: 'succeeded',
+            }),
+          );
+        }
+      }
+      return c.json({ ...result, completed }, 202);
     } catch (err) {
       if (isForbiddenError(err)) return c.json({ error: 'forbidden' }, 403);
       return c.json({ error: (err as Error).message }, 500);

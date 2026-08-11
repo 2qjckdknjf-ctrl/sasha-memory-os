@@ -23,6 +23,7 @@ export type SyncPlanItem = {
 export type SyncPlan = {
   count: number;
   enqueued: SyncPlanItem[];
+  completed: Array<{ jobId: string; status: string; connectionId: string | null }>;
 };
 
 function requireGateway(
@@ -45,32 +46,47 @@ export async function planConnectorSync(options?: {
   gateway?: SupabaseMemoryGateway;
 }): Promise<SyncPlan> {
   const gateway = requireGateway(options?.gateway);
+  const subjectId = options?.subjectId ?? OWNER_ID;
   const result = await gateway.enqueueConnectorSync({
-    subjectId: options?.subjectId ?? OWNER_ID,
+    subjectId,
     workspaceId: options?.workspaceId ?? WORKSPACE_ID,
     connectionId: options?.connectionId ?? null,
   });
 
+  const completed: SyncPlan['completed'] = [];
+  for (const item of result.enqueued ?? []) {
+    if (!item.jobId) continue;
+    // Stub provider pull: mark succeeded without reading vault material.
+    const done = await gateway.completeConnectorSync({
+      subjectId,
+      jobId: item.jobId,
+      status: 'succeeded',
+    });
+    completed.push({
+      jobId: done.jobId,
+      status: done.status,
+      connectionId: done.connectionId,
+    });
+    console.log(
+      JSON.stringify({
+        event: 'connector_sync_completed',
+        connectorId: item.connectorId,
+        ...done,
+        note: 'stub complete; vault token not loaded',
+      }),
+    );
+  }
+
   return {
     count: result.count ?? 0,
     enqueued: result.enqueued ?? [],
+    completed,
   };
 }
 
 /** One-shot tick used by CLI / cron. */
 export async function runConnectorSyncOnce(): Promise<SyncPlan> {
-  const plan = await planConnectorSync();
-  // Stub: real providers pull vault refs and fetch deltas in M1.
-  for (const item of plan.enqueued) {
-    console.log(
-      JSON.stringify({
-        event: 'connector_sync_queued',
-        ...item,
-        note: 'vault token not loaded; stub enqueue only',
-      }),
-    );
-  }
-  return plan;
+  return planConnectorSync();
 }
 
 const isDirectRun = process.argv[1]?.includes('connector-sync');

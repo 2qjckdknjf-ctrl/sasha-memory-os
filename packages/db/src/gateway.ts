@@ -344,4 +344,26 @@ export class SupabaseMemoryGateway {
       }>;
     };
   }
+
+  async completeConnectorSync(input: {
+    subjectId: string;
+    jobId: string;
+    status?: 'succeeded' | 'failed' | 'dead_letter';
+    error?: string | null;
+  }) {
+    const { data, error } = await this.client.rpc('api_complete_connector_sync', {
+      p_secret: this.apiSecret,
+      p_subject_id: input.subjectId,
+      p_job_id: input.jobId,
+      p_status: input.status ?? 'succeeded',
+      p_error: input.error ?? null,
+    });
+    if (error) throw error;
+    return data as {
+      jobId: string;
+      status: string;
+      connectionId: string | null;
+      jobType: string;
+    };
+  }
 }
