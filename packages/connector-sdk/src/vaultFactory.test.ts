@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { createMemoryVaultStore, createVaultStore } from './vaultFactory.js';
+import {
+  createMemoryVaultStore,
+  createVaultStore,
+  resolveVaultBackend,
+} from './vaultFactory.js';
 
 describe('createVaultStore', () => {
   it('uses memory backend when MEMORY_OS_VAULT_BACKEND=memory', async () => {
@@ -28,4 +32,14 @@ describe('createVaultStore', () => {
     });
     await expect(b.get('vault:x')).resolves.toBeNull();
   });
+
+  it('resolves supabase_vault / kms backend aliases', () => {
+    expect(
+      resolveVaultBackend({ MEMORY_OS_VAULT_BACKEND: 'supabase_vault' }),
+    ).toBe('supabase_vault');
+    expect(resolveVaultBackend({ MEMORY_OS_VAULT_BACKEND: 'kms' })).toBe(
+      'supabase_vault',
+    );
+  });
 });
+

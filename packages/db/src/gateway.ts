@@ -675,4 +675,47 @@ export class SupabaseMemoryGateway {
       lastError: string | null;
     };
   }
+
+  async vaultKmsPut(input: { vaultRef: string; plaintext: string }) {
+    const { data, error } = await this.client.rpc('api_vault_kms_put', {
+      p_secret: this.apiSecret,
+      p_vault_ref: input.vaultRef,
+      p_plaintext: input.plaintext,
+    });
+    if (error) throw error;
+    return data as {
+      ok: boolean;
+      vaultRef: string;
+      secretId: string;
+      backend: string;
+    };
+  }
+
+  async vaultKmsGet(vaultRef: string) {
+    const { data, error } = await this.client.rpc('api_vault_kms_get', {
+      p_secret: this.apiSecret,
+      p_vault_ref: vaultRef,
+    });
+    if (error) throw error;
+    return data as {
+      found: boolean;
+      vaultRef: string;
+      plaintext?: string;
+      backend: string;
+    };
+  }
+
+  async vaultKmsDelete(vaultRef: string) {
+    const { data, error } = await this.client.rpc('api_vault_kms_delete', {
+      p_secret: this.apiSecret,
+      p_vault_ref: vaultRef,
+    });
+    if (error) throw error;
+    return data as {
+      ok: boolean;
+      vaultRef: string;
+      deleted: boolean;
+      backend: string;
+    };
+  }
 }

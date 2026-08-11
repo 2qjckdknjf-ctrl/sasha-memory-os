@@ -1,7 +1,7 @@
 name: Worker ticks
 
-# Alpha cron stubs — set MEMORY_OS_API_BASE_URL (deployed API) before relying on schedule.
-# Auth uses demo subject headers; API process holds MEMORY_OS_API_SECRET server-side.
+# Hosted cron against Supabase Edge `worker-ticks` (or full Fly API when available).
+# Secrets: MEMORY_OS_API_BASE_URL, MEMORY_OS_API_SECRET, MEMORY_OS_SUPABASE_ANON_KEY
 on:
   workflow_dispatch:
   schedule:
@@ -17,6 +17,7 @@ jobs:
           API: ${{ secrets.MEMORY_OS_API_BASE_URL }}
           SUBJECT: ${{ secrets.MEMORY_OS_OWNER_SUBJECT_ID }}
           WORKSPACE: ${{ secrets.MEMORY_OS_WORKSPACE_ID }}
+          ANON: ${{ secrets.MEMORY_OS_SUPABASE_ANON_KEY }}
         run: |
           set -euo pipefail
           SUBJECT="${SUBJECT:-33333333-3333-4333-8333-333333333301}"
@@ -26,14 +27,16 @@ jobs:
             -H "x-subject-id: $SUBJECT" \
             -H "x-actor-key: owner" \
             -H "x-client-id: demo-owner" \
+            -H "apikey: ${ANON}" \
             -H "x-memory-os-api-secret: ${{ secrets.MEMORY_OS_API_SECRET }}" \
-            -d "{\"workspace_id\":\"$WORKSPACE\",\"enqueue\":true,\"apply\":true}"
+            -d "{\"workspace_id\":\"$WORKSPACE\",\"actor_subject_id\":\"$SUBJECT\",\"enqueue\":true,\"apply\":true}"
 
       - name: Enqueue connector sync
         env:
           API: ${{ secrets.MEMORY_OS_API_BASE_URL }}
           SUBJECT: ${{ secrets.MEMORY_OS_OWNER_SUBJECT_ID }}
           WORKSPACE: ${{ secrets.MEMORY_OS_WORKSPACE_ID }}
+          ANON: ${{ secrets.MEMORY_OS_SUPABASE_ANON_KEY }}
         run: |
           set -euo pipefail
           SUBJECT="${SUBJECT:-33333333-3333-4333-8333-333333333301}"
@@ -43,14 +46,16 @@ jobs:
             -H "x-subject-id: $SUBJECT" \
             -H "x-actor-key: owner" \
             -H "x-client-id: demo-owner" \
+            -H "apikey: ${ANON}" \
             -H "x-memory-os-api-secret: ${{ secrets.MEMORY_OS_API_SECRET }}" \
-            -d "{\"workspace_id\":\"$WORKSPACE\"}"
+            -d "{\"workspace_id\":\"$WORKSPACE\",\"actor_subject_id\":\"$SUBJECT\"}"
 
       - name: Dead-letter stale jobs
         env:
           API: ${{ secrets.MEMORY_OS_API_BASE_URL }}
           SUBJECT: ${{ secrets.MEMORY_OS_OWNER_SUBJECT_ID }}
           WORKSPACE: ${{ secrets.MEMORY_OS_WORKSPACE_ID }}
+          ANON: ${{ secrets.MEMORY_OS_SUPABASE_ANON_KEY }}
         run: |
           set -euo pipefail
           SUBJECT="${SUBJECT:-33333333-3333-4333-8333-333333333301}"
@@ -60,6 +65,7 @@ jobs:
             -H "x-subject-id: $SUBJECT" \
             -H "x-actor-key: owner" \
             -H "x-client-id: demo-owner" \
+            -H "apikey: ${ANON}" \
             -H "x-memory-os-api-secret: ${{ secrets.MEMORY_OS_API_SECRET }}" \
             -d "{\"workspace_id\":\"$WORKSPACE\",\"older_than_minutes\":60}"
 
@@ -68,6 +74,7 @@ jobs:
           API: ${{ secrets.MEMORY_OS_API_BASE_URL }}
           SUBJECT: ${{ secrets.MEMORY_OS_OWNER_SUBJECT_ID }}
           WORKSPACE: ${{ secrets.MEMORY_OS_WORKSPACE_ID }}
+          ANON: ${{ secrets.MEMORY_OS_SUPABASE_ANON_KEY }}
         run: |
           set -euo pipefail
           SUBJECT="${SUBJECT:-33333333-3333-4333-8333-333333333301}"
@@ -77,5 +84,6 @@ jobs:
             -H "x-subject-id: $SUBJECT" \
             -H "x-actor-key: owner" \
             -H "x-client-id: demo-owner" \
+            -H "apikey: ${ANON}" \
             -H "x-memory-os-api-secret: ${{ secrets.MEMORY_OS_API_SECRET }}" \
             -d "{\"workspace_id\":\"$WORKSPACE\",\"actor_subject_id\":\"$SUBJECT\",\"limit\":50}"

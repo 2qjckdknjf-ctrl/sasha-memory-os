@@ -86,6 +86,6 @@ Outside `local`/`test`, owner ops require `x-memory-os-api-secret` (or `MEMORY_O
 ## Следующий шаг (план close demo-slice)
 
 1. ~~Зафиксировать код (commit/PR)~~ — [PR #1](https://github.com/2qjckdknjf-ctrl/sasha-memory-os/pull/1)
-2. **Deploy API** — `flyctl auth login` затем `./scripts/fly-deploy-api.sh` (нужен interactive login / `FLY_API_TOKEN`)
-3. **Cron** — выставить GH `MEMORY_OS_API_BASE_URL` (после deploy); `MEMORY_OS_API_SECRET` уже в secrets репо
-4. Harden prod — managed KMS / `supabase_vault`; optional pgvector dims >32 (`MEMORY_OS_OPENAI_EMBED_DIMS`)
+2. ~~Hosted ticks~~ — Supabase Edge `worker-ticks` + GH secrets (`MEMORY_OS_API_BASE_URL=.../functions/v1/worker-ticks`)
+3. ~~Harden~~ — `MEMORY_OS_VAULT_BACKEND=supabase_vault` (KMS) + `embedding_vector_hq` (1536)
+4. Optional full Node API on Fly — `./scripts/fly-deploy-api.sh` when `flyctl auth login` available

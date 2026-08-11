@@ -40,8 +40,10 @@ export class NoopEmbeddingAdapter implements EmbeddingAdapter {
   }
 }
 
-/** pgvector column + HNSW index are locked to 32 dims in alpha migrations. */
+/** Alpha stub / shortened OpenAI dims (memory_records.embedding_vector). */
 export const SQL_HYBRID_EMBED_DIMS = 32;
+/** Full OpenAI text-embedding-3-small dims (memory_records.embedding_vector_hq). */
+export const SQL_HYBRID_EMBED_DIMS_HQ = 1536;
 
 export class OpenAiEmbeddingAdapter implements EmbeddingAdapter {
   readonly name = 'openai';

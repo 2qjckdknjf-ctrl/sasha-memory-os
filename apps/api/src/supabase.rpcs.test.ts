@@ -44,6 +44,21 @@ describeRemote('remote Supabase RPCs (vault / embed / consolidation)', () => {
     expect(missing.found).toBe(false);
   });
 
+  it('round-trips supabase_vault KMS secret', async () => {
+    const vaultRef = `vault:kms/test-${randomUUID()}`;
+    const plaintext = Buffer.from(`kms-${Date.now()}`, 'utf8').toString('base64');
+    const put = await gateway.vaultKmsPut({ vaultRef, plaintext });
+    expect(put.ok).toBe(true);
+    expect(put.backend).toBe('supabase_vault');
+    const got = await gateway.vaultKmsGet(vaultRef);
+    expect(got.found).toBe(true);
+    expect(got.plaintext).toBe(plaintext);
+    const del = await gateway.vaultKmsDelete(vaultRef);
+    expect(del.deleted).toBe(true);
+    const missing = await gateway.vaultKmsGet(vaultRef);
+    expect(missing.found).toBe(false);
+  });
+
   it('enqueues consolidation, lists pending outbox, then completes', async () => {
     const enq = await gateway.enqueueConsolidation({
       subjectId: owner,

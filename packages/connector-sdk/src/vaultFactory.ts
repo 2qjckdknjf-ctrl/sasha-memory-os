@@ -4,7 +4,7 @@ import {
   type VaultTokenRecord,
 } from './vault.js';
 
-export type VaultBackend = 'local' | 'memory' | 'supabase';
+export type VaultBackend = 'local' | 'memory' | 'supabase' | 'supabase_vault';
 
 /** In-memory vault for tests / ephemeral workers. Never persists tokens to disk. */
 export function createMemoryVaultStore(): VaultStore {
@@ -29,6 +29,7 @@ export function resolveVaultBackend(
   const raw = (env.MEMORY_OS_VAULT_BACKEND ?? '').trim().toLowerCase();
   if (raw === 'memory') return 'memory';
   if (raw === 'local') return 'local';
+  if (raw === 'supabase_vault' || raw === 'kms') return 'supabase_vault';
   if (raw === 'supabase') return 'supabase';
   // Default: shared DB vault when Supabase is configured, else local files.
   if (env.MEMORY_OS_SUPABASE_URL?.trim()) return 'supabase';
@@ -43,17 +44,21 @@ export type VaultStoreFactoryOptions = {
 
 /**
  * Factory for connector token vault backends.
- * For `supabase`, pass `supabaseVault` from `@memory-os/db` createSupabaseVaultStore().
+ * For `supabase` / `supabase_vault`, pass `supabaseVault` from `@memory-os/db`.
  */
 export function createVaultStore(options: VaultStoreFactoryOptions = {}): VaultStore {
   const processEnv = options.env ?? process.env;
   const backend = resolveVaultBackend(processEnv);
   if (backend === 'memory') return createMemoryVaultStore();
   if (backend === 'local') return createLocalVaultStore(processEnv);
-  if (!options.supabaseVault) {
-    throw new Error(
-      'MEMORY_OS_VAULT_BACKEND=supabase requires createVaultStore({ supabaseVault })',
-    );
+  if (backend === 'supabase' || backend === 'supabase_vault') {
+    if (!options.supabaseVault) {
+      throw new Error(
+        `MEMORY_OS_VAULT_BACKEND=${backend} requires createVaultStore({ supabaseVault })`,
+      );
+    }
+    return options.supabaseVault;
   }
-  return options.supabaseVault;
+  const _exhaustive: never = backend;
+  throw new Error(`Unknown vault backend: ${_exhaustive}`);
 }
