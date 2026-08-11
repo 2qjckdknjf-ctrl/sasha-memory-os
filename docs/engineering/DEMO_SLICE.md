@@ -21,4 +21,6 @@ Pass actor as `x-subject-id` header on API requests.
 
 Text capture alpha: `POST /v1/capture/text` (owner/ChatGPT) creates quarantine artifact → SHA-256 → ingest job → chunks → `candidate` fact with evidence. Process via `process_now` (default) or `POST /v1/jobs/:id/process` / worker CLI.
 
+Document capture alpha: `POST /v1/capture/document` accepts base64 `.txt` / `.pdf` / `.docx`, extracts text via `@memory-os/ingestion`, then reuses the same ingest pipeline.
+
 SQL path: migrations are applied to live project `sasha-memory-os` (see [SUPABASE.md](./SUPABASE.md)). Local CLI currently blocked on this machine (x86_64 binary).

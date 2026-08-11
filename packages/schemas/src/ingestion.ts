@@ -54,3 +54,18 @@ export const captureTextSchema = z.object({
 });
 
 export type CaptureTextInput = z.infer<typeof captureTextSchema>;
+
+export const captureDocumentSchema = z.object({
+  workspace_id: z.string().uuid(),
+  project_id: z.string().uuid(),
+  title: z.string().min(1),
+  filename: z.string().min(1),
+  mime_type: z.string().optional(),
+  content_base64: z.string().min(1),
+  sensitivity: sensitivitySchema.default('internal'),
+  actor_subject_id: z.string().uuid(),
+  idempotency_key: z.string().min(1),
+  process_now: z.boolean().default(true),
+});
+
+export type CaptureDocumentInput = z.infer<typeof captureDocumentSchema>;

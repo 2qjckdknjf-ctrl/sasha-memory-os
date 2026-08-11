@@ -159,6 +159,8 @@ export class SupabaseMemoryGateway {
     idempotencyKey: string;
     sensitivity?: string;
     processNow?: boolean;
+    filename?: string;
+    mimeType?: string;
   }) {
     const { data, error } = await this.client.rpc('api_capture_text', {
       p_secret: this.apiSecret,
@@ -170,6 +172,8 @@ export class SupabaseMemoryGateway {
       p_idempotency_key: input.idempotencyKey,
       p_sensitivity: input.sensitivity ?? 'internal',
       p_process_now: input.processNow ?? true,
+      p_filename: input.filename ?? null,
+      p_mime_type: input.mimeType ?? 'text/plain',
     });
     if (error) throw error;
     return data;

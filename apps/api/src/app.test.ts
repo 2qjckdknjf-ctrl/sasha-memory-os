@@ -44,6 +44,35 @@ describe('memory api demo slice', () => {
     expect(res.status).toBe(201);
   });
 
+  it('captures a plain-text document into candidate memory', async () => {
+    const app = createApp({});
+    const content = Buffer.from(
+      'Document capture alpha for Memory OS.',
+      'utf8',
+    ).toString('base64');
+    const res = await app.request('/v1/capture/document', {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'x-subject-id': chatgpt,
+      },
+      body: JSON.stringify({
+        workspace_id: workspaceId,
+        project_id: projectId,
+        title: 'Doc capture',
+        filename: 'note.txt',
+        mime_type: 'text/plain',
+        content_base64: content,
+        actor_subject_id: chatgpt,
+        idempotency_key: 'manual/doc-1',
+      }),
+    });
+    expect(res.status).toBe(201);
+    const body = await res.json();
+    expect(body.memoryId).toBeTruthy();
+    expect(body.extractedChars).toBeGreaterThan(10);
+  });
+
   it('captures text into candidate memory', async () => {
     const app = createApp({});
     const res = await app.request('/v1/capture/text', {

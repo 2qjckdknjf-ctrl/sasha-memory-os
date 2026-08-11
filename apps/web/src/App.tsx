@@ -54,6 +54,8 @@ export function App() {
     'Manual capture alpha: quarantine → hash → chunks → candidate memory.',
   );
   const [lastCapture, setLastCapture] = useState<string | null>(null);
+  const [docTitle, setDocTitle] = useState('Uploaded brief');
+  const [docFile, setDocFile] = useState<File | null>(null);
 
   const subjectId = actors[actor];
 
@@ -277,6 +279,58 @@ export function App() {
           }).map((h) => ({ memory: h.memory })),
         );
       }
+    } catch (err) {
+      setError((err as Error).message);
+    }
+  }
+
+  async function onCaptureDocument() {
+    setError(null);
+    if (!docFile) {
+      setError('Choose a .txt, .pdf, or .docx file');
+      return;
+    }
+    try {
+      const contentBase64 = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onerror = () => reject(new Error('failed to read file'));
+        reader.onload = () => {
+          const result = String(reader.result ?? '');
+          const comma = result.indexOf(',');
+          resolve(comma >= 0 ? result.slice(comma + 1) : result);
+        };
+        reader.readAsDataURL(docFile);
+      });
+
+      if (backend !== 'local') {
+        const result = await apiPost<{
+          jobId?: string;
+          process?: { memoryId?: string; chunkCount?: number };
+          memoryId?: string;
+          extractedChars?: number;
+          filename?: string;
+        }>('/v1/capture/document', subjectId, {
+          workspace_id: WORKSPACE_ID,
+          project_id: PROJECT_ID,
+          title: docTitle,
+          filename: docFile.name,
+          mime_type: docFile.type || undefined,
+          content_base64: contentBase64,
+          actor_subject_id: subjectId,
+          idempotency_key: `web-doc-${Date.now()}`,
+          process_now: true,
+        });
+        setLastCapture(
+          `doc ${result.filename ?? docFile.name} · chars ${
+            result.extractedChars ?? '?'
+          } · memory ${result.process?.memoryId ?? result.memoryId ?? '?'}`,
+        );
+        setSearch(docTitle.split(' ')[0] ?? 'Uploaded');
+      } else {
+        setError('Document capture requires API backend (start dev:api)');
+        return;
+      }
+      setTick((n) => n + 1);
     } catch (err) {
       setError((err as Error).message);
     }
@@ -519,6 +573,33 @@ export function App() {
               />
             </label>
             <button type="submit">Capture text</button>
+          </form>
+
+          <form
+            className="form"
+            onSubmit={(e) => {
+              e.preventDefault();
+              void onCaptureDocument();
+            }}
+          >
+            <label>
+              Document title
+              <input
+                value={docTitle}
+                onChange={(e) => setDocTitle(e.target.value)}
+                required
+              />
+            </label>
+            <label>
+              File (.txt / .pdf / .docx)
+              <input
+                type="file"
+                accept=".txt,.md,.pdf,.docx,text/plain,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                onChange={(e) => setDocFile(e.target.files?.[0] ?? null)}
+                required
+              />
+            </label>
+            <button type="submit">Capture document</button>
             {lastCapture ? <p className="meta">{lastCapture}</p> : null}
           </form>
 

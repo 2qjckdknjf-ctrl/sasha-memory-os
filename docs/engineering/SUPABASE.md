@@ -13,14 +13,10 @@ Dedicated project (ADR-005). **Do not** mix with AISTROYKA / HiAir.
 
 ## Applied migrations
 
-- `extensions`
-- `identity`
-- `projects_events_artifacts`
-- `memory_core`
-- `audit_jobs_outbox`
-- `rls_helpers`
-- `rls_policies`
-- `fix_app_function_search_path`
+- `extensions` … `rls_*`, `api_rpcs`, `api_upsert_project_state`
+- `connector_registry`
+- `text_capture_ingestion` (+ digest/bytea fix)
+- `capture_document_metadata` / event-type branch for text vs document
 
 Seed loaded: workspace `sasha-home`, project `aistroyka`, verified decision + state v1.
 
