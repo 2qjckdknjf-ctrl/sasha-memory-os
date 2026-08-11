@@ -230,13 +230,17 @@ describe('memory api demo slice', () => {
     const mcpBody = await mcpInit.json();
     expect(mcpBody.result.serverInfo.name).toBe('memory-os-mcp-gateway');
 
-    const res = await app.request('/health');
+    const res = await app.request('/health', {
+      headers: { 'x-request-id': 'test-req-health-1' },
+    });
     expect(res.status).toBe(200);
+    expect(res.headers.get('x-request-id')).toBe('test-req-health-1');
     const body = await res.json();
     expect(body.ok).toBe(true);
     expect(body.embedEngine).toBeTruthy();
     expect(body.vaultBackend).toBeTruthy();
     expect(body.mcp).toBe('/mcp');
+    expect(body.requestId).toBe('test-req-health-1');
   });
 
   it('gets memory offline with full content', async () => {

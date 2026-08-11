@@ -52,11 +52,13 @@ import {
 } from '@memory-os/mcp-gateway';
 import type { SupabaseMemoryGateway } from './supabase.js';
 import { requireHttpApiSecret } from './httpAuth.js';
+import { withRequestId } from './requestId.js';
 
 export type ApiVariables = {
   store: MemoryStore;
   authz: AuthzContext;
   gateway: SupabaseMemoryGateway | null;
+  requestId: string;
   actor: {
     id: string;
     externalKey?: string;
@@ -219,10 +221,14 @@ export function createApp(options?: {
         'x-client-id',
         'x-auth-user-id',
         'x-memory-os-api-secret',
+        'x-request-id',
         'Authorization',
       ],
+      exposeHeaders: ['x-request-id'],
     }),
   );
+
+  app.use('*', withRequestId);
 
   app.use('*', async (c, next) => {
     const headerSubject = c.req.header('x-subject-id');
@@ -302,6 +308,7 @@ export function createApp(options?: {
       connectorPullMode:
         (process.env.MEMORY_OS_CONNECTOR_PULL_MODE ?? 'auto').trim() || 'auto',
       mcp: '/mcp',
+      requestId: c.get('requestId'),
     }),
   );
 

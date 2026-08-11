@@ -30,6 +30,12 @@ Live Supabase project: `sasha-memory-os` (`vpxblcxsvlylqyldiuwr`, `eu-central-1`
 - Fly: `flyctl releases rollback -a sasha-memory-os-api`.  
 - DB: forward-fix migrations preferred; keep supersede/ACL migrations additive.
 
+## Observability (alpha)
+
+- Every API response includes `x-request-id` (echo client header or generate UUID).  
+- Structured JSON access logs when `MEMORY_OS_ENV=staging|production` or `MEMORY_OS_HTTP_LOG=1`.  
+- Hosted ops health: Edge `/worker-ticks/health` + GH Actions run history.
+
 ## MCP remote
 
 - API: `POST {API}/mcp` (JSON-RPC; Bearer / `x-memory-os-api-secret` outside local).  

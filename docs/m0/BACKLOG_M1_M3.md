@@ -16,11 +16,10 @@ Architecture context: ADRs `docs/adr/`, [DEMO_SLICE.md](../engineering/DEMO_SLIC
 | Staging one-command deploy | Partial | Edge + GH workers live; Fly API optional |
 | Staging promote runbook | Done | [STAGING_PROMOTE.md](../engineering/STAGING_PROMOTE.md) |
 | Remote MCP HTTP | Done (alpha) | `POST /mcp` on API + `start:http` |
-| Tracing/logging runbooks | Partial | Audit/outbox; expand observability |
-
+| Tracing/logging runbooks | Partial | request-id + JSON HTTP logs; OTel later |
 | Dependency audit in CI | Done | `pnpm audit --audit-level=critical` |
 
-**M1 exit remaining:** optional Fly HTTP API; richer observability/tracing.
+**M1 exit remaining:** optional Fly HTTP API; distributed tracing later.
 
 ## M2 — Event store, provenance, access
 
