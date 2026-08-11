@@ -8,6 +8,7 @@ import {
 import { createSeededStore, type MemoryStore } from '@memory-os/domain';
 import { pullGithubStubDelta } from '@memory-os/connector-github';
 import { pullGmailStubDelta } from '@memory-os/connector-gmail';
+import { pullGoogleCalendarStubDelta } from '@memory-os/connector-google-calendar';
 import { pullGoogleDriveStubDelta } from '@memory-os/connector-google-drive';
 import { resolveAuthorizeBase } from '@memory-os/connector-sdk';
 import {
@@ -104,6 +105,36 @@ function seedAuthz(subjectId: string): AuthzContext {
 function isForbiddenError(err: unknown): boolean {
   const message = err instanceof Error ? err.message : String(err);
   return /forbidden|42501|unauthorized/i.test(message);
+}
+
+function pullConnectorStubDelta(item: {
+  connectorId: string;
+  connectionId: string;
+}) {
+  switch (item.connectorId) {
+    case 'github':
+      return pullGithubStubDelta({
+        connectionId: item.connectionId,
+        displayName: item.connectorId,
+      });
+    case 'google-drive':
+      return pullGoogleDriveStubDelta({
+        connectionId: item.connectionId,
+        displayName: item.connectorId,
+      });
+    case 'gmail':
+      return pullGmailStubDelta({
+        connectionId: item.connectionId,
+        displayName: item.connectorId,
+      });
+    case 'google-calendar':
+      return pullGoogleCalendarStubDelta({
+        connectionId: item.connectionId,
+        displayName: item.connectorId,
+      });
+    default:
+      return null;
+  }
 }
 
 export function createApp(options?: {
@@ -274,23 +305,7 @@ export function createApp(options?: {
         for (const item of result.enqueued ?? []) {
           if (!item.jobId) continue;
           try {
-            const delta =
-              item.connectorId === 'github'
-                ? pullGithubStubDelta({
-                    connectionId: item.connectionId,
-                    displayName: item.connectorId,
-                  })
-                : item.connectorId === 'google-drive'
-                  ? pullGoogleDriveStubDelta({
-                      connectionId: item.connectionId,
-                      displayName: item.connectorId,
-                    })
-                  : item.connectorId === 'gmail'
-                    ? pullGmailStubDelta({
-                        connectionId: item.connectionId,
-                        displayName: item.connectorId,
-                      })
-                    : null;
+            const delta = pullConnectorStubDelta(item);
             if (delta) {
               for (const event of delta.items) {
                 await gw.captureText({

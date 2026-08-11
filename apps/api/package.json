@@ -19,6 +19,7 @@
     "@memory-os/authz": "workspace:^",
     "@memory-os/connector-github": "workspace:*",
     "@memory-os/connector-gmail": "workspace:*",
+    "@memory-os/connector-google-calendar": "workspace:*",
     "@memory-os/connector-google-drive": "workspace:*",
     "@memory-os/connector-sdk": "workspace:*",
     "@memory-os/db": "workspace:^",

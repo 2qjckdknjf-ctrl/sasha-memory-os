@@ -1,5 +1,6 @@
 import { pullGithubStubDelta } from '@memory-os/connector-github';
 import { pullGmailStubDelta } from '@memory-os/connector-gmail';
+import { pullGoogleCalendarStubDelta } from '@memory-os/connector-google-calendar';
 import { pullGoogleDriveStubDelta } from '@memory-os/connector-google-drive';
 import {
   createMemoryOsClient,
@@ -60,6 +61,11 @@ function pullStubDelta(item: SyncPlanItem) {
       });
     case 'gmail':
       return pullGmailStubDelta({
+        connectionId: item.connectionId,
+        displayName: item.connectorId,
+      });
+    case 'google-calendar':
+      return pullGoogleCalendarStubDelta({
         connectionId: item.connectionId,
         displayName: item.connectorId,
       });

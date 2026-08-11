@@ -48,6 +48,9 @@ importers:
       '@memory-os/connector-gmail':
         specifier: workspace:*
         version: link:../../connectors/gmail
+      '@memory-os/connector-google-calendar':
+        specifier: workspace:*
+        version: link:../../connectors/google-calendar
       '@memory-os/connector-google-drive':
         specifier: workspace:*
         version: link:../../connectors/google-drive
@@ -229,6 +232,9 @@ importers:
       '@memory-os/connector-gmail':
         specifier: workspace:*
         version: link:../../connectors/gmail
+      '@memory-os/connector-google-calendar':
+        specifier: workspace:*
+        version: link:../../connectors/google-calendar
       '@memory-os/connector-google-drive':
         specifier: workspace:*
         version: link:../../connectors/google-drive
