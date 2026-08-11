@@ -23,4 +23,6 @@ Text capture alpha: `POST /v1/capture/text` (owner/ChatGPT) creates quarantine a
 
 Document capture alpha: `POST /v1/capture/document` accepts base64 `.txt` / `.pdf` / `.docx`, extracts text via `@memory-os/ingestion`, then reuses the same ingest pipeline.
 
+Link capture alpha: `POST /v1/capture/link` fetches public http(s) URLs after DNS/SSRF checks (no private IPs, no credentialed URLs, redirects disabled).
+
 SQL path: migrations are applied to live project `sasha-memory-os` (see [SUPABASE.md](./SUPABASE.md)). Local CLI currently blocked on this machine (x86_64 binary).

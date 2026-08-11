@@ -104,6 +104,25 @@ describe('memory api demo slice', () => {
     expect(body.extractedChars).toBeGreaterThan(10);
   });
 
+  it('rejects private link capture targets', async () => {
+    const app = createApp({});
+    const res = await app.request('/v1/capture/link', {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'x-subject-id': chatgpt,
+      },
+      body: JSON.stringify({
+        workspace_id: workspaceId,
+        project_id: projectId,
+        url: 'http://127.0.0.1/secret',
+        actor_subject_id: chatgpt,
+        idempotency_key: 'manual/link-blocked-1',
+      }),
+    });
+    expect(res.status).toBe(400);
+  });
+
   it('captures text into candidate memory', async () => {
     const app = createApp({});
     const res = await app.request('/v1/capture/text', {

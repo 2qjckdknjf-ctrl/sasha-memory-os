@@ -69,3 +69,16 @@ export const captureDocumentSchema = z.object({
 });
 
 export type CaptureDocumentInput = z.infer<typeof captureDocumentSchema>;
+
+export const captureLinkSchema = z.object({
+  workspace_id: z.string().uuid(),
+  project_id: z.string().uuid(),
+  url: z.string().url(),
+  title: z.string().min(1).optional(),
+  sensitivity: sensitivitySchema.default('internal'),
+  actor_subject_id: z.string().uuid(),
+  idempotency_key: z.string().min(1),
+  process_now: z.boolean().default(true),
+});
+
+export type CaptureLinkInput = z.infer<typeof captureLinkSchema>;

@@ -8,6 +8,7 @@ import {
 import { createSeededStore, type MemoryStore } from '@memory-os/domain';
 import {
   captureDocumentSchema,
+  captureLinkSchema,
   captureTextSchema,
   createDecisionSchema,
   createHandoffSchema,
@@ -16,7 +17,11 @@ import {
   upsertConnectionSchema,
   upsertProjectStateSchema,
 } from '@memory-os/schemas';
-import { decodeBase64Document, parseDocument } from '@memory-os/ingestion';
+import {
+  decodeBase64Document,
+  fetchPublicLink,
+  parseDocument,
+} from '@memory-os/ingestion';
 import { projectContext, searchMemories } from '@memory-os/retrieval';
 import type { SupabaseMemoryGateway } from './supabase.js';
 
@@ -489,6 +494,87 @@ export function createApp(options?: {
         mimeType: parsed.mimeType,
         extractedChars: parsed.text.length,
         pageHint: parsed.pageHint ?? null,
+      },
+      201,
+    );
+  });
+
+  app.post('/v1/capture/link', async (c) => {
+    const body = captureLinkSchema.parse(await c.req.json());
+    const authz = c.get('authz');
+    if (
+      !authorize(authz, {
+        resourceType: 'memory',
+        action: 'write',
+        projectId: body.project_id,
+        sensitivity: body.sensitivity,
+      })
+    ) {
+      return c.json({ error: 'forbidden' }, 403);
+    }
+
+    let fetched;
+    try {
+      fetched = await fetchPublicLink(body.url);
+    } catch (err) {
+      return c.json({ error: (err as Error).message }, 400);
+    }
+
+    const title = body.title ?? fetched.title;
+    const text = [
+      `Source URL: ${fetched.finalUrl}`,
+      fetched.contentType ? `Content-Type: ${fetched.contentType}` : null,
+      '',
+      fetched.text,
+    ]
+      .filter((line) => line !== null)
+      .join('\n');
+
+    const gw = c.get('gateway');
+    if (gw) {
+      try {
+        const result = await gw.captureText({
+          subjectId: body.actor_subject_id,
+          workspaceId: body.workspace_id,
+          projectId: body.project_id,
+          title,
+          text,
+          idempotencyKey: body.idempotency_key,
+          sensitivity: body.sensitivity,
+          processNow: body.process_now,
+          filename: fetched.finalUrl,
+          mimeType: 'text/html',
+        });
+        return c.json(
+          {
+            ...(result as Record<string, unknown>),
+            url: fetched.url,
+            finalUrl: fetched.finalUrl,
+            extractedChars: fetched.text.length,
+          },
+          201,
+        );
+      } catch (err) {
+        if (isForbiddenError(err)) return c.json({ error: 'forbidden' }, 403);
+        return c.json({ error: (err as Error).message }, 500);
+      }
+    }
+
+    const result = c.get('store').captureText({
+      workspaceId: body.workspace_id,
+      projectId: body.project_id,
+      title,
+      text,
+      actorSubjectId: body.actor_subject_id,
+      idempotencyKey: body.idempotency_key,
+      sensitivity: body.sensitivity,
+    });
+    return c.json(
+      {
+        ...result,
+        url: fetched.url,
+        finalUrl: fetched.finalUrl,
+        extractedChars: fetched.text.length,
       },
       201,
     );

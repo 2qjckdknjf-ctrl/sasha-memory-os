@@ -57,6 +57,8 @@ export function App() {
   const [lastCapture, setLastCapture] = useState<string | null>(null);
   const [docTitle, setDocTitle] = useState('Uploaded brief');
   const [docFile, setDocFile] = useState<File | null>(null);
+  const [linkUrl, setLinkUrl] = useState('https://example.com');
+  const [linkTitle, setLinkTitle] = useState('Linked note');
 
   const subjectId = actors[actor];
 
@@ -280,6 +282,39 @@ export function App() {
           }).map((h) => ({ memory: h.memory })),
         );
       }
+    } catch (err) {
+      setError((err as Error).message);
+    }
+  }
+
+  async function onCaptureLink() {
+    setError(null);
+    try {
+      if (backend === 'local') {
+        setError('Link capture requires API backend');
+        return;
+      }
+      const result = await apiPost<{
+        process?: { memoryId?: string };
+        memoryId?: string;
+        finalUrl?: string;
+        extractedChars?: number;
+      }>('/v1/capture/link', subjectId, {
+        workspace_id: WORKSPACE_ID,
+        project_id: PROJECT_ID,
+        url: linkUrl,
+        title: linkTitle,
+        actor_subject_id: subjectId,
+        idempotency_key: `web-link-${Date.now()}`,
+        process_now: true,
+      }, actor);
+      setLastCapture(
+        `link ${result.finalUrl ?? linkUrl} · chars ${
+          result.extractedChars ?? '?'
+        } · memory ${result.process?.memoryId ?? result.memoryId ?? '?'}`,
+      );
+      setSearch(linkTitle.split(' ')[0] ?? 'Linked');
+      setTick((n) => n + 1);
     } catch (err) {
       setError((err as Error).message);
     }
@@ -601,6 +636,32 @@ export function App() {
               />
             </label>
             <button type="submit">Capture document</button>
+          </form>
+
+          <form
+            className="form"
+            onSubmit={(e) => {
+              e.preventDefault();
+              void onCaptureLink();
+            }}
+          >
+            <label>
+              Link title
+              <input
+                value={linkTitle}
+                onChange={(e) => setLinkTitle(e.target.value)}
+                required
+              />
+            </label>
+            <label>
+              Public URL
+              <input
+                value={linkUrl}
+                onChange={(e) => setLinkUrl(e.target.value)}
+                required
+              />
+            </label>
+            <button type="submit">Capture link</button>
             {lastCapture ? <p className="meta">{lastCapture}</p> : null}
           </form>
 
