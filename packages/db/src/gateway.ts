@@ -201,18 +201,30 @@ export class SupabaseMemoryGateway {
   async oauthCompleteStub(input: {
     subjectId: string;
     state: string;
-    code?: string;
+    /** Prefer fingerprint — raw code must not be persisted. */
+    codeFingerprint?: string | null;
+    exchangeMode?: 'stub' | 'credentials_ready';
     env?: string;
   }) {
     const { data, error } = await this.client.rpc('api_oauth_complete_stub', {
       p_secret: this.apiSecret,
       p_subject_id: input.subjectId,
       p_state: input.state,
-      p_code: input.code ?? null,
+      p_code: null,
       p_env: input.env ?? process.env.MEMORY_OS_ENV ?? 'local',
+      p_exchange_mode: input.exchangeMode ?? 'stub',
+      p_code_fingerprint: input.codeFingerprint ?? null,
     });
     if (error) throw error;
-    return data;
+    return data as {
+      connectionId: string;
+      connectorId: string;
+      status: string;
+      vaultRef: string;
+      tokenPersisted: boolean;
+      exchangeMode?: string;
+      codeFingerprint?: string | null;
+    };
   }
 
   async bindAuthUser(input: {

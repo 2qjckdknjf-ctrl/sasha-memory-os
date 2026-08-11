@@ -10,7 +10,11 @@ import { pullGithubStubDelta } from '@memory-os/connector-github';
 import { pullGmailStubDelta } from '@memory-os/connector-gmail';
 import { pullGoogleCalendarStubDelta } from '@memory-os/connector-google-calendar';
 import { pullGoogleDriveStubDelta } from '@memory-os/connector-google-drive';
-import { resolveAuthorizeBase } from '@memory-os/connector-sdk';
+import {
+  exchangeAuthorizationCode,
+  fingerprintAuthorizationCode,
+  resolveAuthorizeBase,
+} from '@memory-os/connector-sdk';
 import {
   bindAuthUserSchema,
   captureDocumentSchema,
@@ -427,22 +431,41 @@ export function createApp(options?: {
     if (!authz.isOwner && authz.subjectId !== body.actor_subject_id) {
       return c.json({ error: 'forbidden' }, 403);
     }
+    const codeFingerprint = fingerprintAuthorizationCode(body.code);
     const gw = c.get('gateway');
     if (!gw) {
       return c.json({
         status: 'connected',
         tokenPersisted: false,
         vaultRef: `vault:local/connectors/stub/${body.state}`,
+        exchangeMode: 'stub',
+        codeFingerprint,
         backend: 'memory-store',
       });
     }
     try {
+      // First complete with stub mode to resolve connection; raw code never sent to DB.
       const result = await gw.oauthCompleteStub({
         subjectId: body.actor_subject_id,
         state: body.state,
+        codeFingerprint,
+        exchangeMode: 'stub',
+      });
+      const exchange = exchangeAuthorizationCode({
+        connectorId: result.connectorId,
+        connectionId: result.connectionId,
         code: body.code,
       });
-      return c.json(result);
+      return c.json({
+        ...result,
+        vaultRef: exchange.vaultRef,
+        tokenPersisted: false,
+        exchangeMode: exchange.exchangeMode,
+        codeFingerprint: exchange.codeFingerprint,
+        clientIdConfigured: exchange.clientIdConfigured,
+        clientSecretConfigured: exchange.clientSecretConfigured,
+        note: exchange.note,
+      });
     } catch (err) {
       if (isForbiddenError(err)) return c.json({ error: 'forbidden' }, 403);
       return c.json({ error: (err as Error).message }, 500);
