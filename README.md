@@ -46,6 +46,6 @@ OAuth broker (stub): `POST /v1/oauth/start` → `POST /v1/oauth/callback` stores
 ## Следующий шаг
 
 - HTTP OAuth token exchange into KMS/vault when `CLIENT_ID`+`CLIENT_SECRET` set (`credentials_ready`)
-- Expand golden retrieval set toward 100–200 cases (60 seeded now)
+- Expand golden retrieval set toward 100–200 cases (80 seeded now)
 - Replace connector stub deltas with vault-backed provider pulls
 - Real embedding provider behind `MEMORY_OS_EMBED_ENGINE` (stub hash for now)
