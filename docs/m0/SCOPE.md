@@ -2,6 +2,12 @@
 
 Источник: baseline §20.3, §2, §25, §26. Полный текст — [Sasha_Memory_OS_Technical_Roadmap_and_Spec_RU.md](../baseline/Sasha_Memory_OS_Technical_Roadmap_and_Spec_RU.md).
 
+## Статус артефактов
+
+**WP-01 landed** in-repo: [ADR-001..005](../adr/README.md), monorepo skeleton (§4.4), CI smoke, [environment matrix](../engineering/ENVIRONMENT_MATRIX.md), [secrets policy](../engineering/SECRETS_POLICY.md).
+
+Owner checklist items below (ChatGPT MCP plan, region, golden set, DPIA, etc.) remain open for RG0 — they are not closed by WP-01 bootstrap alone.
+
 ## Цель
 
 Превратить концепцию в измеряемый scope и снять внешние блокеры до начала platform/code bootstrap.

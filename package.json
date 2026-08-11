@@ -1,0 +1,15 @@
+{
+  "name": "sasha-memory-os",
+  "version": "0.0.0",
+  "private": true,
+  "packageManager": "pnpm@9.15.9",
+  "scripts": {
+    "typecheck": "pnpm -r run typecheck",
+    "test": "pnpm -r run test",
+    "lint": "echo \"No lint config in WP-01; reserved for M1.\""
+  },
+  "devDependencies": {
+    "typescript": "^5.8.2",
+    "vitest": "^3.0.9"
+  }
+}

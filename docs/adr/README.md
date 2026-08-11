@@ -6,18 +6,14 @@
 
 `ADR-NNN-short-title.md` — трёхзначный номер, kebab-case в заголовке файла.
 
-Пример: `ADR-001-canonical-memory.md`
-
-## Планируемые ADR (WP-01)
-
-Содержимое будет добавлено в WP-01. Placeholder-список из baseline M0 / WP-01:
+## Accepted (WP-01)
 
 | ADR | Тема |
 |---|---|
-| ADR-001 | Canonical memory — единый Memory Core для клиентов |
-| ADR-002 | Event store + projections |
-| ADR-003 | Storage modes (reference / indexed / archived) |
-| ADR-004 | *(зарезервировано в WP-01)* |
-| ADR-005 | *(зарезервировано в WP-01)* |
+| [ADR-001](ADR-001-canonical-memory.md) | Canonical shared Memory Core |
+| [ADR-002](ADR-002-event-store-and-projections.md) | Event store + projections |
+| [ADR-003](ADR-003-storage-modes.md) | Storage modes reference / indexed / archived |
+| [ADR-004](ADR-004-modular-monolith.md) | Modular monolith + workers for V1 |
+| [ADR-005](ADR-005-secrets-and-environments.md) | Secrets and environment isolation |
 
-Каждый ADR должен описывать контекст, решение, последствия и влияние на безопасность, данные, совместимость и roadmap.
+Каждый ADR описывает контекст, решение, последствия и влияние на безопасность и roadmap.

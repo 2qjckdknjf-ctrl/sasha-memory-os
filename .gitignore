@@ -3,6 +3,8 @@ Thumbs.db
 *.swp
 *~
 
+.cursor/
+
 .env
 .env.*
 !.env.example
@@ -17,3 +19,5 @@ build/
 .turbo/
 .vercel/
 coverage/
+*.tsbuildinfo
+.pnpm-store/

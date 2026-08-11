@@ -1,0 +1,24 @@
+{
+  "extends": "./tsconfig.base.json",
+  "files": [],
+  "references": [
+    { "path": "packages/domain" },
+    { "path": "packages/schemas" },
+    { "path": "packages/connector-sdk" },
+    { "path": "packages/retrieval" },
+    { "path": "packages/authz" },
+    { "path": "packages/provenance" },
+    { "path": "packages/observability" },
+    { "path": "apps/api" },
+    { "path": "apps/mcp-gateway" },
+    { "path": "apps/web" },
+    { "path": "workers/ingestion" },
+    { "path": "workers/connector-sync" },
+    { "path": "workers/consolidation" },
+    { "path": "connectors/github" },
+    { "path": "connectors/google-drive" },
+    { "path": "connectors/gmail" },
+    { "path": "connectors/google-calendar" },
+    { "path": "connectors/apple-bridge" }
+  ]
+}

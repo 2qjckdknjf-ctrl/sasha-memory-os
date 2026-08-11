@@ -7,9 +7,26 @@
 - [Техническое задание и roadmap (baseline v1.0)](docs/baseline/Sasha_Memory_OS_Technical_Roadmap_and_Spec_RU.md)
 - [Карта документов](docs/README.md)
 - [M0 scope](docs/m0/SCOPE.md)
+- [ADRs](docs/adr/README.md)
+- [Environment matrix](docs/engineering/ENVIRONMENT_MATRIX.md)
+- [Secrets policy](docs/engineering/SECRETS_POLICY.md)
 
 ## Статус
 
-Реализация ещё не начата. В репозитории зафиксирован утверждённый baseline.
+**WP-01 bootstrap** — monorepo skeleton, ADR-001..005, CI smoke, governance docs.
 
-**Следующий шаг:** WP-01 — Architecture and repo bootstrap (ADR-001..005, repository skeleton, CI, environment matrix).
+Реализация Memory Core / MCP / connectors ещё не начата.
+
+## Репозиторий
+
+pnpm workspaces. Layout — baseline §4.4 (`apps/`, `workers/`, `packages/`, `connectors/`, `supabase/`, `tests/`).
+
+```bash
+pnpm install
+pnpm typecheck
+pnpm test
+```
+
+## Следующий шаг
+
+**WP-02** — Database and RLS foundation (migrations, RLS matrix, policy tests, synthetic seed).

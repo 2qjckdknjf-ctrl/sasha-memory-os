@@ -10,6 +10,8 @@
 | [baseline/ingestion-flow.png](baseline/ingestion-flow.png) | Universal ingestion pipeline |
 | [m0/SCOPE.md](m0/SCOPE.md) | Краткий scope M0 / RG0 и первые work packages |
 | [adr/](adr/) | Architecture Decision Records |
+| [engineering/ENVIRONMENT_MATRIX.md](engineering/ENVIRONMENT_MATRIX.md) | local / dev / staging / prod |
+| [engineering/SECRETS_POLICY.md](engineering/SECRETS_POLICY.md) | Хранение и запреты для secrets |
 
 ## Правило изменений
 
