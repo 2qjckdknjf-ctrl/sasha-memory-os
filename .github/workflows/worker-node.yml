@@ -1,0 +1,56 @@
+name: Worker node ticks
+
+# Full Node consolidation + connector-sync (vault pulls) when Edge enqueue is not enough.
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '45 */6 * * *'
+
+jobs:
+  consolidate-and-sync:
+    runs-on: ubuntu-latest
+    if: ${{ vars.MEMORY_OS_ENABLE_NODE_WORKERS == '1' }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9.15.9
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      - name: Consolidation once
+        env:
+          MEMORY_OS_SUPABASE_URL: ${{ secrets.MEMORY_OS_SUPABASE_URL }}
+          MEMORY_OS_SUPABASE_ANON_KEY: ${{ secrets.MEMORY_OS_SUPABASE_ANON_KEY }}
+          MEMORY_OS_API_SECRET: ${{ secrets.MEMORY_OS_API_SECRET }}
+          MEMORY_OS_VAULT_BACKEND: ${{ secrets.MEMORY_OS_VAULT_BACKEND }}
+          MEMORY_OS_VAULT_KEY: ${{ secrets.MEMORY_OS_VAULT_KEY }}
+          MEMORY_OS_EMBED_ENGINE: ${{ secrets.MEMORY_OS_EMBED_ENGINE }}
+          MEMORY_OS_OPENAI_API_KEY: ${{ secrets.MEMORY_OS_OPENAI_API_KEY }}
+          MEMORY_OS_OPENAI_EMBED_DIMS: ${{ secrets.MEMORY_OS_OPENAI_EMBED_DIMS }}
+          MEMORY_OS_CONNECTOR_PULL_MODE: ${{ secrets.MEMORY_OS_CONNECTOR_PULL_MODE }}
+          MEMORY_OS_WORKSPACE_ID: ${{ secrets.MEMORY_OS_WORKSPACE_ID }}
+          MEMORY_OS_OWNER_SUBJECT_ID: ${{ secrets.MEMORY_OS_OWNER_SUBJECT_ID }}
+        run: pnpm --filter @memory-os/worker-consolidation consolidate:once
+
+      - name: Connector sync once
+        env:
+          MEMORY_OS_SUPABASE_URL: ${{ secrets.MEMORY_OS_SUPABASE_URL }}
+          MEMORY_OS_SUPABASE_ANON_KEY: ${{ secrets.MEMORY_OS_SUPABASE_ANON_KEY }}
+          MEMORY_OS_API_SECRET: ${{ secrets.MEMORY_OS_API_SECRET }}
+          MEMORY_OS_VAULT_BACKEND: ${{ secrets.MEMORY_OS_VAULT_BACKEND }}
+          MEMORY_OS_VAULT_KEY: ${{ secrets.MEMORY_OS_VAULT_KEY }}
+          MEMORY_OS_EMBED_ENGINE: ${{ secrets.MEMORY_OS_EMBED_ENGINE }}
+          MEMORY_OS_OPENAI_API_KEY: ${{ secrets.MEMORY_OS_OPENAI_API_KEY }}
+          MEMORY_OS_OPENAI_EMBED_DIMS: ${{ secrets.MEMORY_OS_OPENAI_EMBED_DIMS }}
+          MEMORY_OS_CONNECTOR_PULL_MODE: ${{ secrets.MEMORY_OS_CONNECTOR_PULL_MODE }}
+          MEMORY_OS_WORKSPACE_ID: ${{ secrets.MEMORY_OS_WORKSPACE_ID }}
+          MEMORY_OS_OWNER_SUBJECT_ID: ${{ secrets.MEMORY_OS_OWNER_SUBJECT_ID }}
+        run: pnpm --filter @memory-os/worker-connector-sync sync:once

@@ -83,9 +83,10 @@ npx pnpm@9.15.9 --filter @memory-os/mcp-gateway start
 OAuth redirect lands on Web `/oauth/callback` → API `/v1/oauth/callback`.  
 Outside `local`/`test`, owner ops require `x-memory-os-api-secret` (or `MEMORY_OS_REQUIRE_API_AUTH=1`).
 
-## Следующий шаг (план close demo-slice)
+## Следующий шаг
 
-1. ~~Зафиксировать код (commit/PR)~~ — [PR #1](https://github.com/2qjckdknjf-ctrl/sasha-memory-os/pull/1)
-2. ~~Hosted ticks~~ — Supabase Edge `worker-ticks` + GH secrets (`MEMORY_OS_API_BASE_URL=.../functions/v1/worker-ticks`)
-3. ~~Harden~~ — `MEMORY_OS_VAULT_BACKEND=supabase_vault` (KMS) + `embedding_vector_hq` (1536)
-4. Optional full Node API on Fly — `./scripts/fly-deploy-api.sh` when `flyctl auth login` available
+1. ~~Alpha close + hosted ticks~~ — Edge `worker-ticks` v2 (real consolidate + embed-missing) + GH cron
+2. ~~KMS / HQ vector columns~~ — `supabase_vault` + `embedding_vector_hq(1536)`
+3. Full Node API host — `./scripts/fly-deploy-api.sh` (needs Fly login) or keep Edge for ops ticks
+4. RG0 owner gates — ChatGPT MCP plan, DPIA, retention/data classes
+5. Connector pull on Edge still enqueues only (full vault pull remains Node worker / local API)
