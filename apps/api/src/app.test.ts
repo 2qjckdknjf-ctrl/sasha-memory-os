@@ -7,6 +7,28 @@ const cursor = '33333333-3333-4333-8333-333333333303';
 const chatgpt = '33333333-3333-4333-8333-333333333302';
 
 describe('memory api demo slice', () => {
+  it('starts oauth stub offline', async () => {
+    const app = createApp({});
+    const ownerId = '33333333-3333-4333-8333-333333333301';
+    const res = await app.request('/v1/oauth/start', {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'x-subject-id': ownerId,
+      },
+      body: JSON.stringify({
+        workspace_id: workspaceId,
+        connector_id: 'github',
+        display_name: 'OAuth pilot',
+        scopes: ['repositories.read'],
+        actor_subject_id: ownerId,
+      }),
+    });
+    expect(res.status).toBe(201);
+    const body = await res.json();
+    expect(String(body.authorizeUrl)).toContain('stub://oauth/github');
+  });
+
   it('resolves actor via x-actor-key', async () => {
     const app = createApp({});
     const res = await app.request('/v1/me', {

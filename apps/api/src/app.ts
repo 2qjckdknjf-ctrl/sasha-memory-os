@@ -6,13 +6,17 @@ import {
   type AuthzContext,
 } from '@memory-os/authz';
 import { createSeededStore, type MemoryStore } from '@memory-os/domain';
+import { resolveAuthorizeBase } from '@memory-os/connector-sdk';
 import {
+  bindAuthUserSchema,
   captureDocumentSchema,
   captureLinkSchema,
   captureTextSchema,
   createDecisionSchema,
   createHandoffSchema,
   ingestionEnvelopeSchema,
+  oauthCompleteSchema,
+  oauthStartSchema,
   setConnectionStatusSchema,
   upsertConnectionSchema,
   upsertProjectStateSchema,
@@ -116,6 +120,7 @@ export function createApp(options?: {
         'x-subject-id',
         'x-actor-key',
         'x-client-id',
+        'x-auth-user-id',
       ],
     }),
   );
@@ -124,6 +129,7 @@ export function createApp(options?: {
     const headerSubject = c.req.header('x-subject-id');
     const actorKey = c.req.header('x-actor-key');
     const clientId = c.req.header('x-client-id');
+    const authUserId = c.req.header('x-auth-user-id');
     c.set('store', store);
     c.set('gateway', gateway);
 
@@ -135,13 +141,14 @@ export function createApp(options?: {
       kind: 'user',
     };
 
-    if (gateway && (headerSubject || actorKey || clientId)) {
+    if (gateway && (headerSubject || actorKey || clientId || authUserId)) {
       try {
         const resolved = await gateway.resolveSubject({
           workspaceId: seedWorkspace,
           subjectId: headerSubject,
           actorKey,
           clientId,
+          authUserId,
         });
         subjectId = resolved.id;
         actorMeta = {
@@ -259,6 +266,101 @@ export function createApp(options?: {
         status: body.status,
       });
       return c.json(connection, 201);
+    } catch (err) {
+      if (isForbiddenError(err)) return c.json({ error: 'forbidden' }, 403);
+      return c.json({ error: (err as Error).message }, 500);
+    }
+  });
+
+  app.post('/v1/oauth/start', async (c) => {
+    const body = oauthStartSchema.parse(await c.req.json());
+    const authz = c.get('authz');
+    if (!authz.isOwner && authz.subjectId !== body.actor_subject_id) {
+      return c.json({ error: 'forbidden' }, 403);
+    }
+    const gw = c.get('gateway');
+    const authorizeBase = resolveAuthorizeBase(body.connector_id);
+    if (!gw) {
+      const state = crypto.randomUUID().replace(/-/g, '');
+      return c.json(
+        {
+          state,
+          connectionId: crypto.randomUUID(),
+          authorizeUrl: `stub://oauth/${body.connector_id}?state=${state}`,
+          backend: 'memory-store',
+        },
+        201,
+      );
+    }
+    try {
+      const result = await gw.oauthStart({
+        subjectId: body.actor_subject_id,
+        workspaceId: body.workspace_id,
+        connectorId: body.connector_id,
+        displayName: body.display_name,
+        scopes: body.scopes,
+        redirectUri: body.redirect_uri,
+        authorizeBase,
+      });
+      return c.json(result, 201);
+    } catch (err) {
+      if (isForbiddenError(err)) return c.json({ error: 'forbidden' }, 403);
+      return c.json({ error: (err as Error).message }, 500);
+    }
+  });
+
+  app.post('/v1/oauth/callback', async (c) => {
+    const body = oauthCompleteSchema.parse(await c.req.json());
+    const authz = c.get('authz');
+    if (!authz.isOwner && authz.subjectId !== body.actor_subject_id) {
+      return c.json({ error: 'forbidden' }, 403);
+    }
+    const gw = c.get('gateway');
+    if (!gw) {
+      return c.json({
+        status: 'connected',
+        tokenPersisted: false,
+        vaultRef: `vault:local/connectors/stub/${body.state}`,
+        backend: 'memory-store',
+      });
+    }
+    try {
+      const result = await gw.oauthCompleteStub({
+        subjectId: body.actor_subject_id,
+        state: body.state,
+        code: body.code,
+      });
+      return c.json(result);
+    } catch (err) {
+      if (isForbiddenError(err)) return c.json({ error: 'forbidden' }, 403);
+      return c.json({ error: (err as Error).message }, 500);
+    }
+  });
+
+  app.post('/v1/auth/bind', async (c) => {
+    const body = bindAuthUserSchema.parse(await c.req.json());
+    const authz = c.get('authz');
+    const gw = c.get('gateway');
+    if (!gw) {
+      return c.json(
+        {
+          authUserId: body.auth_user_id,
+          subjectId: crypto.randomUUID(),
+          workspaceId: body.workspace_id,
+          backend: 'memory-store',
+        },
+        201,
+      );
+    }
+    try {
+      const result = await gw.bindAuthUser({
+        workspaceId: body.workspace_id,
+        authUserId: body.auth_user_id,
+        email: body.email,
+        displayName: body.display_name,
+        actingSubjectId: body.acting_subject_id ?? authz.subjectId,
+      });
+      return c.json(result, 201);
     } catch (err) {
       if (isForbiddenError(err)) return c.json({ error: 'forbidden' }, 403);
       return c.json({ error: (err as Error).message }, 500);

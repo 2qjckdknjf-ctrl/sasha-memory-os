@@ -17,6 +17,8 @@ Dedicated project (ADR-005). **Do not** mix with AISTROYKA / HiAir.
 - `connector_registry`
 - `text_capture_ingestion` (+ digest/bytea fix)
 - `capture_document_metadata` / event-type branch for text vs document
+- `subjects_and_connections_actions`
+- `oauth_broker_and_auth_binding` (vault refs + auth user bind)
 
 Seed loaded: workspace `sasha-home`, project `aistroyka`, verified decision + state v1.
 

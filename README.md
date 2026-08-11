@@ -39,10 +39,13 @@ API uses Supabase RPCs + `MEMORY_OS_API_SECRET` (see `.env`). Web talks to API o
 - `x-subject-id` — subject UUID
 - `x-actor-key` — `owner` / `chatgpt` / `cursor`
 - `x-client-id` — `demo-owner` / `demo-chatgpt` / `demo-cursor`
+- `x-auth-user-id` — Supabase Auth user UUID (after `POST /v1/auth/bind`)
+
+OAuth broker (stub): `POST /v1/oauth/start` → `POST /v1/oauth/callback` stores **vault refs only** (never tokens).
 
 ## Следующий шаг
 
+- Wire real GitHub/Google OAuth clients + vault/KMS secret material
+- Browser Supabase Auth session → automatic subject bind
 - Expand golden retrieval set toward 100–200 cases
-- Real OAuth broker for GitHub / Google (replace connection stubs)
-- Supabase Auth session → subject binding
-- OCR for scanned PDFs / image capture
+- Real OCR engine behind `MEMORY_OS_OCR_ENGINE`

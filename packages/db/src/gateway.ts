@@ -155,6 +155,7 @@ export class SupabaseMemoryGateway {
     subjectId?: string | null;
     actorKey?: string | null;
     clientId?: string | null;
+    authUserId?: string | null;
   }) {
     const { data, error } = await this.client.rpc('api_resolve_subject', {
       p_secret: this.apiSecret,
@@ -162,6 +163,7 @@ export class SupabaseMemoryGateway {
       p_subject_id: input.subjectId ?? null,
       p_actor_key: input.actorKey ?? null,
       p_client_id: input.clientId ?? null,
+      p_auth_user_id: input.authUserId ?? null,
     });
     if (error) throw error;
     return data as {
@@ -171,6 +173,65 @@ export class SupabaseMemoryGateway {
       externalKey: string;
       displayName: string;
     };
+  }
+
+  async oauthStart(input: {
+    subjectId: string;
+    workspaceId: string;
+    connectorId: string;
+    displayName: string;
+    scopes?: string[];
+    redirectUri?: string;
+    authorizeBase?: string | null;
+  }) {
+    const { data, error } = await this.client.rpc('api_oauth_start', {
+      p_secret: this.apiSecret,
+      p_subject_id: input.subjectId,
+      p_workspace_id: input.workspaceId,
+      p_connector_id: input.connectorId,
+      p_display_name: input.displayName,
+      p_scopes: input.scopes ?? [],
+      p_redirect_uri: input.redirectUri ?? null,
+      p_authorize_base: input.authorizeBase ?? null,
+    });
+    if (error) throw error;
+    return data;
+  }
+
+  async oauthCompleteStub(input: {
+    subjectId: string;
+    state: string;
+    code?: string;
+    env?: string;
+  }) {
+    const { data, error } = await this.client.rpc('api_oauth_complete_stub', {
+      p_secret: this.apiSecret,
+      p_subject_id: input.subjectId,
+      p_state: input.state,
+      p_code: input.code ?? null,
+      p_env: input.env ?? process.env.MEMORY_OS_ENV ?? 'local',
+    });
+    if (error) throw error;
+    return data;
+  }
+
+  async bindAuthUser(input: {
+    workspaceId: string;
+    authUserId: string;
+    email?: string;
+    displayName?: string;
+    actingSubjectId?: string;
+  }) {
+    const { data, error } = await this.client.rpc('api_bind_auth_user', {
+      p_secret: this.apiSecret,
+      p_workspace_id: input.workspaceId,
+      p_auth_user_id: input.authUserId,
+      p_email: input.email ?? null,
+      p_display_name: input.displayName ?? null,
+      p_acting_subject_id: input.actingSubjectId ?? null,
+    });
+    if (error) throw error;
+    return data;
   }
 
   async upsertConnection(input: {

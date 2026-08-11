@@ -719,6 +719,43 @@ export function App() {
           >
             Connect Gmail stub
           </button>
+          <button
+            type="button"
+            onClick={() => {
+              void (async () => {
+                setError(null);
+                try {
+                  if (backend === 'local') {
+                    setError('OAuth broker requires API backend');
+                    return;
+                  }
+                  const start = await apiPost<{
+                    state?: string;
+                    authorizeUrl?: string;
+                  }>('/v1/oauth/start', subjectId, {
+                    workspace_id: WORKSPACE_ID,
+                    connector_id: 'github',
+                    display_name: 'OAuth pilot repos',
+                    scopes: ['repositories.read'],
+                    actor_subject_id: subjectId,
+                  }, actor);
+                  await apiPost('/v1/oauth/callback', subjectId, {
+                    state: start.state,
+                    code: 'stub-code',
+                    actor_subject_id: subjectId,
+                  }, actor);
+                  setLastCapture(
+                    `oauth ${start.authorizeUrl ?? 'started'} → vault ref only`,
+                  );
+                  setTick((n) => n + 1);
+                } catch (err) {
+                  setError((err as Error).message);
+                }
+              })();
+            }}
+          >
+            OAuth GitHub stub
+          </button>
         </div>
         <ul className="timeline">
           {connections.map((c, i) => (

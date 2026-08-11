@@ -42,6 +42,9 @@ importers:
       '@memory-os/authz':
         specifier: workspace:^
         version: link:../../packages/authz
+      '@memory-os/connector-sdk':
+        specifier: workspace:*
+        version: link:../../packages/connector-sdk
       '@memory-os/db':
         specifier: workspace:^
         version: link:../../packages/db

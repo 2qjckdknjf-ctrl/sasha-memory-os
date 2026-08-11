@@ -22,6 +22,19 @@
       "actor": "cursor",
       "must_allow": true,
       "expect_empty_or_no_restricted": true
+    },
+    {
+      "id": "gr-004",
+      "query": "handoff",
+      "actor": "cursor",
+      "must_allow": true
+    },
+    {
+      "id": "gr-005",
+      "query": "Slice 01",
+      "expect_memory_title_includes": "Slice",
+      "actor": "owner",
+      "must_allow": true
     }
   ]
 }
