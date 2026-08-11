@@ -10,7 +10,6 @@ on:
 jobs:
   consolidation-and-sync:
     runs-on: ubuntu-latest
-    if: ${{ secrets.MEMORY_OS_API_BASE_URL != '' }}
     steps:
       - name: Enqueue + run consolidation (owner)
         env:
