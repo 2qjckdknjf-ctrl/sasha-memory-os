@@ -59,4 +59,5 @@ With `.env` loaded, `apps/api` vitest runs:
 - Owner catch-up: `POST /v1/memories/:id/embed`, `POST /v1/memories/embed-missing` (also MCP + Web + GH worker-ticks); full text via `api_get_memory` (list truncates to 500)
 - HQ embeddings: `embedding_vector_hq vector(1536)` when `MEMORY_OS_OPENAI_EMBED_DIMS=1536`
 - KMS vault: `MEMORY_OS_VAULT_BACKEND=supabase_vault` → `api_vault_kms_*` (supabase_vault extension)
-- Hosted cron edge: `supabase/functions/worker-ticks` (GH `worker-ticks.yml`)
+- Hosted cron edge v2: `supabase/functions/worker-ticks` — real consolidate (`api_supersede_memory`) + embed-missing (OpenAI/stub); deploy via `./scripts/deploy-edge-ticks.sh`
+- Full Node workers cron: `.github/workflows/worker-node.yml` (enable `MEMORY_OS_ENABLE_NODE_WORKERS=1`)
