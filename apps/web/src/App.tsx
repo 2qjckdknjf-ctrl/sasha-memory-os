@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { createSeededStore } from '@memory-os/domain';
-import { apiGet, apiHealth, apiPost } from './api';
+import { apiGet, apiHealth, apiPatch, apiPost } from './api';
 
 
 const PROJECT_ID = '44444444-4444-4444-8444-444444444401';
@@ -40,6 +40,15 @@ export function App() {
   );
   const [error, setError] = useState<string | null>(null);
   const [tick, setTick] = useState(0);
+  const [connections, setConnections] = useState<
+    Array<{
+      connectorId?: string;
+      displayName?: string;
+      status?: string;
+      lastSyncAt?: string | null;
+      lastError?: string | null;
+    }>
+  >([]);
 
   const subjectId = actors[actor];
 
@@ -48,6 +57,13 @@ export function App() {
     if (!health) {
       setBackend('local');
       setRemote(null);
+      setConnections([
+        {
+          connectorId: 'github',
+          displayName: 'AISTROYKA repos',
+          status: 'connected',
+        },
+      ]);
       return;
     }
     setBackend((health.backend as 'supabase' | 'memory-store') ?? 'memory-store');
@@ -56,6 +72,11 @@ export function App() {
       subjectId,
     );
     setRemote(ctx);
+    const conn = await apiGet<{ connections: typeof connections }>(
+      `/v1/connections?workspace_id=${WORKSPACE_ID}`,
+      subjectId,
+    );
+    setConnections(conn.connections ?? []);
   }
 
   useEffect(() => {
@@ -256,6 +277,62 @@ export function App() {
     }
   }
 
+  async function onBumpState() {
+    setError(null);
+    const expectedVersion = Number(remote?.state?.version ?? 1);
+    const current =
+      (remote?.state?.state as {
+        stage?: string;
+        completed?: string[];
+        in_progress?: string[];
+        blocked?: string[];
+        next?: string[];
+        risks?: string[];
+        active_decisions?: string[];
+      }) ?? {};
+    try {
+      if (backend !== 'local') {
+        await apiPatch(`/v1/projects/${PROJECT_ID}/state`, subjectId, {
+          workspace_id: WORKSPACE_ID,
+          project_id: PROJECT_ID,
+          expected_version: expectedVersion,
+          actor_subject_id: subjectId,
+          idempotency_key: `web-bump-${Date.now()}`,
+          summary: `State bumped by ${actor}`,
+          state: {
+            stage: current.stage ?? 'slice-01-ready',
+            completed: current.completed ?? [],
+            in_progress: current.in_progress ?? ['control-center'],
+            blocked: current.blocked ?? [],
+            next: ['connections health review', ...(current.next ?? [])].slice(0, 5),
+            risks: current.risks ?? [],
+            active_decisions: current.active_decisions ?? [],
+          },
+        });
+      } else {
+        localStore.upsertProjectState({
+          workspaceId: WORKSPACE_ID,
+          projectId: PROJECT_ID,
+          expectedVersion: localStore.getProjectState(PROJECT_ID)?.version ?? 0,
+          actorSubjectId: subjectId,
+          summary: `State bumped by ${actor}`,
+          state: {
+            stage: 'slice-01-ready',
+            completed: ['product-design-audit'],
+            in_progress: ['control-center'],
+            blocked: [],
+            next: ['connections health review'],
+            risks: [],
+            active_decisions: [],
+          },
+        });
+      }
+      setTick((n) => n + 1);
+    } catch (err) {
+      setError((err as Error).message);
+    }
+  }
+
   return (
     <main className="app">
       <h1 className="brand">Sasha Memory OS</h1>
@@ -278,6 +355,9 @@ export function App() {
         ))}
         <button type="button" onClick={() => void onCreateHandoff()}>
           Cursor handoff
+        </button>
+        <button type="button" onClick={() => void onBumpState()}>
+          Bump state
         </button>
         <button type="button" onClick={() => setTick((n) => n + 1)}>
           Refresh
@@ -391,6 +471,25 @@ export function App() {
           </form>
         </aside>
       </div>
+
+      <section className="panel" style={{ marginTop: '1rem' }}>
+        <h2>Connections</h2>
+        <ul className="timeline">
+          {connections.map((c, i) => (
+            <li className="item" key={`${c.connectorId}-${i}`}>
+              <div className="meta">
+                <span className="badge state">{c.status ?? 'unknown'}</span>
+                <span>{c.connectorId}</span>
+                {c.lastSyncAt ? (
+                  <span>sync {new Date(c.lastSyncAt).toLocaleString()}</span>
+                ) : null}
+              </div>
+              <h3>{c.displayName ?? c.connectorId}</h3>
+              <p>{c.lastError ?? 'No sync errors reported.'}</p>
+            </li>
+          ))}
+        </ul>
+      </section>
     </main>
   );
 }

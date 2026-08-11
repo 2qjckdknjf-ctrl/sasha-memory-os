@@ -111,6 +111,31 @@ export function createApp(options?: {
     }),
   );
 
+  app.get('/v1/connections', async (c) => {
+    const authz = c.get('authz');
+    const workspaceId = c.req.query('workspace_id') ?? seedWorkspace;
+    const gw = c.get('gateway');
+    if (!gw) {
+      return c.json({
+        connections: [
+          {
+            connectorId: 'github',
+            displayName: 'AISTROYKA repos',
+            status: 'connected',
+            scopes: ['repositories.read'],
+          },
+        ],
+      });
+    }
+    try {
+      const connections = await gw.listConnections(authz.subjectId, workspaceId);
+      return c.json({ connections });
+    } catch (err) {
+      if (isForbiddenError(err)) return c.json({ error: 'forbidden' }, 403);
+      return c.json({ error: (err as Error).message }, 500);
+    }
+  });
+
   app.get('/v1/rls/probe', async (c) => {
     const projectId = c.req.query('project_id') ?? seedProject;
     const sensitivity = c.req.query('sensitivity') ?? 'internal';

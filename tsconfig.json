@@ -9,6 +9,7 @@
     { "path": "packages/authz" },
     { "path": "packages/provenance" },
     { "path": "packages/observability" },
+    { "path": "packages/db" },
     { "path": "apps/api" },
     { "path": "apps/mcp-gateway" },
     { "path": "apps/web" },

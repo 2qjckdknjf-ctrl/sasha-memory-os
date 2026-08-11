@@ -32,6 +32,25 @@ export async function apiPost<T>(
   return res.json() as Promise<T>;
 }
 
+export async function apiPatch<T>(
+  path: string,
+  subjectId: string,
+  body: unknown,
+): Promise<T> {
+  const res = await fetch(`${API_BASE}${path}`, {
+    method: 'PATCH',
+    headers: {
+      'content-type': 'application/json',
+      'x-subject-id': subjectId,
+    },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) {
+    throw new Error(`${res.status} ${await res.text()}`);
+  }
+  return res.json() as Promise<T>;
+}
+
 export async function apiHealth(): Promise<{ backend?: string } | null> {
   try {
     const res = await fetch(`${API_BASE}/health`);

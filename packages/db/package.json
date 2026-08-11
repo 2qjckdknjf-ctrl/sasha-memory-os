@@ -1,5 +1,5 @@
 {
-  "name": "@memory-os/mcp-gateway",
+  "name": "@memory-os/db",
   "version": "0.0.0",
   "private": true,
   "type": "module",
@@ -10,12 +10,9 @@
   },
   "scripts": {
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "test": "vitest run"
+    "test": "vitest run --passWithNoTests"
   },
   "dependencies": {
-    "@memory-os/db": "workspace:^",
-    "@memory-os/domain": "workspace:*",
-    "@memory-os/retrieval": "workspace:^",
-    "@memory-os/schemas": "workspace:^"
+    "@supabase/supabase-js": "^2.112.3"
   }
 }

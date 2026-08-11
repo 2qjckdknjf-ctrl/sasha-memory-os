@@ -22,10 +22,21 @@ describe('mcp gateway alpha', () => {
     const mcp = createMcpHandlers();
     const result = (await mcp.call('context.project', {
       project_id: projectId,
+      actor_subject_id: cursor,
     })) as { decisions: unknown[]; state: { version: number } | null };
     expect(result.decisions.length).toBe(1);
     expect(result.state?.version).toBe(1);
   });
+
+  it('lists connections stub offline', async () => {
+    const mcp = createMcpHandlers();
+    const result = (await mcp.call('connections.list', {
+      workspace_id: workspaceId,
+      actor_subject_id: cursor,
+    })) as { connections: unknown[] };
+    expect(result.connections.length).toBeGreaterThan(0);
+  });
+
 
   it('creates handoff tool result', async () => {
     const mcp = createMcpHandlers();
