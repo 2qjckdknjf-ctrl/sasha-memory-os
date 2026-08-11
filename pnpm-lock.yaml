@@ -192,9 +192,16 @@ importers:
 
   workers/ingestion:
     dependencies:
+      '@memory-os/db':
+        specifier: workspace:*
+        version: link:../../packages/db
       '@memory-os/domain':
         specifier: workspace:*
         version: link:../../packages/domain
+    devDependencies:
+      tsx:
+        specifier: ^4.23.12
+        version: 4.23.12
 
 packages:
 

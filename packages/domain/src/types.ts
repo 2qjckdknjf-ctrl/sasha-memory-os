@@ -29,6 +29,7 @@ export type Sensitivity =
   | 'restricted';
 
 export const CURRENT_TRUTH_STATUSES: readonly MemoryStatus[] = [
+  'candidate',
   'active',
   'verified',
 ] as const;

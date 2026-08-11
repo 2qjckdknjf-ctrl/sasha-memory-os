@@ -3,6 +3,7 @@ import { cors } from 'hono/cors';
 import { authorize, type AuthzContext } from '@memory-os/authz';
 import { createSeededStore, type MemoryStore } from '@memory-os/domain';
 import {
+  captureTextSchema,
   createDecisionSchema,
   createHandoffSchema,
   ingestionEnvelopeSchema,
@@ -208,6 +209,85 @@ export function createApp(options?: {
       createdBySubject: authz.subjectId,
     });
     return c.json({ id: event.id, idempotent: true }, 201);
+  });
+
+  app.post('/v1/capture/text', async (c) => {
+    const body = captureTextSchema.parse(await c.req.json());
+    const authz = c.get('authz');
+    if (
+      !authorize(authz, {
+        resourceType: 'memory',
+        action: 'write',
+        projectId: body.project_id,
+        sensitivity: body.sensitivity,
+      })
+    ) {
+      return c.json({ error: 'forbidden' }, 403);
+    }
+
+    const gw = c.get('gateway');
+    if (gw) {
+      try {
+        const result = await gw.captureText({
+          subjectId: body.actor_subject_id,
+          workspaceId: body.workspace_id,
+          projectId: body.project_id,
+          title: body.title,
+          text: body.text,
+          idempotencyKey: body.idempotency_key,
+          sensitivity: body.sensitivity,
+          processNow: body.process_now,
+        });
+        return c.json(result, 201);
+      } catch (err) {
+        if (isForbiddenError(err)) return c.json({ error: 'forbidden' }, 403);
+        return c.json({ error: (err as Error).message }, 500);
+      }
+    }
+
+    const result = c.get('store').captureText({
+      workspaceId: body.workspace_id,
+      projectId: body.project_id,
+      title: body.title,
+      text: body.text,
+      actorSubjectId: body.actor_subject_id,
+      idempotencyKey: body.idempotency_key,
+      sensitivity: body.sensitivity,
+    });
+    return c.json(result, 201);
+  });
+
+  app.get('/v1/jobs/:id', async (c) => {
+    const jobId = c.req.param('id');
+    const authz = c.get('authz');
+    const gw = c.get('gateway');
+    if (!gw) {
+      return c.json({ id: jobId, status: 'succeeded', backend: 'memory-store' });
+    }
+    try {
+      const job = await gw.getJob(authz.subjectId, jobId);
+      if (!job) return c.json({ error: 'not found' }, 404);
+      return c.json(job);
+    } catch (err) {
+      if (isForbiddenError(err)) return c.json({ error: 'forbidden' }, 403);
+      return c.json({ error: (err as Error).message }, 500);
+    }
+  });
+
+  app.post('/v1/jobs/:id/process', async (c) => {
+    const jobId = c.req.param('id');
+    const authz = c.get('authz');
+    const gw = c.get('gateway');
+    if (!gw) {
+      return c.json({ error: 'supabase gateway required' }, 501);
+    }
+    try {
+      const result = await gw.processIngestJob(authz.subjectId, jobId);
+      return c.json(result);
+    } catch (err) {
+      if (isForbiddenError(err)) return c.json({ error: 'forbidden' }, 403);
+      return c.json({ error: (err as Error).message }, 500);
+    }
   });
 
   app.post('/v1/memories', async (c) => {

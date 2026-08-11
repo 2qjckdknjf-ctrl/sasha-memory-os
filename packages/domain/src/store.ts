@@ -143,6 +143,78 @@ export class MemoryStore {
     return row;
   }
 
+  captureText(input: {
+    workspaceId: string;
+    projectId: string;
+    title: string;
+    text: string;
+    actorSubjectId: string;
+    idempotencyKey: string;
+    sensitivity?: MemoryRecord['sensitivity'];
+  }): {
+    eventId: string;
+    memoryId: string;
+    jobId: string;
+    checksum: string;
+  } {
+    const event = this.ingestEvent({
+      workspaceId: input.workspaceId,
+      projectId: input.projectId,
+      provider: 'manual',
+      eventType: 'capture.text.created',
+      idempotencyKey: input.idempotencyKey,
+      observedAt: new Date().toISOString(),
+      sensitivity: input.sensitivity ?? 'internal',
+      payload: {
+        title: input.title,
+        content: { mime_type: 'text/plain', text: input.text },
+        quarantine: false,
+      },
+      createdBySubject: input.actorSubjectId,
+    });
+
+    const existing = [...this.memories.values()].find(
+      (m) => m.sourceEventId === event.id && m.memoryType === 'fact',
+    );
+    if (existing) {
+      return {
+        eventId: event.id,
+        memoryId: existing.id,
+        jobId: existing.id,
+        checksum: 'local',
+      };
+    }
+
+    const record: MemoryRecord = {
+      id: newId(),
+      workspaceId: input.workspaceId,
+      projectId: input.projectId,
+      memoryType: 'fact',
+      title: input.title,
+      content: input.text,
+      status: 'candidate',
+      importance: 0.55,
+      confidence: 0.6,
+      sensitivity: input.sensitivity ?? 'internal',
+      validFrom: null,
+      validTo: null,
+      observedAt: event.observedAt,
+      recordedAt: new Date().toISOString(),
+      supersededBy: null,
+      sourceEventId: event.id,
+      createdBySubject: input.actorSubjectId,
+      schemaVersion: '1.0',
+      metadata: { capture: true, needs_review: true },
+    };
+    this.memories.set(record.id, record);
+    return {
+      eventId: event.id,
+      memoryId: record.id,
+      jobId: record.id,
+      checksum: 'local',
+    };
+  }
+
   createHandoff(input: {
     workspaceId: string;
     projectId: string;

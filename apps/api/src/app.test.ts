@@ -44,6 +44,28 @@ describe('memory api demo slice', () => {
     expect(res.status).toBe(201);
   });
 
+  it('captures text into candidate memory', async () => {
+    const app = createApp({});
+    const res = await app.request('/v1/capture/text', {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'x-subject-id': chatgpt,
+      },
+      body: JSON.stringify({
+        workspace_id: workspaceId,
+        project_id: projectId,
+        title: 'Capture alpha',
+        text: 'Text capture creates a reviewable candidate memory.',
+        actor_subject_id: chatgpt,
+        idempotency_key: 'manual/capture-1',
+      }),
+    });
+    expect(res.status).toBe(201);
+    const body = await res.json();
+    expect(body.memoryId).toBeTruthy();
+  });
+
   it('idempotently ingests events', async () => {
     const app = createApp({});
     const payload = {

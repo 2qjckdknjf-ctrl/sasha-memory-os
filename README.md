@@ -36,6 +36,6 @@ API uses Supabase RPCs + `MEMORY_OS_API_SECRET` (see `.env`). Web talks to API o
 
 ## Следующий шаг
 
+- PDF/DOCX parsers on the ingestion worker
 - OAuth connect/revoke flows for GitHub / Google
 - Real Auth subjects instead of `x-subject-id` demo header
-- Document ingestion (PDF/DOCX) worker path

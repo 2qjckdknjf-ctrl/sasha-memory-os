@@ -41,3 +41,16 @@ export const ingestionEnvelopeSchema = z.object({
 });
 
 export type IngestionEnvelope = z.infer<typeof ingestionEnvelopeSchema>;
+
+export const captureTextSchema = z.object({
+  workspace_id: z.string().uuid(),
+  project_id: z.string().uuid(),
+  title: z.string().min(1),
+  text: z.string().min(1),
+  sensitivity: sensitivitySchema.default('internal'),
+  actor_subject_id: z.string().uuid(),
+  idempotency_key: z.string().min(1),
+  process_now: z.boolean().default(true),
+});
+
+export type CaptureTextInput = z.infer<typeof captureTextSchema>;

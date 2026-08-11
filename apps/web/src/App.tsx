@@ -49,6 +49,11 @@ export function App() {
       lastError?: string | null;
     }>
   >([]);
+  const [captureTitle, setCaptureTitle] = useState('Meeting note');
+  const [captureText, setCaptureText] = useState(
+    'Manual capture alpha: quarantine → hash → chunks → candidate memory.',
+  );
+  const [lastCapture, setLastCapture] = useState<string | null>(null);
 
   const subjectId = actors[actor];
 
@@ -277,6 +282,47 @@ export function App() {
     }
   }
 
+  async function onCaptureText() {
+    setError(null);
+    try {
+      if (backend !== 'local') {
+        const result = await apiPost<{
+          eventId?: string;
+          jobId?: string;
+          process?: { memoryId?: string; chunkCount?: number };
+          memoryId?: string;
+        }>('/v1/capture/text', subjectId, {
+          workspace_id: WORKSPACE_ID,
+          project_id: PROJECT_ID,
+          title: captureTitle,
+          text: captureText,
+          actor_subject_id: subjectId,
+          idempotency_key: `web-capture-${Date.now()}`,
+          process_now: true,
+        });
+        setLastCapture(
+          `job ${result.jobId ?? '?'} · memory ${
+            result.process?.memoryId ?? result.memoryId ?? '?'
+          } · chunks ${result.process?.chunkCount ?? 1}`,
+        );
+        setSearch(captureTitle.split(' ')[0] ?? 'Meeting');
+      } else {
+        const result = localStore.captureText({
+          workspaceId: WORKSPACE_ID,
+          projectId: PROJECT_ID,
+          title: captureTitle,
+          text: captureText,
+          actorSubjectId: subjectId,
+          idempotencyKey: `web-capture-${Date.now()}`,
+        });
+        setLastCapture(`local memory ${result.memoryId}`);
+      }
+      setTick((n) => n + 1);
+    } catch (err) {
+      setError((err as Error).message);
+    }
+  }
+
   async function onBumpState() {
     setError(null);
     const expectedVersion = Number(remote?.state?.version ?? 1);
@@ -446,6 +492,34 @@ export function App() {
               />
             </label>
             <button type="submit">Remember as {actor}</button>
+          </form>
+
+          <form
+            className="form"
+            onSubmit={(e) => {
+              e.preventDefault();
+              void onCaptureText();
+            }}
+          >
+            <label>
+              Capture title
+              <input
+                value={captureTitle}
+                onChange={(e) => setCaptureTitle(e.target.value)}
+                required
+              />
+            </label>
+            <label>
+              Text note
+              <textarea
+                rows={3}
+                value={captureText}
+                onChange={(e) => setCaptureText(e.target.value)}
+                required
+              />
+            </label>
+            <button type="submit">Capture text</button>
+            {lastCapture ? <p className="meta">{lastCapture}</p> : null}
           </form>
 
           <form

@@ -243,7 +243,10 @@ BEGIN
     ) ORDER BY m.importance * m.confidence DESC)
     FROM memory_records m
     WHERE (p_project_id IS NULL OR m.project_id = p_project_id)
-      AND (p_include_history OR m.status IN ('active', 'verified'))
+      AND (
+        p_include_history
+        OR m.status IN ('active', 'verified', 'candidate')
+      )
       AND (
         p_query IS NULL OR p_query = ''
         OR m.title ILIKE '%' || p_query || '%'

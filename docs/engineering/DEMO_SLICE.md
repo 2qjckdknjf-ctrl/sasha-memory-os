@@ -19,4 +19,6 @@ Synthetic IDs (RFC UUID):
 
 Pass actor as `x-subject-id` header on API requests.
 
-SQL path: apply `supabase/migrations/*` + `supabase/seed.sql` when local Supabase/Docker is available (CLI currently blocked on this machine: x86_64 binary).
+Text capture alpha: `POST /v1/capture/text` (owner/ChatGPT) creates quarantine artifact → SHA-256 → ingest job → chunks → `candidate` fact with evidence. Process via `process_now` (default) or `POST /v1/jobs/:id/process` / worker CLI.
+
+SQL path: migrations are applied to live project `sasha-memory-os` (see [SUPABASE.md](./SUPABASE.md)). Local CLI currently blocked on this machine (x86_64 binary).

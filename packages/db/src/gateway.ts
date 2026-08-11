@@ -149,4 +149,49 @@ export class SupabaseMemoryGateway {
     if (error) throw error;
     return data;
   }
+
+  async captureText(input: {
+    subjectId: string;
+    workspaceId: string;
+    projectId: string;
+    title: string;
+    text: string;
+    idempotencyKey: string;
+    sensitivity?: string;
+    processNow?: boolean;
+  }) {
+    const { data, error } = await this.client.rpc('api_capture_text', {
+      p_secret: this.apiSecret,
+      p_subject_id: input.subjectId,
+      p_workspace_id: input.workspaceId,
+      p_project_id: input.projectId,
+      p_title: input.title,
+      p_text: input.text,
+      p_idempotency_key: input.idempotencyKey,
+      p_sensitivity: input.sensitivity ?? 'internal',
+      p_process_now: input.processNow ?? true,
+    });
+    if (error) throw error;
+    return data;
+  }
+
+  async processIngestJob(subjectId: string, jobId: string) {
+    const { data, error } = await this.client.rpc('api_process_ingest_job', {
+      p_secret: this.apiSecret,
+      p_subject_id: subjectId,
+      p_job_id: jobId,
+    });
+    if (error) throw error;
+    return data;
+  }
+
+  async getJob(subjectId: string, jobId: string) {
+    const { data, error } = await this.client.rpc('api_get_job', {
+      p_secret: this.apiSecret,
+      p_subject_id: subjectId,
+      p_job_id: jobId,
+    });
+    if (error) throw error;
+    return data;
+  }
 }

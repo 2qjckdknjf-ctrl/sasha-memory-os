@@ -6,7 +6,9 @@
 
 **WP-01 landed** in-repo: [ADR-001..005](../adr/README.md), monorepo skeleton (§4.4), CI smoke, [environment matrix](../engineering/ENVIRONMENT_MATRIX.md), [secrets policy](../engineering/SECRETS_POLICY.md).
 
-**WP-02…08 alpha slice landed** (local/in-memory + SQL migrations): see [DEMO_SLICE.md](../engineering/DEMO_SLICE.md) and [RLS_MATRIX.md](../engineering/RLS_MATRIX.md). Remote Supabase apply + live RLS execution still pending tooling/project.
+**WP-02…08 alpha slice landed** (local + live Supabase): see [DEMO_SLICE.md](../engineering/DEMO_SLICE.md), [RLS_MATRIX.md](../engineering/RLS_MATRIX.md), [SUPABASE.md](../engineering/SUPABASE.md).
+
+**WP-04 text-capture alpha landed**: `/v1/capture/text` → quarantine artifact + SHA-256 + ingest job + chunks + candidate memory (remote RPCs + Web control surface).
 
 Owner checklist items below (ChatGPT MCP plan, region, golden set, DPIA, etc.) remain open for RG0.
 
