@@ -34,8 +34,14 @@ npx pnpm@9.15.9 dev:web
 
 API uses Supabase RPCs + `MEMORY_OS_API_SECRET` (see `.env`). Web talks to API on `:8787`.
 
+## Auth headers (demo)
+
+- `x-subject-id` — subject UUID
+- `x-actor-key` — `owner` / `chatgpt` / `cursor`
+- `x-client-id` — `demo-owner` / `demo-chatgpt` / `demo-cursor`
+
 ## Следующий шаг
 
+- Real OAuth broker for GitHub / Google (replace connection stubs)
+- Supabase Auth session → subject binding
 - OCR for scanned PDFs / image capture
-- OAuth connect/revoke flows for GitHub / Google
-- Real Auth subjects instead of `x-subject-id` demo header

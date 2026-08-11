@@ -1,11 +1,21 @@
 const API_BASE = import.meta.env.VITE_MEMORY_API_URL ?? 'http://localhost:8787';
 
+function authHeaders(
+  subjectId: string,
+  actorKey?: string,
+): Record<string, string> {
+  const headers: Record<string, string> = { 'x-subject-id': subjectId };
+  if (actorKey) headers['x-actor-key'] = actorKey;
+  return headers;
+}
+
 export async function apiGet<T>(
   path: string,
   subjectId: string,
+  actorKey?: string,
 ): Promise<T> {
   const res = await fetch(`${API_BASE}${path}`, {
-    headers: { 'x-subject-id': subjectId },
+    headers: authHeaders(subjectId, actorKey),
   });
   if (!res.ok) {
     throw new Error(`${res.status} ${await res.text()}`);
@@ -17,12 +27,13 @@ export async function apiPost<T>(
   path: string,
   subjectId: string,
   body: unknown,
+  actorKey?: string,
 ): Promise<T> {
   const res = await fetch(`${API_BASE}${path}`, {
     method: 'POST',
     headers: {
       'content-type': 'application/json',
-      'x-subject-id': subjectId,
+      ...authHeaders(subjectId, actorKey),
     },
     body: JSON.stringify(body),
   });
@@ -36,12 +47,13 @@ export async function apiPatch<T>(
   path: string,
   subjectId: string,
   body: unknown,
+  actorKey?: string,
 ): Promise<T> {
   const res = await fetch(`${API_BASE}${path}`, {
     method: 'PATCH',
     headers: {
       'content-type': 'application/json',
-      'x-subject-id': subjectId,
+      ...authHeaders(subjectId, actorKey),
     },
     body: JSON.stringify(body),
   });

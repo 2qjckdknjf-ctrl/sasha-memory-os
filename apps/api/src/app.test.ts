@@ -7,6 +7,37 @@ const cursor = '33333333-3333-4333-8333-333333333303';
 const chatgpt = '33333333-3333-4333-8333-333333333302';
 
 describe('memory api demo slice', () => {
+  it('resolves actor via x-actor-key', async () => {
+    const app = createApp({});
+    const res = await app.request('/v1/me', {
+      headers: { 'x-actor-key': 'cursor' },
+    });
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.subjectId).toBe(cursor);
+    expect(body.actor.externalKey).toBe('cursor');
+  });
+
+  it('upserts connection stub offline', async () => {
+    const app = createApp({});
+    const owner = '33333333-3333-4333-8333-333333333301';
+    const res = await app.request('/v1/connections', {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'x-subject-id': owner,
+      },
+      body: JSON.stringify({
+        workspace_id: workspaceId,
+        connector_id: 'gmail',
+        display_name: 'Pilot inbox',
+        scopes: ['messages.metadata'],
+        actor_subject_id: owner,
+      }),
+    });
+    expect(res.status).toBe(201);
+  });
+
   it('serves project context to cursor', async () => {
     const app = createApp({});
     const res = await app.request(`/v1/projects/${projectId}/context`, {

@@ -42,6 +42,7 @@ export function App() {
   const [tick, setTick] = useState(0);
   const [connections, setConnections] = useState<
     Array<{
+      id?: string;
       connectorId?: string;
       displayName?: string;
       status?: string;
@@ -629,9 +630,38 @@ export function App() {
 
       <section className="panel" style={{ marginTop: '1rem' }}>
         <h2>Connections</h2>
+        <div className="actions" style={{ marginBottom: '0.75rem' }}>
+          <button
+            type="button"
+            onClick={() => {
+              void (async () => {
+                setError(null);
+                try {
+                  if (backend === 'local') {
+                    setError('Connect stub requires API backend');
+                    return;
+                  }
+                  await apiPost('/v1/connections', subjectId, {
+                    workspace_id: WORKSPACE_ID,
+                    connector_id: 'gmail',
+                    display_name: 'Pilot inbox',
+                    scopes: ['messages.metadata'],
+                    status: 'connected',
+                    actor_subject_id: subjectId,
+                  }, actor);
+                  setTick((n) => n + 1);
+                } catch (err) {
+                  setError((err as Error).message);
+                }
+              })();
+            }}
+          >
+            Connect Gmail stub
+          </button>
+        </div>
         <ul className="timeline">
           {connections.map((c, i) => (
-            <li className="item" key={`${c.connectorId}-${i}`}>
+            <li className="item" key={`${c.id ?? c.connectorId}-${i}`}>
               <div className="meta">
                 <span className="badge state">{c.status ?? 'unknown'}</span>
                 <span>{c.connectorId}</span>
@@ -641,6 +671,85 @@ export function App() {
               </div>
               <h3>{c.displayName ?? c.connectorId}</h3>
               <p>{c.lastError ?? 'No sync errors reported.'}</p>
+              {c.id && backend !== 'local' ? (
+                <div className="actions">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      void (async () => {
+                        setError(null);
+                        try {
+                          await apiPost(
+                            `/v1/connections/${c.id}/status`,
+                            subjectId,
+                            {
+                              status: 'reauth_required',
+                              last_error: 'Stub reauth requested from Web',
+                              actor_subject_id: subjectId,
+                            },
+                            actor,
+                          );
+                          setTick((n) => n + 1);
+                        } catch (err) {
+                          setError((err as Error).message);
+                        }
+                      })();
+                    }}
+                  >
+                    Reauth
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      void (async () => {
+                        setError(null);
+                        try {
+                          await apiPost(
+                            `/v1/connections/${c.id}/status`,
+                            subjectId,
+                            {
+                              status: 'revoked',
+                              last_error: null,
+                              actor_subject_id: subjectId,
+                            },
+                            actor,
+                          );
+                          setTick((n) => n + 1);
+                        } catch (err) {
+                          setError((err as Error).message);
+                        }
+                      })();
+                    }}
+                  >
+                    Revoke
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      void (async () => {
+                        setError(null);
+                        try {
+                          await apiPost(
+                            `/v1/connections/${c.id}/status`,
+                            subjectId,
+                            {
+                              status: 'connected',
+                              last_error: null,
+                              actor_subject_id: subjectId,
+                            },
+                            actor,
+                          );
+                          setTick((n) => n + 1);
+                        } catch (err) {
+                          setError((err as Error).message);
+                        }
+                      })();
+                    }}
+                  >
+                    Mark connected
+                  </button>
+                </div>
+              ) : null}
             </li>
           ))}
         </ul>

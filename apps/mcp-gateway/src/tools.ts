@@ -4,7 +4,13 @@ import {
 } from '@memory-os/domain';
 import type { SupabaseMemoryGateway } from '@memory-os/db';
 import { projectContext, searchMemories } from '@memory-os/retrieval';
-import { createDecisionSchema, createHandoffSchema } from '@memory-os/schemas';
+import {
+  captureTextSchema,
+  createDecisionSchema,
+  createHandoffSchema,
+  setConnectionStatusSchema,
+  upsertConnectionSchema,
+} from '@memory-os/schemas';
 
 export const packageName = 'mcp-gateway' as const;
 
@@ -96,6 +102,65 @@ export const mcpTools: McpTool[] = [
         actor_subject_id: { type: 'string' },
       },
       required: ['workspace_id', 'actor_subject_id'],
+    },
+  },
+  {
+    name: 'connections.upsert',
+    description: 'Connect or refresh a connector account (OAuth stub)',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        workspace_id: { type: 'string' },
+        connector_id: { type: 'string' },
+        display_name: { type: 'string' },
+        scopes: { type: 'array', items: { type: 'string' } },
+        status: { type: 'string' },
+        actor_subject_id: { type: 'string' },
+      },
+      required: [
+        'workspace_id',
+        'connector_id',
+        'display_name',
+        'actor_subject_id',
+      ],
+    },
+  },
+  {
+    name: 'connections.set_status',
+    description: 'Revoke, reauth, or mark a connection degraded',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        connection_id: { type: 'string' },
+        status: { type: 'string' },
+        last_error: { type: 'string' },
+        actor_subject_id: { type: 'string' },
+      },
+      required: ['connection_id', 'status', 'actor_subject_id'],
+    },
+  },
+  {
+    name: 'capture.text',
+    description: 'Capture plain text into quarantine → candidate memory',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        workspace_id: { type: 'string' },
+        project_id: { type: 'string' },
+        title: { type: 'string' },
+        text: { type: 'string' },
+        actor_subject_id: { type: 'string' },
+        idempotency_key: { type: 'string' },
+        process_now: { type: 'boolean' },
+      },
+      required: [
+        'workspace_id',
+        'project_id',
+        'title',
+        'text',
+        'actor_subject_id',
+        'idempotency_key',
+      ],
     },
   },
 ];
@@ -205,6 +270,70 @@ export function createMcpHandlers(options?: {
               String(args.workspace_id),
             ),
           };
+        }
+        case 'connections.upsert': {
+          const input = upsertConnectionSchema.parse(args);
+          if (!gateway) {
+            return {
+              id: crypto.randomUUID(),
+              connectorId: input.connector_id,
+              displayName: input.display_name,
+              status: input.status,
+              scopes: input.scopes,
+            };
+          }
+          return gateway.upsertConnection({
+            subjectId: input.actor_subject_id,
+            workspaceId: input.workspace_id,
+            connectorId: input.connector_id,
+            displayName: input.display_name,
+            scopes: input.scopes,
+            status: input.status,
+          });
+        }
+        case 'connections.set_status': {
+          const input = setConnectionStatusSchema.parse({
+            status: args.status,
+            last_error: args.last_error,
+            actor_subject_id: args.actor_subject_id,
+          });
+          if (!gateway) {
+            return {
+              id: String(args.connection_id),
+              status: input.status,
+              lastError: input.last_error ?? null,
+            };
+          }
+          return gateway.setConnectionStatus({
+            subjectId: input.actor_subject_id,
+            connectionId: String(args.connection_id),
+            status: input.status,
+            lastError: input.last_error,
+          });
+        }
+        case 'capture.text': {
+          const input = captureTextSchema.parse(args);
+          if (gateway) {
+            return gateway.captureText({
+              subjectId: input.actor_subject_id,
+              workspaceId: input.workspace_id,
+              projectId: input.project_id,
+              title: input.title,
+              text: input.text,
+              idempotencyKey: input.idempotency_key,
+              sensitivity: input.sensitivity,
+              processNow: input.process_now,
+            });
+          }
+          return store.captureText({
+            workspaceId: input.workspace_id,
+            projectId: input.project_id,
+            title: input.title,
+            text: input.text,
+            actorSubjectId: input.actor_subject_id,
+            idempotencyKey: input.idempotency_key,
+            sensitivity: input.sensitivity,
+          });
         }
         default:
           throw new Error(`Unknown tool: ${name}`);

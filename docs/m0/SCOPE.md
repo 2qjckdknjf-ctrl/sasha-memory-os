@@ -10,6 +10,8 @@
 
 **WP-04 capture alpha landed**: `/v1/capture/text` + `/v1/capture/document` (TXT/PDF/DOCX extract) → quarantine artifact + SHA-256 + ingest job + chunks + candidate memory (remote RPCs + Web control surface).
 
+**Subject + Connections control-plane alpha**: resolve via `x-subject-id` / `x-actor-key` / `x-client-id`; connection upsert + status (connect/reauth/revoke stubs); MCP `capture.text` + connection tools.
+
 Owner checklist items below (ChatGPT MCP plan, region, golden set, DPIA, etc.) remain open for RG0.
 
 ## Цель

@@ -150,6 +150,67 @@ export class SupabaseMemoryGateway {
     return data;
   }
 
+  async resolveSubject(input: {
+    workspaceId: string;
+    subjectId?: string | null;
+    actorKey?: string | null;
+    clientId?: string | null;
+  }) {
+    const { data, error } = await this.client.rpc('api_resolve_subject', {
+      p_secret: this.apiSecret,
+      p_workspace_id: input.workspaceId,
+      p_subject_id: input.subjectId ?? null,
+      p_actor_key: input.actorKey ?? null,
+      p_client_id: input.clientId ?? null,
+    });
+    if (error) throw error;
+    return data as {
+      id: string;
+      workspaceId: string;
+      kind: string;
+      externalKey: string;
+      displayName: string;
+    };
+  }
+
+  async upsertConnection(input: {
+    subjectId: string;
+    workspaceId: string;
+    connectorId: string;
+    displayName: string;
+    scopes?: string[];
+    status?: string;
+  }) {
+    const { data, error } = await this.client.rpc('api_upsert_connection', {
+      p_secret: this.apiSecret,
+      p_subject_id: input.subjectId,
+      p_workspace_id: input.workspaceId,
+      p_connector_id: input.connectorId,
+      p_display_name: input.displayName,
+      p_scopes: input.scopes ?? [],
+      p_status: input.status ?? 'connected',
+    });
+    if (error) throw error;
+    return data;
+  }
+
+  async setConnectionStatus(input: {
+    subjectId: string;
+    connectionId: string;
+    status: string;
+    lastError?: string | null;
+  }) {
+    const { data, error } = await this.client.rpc('api_set_connection_status', {
+      p_secret: this.apiSecret,
+      p_subject_id: input.subjectId,
+      p_connection_id: input.connectionId,
+      p_status: input.status,
+      p_last_error: input.lastError ?? null,
+    });
+    if (error) throw error;
+    return data;
+  }
+
   async captureText(input: {
     subjectId: string;
     workspaceId: string;

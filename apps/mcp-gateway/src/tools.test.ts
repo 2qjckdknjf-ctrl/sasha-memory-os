@@ -14,8 +14,26 @@ describe('mcp gateway alpha', () => {
         'context.project',
         'memory.store_decision',
         'handoff.create',
+        'connections.list',
+        'connections.upsert',
+        'connections.set_status',
+        'capture.text',
       ]),
     );
+  });
+
+  it('captures text offline into candidate memory', async () => {
+    const mcp = createMcpHandlers();
+    const chatgpt = '33333333-3333-4333-8333-333333333302';
+    const result = (await mcp.call('capture.text', {
+      workspace_id: workspaceId,
+      project_id: projectId,
+      title: 'MCP capture',
+      text: 'Captured via MCP tool',
+      actor_subject_id: chatgpt,
+      idempotency_key: 'mcp-capture-1',
+    })) as { memoryId: string };
+    expect(result.memoryId).toBeTruthy();
   });
 
   it('returns project context with seeded decision', async () => {

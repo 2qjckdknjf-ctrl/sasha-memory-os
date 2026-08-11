@@ -229,3 +229,11 @@ INSERT INTO project_state_versions (
   'Slice 01 ready after audit PR #215',
   '33333333-3333-4333-8333-333333333302'
 );
+
+-- Demo API clients (identity stubs)
+INSERT INTO api_clients (workspace_id, subject_id, client_id, audience)
+VALUES
+  ('11111111-1111-4111-8111-111111111111', '33333333-3333-4333-8333-333333333301', 'demo-owner', ARRAY['memory-api', 'mcp']),
+  ('11111111-1111-4111-8111-111111111111', '33333333-3333-4333-8333-333333333302', 'demo-chatgpt', ARRAY['memory-api', 'mcp']),
+  ('11111111-1111-4111-8111-111111111111', '33333333-3333-4333-8333-333333333303', 'demo-cursor', ARRAY['memory-api', 'mcp'])
+ON CONFLICT (workspace_id, client_id) DO NOTHING;

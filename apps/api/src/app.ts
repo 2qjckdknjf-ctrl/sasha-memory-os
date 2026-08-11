@@ -1,6 +1,10 @@
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
-import { authorize, type AuthzContext } from '@memory-os/authz';
+import {
+  authorize,
+  resolveLocalSubject,
+  type AuthzContext,
+} from '@memory-os/authz';
 import { createSeededStore, type MemoryStore } from '@memory-os/domain';
 import {
   captureDocumentSchema,
@@ -8,6 +12,8 @@ import {
   createDecisionSchema,
   createHandoffSchema,
   ingestionEnvelopeSchema,
+  setConnectionStatusSchema,
+  upsertConnectionSchema,
   upsertProjectStateSchema,
 } from '@memory-os/schemas';
 import { decodeBase64Document, parseDocument } from '@memory-os/ingestion';
@@ -18,6 +24,12 @@ export type ApiVariables = {
   store: MemoryStore;
   authz: AuthzContext;
   gateway: SupabaseMemoryGateway | null;
+  actor: {
+    id: string;
+    externalKey?: string;
+    displayName?: string;
+    kind?: string;
+  };
 };
 
 const seedWorkspace = '11111111-1111-4111-8111-111111111111';
@@ -94,14 +106,75 @@ export function createApp(options?: {
     '*',
     cors({
       origin: ['http://localhost:5173', 'http://127.0.0.1:5173'],
-      allowHeaders: ['Content-Type', 'x-subject-id'],
+      allowHeaders: [
+        'Content-Type',
+        'x-subject-id',
+        'x-actor-key',
+        'x-client-id',
+      ],
     }),
   );
 
   app.use('*', async (c, next) => {
-    const subjectId = c.req.header('x-subject-id') ?? owner;
+    const headerSubject = c.req.header('x-subject-id');
+    const actorKey = c.req.header('x-actor-key');
+    const clientId = c.req.header('x-client-id');
     c.set('store', store);
     c.set('gateway', gateway);
+
+    let subjectId = owner;
+    let actorMeta: ApiVariables['actor'] = {
+      id: owner,
+      externalKey: 'owner',
+      displayName: 'Sasha',
+      kind: 'user',
+    };
+
+    if (gateway && (headerSubject || actorKey || clientId)) {
+      try {
+        const resolved = await gateway.resolveSubject({
+          workspaceId: seedWorkspace,
+          subjectId: headerSubject,
+          actorKey,
+          clientId,
+        });
+        subjectId = resolved.id;
+        actorMeta = {
+          id: resolved.id,
+          externalKey: resolved.externalKey,
+          displayName: resolved.displayName,
+          kind: resolved.kind,
+        };
+      } catch {
+        const local = resolveLocalSubject({
+          subjectId: headerSubject,
+          actorKey,
+          clientId,
+        });
+        if (local) {
+          subjectId = local.id;
+          actorMeta = local;
+        } else if (headerSubject) {
+          subjectId = headerSubject;
+          actorMeta = { id: headerSubject };
+        }
+      }
+    } else {
+      const local = resolveLocalSubject({
+        subjectId: headerSubject,
+        actorKey,
+        clientId,
+      });
+      if (local) {
+        subjectId = local.id;
+        actorMeta = local;
+      } else if (headerSubject) {
+        subjectId = headerSubject;
+        actorMeta = { id: headerSubject };
+      }
+    }
+
+    c.set('actor', actorMeta);
     c.set('authz', seedAuthz(subjectId));
     await next();
   });
@@ -114,6 +187,17 @@ export function createApp(options?: {
     }),
   );
 
+  app.get('/v1/me', (c) => {
+    const authz = c.get('authz');
+    const actor = c.get('actor');
+    return c.json({
+      subjectId: authz.subjectId,
+      workspaceId: authz.workspaceId,
+      isOwner: authz.isOwner,
+      actor,
+    });
+  });
+
   app.get('/v1/connections', async (c) => {
     const authz = c.get('authz');
     const workspaceId = c.req.query('workspace_id') ?? seedWorkspace;
@@ -122,6 +206,7 @@ export function createApp(options?: {
       return c.json({
         connections: [
           {
+            id: '88888888-8888-4888-8888-888888888801',
             connectorId: 'github',
             displayName: 'AISTROYKA repos',
             status: 'connected',
@@ -133,6 +218,72 @@ export function createApp(options?: {
     try {
       const connections = await gw.listConnections(authz.subjectId, workspaceId);
       return c.json({ connections });
+    } catch (err) {
+      if (isForbiddenError(err)) return c.json({ error: 'forbidden' }, 403);
+      return c.json({ error: (err as Error).message }, 500);
+    }
+  });
+
+  app.post('/v1/connections', async (c) => {
+    const body = upsertConnectionSchema.parse(await c.req.json());
+    const authz = c.get('authz');
+    if (!authz.isOwner && authz.subjectId !== body.actor_subject_id) {
+      return c.json({ error: 'forbidden' }, 403);
+    }
+    const gw = c.get('gateway');
+    if (!gw) {
+      return c.json(
+        {
+          id: crypto.randomUUID(),
+          connectorId: body.connector_id,
+          displayName: body.display_name,
+          status: body.status,
+          scopes: body.scopes,
+          backend: 'memory-store',
+        },
+        201,
+      );
+    }
+    try {
+      const connection = await gw.upsertConnection({
+        subjectId: body.actor_subject_id,
+        workspaceId: body.workspace_id,
+        connectorId: body.connector_id,
+        displayName: body.display_name,
+        scopes: body.scopes,
+        status: body.status,
+      });
+      return c.json(connection, 201);
+    } catch (err) {
+      if (isForbiddenError(err)) return c.json({ error: 'forbidden' }, 403);
+      return c.json({ error: (err as Error).message }, 500);
+    }
+  });
+
+  app.post('/v1/connections/:id/status', async (c) => {
+    const connectionId = c.req.param('id');
+    const body = setConnectionStatusSchema.parse(await c.req.json());
+    const authz = c.get('authz');
+    if (!authz.isOwner && authz.subjectId !== body.actor_subject_id) {
+      return c.json({ error: 'forbidden' }, 403);
+    }
+    const gw = c.get('gateway');
+    if (!gw) {
+      return c.json({
+        id: connectionId,
+        status: body.status,
+        lastError: body.last_error ?? null,
+        backend: 'memory-store',
+      });
+    }
+    try {
+      const connection = await gw.setConnectionStatus({
+        subjectId: body.actor_subject_id,
+        connectionId,
+        status: body.status,
+        lastError: body.last_error,
+      });
+      return c.json(connection);
     } catch (err) {
       if (isForbiddenError(err)) return c.json({ error: 'forbidden' }, 403);
       return c.json({ error: (err as Error).message }, 500);
