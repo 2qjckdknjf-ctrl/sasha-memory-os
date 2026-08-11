@@ -852,6 +852,55 @@ export function createApp(options?: {
     }
   });
 
+  app.get('/v1/memories', async (c) => {
+    const authz = c.get('authz');
+    const workspaceId = c.req.query('workspace_id') ?? seedWorkspace;
+    const projectId = c.req.query('project_id') ?? undefined;
+    const status = c.req.query('status') ?? undefined;
+    const limit = Number(c.req.query('limit') ?? '50');
+    const gw = c.get('gateway');
+    if (gw) {
+      try {
+        const memories = await gw.listMemories({
+          subjectId: authz.subjectId,
+          workspaceId,
+          projectId: projectId ?? null,
+          status: status ?? null,
+          limit: Number.isFinite(limit) ? limit : 50,
+        });
+        return c.json({ memories });
+      } catch (err) {
+        if (isForbiddenError(err)) return c.json({ error: 'forbidden' }, 403);
+        return c.json({ error: (err as Error).message }, 500);
+      }
+    }
+    const memories = [...c.get('store').memories.values()]
+      .filter((m) => {
+        if (projectId && m.projectId !== projectId) return false;
+        if (status && m.status !== status) return false;
+        return authorize(authz, {
+          resourceType: 'memory',
+          action: 'read',
+          projectId: m.projectId,
+          sensitivity: m.sensitivity,
+        });
+      })
+      .sort((a, b) => b.recordedAt.localeCompare(a.recordedAt))
+      .slice(0, Number.isFinite(limit) ? limit : 50)
+      .map((m) => ({
+        id: m.id,
+        title: m.title,
+        content: m.content.slice(0, 500),
+        status: m.status,
+        sensitivity: m.sensitivity,
+        memoryType: m.memoryType,
+        projectId: m.projectId,
+        recordedAt: m.recordedAt,
+        metadata: m.metadata,
+      }));
+    return c.json({ memories });
+  });
+
   app.post('/v1/memories', async (c) => {
     const body = createDecisionSchema.parse(await c.req.json());
     const authz = c.get('authz');

@@ -71,6 +71,9 @@ export function App() {
   const [linkUrl, setLinkUrl] = useState('https://example.com');
   const [linkTitle, setLinkTitle] = useState('Linked note');
   const [boundSubjectId, setBoundSubjectId] = useState<string | null>(null);
+  const [reviewQueue, setReviewQueue] = useState<
+    Array<{ id: string; title: string; content: string; status: string }>
+  >([]);
 
   const subjectId = actors[actor];
 
@@ -314,6 +317,28 @@ export function App() {
     }
   }
 
+  async function refreshReviewQueue() {
+    if (backend === 'local') {
+      setReviewQueue(
+        [...localStore.memories.values()]
+          .filter((m) => m.status === 'candidate' || m.status === 'disputed')
+          .map((m) => ({
+            id: m.id,
+            title: m.title,
+            content: m.content.slice(0, 500),
+            status: m.status,
+          })),
+      );
+      return;
+    }
+    const result = await apiGet<{ memories: typeof reviewQueue }>(
+      `/v1/memories?workspace_id=${WORKSPACE_ID}&project_id=${PROJECT_ID}&status=candidate`,
+      subjectId,
+      actor,
+    );
+    setReviewQueue(result.memories ?? []);
+  }
+
   async function onSetHitStatus(
     memoryId: string,
     status: 'verified' | 'disputed' | 'retracted',
@@ -336,6 +361,7 @@ export function App() {
       }
       setLastCapture(`memory ${memoryId.slice(0, 8)}… → ${status}`);
       await onSearch();
+      await refreshReviewQueue();
     } catch (err) {
       setError((err as Error).message);
     }
@@ -783,6 +809,53 @@ export function App() {
           </form>
         </aside>
       </div>
+
+      <section className="panel" style={{ marginTop: '1rem' }}>
+        <h2>Review queue</h2>
+        <div className="actions" style={{ marginBottom: '0.75rem' }}>
+          <button
+            type="button"
+            onClick={() => {
+              void refreshReviewQueue().catch((err) =>
+                setError((err as Error).message),
+              );
+            }}
+          >
+            Load candidates
+          </button>
+        </div>
+        <ul className="timeline">
+          {reviewQueue.map((item) => (
+            <li className="item" key={item.id}>
+              <div className="meta">
+                <span className="badge state">{item.status}</span>
+              </div>
+              <h3>{item.title}</h3>
+              <p>{item.content}</p>
+              <div className="actions">
+                <button
+                  type="button"
+                  onClick={() => void onSetHitStatus(item.id, 'verified')}
+                >
+                  Approve
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void onSetHitStatus(item.id, 'disputed')}
+                >
+                  Dispute
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void onSetHitStatus(item.id, 'retracted')}
+                >
+                  Retract
+                </button>
+              </div>
+            </li>
+          ))}
+        </ul>
+      </section>
 
       <section className="panel" style={{ marginTop: '1rem' }}>
         <h2>Connections</h2>

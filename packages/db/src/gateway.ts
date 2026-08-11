@@ -104,6 +104,35 @@ export class SupabaseMemoryGateway {
     return data;
   }
 
+  async listMemories(input: {
+    subjectId: string;
+    workspaceId: string;
+    projectId?: string | null;
+    status?: string | null;
+    limit?: number;
+  }) {
+    const { data, error } = await this.client.rpc('api_list_memories', {
+      p_secret: this.apiSecret,
+      p_subject_id: input.subjectId,
+      p_workspace_id: input.workspaceId,
+      p_project_id: input.projectId ?? null,
+      p_status: input.status ?? null,
+      p_limit: input.limit ?? 50,
+    });
+    if (error) throw error;
+    return data as Array<{
+      id: string;
+      title: string;
+      content: string;
+      status: string;
+      sensitivity: string;
+      memoryType: string;
+      projectId: string | null;
+      recordedAt: string;
+      metadata: Record<string, unknown>;
+    }>;
+  }
+
   async rlsProbe(input: {
     subjectId: string;
     projectId: string;
