@@ -5,6 +5,7 @@ CREATE OR REPLACE FUNCTION app.current_subject_id()
 RETURNS uuid
 LANGUAGE sql
 STABLE
+SET search_path = public, app
 AS $$
   SELECT NULLIF(current_setting('app.subject_id', true), '')::uuid;
 $$;
@@ -13,6 +14,7 @@ CREATE OR REPLACE FUNCTION app.current_workspace_id()
 RETURNS uuid
 LANGUAGE sql
 STABLE
+SET search_path = public, app
 AS $$
   SELECT NULLIF(current_setting('app.workspace_id', true), '')::uuid;
 $$;
@@ -112,6 +114,7 @@ CREATE OR REPLACE FUNCTION app.sensitivity_rank(p_value text)
 RETURNS integer
 LANGUAGE sql
 IMMUTABLE
+SET search_path = public, app
 AS $$
   SELECT CASE p_value
     WHEN 'public' THEN 1

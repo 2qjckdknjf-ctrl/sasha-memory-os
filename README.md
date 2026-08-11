@@ -15,14 +15,12 @@
 
 ## Статус
 
-**WP-01…WP-08 alpha slice** in progress:
+**Dedicated Supabase live** — project `sasha-memory-os` (`vpxblcxsvlylqyldiuwr`, `eu-central-1`). Details: [docs/engineering/SUPABASE.md](docs/engineering/SUPABASE.md).
 
 - WP-01 bootstrap done
-- WP-02 SQL migrations + RLS + seed (apply when Supabase local works)
-- WP-03 ingestion/job schemas + idempotent event store (in-memory + SQL)
-- WP-05/06 typed memory + project state + handoff (domain + API)
-- WP-07 retrieval stub
-- WP-08 MCP gateway alpha tools
+- WP-02 migrations + RLS + seed applied remotely
+- WP-03…08 alpha: schemas, in-memory API/MCP, retrieval stub
+- Web timeline UI: `apps/web` (`pnpm --filter @memory-os/web dev`)
 
 ## Репозиторий
 
@@ -30,10 +28,11 @@
 npx pnpm@9.15.9 install
 npx pnpm@9.15.9 typecheck
 npx pnpm@9.15.9 test
+npx pnpm@9.15.9 --filter @memory-os/web dev
 ```
 
 ## Следующий шаг
 
-- Поднять dedicated Supabase project (не AISTROYKA/HiAir) и применить migrations
-- Починить arm64 Supabase CLI / Docker
-- Web timeline UI поверх `/v1/projects/:id/context` + handoffs
+- Wire API to Supabase (service_role server-side only)
+- Authenticated RLS negative suite against remote
+- Expand Web control center (search / connections)

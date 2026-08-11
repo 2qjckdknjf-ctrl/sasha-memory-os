@@ -14,6 +14,7 @@
 | [engineering/SECRETS_POLICY.md](engineering/SECRETS_POLICY.md) | Хранение и запреты для secrets |
 | [engineering/RLS_MATRIX.md](engineering/RLS_MATRIX.md) | RLS / ACL matrix и negative cases |
 | [engineering/DEMO_SLICE.md](engineering/DEMO_SLICE.md) | decision → state → MCP → handoff |
+| [engineering/SUPABASE.md](engineering/SUPABASE.md) | Live project ref, region, migrations |
 
 ## Правило изменений
 

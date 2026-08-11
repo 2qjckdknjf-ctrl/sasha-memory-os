@@ -1,4 +1,3 @@
-import { randomUUID } from 'node:crypto';
 import {
   filterCurrentMemories,
   nextProjectStateVersion,
@@ -6,6 +5,10 @@ import {
   type MemoryRecord,
   type ProjectStateVersion,
 } from './memory.js';
+
+function newId(): string {
+  return globalThis.crypto.randomUUID();
+}
 
 export interface SourceEvent {
   id: string;
@@ -39,7 +42,7 @@ export class MemoryStore {
     }
     const event: SourceEvent = {
       ...input,
-      id: input.id ?? randomUUID(),
+      id: input.id ?? newId(),
       recordedAt: new Date().toISOString(),
     };
     this.events.set(event.id, event);
@@ -76,7 +79,7 @@ export class MemoryStore {
     if (existing) return existing;
 
     const record: MemoryRecord = {
-      id: randomUUID(),
+      id: newId(),
       workspaceId: input.workspaceId,
       projectId: input.projectId,
       memoryType: 'decision',
@@ -125,7 +128,7 @@ export class MemoryStore {
     const current = this.getProjectState(input.projectId);
     const version = nextProjectStateVersion(current, input.expectedVersion);
     const row: ProjectStateVersion = {
-      id: randomUUID(),
+      id: newId(),
       workspaceId: input.workspaceId,
       projectId: input.projectId,
       version,
@@ -149,7 +152,7 @@ export class MemoryStore {
     payload: Handoff['payload'];
   }): Handoff {
     const handoff: Handoff = {
-      id: randomUUID(),
+      id: newId(),
       workspaceId: input.workspaceId,
       projectId: input.projectId,
       fromSubjectId: input.fromSubjectId,

@@ -1,0 +1,231 @@
+:root {
+  --bg0: #0f1412;
+  --bg1: #18211c;
+  --line: #2d3b33;
+  --ink: #e7efe8;
+  --muted: #9aafa1;
+  --accent: #d6ff4b;
+  --warn: #ffb454;
+  --ok: #6ddeb0;
+  --font-display: 'Fraunces', Georgia, serif;
+  --font-body: 'IBM Plex Sans', 'Segoe UI', sans-serif;
+  color: var(--ink);
+  background:
+    radial-gradient(1200px 600px at 10% -10%, #24362c 0%, transparent 55%),
+    radial-gradient(900px 500px at 100% 0%, #1a2a38 0%, transparent 50%),
+    var(--bg0);
+  font-family: var(--font-body);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  min-height: 100%;
+  margin: 0;
+}
+
+body {
+  min-height: 100vh;
+}
+
+button,
+input,
+textarea {
+  font: inherit;
+}
+
+.app {
+  width: min(1080px, calc(100% - 2rem));
+  margin: 0 auto;
+  padding: 2rem 0 4rem;
+}
+
+.brand {
+  font-family: var(--font-display);
+  font-size: clamp(2rem, 5vw, 3.2rem);
+  letter-spacing: -0.03em;
+  margin: 0;
+  animation: rise 700ms ease both;
+}
+
+.lede {
+  color: var(--muted);
+  max-width: 42rem;
+  line-height: 1.5;
+  margin: 0.75rem 0 1.75rem;
+  animation: rise 800ms ease both;
+}
+
+.toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  margin-bottom: 1.5rem;
+  animation: rise 900ms ease both;
+}
+
+.toolbar button {
+  border: 1px solid var(--line);
+  background: var(--bg1);
+  color: var(--ink);
+  padding: 0.55rem 0.9rem;
+  cursor: pointer;
+  transition: border-color 160ms ease, transform 160ms ease;
+}
+
+.toolbar button[data-active='true'] {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.toolbar button:hover {
+  transform: translateY(-1px);
+}
+
+.grid {
+  display: grid;
+  gap: 1rem;
+}
+
+@media (min-width: 900px) {
+  .grid {
+    grid-template-columns: 1.4fr 1fr;
+    align-items: start;
+  }
+}
+
+.panel {
+  border: 1px solid var(--line);
+  background: color-mix(in oklab, var(--bg1) 88%, black);
+  padding: 1rem 1.1rem 1.2rem;
+  animation: rise 1s ease both;
+}
+
+.panel h2 {
+  font-family: var(--font-display);
+  font-size: 1.35rem;
+  margin: 0 0 0.85rem;
+}
+
+.timeline {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.75rem;
+}
+
+.item {
+  display: grid;
+  gap: 0.35rem;
+  padding: 0.8rem 0;
+  border-top: 1px solid var(--line);
+}
+
+.item:first-child {
+  border-top: 0;
+  padding-top: 0;
+}
+
+.meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
+.badge {
+  border: 1px solid var(--line);
+  padding: 0.1rem 0.4rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  font-size: 0.72rem;
+}
+
+.badge.decision {
+  border-color: color-mix(in oklab, var(--accent) 50%, var(--line));
+  color: var(--accent);
+}
+
+.badge.state {
+  border-color: color-mix(in oklab, var(--ok) 50%, var(--line));
+  color: var(--ok);
+}
+
+.badge.handoff {
+  border-color: color-mix(in oklab, var(--warn) 50%, var(--line));
+  color: var(--warn);
+}
+
+.item h3 {
+  margin: 0;
+  font-size: 1.05rem;
+  font-weight: 600;
+}
+
+.item p {
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.45;
+}
+
+.state-block {
+  display: grid;
+  gap: 0.55rem;
+  font-size: 0.95rem;
+}
+
+.state-block strong {
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.form {
+  display: grid;
+  gap: 0.6rem;
+  margin-top: 1rem;
+}
+
+.form input,
+.form textarea {
+  width: 100%;
+  border: 1px solid var(--line);
+  background: #101713;
+  color: var(--ink);
+  padding: 0.65rem 0.7rem;
+}
+
+.form button {
+  justify-self: start;
+  border: 0;
+  background: var(--accent);
+  color: #132016;
+  font-weight: 600;
+  padding: 0.65rem 1rem;
+  cursor: pointer;
+}
+
+.form button:hover {
+  filter: brightness(1.05);
+}
+
+.hint {
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
