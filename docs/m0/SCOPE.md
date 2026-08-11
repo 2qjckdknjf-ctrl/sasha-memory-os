@@ -19,7 +19,7 @@
 **OCR + connector-sync alpha**: OCR engines; vault-backed pulls for GitHub/Drive/Gmail/Calendar (`MEMORY_OS_CONNECTOR_PULL_MODE`, DB `vaultRef` on enqueue, token refresh on expiry) → capture; MCP stdio gateway + capture/sync/oauth/outbox tools; OAuth HTTP exchange into shared encrypted vault + Web `/oauth/callback`; embeddings on capture/sync with `EMBED_STRICT` + owner re-embed (`POST /v1/memories/:id/embed` / MCP `memory.embed` / Web); hybrid search; consolidation + idempotent connector outbox; HTTP API secret on owner ops outside local; golden = 200; Dockerfile/`fly.toml`/GH worker-ticks + `scripts/smoke-api.sh`.
 
 
-RG0 drafts landed: [RG0_CHECKLIST.md](./RG0_CHECKLIST.md), data classes/retention, threat/DPIA, ChatGPT MCP plan. **Owner accept checkboxes** in those docs remain open.
+RG0 artifact set landed: [RG0_CHECKLIST.md](./RG0_CHECKLIST.md) (scope, risk, eval, backlog M1–M3, data classes, threat/DPIA, ChatGPT MCP). **Owner accept checkboxes** remain open.
 
 ## Цель
 
@@ -27,9 +27,9 @@ RG0 drafts landed: [RG0_CHECKLIST.md](./RG0_CHECKLIST.md), data classes/retentio
 
 ## Exit gate: RG0
 
-- Нет неизвестного внешнего dependency, которое делает M6/M9/M11 невозможным.
-- Owner принимает V1 / OUT границы.
-- Есть approved scope, risk register, architecture context, test/eval plan, backlog M1–M3.
+- Нет неизвестного внешнего dependency, которое делает M6/M9/M11 невозможным — see [RISK_REGISTER.md](./RISK_REGISTER.md).
+- Owner принимает V1 / OUT границы (ниже) + checkboxes в RG0 docs.
+- Artifacts: scope (this file), risk register, architecture (ADRs + engineering), [EVAL_PLAN.md](./EVAL_PLAN.md), [BACKLOG_M1_M3.md](./BACKLOG_M1_M3.md).
 
 ## Работы M0
 

@@ -88,6 +88,6 @@ Outside `local`/`test`, owner ops require `x-memory-os-api-secret` (or `MEMORY_O
 1. ~~Alpha close + hosted ticks~~ — Edge `worker-ticks` v2 + GH `Worker ticks`
 2. ~~KMS / HQ vector columns~~ — `supabase_vault` + `embedding_vector_hq(1536)`
 3. ~~Full connector pull path~~ — GH `Worker node ticks` (vault sync + consolidation)
-4. ~~RG0 drafts~~ — [docs/m0/RG0_CHECKLIST.md](docs/m0/RG0_CHECKLIST.md) (owner accept checkboxes)
+4. ~~RG0 artifact set~~ — checklist, risk, eval, backlog M1–M3, retention, DPIA, ChatGPT MCP ([RG0_CHECKLIST.md](docs/m0/RG0_CHECKLIST.md))
 5. Optional: full HTTP API on Fly — `./scripts/fly-deploy-api.sh` (needs `flyctl auth login`)
-6. Owner: accept RG0 docs + confirm ChatGPT MCP capability A/B
+6. Owner: accept RG0 checkboxes + ChatGPT MCP **A** or **B**

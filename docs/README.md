@@ -13,6 +13,9 @@
 | [m0/DATA_CLASSES_AND_RETENTION.md](m0/DATA_CLASSES_AND_RETENTION.md) | Region, data classes, retention |
 | [m0/THREAT_MODEL_DPIA.md](m0/THREAT_MODEL_DPIA.md) | Initial threat model / DPIA |
 | [m0/CHATGPT_MCP_PLAN.md](m0/CHATGPT_MCP_PLAN.md) | ChatGPT MCP capability + fallbacks |
+| [m0/RISK_REGISTER.md](m0/RISK_REGISTER.md) | RG0 risk register |
+| [m0/EVAL_PLAN.md](m0/EVAL_PLAN.md) | Test / eval plan |
+| [m0/BACKLOG_M1_M3.md](m0/BACKLOG_M1_M3.md) | Backlog M1–M3 vs alpha |
 | [adr/](adr/) | Architecture Decision Records |
 | [engineering/ENVIRONMENT_MATRIX.md](engineering/ENVIRONMENT_MATRIX.md) | local / dev / staging / prod |
 | [engineering/SECRETS_POLICY.md](engineering/SECRETS_POLICY.md) | Хранение и запреты для secrets |
