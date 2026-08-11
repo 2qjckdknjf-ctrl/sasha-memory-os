@@ -112,6 +112,8 @@ export class SupabaseMemoryGateway {
     projectId?: string | null;
     status?: string | null;
     limit?: number;
+    recordedAfter?: string | null;
+    recordedBefore?: string | null;
   }) {
     const { data, error } = await this.client.rpc('api_list_memories', {
       p_secret: this.apiSecret,
@@ -120,6 +122,8 @@ export class SupabaseMemoryGateway {
       p_project_id: input.projectId ?? null,
       p_status: input.status ?? null,
       p_limit: input.limit ?? 50,
+      p_recorded_after: input.recordedAfter ?? null,
+      p_recorded_before: input.recordedBefore ?? null,
     });
     if (error) throw error;
     return data as Array<{

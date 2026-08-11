@@ -1095,6 +1095,8 @@ export function createApp(options?: {
     const workspaceId = c.req.query('workspace_id') ?? seedWorkspace;
     const projectId = c.req.query('project_id') ?? undefined;
     const status = c.req.query('status') ?? undefined;
+    const recordedAfter = c.req.query('recorded_after') ?? undefined;
+    const recordedBefore = c.req.query('recorded_before') ?? undefined;
     const limit = Number(c.req.query('limit') ?? '50');
     const gw = c.get('gateway');
     if (gw) {
@@ -1105,6 +1107,8 @@ export function createApp(options?: {
           projectId: projectId ?? null,
           status: status ?? null,
           limit: Number.isFinite(limit) ? limit : 50,
+          recordedAfter: recordedAfter ?? null,
+          recordedBefore: recordedBefore ?? null,
         });
         return c.json({ memories });
       } catch (err) {
@@ -1116,6 +1120,8 @@ export function createApp(options?: {
       .filter((m) => {
         if (projectId && m.projectId !== projectId) return false;
         if (status && m.status !== status) return false;
+        if (recordedAfter && m.recordedAt < recordedAfter) return false;
+        if (recordedBefore && m.recordedAt > recordedBefore) return false;
         return authorize(authz, {
           resourceType: 'memory',
           action: 'read',
@@ -1146,6 +1152,8 @@ export function createApp(options?: {
     const workspaceId = c.req.query('workspace_id') ?? seedWorkspace;
     const projectId = c.req.query('project_id') ?? undefined;
     const status = c.req.query('status') ?? undefined;
+    const recordedAfter = c.req.query('recorded_after') ?? undefined;
+    const recordedBefore = c.req.query('recorded_before') ?? undefined;
     const rawLimit = Number(c.req.query('limit') ?? '200');
     const limit = Math.min(Math.max(Number.isFinite(rawLimit) ? rawLimit : 200, 1), 500);
     const gw = c.get('gateway');
@@ -1159,6 +1167,8 @@ export function createApp(options?: {
           projectId: projectId ?? null,
           status: status ?? null,
           limit,
+          recordedAfter: recordedAfter ?? null,
+          recordedBefore: recordedBefore ?? null,
         })) as Array<{ id: string }>;
         const memories = [];
         for (const row of listed) {
@@ -1175,6 +1185,8 @@ export function createApp(options?: {
           subjectId: authz.subjectId,
           count: memories.length,
           memories,
+          recordedAfter: recordedAfter ?? null,
+          recordedBefore: recordedBefore ?? null,
           backend: 'supabase',
         });
       } catch (err) {
@@ -1187,6 +1199,8 @@ export function createApp(options?: {
       .filter((m) => {
         if (projectId && m.projectId !== projectId) return false;
         if (status && m.status !== status) return false;
+        if (recordedAfter && m.recordedAt < recordedAfter) return false;
+        if (recordedBefore && m.recordedAt > recordedBefore) return false;
         return authorize(authz, {
           resourceType: 'memory',
           action: 'read',
@@ -1215,6 +1229,8 @@ export function createApp(options?: {
       subjectId: authz.subjectId,
       count: memories.length,
       memories,
+      recordedAfter: recordedAfter ?? null,
+      recordedBefore: recordedBefore ?? null,
       backend: 'memory-store',
     });
   });

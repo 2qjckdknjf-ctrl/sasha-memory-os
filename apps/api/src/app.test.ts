@@ -243,6 +243,49 @@ describe('memory api demo slice', () => {
     expect(body.requestId).toBe('test-req-health-1');
   });
 
+  it('filters memories by recorded_at window', async () => {
+    const app = createApp({});
+    const ownerId = '33333333-3333-4333-8333-333333333301';
+    await app.request('/v1/memories', {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'x-subject-id': ownerId,
+        'x-actor-key': 'owner',
+      },
+      body: JSON.stringify({
+        workspace_id: workspaceId,
+        project_id: projectId,
+        memory_type: 'fact',
+        title: 'Temporal window note',
+        content: 'inside recorded_after filter',
+        actor_subject_id: ownerId,
+        idempotency_key: `temporal-${Date.now()}`,
+      }),
+    });
+    const farFuture = '2099-01-01T00:00:00.000Z';
+    const empty = await app.request(
+      `/v1/memories?recorded_after=${encodeURIComponent(farFuture)}`,
+      { headers: { 'x-subject-id': ownerId } },
+    );
+    expect(empty.status).toBe(200);
+    const emptyBody = await empty.json();
+    expect(emptyBody.memories).toEqual([]);
+
+    const past = '2000-01-01T00:00:00.000Z';
+    const listed = await app.request(
+      `/v1/memories?recorded_after=${encodeURIComponent(past)}&limit=100`,
+      { headers: { 'x-subject-id': ownerId } },
+    );
+    expect(listed.status).toBe(200);
+    const body = await listed.json();
+    expect(
+      body.memories.some(
+        (m: { title?: string }) => m.title === 'Temporal window note',
+      ),
+    ).toBe(true);
+  });
+
   it('exports full memories for owner', async () => {
     const app = createApp({});
     const ownerId = '33333333-3333-4333-8333-333333333301';

@@ -33,8 +33,9 @@ Architecture context: ADRs `docs/adr/`, [DEMO_SLICE.md](../engineering/DEMO_SLIC
 | Audit viewer | Stub | Web timeline / outbox / export download |
 
 | Owner JSON export | Done (alpha) | `GET /v1/export/memories` (secret outside local) |
+| Temporal list filters | Done (alpha) | `recorded_after` / `recorded_before` on list + export |
 
-**M2 exit remaining:** richer temporal queries; audit viewer polish.
+**M2 exit remaining:** audit viewer polish (timeline already covers ops alpha).
 
 ## M3 — Universal ingestion V1
 
