@@ -47,9 +47,9 @@ Architecture context: ADRs `docs/adr/`, [DEMO_SLICE.md](../engineering/DEMO_SLIC
 | SSRF-safe link fetch | Done | Tests |
 | Chunks + job status | Done | process_now / jobs |
 | Audio transcription | Not started | Adapter later |
-| Poison-file isolation suite | Partial | Basic; expand acceptance suite |
+| Poison-file isolation suite | Done (alpha) | oversized/empty/unsupported + SSRF link deny |
 
-**M3 exit remaining:** audio adapter; fuller format/poison suite; job UI completeness.
+**M3 exit remaining:** audio transcription adapter; job UI completeness.
 
 ## Ordered next (post-RG0 owner accept)
 

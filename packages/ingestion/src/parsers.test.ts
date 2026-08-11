@@ -27,6 +27,28 @@ describe('parseDocument', () => {
     );
     expect(buf.toString('utf8')).toBe('abc');
   });
+
+  it('isolates empty and oversized poison inputs', async () => {
+    await expect(
+      parseDocument({ filename: 'empty.txt', bytes: Buffer.alloc(0) }),
+    ).rejects.toThrow(/empty document/);
+    await expect(
+      parseDocument({
+        filename: 'huge.txt',
+        bytes: Buffer.alloc(5 * 1024 * 1024 + 1),
+      }),
+    ).rejects.toThrow(/exceeds/);
+  });
+
+  it('rejects unsupported mime as poison', async () => {
+    await expect(
+      parseDocument({
+        filename: 'x.exe',
+        mimeType: 'application/octet-stream' as never,
+        bytes: Buffer.from('MZ'),
+      }),
+    ).rejects.toThrow(/unsupported document type/);
+  });
 });
 
 describe('chunkText', () => {

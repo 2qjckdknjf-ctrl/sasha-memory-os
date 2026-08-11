@@ -126,6 +126,29 @@ describe('memory api demo slice', () => {
     expect(body.extractedChars).toBeGreaterThan(10);
   });
 
+  it('rejects oversized document capture', async () => {
+    const app = createApp({});
+    const content = Buffer.alloc(5 * 1024 * 1024 + 8, 97).toString('base64');
+    const res = await app.request('/v1/capture/document', {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'x-subject-id': chatgpt,
+      },
+      body: JSON.stringify({
+        workspace_id: workspaceId,
+        project_id: projectId,
+        title: 'Poison huge',
+        filename: 'huge.txt',
+        mime_type: 'text/plain',
+        content_base64: content,
+        actor_subject_id: chatgpt,
+        idempotency_key: `poison/huge-${Date.now()}`,
+      }),
+    });
+    expect(res.status).toBeGreaterThanOrEqual(400);
+  });
+
   it('rejects private link capture targets', async () => {
     const app = createApp({});
     const res = await app.request('/v1/capture/link', {
