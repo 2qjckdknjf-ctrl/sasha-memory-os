@@ -32,7 +32,9 @@ Architecture context: ADRs `docs/adr/`, [DEMO_SLICE.md](../engineering/DEMO_SLIC
 | Temporal fields / revisions | Partial | Status/supersede; full temporal model continues |
 | Audit viewer | Stub | Web timeline / outbox panels |
 
-**M2 exit remaining:** richer temporal queries; audit viewer polish; export path.
+| Owner JSON export | Done (alpha) | `GET /v1/export/memories` (secret outside local) |
+
+**M2 exit remaining:** richer temporal queries; audit viewer polish.
 
 ## M3 — Universal ingestion V1
 

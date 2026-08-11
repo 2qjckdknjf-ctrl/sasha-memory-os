@@ -346,6 +346,7 @@ export function createApp(options?: {
   app.use('/v1/jobs/dead-letter-stale', requireHttpApiSecret);
   app.use('/v1/outbox/*', requireHttpApiSecret);
   app.use('/v1/memories/embed-missing', requireHttpApiSecret);
+  app.use('/v1/export/*', requireHttpApiSecret);
 
   app.get('/v1/me', (c) => {
     const authz = c.get('authz');
@@ -1136,6 +1137,86 @@ export function createApp(options?: {
         metadata: m.metadata,
       }));
     return c.json({ memories });
+  });
+
+  /** Owner portable dump (full content). Complements list truncation. */
+  app.get('/v1/export/memories', async (c) => {
+    const authz = c.get('authz');
+    if (!authz.isOwner) return c.json({ error: 'forbidden' }, 403);
+    const workspaceId = c.req.query('workspace_id') ?? seedWorkspace;
+    const projectId = c.req.query('project_id') ?? undefined;
+    const status = c.req.query('status') ?? undefined;
+    const rawLimit = Number(c.req.query('limit') ?? '200');
+    const limit = Math.min(Math.max(Number.isFinite(rawLimit) ? rawLimit : 200, 1), 500);
+    const gw = c.get('gateway');
+    const exportedAt = new Date().toISOString();
+
+    if (gw) {
+      try {
+        const listed = (await gw.listMemories({
+          subjectId: authz.subjectId,
+          workspaceId,
+          projectId: projectId ?? null,
+          status: status ?? null,
+          limit,
+        })) as Array<{ id: string }>;
+        const memories = [];
+        for (const row of listed) {
+          const memory = await gw.getMemory({
+            subjectId: authz.subjectId,
+            memoryId: row.id,
+          });
+          memories.push(memory);
+        }
+        return c.json({
+          format: 'memory-os.export.memories.v1',
+          exportedAt,
+          workspaceId,
+          subjectId: authz.subjectId,
+          count: memories.length,
+          memories,
+          backend: 'supabase',
+        });
+      } catch (err) {
+        if (isForbiddenError(err)) return c.json({ error: 'forbidden' }, 403);
+        return c.json({ error: (err as Error).message }, 500);
+      }
+    }
+
+    const memories = [...c.get('store').memories.values()]
+      .filter((m) => {
+        if (projectId && m.projectId !== projectId) return false;
+        if (status && m.status !== status) return false;
+        return authorize(authz, {
+          resourceType: 'memory',
+          action: 'read',
+          projectId: m.projectId,
+          sensitivity: m.sensitivity,
+        });
+      })
+      .sort((a, b) => b.recordedAt.localeCompare(a.recordedAt))
+      .slice(0, limit)
+      .map((m) => ({
+        id: m.id,
+        title: m.title,
+        content: m.content,
+        status: m.status,
+        sensitivity: m.sensitivity,
+        memoryType: m.memoryType,
+        projectId: m.projectId,
+        recordedAt: m.recordedAt,
+        metadata: m.metadata,
+      }));
+
+    return c.json({
+      format: 'memory-os.export.memories.v1',
+      exportedAt,
+      workspaceId,
+      subjectId: authz.subjectId,
+      count: memories.length,
+      memories,
+      backend: 'memory-store',
+    });
   });
 
   app.get('/v1/memories/:id', async (c) => {

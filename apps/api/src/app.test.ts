@@ -243,6 +243,43 @@ describe('memory api demo slice', () => {
     expect(body.requestId).toBe('test-req-health-1');
   });
 
+  it('exports full memories for owner', async () => {
+    const app = createApp({});
+    const ownerId = '33333333-3333-4333-8333-333333333301';
+    await app.request('/v1/memories', {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'x-subject-id': ownerId,
+        'x-actor-key': 'owner',
+      },
+      body: JSON.stringify({
+        workspace_id: workspaceId,
+        project_id: projectId,
+        memory_type: 'fact',
+        title: 'Export full',
+        content: 'y'.repeat(600),
+        actor_subject_id: ownerId,
+        idempotency_key: `export-full-${Date.now()}`,
+      }),
+    });
+    const denied = await app.request('/v1/export/memories', {
+      headers: { 'x-actor-key': 'chatgpt' },
+    });
+    expect(denied.status).toBe(403);
+    const res = await app.request('/v1/export/memories?limit=50', {
+      headers: { 'x-subject-id': ownerId, 'x-actor-key': 'owner' },
+    });
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.format).toBe('memory-os.export.memories.v1');
+    expect(body.count).toBeGreaterThan(0);
+    const hit = body.memories.find(
+      (m: { title?: string }) => m.title === 'Export full',
+    );
+    expect(hit?.content?.length).toBe(600);
+  });
+
   it('gets memory offline with full content', async () => {
     const app = createApp({});
     const ownerId = '33333333-3333-4333-8333-333333333301';

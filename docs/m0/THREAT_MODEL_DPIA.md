@@ -48,7 +48,7 @@ Lawful basis (proposed): legitimate interest / consent for personal productivity
 | Measures? | ACL/RLS, vault, API secret, EU region, audit/outbox |
 | Retention? | Table in data classes doc |
 | Third countries? | Embeddings may call OpenAI if enabled — document/disable for strict EU-only |
-| Rights? | Retract/dispute/status + future export (V1 backlog) |
+| Rights? | Retract/dispute/status + owner `GET /v1/export/memories` (alpha) |
 
 ## Residual risks (owner must accept)
 
