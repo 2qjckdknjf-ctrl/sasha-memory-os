@@ -1141,6 +1141,46 @@ export function App() {
               void (async () => {
                 setError(null);
                 try {
+                  if (actor !== 'owner') {
+                    setError('Export requires owner actor');
+                    return;
+                  }
+                  const dump = await apiGet<{
+                    format?: string;
+                    count?: number;
+                  }>(
+                    `/v1/export/memories?workspace_id=${WORKSPACE_ID}&limit=200`,
+                    subjectId,
+                    actor,
+                  );
+                  const blob = new Blob([JSON.stringify(dump, null, 2)], {
+                    type: 'application/json',
+                  });
+                  const url = URL.createObjectURL(blob);
+                  const a = document.createElement('a');
+                  a.href = url;
+                  a.download = `memory-os-export-${new Date()
+                    .toISOString()
+                    .slice(0, 10)}.json`;
+                  a.click();
+                  URL.revokeObjectURL(url);
+                  setLastCapture(
+                    `exported memories format=${dump.format ?? '?'} count=${dump.count ?? 0}`,
+                  );
+                } catch (err) {
+                  setError((err as Error).message);
+                }
+              })();
+            }}
+          >
+            Export memories JSON
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              void (async () => {
+                setError(null);
+                try {
                   if (backend === 'local') {
                     setError('Dead-letter requires API backend');
                     return;

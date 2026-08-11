@@ -30,7 +30,7 @@ Architecture context: ADRs `docs/adr/`, [DEMO_SLICE.md](../engineering/DEMO_SLIC
 | RLS matrix + negative tests | Done | security + golden forbidden |
 | Idempotency + outbox | Done | Minute buckets / dead-letter |
 | Temporal fields / revisions | Partial | Status/supersede; full temporal model continues |
-| Audit viewer | Stub | Web timeline / outbox panels |
+| Audit viewer | Stub | Web timeline / outbox / export download |
 
 | Owner JSON export | Done (alpha) | `GET /v1/export/memories` (secret outside local) |
 
