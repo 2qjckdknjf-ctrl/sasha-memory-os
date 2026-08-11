@@ -35,7 +35,7 @@ import {
   extractTextFromBytes,
   fetchPublicLink,
 } from '@memory-os/ingestion';
-import { projectContext, searchMemories } from '@memory-os/retrieval';
+import { projectContext, searchMemoriesHybrid } from '@memory-os/retrieval';
 import type { SupabaseMemoryGateway } from './supabase.js';
 
 export type ApiVariables = {
@@ -1126,12 +1126,11 @@ export function createApp(options?: {
         sensitivity: m.sensitivity,
       }),
     );
-    return c.json({
-      hits: searchMemories(allowed, body.query ?? '', {
-        projectId: body.project_id,
-        includeHistory: body.include_history,
-      }),
+    const hits = await searchMemoriesHybrid(allowed, body.query ?? '', {
+      projectId: body.project_id,
+      includeHistory: body.include_history,
     });
+    return c.json({ hits });
   });
 
   return app;

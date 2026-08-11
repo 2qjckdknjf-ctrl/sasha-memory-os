@@ -20,6 +20,16 @@ describe('retrieval stub', () => {
     expect(hits[0]?.memory.title).toMatch(/Slice/i);
   });
 
+  it('hybrid search returns embed reason', async () => {
+    const { searchMemoriesHybrid } = await import('./index.js');
+    const store = createSeededStore();
+    const hits = await searchMemoriesHybrid(
+      [...store.memories.values()],
+      'Slice 01',
+    );
+    expect(hits[0]?.reason).toBe('hybrid:text+embed');
+  });
+
   it('builds project context', () => {
     const store = createSeededStore();
     const ctx = projectContext(

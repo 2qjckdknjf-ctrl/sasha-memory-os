@@ -419,6 +419,146 @@
       "actor": "cursor",
       "must_allow": true,
       "expect_no_sensitivity": "confidential"
+    },
+    {
+      "id": "gr-061",
+      "query": "pgvector hybrid",
+      "expect_content_includes": "pgvector",
+      "actor": "owner",
+      "must_allow": true
+    },
+    {
+      "id": "gr-062",
+      "query": "candidate review approve",
+      "expect_content_includes": "review",
+      "actor": "owner",
+      "must_allow": true
+    },
+    {
+      "id": "gr-063",
+      "query": "disputed fact",
+      "expect_content_includes": "disputed",
+      "actor": "chatgpt",
+      "must_allow": true
+    },
+    {
+      "id": "gr-064",
+      "query": "retract mistaken capture",
+      "expect_content_includes": "retract",
+      "actor": "owner",
+      "must_allow": true
+    },
+    {
+      "id": "gr-065",
+      "query": "code fingerprint",
+      "expect_content_includes": "fingerprint",
+      "actor": "owner",
+      "must_allow": true
+    },
+    {
+      "id": "gr-066",
+      "query": "vault ref github connector",
+      "expect_content_includes": "vault",
+      "actor": "chatgpt",
+      "must_allow": true
+    },
+    {
+      "id": "gr-067",
+      "query": "eu central hosting",
+      "expect_content_includes": "eu-central-1",
+      "actor": "owner",
+      "must_allow": true
+    },
+    {
+      "id": "gr-068",
+      "query": "outbox worker delivery",
+      "expect_content_includes": "outbox",
+      "actor": "cursor",
+      "must_allow": true
+    },
+    {
+      "id": "gr-069",
+      "query": "apple notes bridge",
+      "expect_content_includes": "Apple",
+      "actor": "owner",
+      "must_allow": true
+    },
+    {
+      "id": "gr-070",
+      "query": "gmail labels metadata",
+      "expect_content_includes": "Gmail",
+      "actor": "chatgpt",
+      "must_allow": true
+    },
+    {
+      "id": "gr-071",
+      "query": "drive reauth degraded",
+      "expect_content_includes": "Drive",
+      "actor": "cursor",
+      "must_allow": true
+    },
+    {
+      "id": "gr-072",
+      "query": "calendar meeting events",
+      "expect_content_includes": "calendar",
+      "actor": "owner",
+      "must_allow": true
+    },
+    {
+      "id": "gr-073",
+      "query": "provenance source events",
+      "expect_content_includes": "provenance",
+      "actor": "chatgpt",
+      "must_allow": true
+    },
+    {
+      "id": "gr-074",
+      "query": "quarantine artifact checksum",
+      "expect_content_includes": "quarantine",
+      "actor": "owner",
+      "must_allow": true
+    },
+    {
+      "id": "gr-075",
+      "query": "SSRF safe link fetch",
+      "expect_content_includes": "SSRF",
+      "actor": "cursor",
+      "must_allow": true
+    },
+    {
+      "id": "gr-076",
+      "query": "OCR fixture utf8",
+      "expect_content_includes": "fixture",
+      "actor": "owner",
+      "must_allow": true
+    },
+    {
+      "id": "gr-077",
+      "query": "tesseract system cli",
+      "expect_content_includes": "tesseract",
+      "actor": "chatgpt",
+      "must_allow": true
+    },
+    {
+      "id": "gr-078",
+      "query": "API secret server only",
+      "expect_content_includes": "API_SECRET",
+      "actor": "owner",
+      "must_allow": true
+    },
+    {
+      "id": "gr-079",
+      "query": "AuthPanel supabase bind",
+      "expect_content_includes": "AuthPanel",
+      "actor": "owner",
+      "must_allow": true
+    },
+    {
+      "id": "gr-080",
+      "query": "agentic tool loop budget",
+      "expect_content_includes": "budget",
+      "actor": "cursor",
+      "must_allow": true
     }
   ]
 }

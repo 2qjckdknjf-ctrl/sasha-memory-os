@@ -34,7 +34,17 @@ export function App() {
   const [backend, setBackend] = useState<'supabase' | 'memory-store' | 'local'>('local');
   const [remote, setRemote] = useState<RemoteContext | null>(null);
   const [search, setSearch] = useState('Slice');
-  const [hits, setHits] = useState<Array<{ memory?: { title?: string; content?: string } }>>([]);
+  const [hits, setHits] = useState<
+    Array<{
+      memory?: {
+        id?: string;
+        title?: string;
+        content?: string;
+        status?: string;
+      };
+      reason?: string;
+    }>
+  >([]);
   const [title, setTitle] = useState('Continue remediation after audit');
   const [content, setContent] = useState(
     'Next engineering work follows the Slice 01 kickoff decision.',
@@ -287,13 +297,45 @@ export function App() {
         });
         setHits(result.hits ?? []);
       } else {
-        const { searchMemories } = await import('@memory-os/retrieval');
+        const { searchMemoriesHybrid } = await import('@memory-os/retrieval');
         setHits(
-          searchMemories([...localStore.memories.values()], search, {
-            projectId: PROJECT_ID,
-          }).map((h) => ({ memory: h.memory })),
+          (
+            await searchMemoriesHybrid([...localStore.memories.values()], search, {
+              projectId: PROJECT_ID,
+            })
+          ).map((h) => ({
+            memory: h.memory,
+            reason: h.reason,
+          })),
         );
       }
+    } catch (err) {
+      setError((err as Error).message);
+    }
+  }
+
+  async function onSetHitStatus(
+    memoryId: string,
+    status: 'verified' | 'disputed' | 'retracted',
+  ) {
+    setError(null);
+    try {
+      if (backend === 'local') {
+        localStore.setMemoryStatus({
+          memoryId,
+          status,
+          reason: `Web ${status} by ${actor}`,
+          actorSubjectId: subjectId,
+        });
+      } else {
+        await apiPost(`/v1/memories/${memoryId}/status`, subjectId, {
+          status,
+          reason: `Web ${status} by ${actor}`,
+          actor_subject_id: subjectId,
+        }, actor);
+      }
+      setLastCapture(`memory ${memoryId.slice(0, 8)}… → ${status}`);
+      await onSearch();
     } catch (err) {
       setError((err as Error).message);
     }
@@ -698,9 +740,43 @@ export function App() {
             <button type="submit">Search memories</button>
             <ul className="timeline">
               {hits.map((hit, i) => (
-                <li className="item" key={`hit-${i}`}>
+                <li className="item" key={hit.memory?.id ?? `hit-${i}`}>
+                  <div className="meta">
+                    <span className="badge state">
+                      {hit.memory?.status ?? 'unknown'}
+                    </span>
+                    {hit.reason ? <span>{hit.reason}</span> : null}
+                  </div>
                   <h3>{hit.memory?.title ?? 'hit'}</h3>
                   <p>{hit.memory?.content ?? ''}</p>
+                  {hit.memory?.id ? (
+                    <div className="actions">
+                      <button
+                        type="button"
+                        onClick={() =>
+                          void onSetHitStatus(hit.memory!.id!, 'verified')
+                        }
+                      >
+                        Approve
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          void onSetHitStatus(hit.memory!.id!, 'disputed')
+                        }
+                      >
+                        Dispute
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          void onSetHitStatus(hit.memory!.id!, 'retracted')
+                        }
+                      >
+                        Retract
+                      </button>
+                    </div>
+                  ) : null}
                 </li>
               ))}
             </ul>

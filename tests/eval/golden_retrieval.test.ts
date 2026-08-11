@@ -364,7 +364,7 @@ describe('golden retrieval harness', () => {
     });
   }
 
-  expect(fixture.cases.length).toBeGreaterThanOrEqual(60);
+  expect(fixture.cases.length).toBeGreaterThanOrEqual(80);
 
   for (const testCase of fixture.cases) {
     it(testCase.id, () => {
