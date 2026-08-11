@@ -16,7 +16,7 @@
 
 **OAuth broker + Auth bind alpha**: `connector_secrets` / `oauth_states`, `/v1/oauth/start|callback` (vault refs only), `/v1/auth/bind` + `x-auth-user-id` resolve; Web Auth panel binds session → subject.
 
-**OCR + connector-sync alpha**: `MEMORY_OS_OCR_ENGINE=stub|fixture|tesseract`; `extractTextFromBytes` for image capture; `POST /v1/connections/sync` enqueue+complete (bumps `last_sync_at`) + GitHub stub delta → capture; MCP `connections.sync` / `capture.document` / `capture.link`; tokenized retrieval; OAuth authorize URL from `CLIENT_ID` env; golden set = 40 cases.
+**OCR + connector-sync alpha**: OCR engines; connector stub deltas (GitHub/Drive/Gmail/Calendar) → capture; MCP capture + sync ingest; OAuth fingerprint exchange (no tokens in DB); embedding stub (`MEMORY_OS_EMBED_ENGINE`); `POST /v1/memories/:id/status` + MCP `memory.set_status`; golden set = 60 cases.
 
 Owner checklist items below (ChatGPT MCP plan, region, golden set, DPIA, etc.) remain open for RG0.
 

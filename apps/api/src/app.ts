@@ -26,6 +26,7 @@ import {
   oauthCompleteSchema,
   oauthStartSchema,
   setConnectionStatusSchema,
+  setMemoryStatusSchema,
   upsertConnectionSchema,
   upsertProjectStateSchema,
 } from '@memory-os/schemas';
@@ -899,6 +900,50 @@ export function createApp(options?: {
       sensitivity: body.sensitivity,
     });
     return c.json(memory, 201);
+  });
+
+  app.post('/v1/memories/:id/status', async (c) => {
+    const memoryId = c.req.param('id');
+    const body = setMemoryStatusSchema.parse(await c.req.json());
+    const authz = c.get('authz');
+    if (!authz.isOwner && body.status !== 'disputed') {
+      return c.json({ error: 'forbidden' }, 403);
+    }
+    if (!authz.isOwner && authz.subjectId !== body.actor_subject_id) {
+      return c.json({ error: 'forbidden' }, 403);
+    }
+    const gw = c.get('gateway');
+    if (gw) {
+      try {
+        const result = await gw.setMemoryStatus({
+          subjectId: body.actor_subject_id,
+          memoryId,
+          status: body.status,
+          reason: body.reason,
+        });
+        return c.json(result);
+      } catch (err) {
+        if (isForbiddenError(err)) return c.json({ error: 'forbidden' }, 403);
+        return c.json({ error: (err as Error).message }, 500);
+      }
+    }
+    try {
+      const updated = c.get('store').setMemoryStatus({
+        memoryId,
+        status: body.status,
+        reason: body.reason,
+        actorSubjectId: body.actor_subject_id,
+      });
+      return c.json({
+        id: updated.id,
+        status: updated.status,
+        projectId: updated.projectId,
+        title: updated.title,
+        reason: body.reason,
+      });
+    } catch (err) {
+      return c.json({ error: (err as Error).message }, 404);
+    }
   });
 
   app.get('/v1/projects/:id/context', async (c) => {

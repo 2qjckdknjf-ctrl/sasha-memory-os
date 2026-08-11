@@ -4,6 +4,7 @@ import {
 } from '@memory-os/domain';
 
 export const packageName = 'retrieval' as const;
+export * from './embeddings.js';
 
 export interface SearchHit {
   memory: MemoryRecord;

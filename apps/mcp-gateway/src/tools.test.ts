@@ -21,8 +21,29 @@ describe('mcp gateway alpha', () => {
         'connections.sync',
         'capture.document',
         'capture.link',
+        'memory.set_status',
       ]),
     );
+  });
+
+  it('sets memory status offline', async () => {
+    const mcp = createMcpHandlers();
+    const chatgpt = '33333333-3333-4333-8333-333333333302';
+    const captured = (await mcp.call('capture.text', {
+      workspace_id: workspaceId,
+      project_id: projectId,
+      title: 'Review me',
+      text: 'Candidate for status change',
+      actor_subject_id: chatgpt,
+      idempotency_key: 'mcp-status-1',
+    })) as { memoryId: string };
+    const updated = (await mcp.call('memory.set_status', {
+      memory_id: captured.memoryId,
+      status: 'verified',
+      reason: 'Looks good',
+      actor_subject_id: '33333333-3333-4333-8333-333333333301',
+    })) as { status: string };
+    expect(updated.status).toBe('verified');
   });
 
   it('captures document offline via base64 text', async () => {

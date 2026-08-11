@@ -235,6 +235,121 @@ describe('golden retrieval harness', () => {
       key: 'eval/forbidden-secrets',
       sensitivity: 'confidential',
     },
+    {
+      title: 'Embedding adapter note',
+      text: 'Stub embedding adapter produces deterministic hash vectors for tests.',
+      actor: owner,
+      key: 'eval/embedding-adapter',
+    },
+    {
+      title: 'OAuth fingerprint note',
+      text: 'OAuth callback stores code fingerprint and vault ref, never raw codes.',
+      actor: chatgpt,
+      key: 'eval/oauth-fingerprint',
+    },
+    {
+      title: 'Credentials ready note',
+      text: 'When CLIENT_ID and CLIENT_SECRET exist, exchangeMode becomes credentials_ready.',
+      actor: owner,
+      key: 'eval/credentials-ready',
+    },
+    {
+      title: 'Candidate review note',
+      text: 'Candidate review queue lets owner approve or reject capture memories.',
+      actor: owner,
+      key: 'eval/candidate-review',
+    },
+    {
+      title: 'Retract memory note',
+      text: 'Owners can retract mistaken memories with an audit reason.',
+      actor: owner,
+      key: 'eval/retract',
+    },
+    {
+      title: 'Disputed fact note',
+      text: 'Agents may mark a disputed fact for human arbitration.',
+      actor: chatgpt,
+      key: 'eval/disputed',
+    },
+    {
+      title: 'Tesseract OCR note',
+      text: 'MEMORY_OS_OCR_ENGINE=tesseract shells out to the system CLI.',
+      actor: owner,
+      key: 'eval/tesseract',
+    },
+    {
+      title: 'Fixture OCR note',
+      text: 'MEMORY_OS_OCR_ENGINE=fixture reads UTF-8 payloads as OCR text.',
+      actor: owner,
+      key: 'eval/fixture-ocr',
+    },
+    {
+      title: 'Dead letter note',
+      text: 'Failed connector jobs eventually move to dead_letter status.',
+      actor: owner,
+      key: 'eval/dead-letter',
+    },
+    {
+      title: 'RLS matrix note',
+      text: 'RLS matrix documents subject visibility rules for Memory OS tables.',
+      actor: chatgpt,
+      key: 'eval/rls',
+    },
+    {
+      title: 'SECURITY DEFINER note',
+      text: 'API RPCs use SECURITY DEFINER with assert_api_secret checks.',
+      actor: owner,
+      key: 'eval/secdef',
+    },
+    {
+      title: 'Service role policy note',
+      text: 'service_role keys must never ship to the browser or Vite env.',
+      actor: owner,
+      key: 'eval/service-role',
+    },
+    {
+      title: 'Vite AuthPanel note',
+      text: 'Web AuthPanel binds Supabase session to subject via /v1/auth/bind.',
+      actor: owner,
+      key: 'eval/authpanel',
+    },
+    {
+      title: 'Calendar standup stub note',
+      text: 'Google Calendar stub invents AISTROYKA standup events from vault refs.',
+      actor: chatgpt,
+      key: 'eval/cal-standup',
+    },
+    {
+      title: 'Drive brief stub note',
+      text: 'Google Drive stub invents Project brief.docx updates without credentials.',
+      actor: owner,
+      key: 'eval/drive-brief',
+    },
+    {
+      title: 'Gmail pilot stub note',
+      text: 'Gmail stub invents pilot inbox metadata threads without bodies.',
+      actor: owner,
+      key: 'eval/gmail-pilot',
+    },
+    {
+      title: 'API secret note',
+      text: 'MEMORY_OS_API_SECRET authenticates public.api_* RPCs server-side only.',
+      actor: owner,
+      key: 'eval/api-secret',
+    },
+    {
+      title: 'Agentic retrieval budget note',
+      text: 'Agentic retrieval budget limits tool loops during context assembly.',
+      actor: chatgpt,
+      key: 'eval/agentic-budget',
+    },
+    {
+      title: 'Personal compensation confidential',
+      text: 'personal compensation bands stay confidential for owner eyes only.',
+      actor: owner,
+      key: 'eval/personal-comp',
+      sensitivity: 'confidential',
+    },
   ];
 
   for (const row of fixtures) {
@@ -249,7 +364,7 @@ describe('golden retrieval harness', () => {
     });
   }
 
-  expect(fixture.cases.length).toBeGreaterThanOrEqual(40);
+  expect(fixture.cases.length).toBeGreaterThanOrEqual(60);
 
   for (const testCase of fixture.cases) {
     it(testCase.id, () => {

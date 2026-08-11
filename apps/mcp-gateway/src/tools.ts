@@ -3,6 +3,10 @@ import {
   type MemoryStore,
 } from '@memory-os/domain';
 import type { SupabaseMemoryGateway } from '@memory-os/db';
+import { pullGithubStubDelta } from '@memory-os/connector-github';
+import { pullGmailStubDelta } from '@memory-os/connector-gmail';
+import { pullGoogleCalendarStubDelta } from '@memory-os/connector-google-calendar';
+import { pullGoogleDriveStubDelta } from '@memory-os/connector-google-drive';
 import { projectContext, searchMemories } from '@memory-os/retrieval';
 import {
   decodeBase64Document,
@@ -16,8 +20,29 @@ import {
   createDecisionSchema,
   createHandoffSchema,
   setConnectionStatusSchema,
+  setMemoryStatusSchema,
   upsertConnectionSchema,
 } from '@memory-os/schemas';
+
+const DEFAULT_PROJECT_ID = '44444444-4444-4444-8444-444444444401';
+
+function pullMcpConnectorDelta(item: {
+  connectorId: string;
+  connectionId: string;
+}) {
+  switch (item.connectorId) {
+    case 'github':
+      return pullGithubStubDelta(item);
+    case 'google-drive':
+      return pullGoogleDriveStubDelta(item);
+    case 'gmail':
+      return pullGmailStubDelta(item);
+    case 'google-calendar':
+      return pullGoogleCalendarStubDelta(item);
+    default:
+      return null;
+  }
+}
 
 export const packageName = 'mcp-gateway' as const;
 
@@ -172,15 +197,32 @@ export const mcpTools: McpTool[] = [
   },
   {
     name: 'connections.sync',
-    description: 'Enqueue connector_sync jobs for connected accounts (stub)',
+    description:
+      'Enqueue connector_sync jobs, ingest stub deltas, and mark jobs succeeded',
     inputSchema: {
       type: 'object',
       properties: {
         workspace_id: { type: 'string' },
         connection_id: { type: 'string' },
         actor_subject_id: { type: 'string' },
+        project_id: { type: 'string' },
+        complete_now: { type: 'boolean' },
       },
       required: ['workspace_id', 'actor_subject_id'],
+    },
+  },
+  {
+    name: 'memory.set_status',
+    description: 'Approve/reject/retract/dispute a memory (owner or dispute)',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        memory_id: { type: 'string' },
+        status: { type: 'string' },
+        reason: { type: 'string' },
+        actor_subject_id: { type: 'string' },
+      },
+      required: ['memory_id', 'status', 'reason', 'actor_subject_id'],
     },
   },
   {
@@ -410,17 +452,84 @@ export function createMcpHandlers(options?: {
             return {
               count: 0,
               enqueued: [],
+              completed: [],
+              captured: 0,
               backend: 'memory-store',
               note: 'connector sync requires supabase backend',
             };
           }
-          return gateway.enqueueConnectorSync({
-            subjectId: String(args.actor_subject_id),
-            workspaceId: String(args.workspace_id),
+          const subjectId = String(args.actor_subject_id);
+          const workspaceId = String(args.workspace_id);
+          const projectId = args.project_id
+            ? String(args.project_id)
+            : DEFAULT_PROJECT_ID;
+          const completeNow = args.complete_now !== false;
+          const result = await gateway.enqueueConnectorSync({
+            subjectId,
+            workspaceId,
             connectionId: args.connection_id
               ? String(args.connection_id)
               : null,
           });
+          const completed: Array<Record<string, unknown>> = [];
+          let captured = 0;
+          if (completeNow) {
+            for (const item of result.enqueued ?? []) {
+              if (!item.jobId) continue;
+              const delta = pullMcpConnectorDelta(item);
+              if (delta) {
+                for (const event of delta.items) {
+                  await gateway.captureText({
+                    subjectId,
+                    workspaceId,
+                    projectId,
+                    title: event.title,
+                    text: event.text,
+                    idempotencyKey: `connector-sync/${item.connectionId}/${event.externalId}`,
+                    processNow: true,
+                    filename: `${item.connectorId}://${event.externalId}`,
+                    mimeType: 'text/plain',
+                  });
+                  captured += 1;
+                }
+              }
+              completed.push(
+                await gateway.completeConnectorSync({
+                  subjectId,
+                  jobId: item.jobId,
+                  status: 'succeeded',
+                }),
+              );
+            }
+          }
+          return { ...result, completed, captured };
+        }
+        case 'memory.set_status': {
+          const input = setMemoryStatusSchema.parse({
+            status: args.status,
+            reason: args.reason,
+            actor_subject_id: args.actor_subject_id,
+          });
+          if (gateway) {
+            return gateway.setMemoryStatus({
+              subjectId: input.actor_subject_id,
+              memoryId: String(args.memory_id),
+              status: input.status,
+              reason: input.reason,
+            });
+          }
+          const updated = store.setMemoryStatus({
+            memoryId: String(args.memory_id),
+            status: input.status,
+            reason: input.reason,
+            actorSubjectId: input.actor_subject_id,
+          });
+          return {
+            id: updated.id,
+            status: updated.status,
+            title: updated.title,
+            reason: input.reason,
+          };
         }
         case 'capture.document': {
           const input = captureDocumentSchema.parse(args);

@@ -279,6 +279,146 @@
       "actor": "cursor",
       "must_allow": true,
       "expect_no_sensitivity": "confidential"
+    },
+    {
+      "id": "gr-041",
+      "query": "embedding adapter",
+      "expect_content_includes": "embedding",
+      "actor": "owner",
+      "must_allow": true
+    },
+    {
+      "id": "gr-042",
+      "query": "code fingerprint oauth",
+      "expect_content_includes": "fingerprint",
+      "actor": "chatgpt",
+      "must_allow": true
+    },
+    {
+      "id": "gr-043",
+      "query": "credentials ready mode",
+      "expect_content_includes": "credentials_ready",
+      "actor": "owner",
+      "must_allow": true
+    },
+    {
+      "id": "gr-044",
+      "query": "candidate review queue",
+      "expect_content_includes": "review",
+      "actor": "cursor",
+      "must_allow": true
+    },
+    {
+      "id": "gr-045",
+      "query": "retract mistaken memory",
+      "expect_content_includes": "retract",
+      "actor": "owner",
+      "must_allow": true
+    },
+    {
+      "id": "gr-046",
+      "query": "disputed fact",
+      "expect_content_includes": "disputed",
+      "actor": "chatgpt",
+      "must_allow": true
+    },
+    {
+      "id": "gr-047",
+      "query": "tesseract OCR engine",
+      "expect_content_includes": "tesseract",
+      "actor": "owner",
+      "must_allow": true
+    },
+    {
+      "id": "gr-048",
+      "query": "fixture OCR engine",
+      "expect_content_includes": "fixture",
+      "actor": "cursor",
+      "must_allow": true
+    },
+    {
+      "id": "gr-049",
+      "query": "dead letter job",
+      "expect_content_includes": "dead_letter",
+      "actor": "owner",
+      "must_allow": true
+    },
+    {
+      "id": "gr-050",
+      "query": "RLS matrix",
+      "expect_content_includes": "RLS",
+      "actor": "chatgpt",
+      "must_allow": true
+    },
+    {
+      "id": "gr-051",
+      "query": "SECURITY DEFINER rpc",
+      "expect_content_includes": "SECURITY DEFINER",
+      "actor": "owner",
+      "must_allow": true
+    },
+    {
+      "id": "gr-052",
+      "query": "service_role browser",
+      "expect_content_includes": "service_role",
+      "actor": "cursor",
+      "must_allow": true
+    },
+    {
+      "id": "gr-053",
+      "query": "vite auth bind panel",
+      "expect_content_includes": "AuthPanel",
+      "actor": "owner",
+      "must_allow": true
+    },
+    {
+      "id": "gr-054",
+      "query": "calendar standup stub",
+      "expect_content_includes": "standup",
+      "actor": "chatgpt",
+      "must_allow": true
+    },
+    {
+      "id": "gr-055",
+      "query": "drive brief docx",
+      "expect_content_includes": "brief.docx",
+      "actor": "owner",
+      "must_allow": true
+    },
+    {
+      "id": "gr-056",
+      "query": "gmail pilot inbox",
+      "expect_content_includes": "pilot",
+      "actor": "cursor",
+      "must_allow": true
+    },
+    {
+      "id": "gr-057",
+      "query": "MEMORY_OS_API_SECRET",
+      "expect_content_includes": "API_SECRET",
+      "actor": "owner",
+      "must_allow": true
+    },
+    {
+      "id": "gr-058",
+      "query": "agentic retrieval budget",
+      "expect_content_includes": "budget",
+      "actor": "chatgpt",
+      "must_allow": true
+    },
+    {
+      "id": "gr-059",
+      "query": "Product Design Audit",
+      "expect_memory_title_includes": "Slice",
+      "actor": "owner",
+      "must_allow": true
+    },
+    {
+      "id": "gr-060",
+      "query": "personal compensation",
+      "actor": "cursor",
+      "must_allow": true,
+      "expect_no_sensitivity": "confidential"
     }
   ]
 }

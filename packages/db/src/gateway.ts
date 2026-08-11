@@ -357,6 +357,29 @@ export class SupabaseMemoryGateway {
     };
   }
 
+  async setMemoryStatus(input: {
+    subjectId: string;
+    memoryId: string;
+    status: string;
+    reason: string;
+  }) {
+    const { data, error } = await this.client.rpc('api_set_memory_status', {
+      p_secret: this.apiSecret,
+      p_subject_id: input.subjectId,
+      p_memory_id: input.memoryId,
+      p_status: input.status,
+      p_reason: input.reason,
+    });
+    if (error) throw error;
+    return data as {
+      id: string;
+      status: string;
+      projectId: string | null;
+      title: string;
+      reason: string;
+    };
+  }
+
   async completeConnectorSync(input: {
     subjectId: string;
     jobId: string;

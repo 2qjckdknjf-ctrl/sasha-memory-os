@@ -13,6 +13,10 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@memory-os/connector-github": "workspace:*",
+    "@memory-os/connector-gmail": "workspace:*",
+    "@memory-os/connector-google-calendar": "workspace:*",
+    "@memory-os/connector-google-drive": "workspace:*",
     "@memory-os/db": "workspace:^",
     "@memory-os/domain": "workspace:*",
     "@memory-os/ingestion": "workspace:*",

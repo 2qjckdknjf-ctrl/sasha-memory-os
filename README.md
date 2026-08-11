@@ -45,7 +45,7 @@ OAuth broker (stub): `POST /v1/oauth/start` → `POST /v1/oauth/callback` stores
 
 ## Следующий шаг
 
-- Set `MEMORY_OS_OAUTH_GITHUB_CLIENT_ID` / `MEMORY_OS_OAUTH_GOOGLE_CLIENT_ID` (+ vault/KMS) for real broker token exchange
-- Expand golden retrieval set toward 100–200 cases (40 seeded now)
-- Replace GitHub/Drive/Gmail/Calendar stub deltas with vault-backed provider pulls
-- Real OAuth token exchange into KMS/vault (CLIENT_ID alone is not enough)
+- HTTP OAuth token exchange into KMS/vault when `CLIENT_ID`+`CLIENT_SECRET` set (`credentials_ready`)
+- Expand golden retrieval set toward 100–200 cases (60 seeded now)
+- Replace connector stub deltas with vault-backed provider pulls
+- Real embedding provider behind `MEMORY_OS_EMBED_ENGINE` (stub hash for now)

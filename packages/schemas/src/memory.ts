@@ -96,7 +96,14 @@ export const createHandoffSchema = z.object({
   idempotency_key: z.string().min(1),
 });
 
+export const setMemoryStatusSchema = z.object({
+  status: memoryStatusSchema,
+  reason: z.string().min(1).max(2000),
+  actor_subject_id: z.string().uuid(),
+});
+
 export type MemoryRecord = z.infer<typeof memoryRecordSchema>;
 export type CreateDecisionInput = z.infer<typeof createDecisionSchema>;
 export type UpsertProjectStateInput = z.infer<typeof upsertProjectStateSchema>;
 export type CreateHandoffInput = z.infer<typeof createHandoffSchema>;
+export type SetMemoryStatusInput = z.infer<typeof setMemoryStatusSchema>;

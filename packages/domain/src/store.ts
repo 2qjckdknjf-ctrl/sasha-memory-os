@@ -243,6 +243,28 @@ export class MemoryStore {
     const list = this.handoffs.get(projectId) ?? [];
     return list[list.length - 1] ?? null;
   }
+
+  setMemoryStatus(input: {
+    memoryId: string;
+    status: MemoryRecord['status'];
+    reason: string;
+    actorSubjectId: string;
+  }): MemoryRecord {
+    const current = this.memories.get(input.memoryId);
+    if (!current) throw new Error('memory not found');
+    const next: MemoryRecord = {
+      ...current,
+      status: input.status,
+      metadata: {
+        ...current.metadata,
+        status_reason: input.reason,
+        status_actor: input.actorSubjectId,
+        status_at: new Date().toISOString(),
+      },
+    };
+    this.memories.set(next.id, next);
+    return next;
+  }
 }
 
 export function createSeededStore(): MemoryStore {

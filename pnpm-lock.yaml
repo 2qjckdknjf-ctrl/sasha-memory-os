@@ -88,6 +88,18 @@ importers:
 
   apps/mcp-gateway:
     dependencies:
+      '@memory-os/connector-github':
+        specifier: workspace:*
+        version: link:../../connectors/github
+      '@memory-os/connector-gmail':
+        specifier: workspace:*
+        version: link:../../connectors/gmail
+      '@memory-os/connector-google-calendar':
+        specifier: workspace:*
+        version: link:../../connectors/google-calendar
+      '@memory-os/connector-google-drive':
+        specifier: workspace:*
+        version: link:../../connectors/google-drive
       '@memory-os/db':
         specifier: workspace:^
         version: link:../../packages/db
