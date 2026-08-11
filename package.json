@@ -5,11 +5,15 @@
   "packageManager": "pnpm@9.15.9",
   "scripts": {
     "typecheck": "pnpm -r run typecheck",
-    "test": "pnpm -r run test",
+    "test": "pnpm -r run test && vitest run --config vitest.workspace.config.ts",
     "lint": "echo \"No lint config in WP-01; reserved for M1.\""
   },
   "devDependencies": {
+    "@types/node": "^26.2.0",
     "typescript": "^5.8.2",
     "vitest": "^3.0.9"
+  },
+  "dependencies": {
+    "zod": "^4.4.3"
   }
 }

@@ -1,0 +1,102 @@
+import { z } from 'zod';
+import { sensitivitySchema } from './ingestion.js';
+
+export const memoryTypeSchema = z.enum([
+  'fact',
+  'preference',
+  'idea',
+  'decision',
+  'task',
+  'event',
+  'state',
+  'handoff',
+]);
+
+export const memoryStatusSchema = z.enum([
+  'candidate',
+  'active',
+  'verified',
+  'disputed',
+  'superseded',
+  'retracted',
+  'deleted',
+]);
+
+export const memoryRecordSchema = z.object({
+  id: z.string().uuid(),
+  workspace_id: z.string().uuid(),
+  project_id: z.string().uuid().nullable().optional(),
+  memory_type: memoryTypeSchema,
+  title: z.string().min(1),
+  content: z.string().min(1),
+  status: memoryStatusSchema,
+  importance: z.number().min(0).max(1),
+  confidence: z.number().min(0).max(1),
+  sensitivity: sensitivitySchema,
+  valid_from: z.string().datetime().nullable().optional(),
+  valid_to: z.string().datetime().nullable().optional(),
+  observed_at: z.string().datetime().nullable().optional(),
+  recorded_at: z.string().datetime(),
+  superseded_by: z.string().uuid().nullable().optional(),
+  source_event_id: z.string().uuid().nullable().optional(),
+  created_by_subject: z.string().uuid().nullable().optional(),
+  schema_version: z.string().default('1.0'),
+  metadata: z.record(z.string(), z.unknown()).default({}),
+});
+
+export const createDecisionSchema = z.object({
+  workspace_id: z.string().uuid(),
+  project_id: z.string().uuid(),
+  title: z.string().min(1),
+  content: z.string().min(1),
+  rationale: z.string().optional(),
+  decision_maker: z.string().optional(),
+  effective_at: z.string().datetime().optional(),
+  importance: z.number().min(0).max(1).default(0.5),
+  confidence: z.number().min(0).max(1).default(0.9),
+  sensitivity: sensitivitySchema.default('internal'),
+  idempotency_key: z.string().min(1),
+  actor_subject_id: z.string().uuid(),
+});
+
+export const projectStateSchema = z.object({
+  stage: z.string(),
+  completed: z.array(z.string()).default([]),
+  in_progress: z.array(z.string()).default([]),
+  blocked: z.array(z.string()).default([]),
+  next: z.array(z.string()).default([]),
+  risks: z.array(z.string()).default([]),
+  active_decisions: z.array(z.string().uuid()).default([]),
+});
+
+export const upsertProjectStateSchema = z.object({
+  workspace_id: z.string().uuid(),
+  project_id: z.string().uuid(),
+  expected_version: z.number().int().nonnegative(),
+  state: projectStateSchema,
+  summary: z.string().optional(),
+  actor_subject_id: z.string().uuid(),
+  idempotency_key: z.string().min(1),
+});
+
+export const createHandoffSchema = z.object({
+  workspace_id: z.string().uuid(),
+  project_id: z.string().uuid(),
+  from_subject_id: z.string().uuid(),
+  to_subject_id: z.string().uuid().optional(),
+  session_id: z.string().uuid().optional(),
+  payload: z.object({
+    completed: z.array(z.string()).default([]),
+    artifacts: z.array(z.record(z.string(), z.unknown())).default([]),
+    validation: z.array(z.string()).default([]),
+    open_items: z.array(z.string()).default([]),
+    blockers: z.array(z.string()).default([]),
+    recommended_next: z.array(z.string()).default([]),
+  }),
+  idempotency_key: z.string().min(1),
+});
+
+export type MemoryRecord = z.infer<typeof memoryRecordSchema>;
+export type CreateDecisionInput = z.infer<typeof createDecisionSchema>;
+export type UpsertProjectStateInput = z.infer<typeof upsertProjectStateSchema>;
+export type CreateHandoffInput = z.infer<typeof createHandoffSchema>;

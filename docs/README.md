@@ -12,6 +12,8 @@
 | [adr/](adr/) | Architecture Decision Records |
 | [engineering/ENVIRONMENT_MATRIX.md](engineering/ENVIRONMENT_MATRIX.md) | local / dev / staging / prod |
 | [engineering/SECRETS_POLICY.md](engineering/SECRETS_POLICY.md) | Хранение и запреты для secrets |
+| [engineering/RLS_MATRIX.md](engineering/RLS_MATRIX.md) | RLS / ACL matrix и negative cases |
+| [engineering/DEMO_SLICE.md](engineering/DEMO_SLICE.md) | decision → state → MCP → handoff |
 
 ## Правило изменений
 

@@ -10,9 +10,11 @@
   },
   "scripts": {
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "test": "vitest run --passWithNoTests"
+    "test": "vitest run"
   },
   "dependencies": {
-    "@memory-os/domain": "workspace:*"
+    "@memory-os/domain": "workspace:*",
+    "@memory-os/retrieval": "workspace:^",
+    "@memory-os/schemas": "workspace:^"
   }
 }

@@ -6,7 +6,9 @@
 
 **WP-01 landed** in-repo: [ADR-001..005](../adr/README.md), monorepo skeleton (§4.4), CI smoke, [environment matrix](../engineering/ENVIRONMENT_MATRIX.md), [secrets policy](../engineering/SECRETS_POLICY.md).
 
-Owner checklist items below (ChatGPT MCP plan, region, golden set, DPIA, etc.) remain open for RG0 — they are not closed by WP-01 bootstrap alone.
+**WP-02…08 alpha slice landed** (local/in-memory + SQL migrations): see [DEMO_SLICE.md](../engineering/DEMO_SLICE.md) and [RLS_MATRIX.md](../engineering/RLS_MATRIX.md). Remote Supabase apply + live RLS execution still pending tooling/project.
+
+Owner checklist items below (ChatGPT MCP plan, region, golden set, DPIA, etc.) remain open for RG0.
 
 ## Цель
 

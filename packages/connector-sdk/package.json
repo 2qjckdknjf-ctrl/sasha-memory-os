@@ -13,6 +13,7 @@
     "test": "vitest run --passWithNoTests"
   },
   "dependencies": {
-    "@memory-os/domain": "workspace:*"
+    "@memory-os/domain": "workspace:*",
+    "zod": "^4.4.3"
   }
 }

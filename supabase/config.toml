@@ -1,0 +1,20 @@
+# Local Supabase config for Sasha Memory OS.
+# Dedicated project only — never share with AISTROYKA / HiAir (ADR-005).
+
+project_id = "sasha-memory-os"
+
+[api]
+enabled = true
+port = 54321
+
+[db]
+port = 54322
+major_version = 15
+
+[db.seed]
+enabled = true
+sql_paths = ["./seed.sql"]
+
+[studio]
+enabled = true
+port = 54323

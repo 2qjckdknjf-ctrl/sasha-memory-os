@@ -10,23 +10,30 @@
 - [ADRs](docs/adr/README.md)
 - [Environment matrix](docs/engineering/ENVIRONMENT_MATRIX.md)
 - [Secrets policy](docs/engineering/SECRETS_POLICY.md)
+- [RLS matrix](docs/engineering/RLS_MATRIX.md)
+- [Demo slice](docs/engineering/DEMO_SLICE.md)
 
 ## Статус
 
-**WP-01 bootstrap** — monorepo skeleton, ADR-001..005, CI smoke, governance docs.
+**WP-01…WP-08 alpha slice** in progress:
 
-Реализация Memory Core / MCP / connectors ещё не начата.
+- WP-01 bootstrap done
+- WP-02 SQL migrations + RLS + seed (apply when Supabase local works)
+- WP-03 ingestion/job schemas + idempotent event store (in-memory + SQL)
+- WP-05/06 typed memory + project state + handoff (domain + API)
+- WP-07 retrieval stub
+- WP-08 MCP gateway alpha tools
 
 ## Репозиторий
 
-pnpm workspaces. Layout — baseline §4.4 (`apps/`, `workers/`, `packages/`, `connectors/`, `supabase/`, `tests/`).
-
 ```bash
-pnpm install
-pnpm typecheck
-pnpm test
+npx pnpm@9.15.9 install
+npx pnpm@9.15.9 typecheck
+npx pnpm@9.15.9 test
 ```
 
 ## Следующий шаг
 
-**WP-02** — Database and RLS foundation (migrations, RLS matrix, policy tests, synthetic seed).
+- Поднять dedicated Supabase project (не AISTROYKA/HiAir) и применить migrations
+- Починить arm64 Supabase CLI / Docker
+- Web timeline UI поверх `/v1/projects/:id/context` + handoffs
