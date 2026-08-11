@@ -26,3 +26,5 @@ Document capture alpha: `POST /v1/capture/document` accepts base64 `.txt` / `.pd
 Link capture alpha: `POST /v1/capture/link` fetches public http(s) URLs after DNS/SSRF checks (no private IPs, no credentialed URLs, redirects disabled).
 
 SQL path: migrations are applied to live project `sasha-memory-os` (see [SUPABASE.md](./SUPABASE.md)). Local CLI currently blocked on this machine (x86_64 binary).
+
+Live alpha extras: hybrid search + embeddings, vault-backed connector sync, consolidation outbox, OAuth → vault refs, owner re-embed / embed-missing catch-up, `scripts/smoke-api.sh`.

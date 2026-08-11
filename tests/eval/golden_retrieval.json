@@ -559,6 +559,850 @@
       "expect_content_includes": "budget",
       "actor": "cursor",
       "must_allow": true
+    },
+    {
+      "id": "gr-081",
+      "query": "vault AES GCM tokens",
+      "expect_content_includes": "AES-GCM",
+      "actor": "owner",
+      "must_allow": true
+    },
+    {
+      "id": "gr-082",
+      "query": "oauth peek state exchange",
+      "expect_content_includes": "peek",
+      "actor": "chatgpt",
+      "must_allow": true
+    },
+    {
+      "id": "gr-083",
+      "query": "connector pull mode auto",
+      "expect_content_includes": "CONNECTOR_PULL_MODE",
+      "actor": "owner",
+      "must_allow": true
+    },
+    {
+      "id": "gr-084",
+      "query": "github user events vault",
+      "expect_content_includes": "user events",
+      "actor": "cursor",
+      "must_allow": true
+    },
+    {
+      "id": "gr-085",
+      "query": "gmail metadata vault pull",
+      "expect_content_includes": "Gmail metadata",
+      "actor": "owner",
+      "must_allow": true
+    },
+    {
+      "id": "gr-086",
+      "query": "drive files list vault",
+      "expect_content_includes": "Drive files",
+      "actor": "chatgpt",
+      "must_allow": true
+    },
+    {
+      "id": "gr-087",
+      "query": "calendar events vault",
+      "expect_content_includes": "Calendar events",
+      "actor": "owner",
+      "must_allow": true
+    },
+    {
+      "id": "gr-088",
+      "query": "hybrid rpc embed ranking",
+      "expect_content_includes": "hybrid:rpc+embed",
+      "actor": "cursor",
+      "must_allow": true
+    },
+    {
+      "id": "gr-089",
+      "query": "openai embedding adapter",
+      "expect_content_includes": "OpenAI",
+      "actor": "owner",
+      "must_allow": true
+    },
+    {
+      "id": "gr-090",
+      "query": "exchange mode exchanged",
+      "expect_content_includes": "exchanged",
+      "actor": "chatgpt",
+      "must_allow": true
+    },
+    {
+      "id": "gr-091",
+      "query": "tokens never postgres",
+      "expect_content_includes": "Postgres",
+      "actor": "owner",
+      "must_allow": true
+    },
+    {
+      "id": "gr-092",
+      "query": "redirect uri google oauth",
+      "expect_content_includes": "redirect_uri",
+      "actor": "owner",
+      "must_allow": true
+    },
+    {
+      "id": "gr-093",
+      "query": "code fingerprint only",
+      "expect_content_includes": "fingerprint",
+      "actor": "cursor",
+      "must_allow": true
+    },
+    {
+      "id": "gr-094",
+      "query": "review queue candidates status",
+      "expect_content_includes": "candidate",
+      "actor": "owner",
+      "must_allow": true
+    },
+    {
+      "id": "gr-095",
+      "query": "disputed fact arbitration",
+      "expect_content_includes": "disputed",
+      "actor": "chatgpt",
+      "must_allow": true
+    },
+    {
+      "id": "gr-096",
+      "query": "eu central supabase project",
+      "expect_content_includes": "eu-central-1",
+      "actor": "owner",
+      "must_allow": true
+    },
+    {
+      "id": "gr-097",
+      "query": "pnpm volta shim broken",
+      "expect_content_includes": "pnpm@9.15.9",
+      "actor": "owner",
+      "must_allow": true
+    },
+    {
+      "id": "gr-098",
+      "query": "restricted passport salary",
+      "expect_empty_or_no_restricted": true,
+      "actor": "cursor",
+      "must_allow": true
+    },
+    {
+      "id": "gr-099",
+      "query": "confidential compensation leak",
+      "expect_empty_or_no_restricted": true,
+      "expect_no_sensitivity": "confidential",
+      "actor": "cursor",
+      "must_allow": true
+    },
+    {
+      "id": "gr-100",
+      "query": "forbidden secrets agent leak",
+      "expect_empty_or_no_restricted": true,
+      "actor": "chatgpt",
+      "must_allow": true
+    },
+    {
+      "id": "gr-101",
+      "query": "consolidation supersede duplicate",
+      "actor": "owner",
+      "must_allow": true,
+      "expect_content_includes": "consolidation"
+    },
+    {
+      "id": "gr-102",
+      "query": "exact title duplicate merge",
+      "actor": "chatgpt",
+      "must_allow": true,
+      "expect_content_includes": "duplicate"
+    },
+    {
+      "id": "gr-103",
+      "query": "keeper candidate retained",
+      "actor": "owner",
+      "must_allow": true,
+      "expect_content_includes": "keeper"
+    },
+    {
+      "id": "gr-104",
+      "query": "vault backend memory mode",
+      "actor": "owner",
+      "must_allow": true,
+      "expect_content_includes": "VAULT_BACKEND"
+    },
+    {
+      "id": "gr-105",
+      "query": "memory vault ephemeral tokens",
+      "actor": "cursor",
+      "must_allow": true,
+      "expect_content_includes": "ephemeral"
+    },
+    {
+      "id": "gr-106",
+      "query": "superseded by provenance",
+      "actor": "owner",
+      "must_allow": true,
+      "expect_content_includes": "superseded"
+    },
+    {
+      "id": "gr-107",
+      "query": "near duplicate embed similarity",
+      "actor": "chatgpt",
+      "must_allow": true,
+      "expect_content_includes": "similarity"
+    },
+    {
+      "id": "gr-108",
+      "query": "worker consolidation once",
+      "actor": "owner",
+      "must_allow": true,
+      "expect_content_includes": "worker-consolidation"
+    },
+    {
+      "id": "gr-109",
+      "query": "api supersede memory rpc",
+      "actor": "owner",
+      "must_allow": true,
+      "expect_content_includes": "supersede"
+    },
+    {
+      "id": "gr-110",
+      "query": "review queue after consolidate",
+      "actor": "owner",
+      "must_allow": true,
+      "expect_content_includes": "review"
+    },
+    {
+      "id": "gr-111",
+      "query": "oauth exchanged tokens vault",
+      "actor": "chatgpt",
+      "must_allow": true,
+      "expect_content_includes": "exchanged"
+    },
+    {
+      "id": "gr-112",
+      "query": "gmail vault metadata subject",
+      "actor": "owner",
+      "must_allow": true,
+      "expect_content_includes": "Subject"
+    },
+    {
+      "id": "gr-113",
+      "query": "drive modifiedTime ordering",
+      "actor": "cursor",
+      "must_allow": true,
+      "expect_content_includes": "modifiedTime"
+    },
+    {
+      "id": "gr-114",
+      "query": "calendar timeMin upcoming",
+      "actor": "owner",
+      "must_allow": true,
+      "expect_content_includes": "timeMin"
+    },
+    {
+      "id": "gr-115",
+      "query": "hybrid sql vector reason",
+      "actor": "chatgpt",
+      "must_allow": true,
+      "expect_content_includes": "sql+vector"
+    },
+    {
+      "id": "gr-116",
+      "query": "embedding dims thirty two",
+      "actor": "owner",
+      "must_allow": true,
+      "expect_content_includes": "embedding_dims"
+    },
+    {
+      "id": "gr-117",
+      "query": "hnsw index embedding vector",
+      "actor": "owner",
+      "must_allow": true,
+      "expect_content_includes": "HNSW"
+    },
+    {
+      "id": "gr-118",
+      "query": "capture embeds after process",
+      "actor": "chatgpt",
+      "must_allow": true,
+      "expect_content_includes": "embedded"
+    },
+    {
+      "id": "gr-119",
+      "query": "forbidden restricted passport again",
+      "actor": "cursor",
+      "must_allow": true,
+      "expect_empty_or_no_restricted": true
+    },
+    {
+      "id": "gr-120",
+      "query": "confidential salary agent hide",
+      "actor": "chatgpt",
+      "must_allow": true,
+      "expect_empty_or_no_restricted": true,
+      "expect_no_sensitivity": "confidential"
+    },
+    {
+      "id": "gr-121",
+      "query": "connector pull mode vault strict",
+      "actor": "owner",
+      "must_allow": true,
+      "expect_content_includes": "CONNECTOR_PULL_MODE"
+    },
+    {
+      "id": "gr-122",
+      "query": "local AES GCM vault files",
+      "actor": "owner",
+      "must_allow": true,
+      "expect_content_includes": "AES-GCM"
+    },
+    {
+      "id": "gr-123",
+      "query": "pnpm prefer nine fifteen",
+      "actor": "owner",
+      "must_allow": true,
+      "expect_content_includes": "pnpm@9.15.9"
+    },
+    {
+      "id": "gr-124",
+      "query": "eu central residency",
+      "actor": "owner",
+      "must_allow": true,
+      "expect_content_includes": "eu-central-1"
+    },
+    {
+      "id": "gr-125",
+      "query": "MCP connections sync tool",
+      "actor": "cursor",
+      "must_allow": true,
+      "expect_content_includes": "connections.sync"
+    },
+    {
+      "id": "gr-126",
+      "query": "Auth bind x-auth-user-id",
+      "actor": "owner",
+      "must_allow": true,
+      "expect_content_includes": "x-auth-user-id"
+    },
+    {
+      "id": "gr-127",
+      "query": "dead letter connector jobs",
+      "actor": "owner",
+      "must_allow": true,
+      "expect_content_includes": "dead_letter"
+    },
+    {
+      "id": "gr-128",
+      "query": "RLS force row level",
+      "actor": "chatgpt",
+      "must_allow": true,
+      "expect_content_includes": "FORCE ROW LEVEL"
+    },
+    {
+      "id": "gr-129",
+      "query": "outbox reliable delivery",
+      "actor": "owner",
+      "must_allow": true,
+      "expect_content_includes": "outbox"
+    },
+    {
+      "id": "gr-130",
+      "query": "agentic retrieval budget limit",
+      "actor": "cursor",
+      "must_allow": true,
+      "expect_content_includes": "budget"
+    },
+    {
+      "id": "gr-131",
+      "query": "OCR tesseract engine note",
+      "actor": "owner",
+      "must_allow": true,
+      "expect_content_includes": "tesseract"
+    },
+    {
+      "id": "gr-132",
+      "query": "fixture OCR utf8 payloads",
+      "actor": "chatgpt",
+      "must_allow": true,
+      "expect_content_includes": "fixture"
+    },
+    {
+      "id": "gr-133",
+      "query": "quarantine sha256 artifact",
+      "actor": "owner",
+      "must_allow": true,
+      "expect_content_includes": "SHA-256"
+    },
+    {
+      "id": "gr-134",
+      "query": "SSRF-safe fetch public URLs",
+      "actor": "cursor",
+      "must_allow": true,
+      "expect_content_includes": "SSRF"
+    },
+    {
+      "id": "gr-135",
+      "query": "Apple bridge notes later",
+      "actor": "owner",
+      "must_allow": true,
+      "expect_content_includes": "Apple bridge"
+    },
+    {
+      "id": "gr-136",
+      "query": "ROMA shared memory core",
+      "actor": "chatgpt",
+      "must_allow": true,
+      "expect_content_includes": "ROMA"
+    },
+    {
+      "id": "gr-137",
+      "query": "temporal supersession facts",
+      "actor": "owner",
+      "must_allow": true,
+      "expect_content_includes": "Temporal"
+    },
+    {
+      "id": "gr-138",
+      "query": "DPIA privacy retention",
+      "actor": "owner",
+      "must_allow": true,
+      "expect_content_includes": "DPIA"
+    },
+    {
+      "id": "gr-139",
+      "query": "correction UX review owner",
+      "actor": "owner",
+      "must_allow": true,
+      "expect_content_includes": "Correction"
+    },
+    {
+      "id": "gr-140",
+      "query": "agent handoff for project",
+      "actor": "cursor",
+      "must_allow": true,
+      "expect_content_includes": "handoff"
+    },
+    {
+      "id": "gr-141",
+      "query": "shared vault ciphertext blobs",
+      "actor": "owner",
+      "must_allow": true,
+      "expect_content_includes": "ciphertext"
+    },
+    {
+      "id": "gr-142",
+      "query": "api vault put get delete",
+      "actor": "chatgpt",
+      "must_allow": true,
+      "expect_content_includes": "vault"
+    },
+    {
+      "id": "gr-143",
+      "query": "list memories embedding field",
+      "actor": "owner",
+      "must_allow": true,
+      "expect_content_includes": "embedding"
+    },
+    {
+      "id": "gr-144",
+      "query": "hybrid ranking mcp search",
+      "actor": "owner",
+      "must_allow": true,
+      "expect_content_includes": "hybrid"
+    },
+    {
+      "id": "gr-145",
+      "query": "hybrid ranking mcp search",
+      "actor": "cursor",
+      "must_allow": true,
+      "expect_content_includes": "hybrid"
+    },
+    {
+      "id": "gr-146",
+      "query": "Web OAuth authorize URL",
+      "actor": "chatgpt",
+      "must_allow": true,
+      "expect_content_includes": "authorize"
+    },
+    {
+      "id": "gr-147",
+      "query": "oauth real authorize redirect",
+      "actor": "owner",
+      "must_allow": true,
+      "expect_content_includes": "authorize"
+    },
+    {
+      "id": "gr-148",
+      "query": "vault key required non local",
+      "actor": "owner",
+      "must_allow": true,
+      "expect_content_includes": "VAULT_KEY"
+    },
+    {
+      "id": "gr-149",
+      "query": "pull credentials vault mode",
+      "actor": "owner",
+      "must_allow": true,
+      "expect_content_includes": "vault token"
+    },
+    {
+      "id": "gr-150",
+      "query": "supabase vault backend default",
+      "actor": "cursor",
+      "must_allow": true,
+      "expect_content_includes": "supabase"
+    },
+    {
+      "id": "gr-151",
+      "query": "restricted passport still hidden",
+      "actor": "cursor",
+      "must_allow": true,
+      "expect_empty_or_no_restricted": true
+    },
+    {
+      "id": "gr-152",
+      "query": "confidential compensation still hidden",
+      "actor": "chatgpt",
+      "must_allow": true,
+      "expect_empty_or_no_restricted": true,
+      "expect_no_sensitivity": "confidential"
+    },
+    {
+      "id": "gr-153",
+      "query": "review queue load candidates",
+      "actor": "owner",
+      "must_allow": true,
+      "expect_content_includes": "candidate"
+    },
+    {
+      "id": "gr-154",
+      "query": "consolidation worker merges duplicates",
+      "actor": "owner",
+      "must_allow": true,
+      "expect_content_includes": "consolidation"
+    },
+    {
+      "id": "gr-155",
+      "query": "connector sync pullMode note",
+      "actor": "owner",
+      "must_allow": true,
+      "expect_content_includes": "pullMode"
+    },
+    {
+      "id": "gr-156",
+      "query": "memory search hybrid rpc embed",
+      "actor": "cursor",
+      "must_allow": true,
+      "expect_content_includes": "rpc+embed"
+    },
+    {
+      "id": "gr-157",
+      "query": "MCP memory search hybrid rpc embed",
+      "actor": "owner",
+      "must_allow": true,
+      "expect_content_includes": "rpc+embed"
+    },
+    {
+      "id": "gr-158",
+      "query": "worker connector sync once",
+      "actor": "chatgpt",
+      "must_allow": true,
+      "expect_content_includes": "connector-sync"
+    },
+    {
+      "id": "gr-159",
+      "query": "dead letter failed sync jobs",
+      "actor": "owner",
+      "must_allow": true,
+      "expect_content_includes": "dead_letter"
+    },
+    {
+      "id": "gr-160",
+      "query": "outbox events workers",
+      "actor": "owner",
+      "must_allow": true,
+      "expect_content_includes": "outbox"
+    },
+    {
+      "id": "gr-161",
+      "query": "api enqueue consolidation outbox",
+      "actor": "owner",
+      "must_allow": true,
+      "expect_content_includes": "api_enqueue_consolidation"
+    },
+    {
+      "id": "gr-162",
+      "query": "WORKER INTERVAL MS cron loops",
+      "actor": "owner",
+      "must_allow": true,
+      "expect_content_includes": "MEMORY_OS_WORKER_INTERVAL_MS"
+    },
+    {
+      "id": "gr-163",
+      "query": "complete consolidation publishes outbox",
+      "actor": "chatgpt",
+      "must_allow": true,
+      "expect_content_includes": "api_complete_consolidation"
+    },
+    {
+      "id": "gr-164",
+      "query": "idempotency key UTC minute",
+      "actor": "owner",
+      "must_allow": true,
+      "expect_content_includes": "idempotency"
+    },
+    {
+      "id": "gr-165",
+      "query": "connector-sync worker loop interval",
+      "actor": "cursor",
+      "must_allow": true,
+      "expect_content_includes": "connector-sync"
+    },
+    {
+      "id": "gr-166",
+      "query": "shared vault ciphertext OAuth sync",
+      "actor": "owner",
+      "must_allow": true,
+      "expect_content_includes": "ciphertext"
+    },
+    {
+      "id": "gr-167",
+      "query": "SQL hybrid query embedding",
+      "actor": "chatgpt",
+      "must_allow": true,
+      "expect_content_includes": "query embedding"
+    },
+    {
+      "id": "gr-168",
+      "query": "supersedeMemory consolidation reason",
+      "actor": "owner",
+      "must_allow": true,
+      "expect_content_includes": "supersedeMemory"
+    },
+    {
+      "id": "gr-169",
+      "query": "MCP consolidation.run near-duplicate",
+      "actor": "owner",
+      "must_allow": true,
+      "expect_content_includes": "consolidation.run"
+    },
+    {
+      "id": "gr-170",
+      "query": "Web Run consolidation owner",
+      "actor": "owner",
+      "must_allow": true,
+      "expect_content_includes": "Run consolidation"
+    },
+    {
+      "id": "gr-171",
+      "query": "CONNECTOR_PULL_MODE auto vault stub",
+      "actor": "cursor",
+      "must_allow": true,
+      "expect_content_includes": "PULL_MODE"
+    },
+    {
+      "id": "gr-172",
+      "query": "GitHub vault pull issues watermark",
+      "actor": "chatgpt",
+      "must_allow": true,
+      "expect_content_includes": "issues"
+    },
+    {
+      "id": "gr-173",
+      "query": "Gmail vault subject headers",
+      "actor": "owner",
+      "must_allow": true,
+      "expect_content_includes": "headers"
+    },
+    {
+      "id": "gr-174",
+      "query": "Drive modifiedTime ingest",
+      "actor": "cursor",
+      "must_allow": true,
+      "expect_content_includes": "modifiedTime"
+    },
+    {
+      "id": "gr-175",
+      "query": "Calendar timeMin upcoming",
+      "actor": "owner",
+      "must_allow": true,
+      "expect_content_includes": "timeMin"
+    },
+    {
+      "id": "gr-176",
+      "query": "embedding_vector hybrid retrieval",
+      "actor": "chatgpt",
+      "must_allow": true,
+      "expect_content_includes": "embedding_vector"
+    },
+    {
+      "id": "gr-177",
+      "query": "candidate review queue status",
+      "actor": "owner",
+      "must_allow": true,
+      "expect_content_includes": "review queue"
+    },
+    {
+      "id": "gr-178",
+      "query": "Auth bind Supabase subjects",
+      "actor": "owner",
+      "must_allow": true,
+      "expect_content_includes": "Auth bind"
+    },
+    {
+      "id": "gr-179",
+      "query": "OAuth peek oauth_states",
+      "actor": "owner",
+      "must_allow": true,
+      "expect_content_includes": "oauth_states"
+    },
+    {
+      "id": "gr-180",
+      "query": "code fingerprint access tokens",
+      "actor": "chatgpt",
+      "must_allow": true,
+      "expect_content_includes": "fingerprint"
+    },
+    {
+      "id": "gr-181",
+      "query": "dead_letter consolidation jobs",
+      "actor": "owner",
+      "must_allow": true,
+      "expect_content_includes": "dead_letter"
+    },
+    {
+      "id": "gr-182",
+      "query": "processing_jobs consolidate outbox",
+      "actor": "cursor",
+      "must_allow": true,
+      "expect_content_includes": "consolidate"
+    },
+    {
+      "id": "gr-183",
+      "query": "handoffs Cursor ACL context",
+      "actor": "cursor",
+      "must_allow": true,
+      "expect_content_includes": "handoffs"
+    },
+    {
+      "id": "gr-184",
+      "query": "Internal sensitivity ChatGPT ACL",
+      "actor": "chatgpt",
+      "must_allow": true,
+      "expect_content_includes": "Internal sensitivity"
+    },
+    {
+      "id": "gr-185",
+      "query": "Restricted invisible Cursor",
+      "actor": "cursor",
+      "must_allow": true,
+      "expect_empty_or_no_restricted": true,
+      "expect_no_sensitivity": "restricted"
+    },
+    {
+      "id": "gr-186",
+      "query": "quarantine artifacts checksum",
+      "actor": "owner",
+      "must_allow": true,
+      "expect_content_includes": "quarantine"
+    },
+    {
+      "id": "gr-187",
+      "query": "hash chunks provenance",
+      "actor": "chatgpt",
+      "must_allow": true,
+      "expect_content_includes": "hash chunks"
+    },
+    {
+      "id": "gr-188",
+      "query": "audit log trace_id",
+      "actor": "owner",
+      "must_allow": true,
+      "expect_content_includes": "trace_id"
+    },
+    {
+      "id": "gr-189",
+      "query": "workspace membership outbox",
+      "actor": "owner",
+      "must_allow": true,
+      "expect_content_includes": "workspace membership"
+    },
+    {
+      "id": "gr-190",
+      "query": "x-actor-key demo subjects",
+      "actor": "chatgpt",
+      "must_allow": true,
+      "expect_content_includes": "x-actor-key"
+    },
+    {
+      "id": "gr-191",
+      "query": "x-client-id demo-chatgpt",
+      "actor": "chatgpt",
+      "must_allow": true,
+      "expect_content_includes": "demo-chatgpt"
+    },
+    {
+      "id": "gr-192",
+      "query": "project state monotonic version",
+      "actor": "owner",
+      "must_allow": true,
+      "expect_content_includes": "monotonic version"
+    },
+    {
+      "id": "gr-193",
+      "query": "Evidence provenance source events",
+      "actor": "cursor",
+      "must_allow": true,
+      "expect_content_includes": "Evidence"
+    },
+    {
+      "id": "gr-194",
+      "query": "Temporal memory supersedes provenance",
+      "actor": "owner",
+      "must_allow": true,
+      "expect_content_includes": "Temporal"
+    },
+    {
+      "id": "gr-195",
+      "query": "stub embed thirty-two dimension",
+      "actor": "chatgpt",
+      "must_allow": true,
+      "expect_content_includes": "thirty-two"
+    },
+    {
+      "id": "gr-196",
+      "query": "noop embed empty vectors",
+      "actor": "owner",
+      "must_allow": true,
+      "expect_content_includes": "Noop"
+    },
+    {
+      "id": "gr-197",
+      "query": "OpenAI embed falls back stub",
+      "actor": "owner",
+      "must_allow": true,
+      "expect_content_includes": "falls back"
+    },
+    {
+      "id": "gr-198",
+      "query": "VAULT_ALLOW_API_SECRET_FALLBACK local",
+      "actor": "owner",
+      "must_allow": true,
+      "expect_content_includes": "VAULT_ALLOW"
+    },
+    {
+      "id": "gr-199",
+      "query": "AES-GCM ciphertext base64 blobs",
+      "actor": "cursor",
+      "must_allow": true,
+      "expect_content_includes": "AES-GCM"
+    },
+    {
+      "id": "gr-200",
+      "query": "Hosted cron worker ticks",
+      "actor": "owner",
+      "must_allow": true,
+      "expect_content_includes": "Hosted cron"
     }
   ]
 }

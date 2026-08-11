@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { createSeededStore } from '@memory-os/domain';
-import { searchMemories } from '@memory-os/retrieval';
+import { searchMemoriesHybrid } from '@memory-os/retrieval';
 import { authorize, resolveLocalSubject, type AuthzContext } from '@memory-os/authz';
 
 type GoldenCase = {
@@ -350,6 +350,481 @@ describe('golden retrieval harness', () => {
       key: 'eval/personal-comp',
       sensitivity: 'confidential',
     },
+    {
+      title: 'Local vault AES note',
+      text: 'Local vault uses AES-GCM files under .data/vault for connector tokens.',
+      actor: owner,
+      key: 'eval/vault-aes',
+    },
+    {
+      title: 'OAuth peek note',
+      text: 'OAuth callback peeks state before HTTP exchange and vault write.',
+      actor: chatgpt,
+      key: 'eval/oauth-peek',
+    },
+    {
+      title: 'Connector pull mode note',
+      text: 'MEMORY_OS_CONNECTOR_PULL_MODE=auto uses vault tokens when present else stub.',
+      actor: owner,
+      key: 'eval/pull-mode',
+    },
+    {
+      title: 'GitHub vault events note',
+      text: 'Vault-backed GitHub pull reads user events API without storing tokens in DB.',
+      actor: cursor,
+      key: 'eval/github-events',
+    },
+    {
+      title: 'Gmail vault metadata note',
+      text: 'Vault-backed Gmail metadata pull indexes subjects without full bodies.',
+      actor: owner,
+      key: 'eval/gmail-vault',
+    },
+    {
+      title: 'Drive vault files note',
+      text: 'Vault-backed Drive files list captures recent document changes.',
+      actor: chatgpt,
+      key: 'eval/drive-vault',
+    },
+    {
+      title: 'Calendar vault events note',
+      text: 'Vault-backed Calendar events list captures upcoming meetings.',
+      actor: owner,
+      key: 'eval/cal-vault',
+    },
+    {
+      title: 'Hybrid RPC ranking note',
+      text: 'Supabase search re-ranks RPC hits with hybrid:rpc+embed embedding cosine.',
+      actor: cursor,
+      key: 'eval/hybrid-rpc',
+    },
+    {
+      title: 'OpenAI embed adapter note',
+      text: 'OpenAI embedding adapter activates when MEMORY_OS_EMBED_ENGINE=openai and key set.',
+      actor: owner,
+      key: 'eval/openai-embed',
+    },
+    {
+      title: 'Exchange mode exchanged note',
+      text: 'Successful HTTP OAuth sets exchange_mode exchanged and tokens_in_vault true.',
+      actor: chatgpt,
+      key: 'eval/exchanged',
+    },
+    {
+      title: 'Tokens outside Postgres note',
+      text: 'Connector tokens never land in Postgres; only vault refs are stored.',
+      actor: owner,
+      key: 'eval/no-pg-tokens',
+    },
+    {
+      title: 'Google redirect uri note',
+      text: 'Google OAuth token exchange requires redirect_uri from oauth_states or env.',
+      actor: owner,
+      key: 'eval/redirect-uri',
+    },
+    {
+      title: 'pnpm prefer note',
+      text: 'On this machine prefer npx pnpm@9.15.9 because local Volta pnpm shim is broken.',
+      actor: owner,
+      key: 'eval/pnpm',
+    },
+    {
+      title: 'Consolidation worker note v2',
+      text: 'worker-consolidation merges near-duplicate candidates and marks superseded keepers.',
+      actor: owner,
+      key: 'eval/consolidation-v2',
+    },
+    {
+      title: 'Duplicate capture note',
+      text: 'Exact title duplicate merge keeps the newer keeper candidate during consolidation.',
+      actor: chatgpt,
+      key: 'eval/dup-title',
+    },
+    {
+      title: 'Vault backend note',
+      text: 'MEMORY_OS_VAULT_BACKEND=memory uses an ephemeral in-memory vault for tests.',
+      actor: owner,
+      key: 'eval/vault-backend',
+    },
+    {
+      title: 'Supersede RPC note',
+      text: 'api_supersede_memory sets superseded_by provenance from duplicate to keeper.',
+      actor: owner,
+      key: 'eval/supersede-rpc',
+    },
+    {
+      title: 'Embed similarity consolidate note',
+      text: 'Near duplicate embed similarity threshold drives consolidation pairs.',
+      actor: chatgpt,
+      key: 'eval/embed-sim',
+    },
+    {
+      title: 'SQL vector reason note',
+      text: 'Search reason hybrid:sql+vector appears when embedding_vector cosine is used.',
+      actor: chatgpt,
+      key: 'eval/sql-vector',
+    },
+    {
+      title: 'Embedding dims note',
+      text: 'Stub embeddings persist with embedding_dims=32 and HNSW index on embedding_vector.',
+      actor: owner,
+      key: 'eval/embed-dims',
+    },
+    {
+      title: 'Capture embed note',
+      text: 'Capture path marks memories embedded after process_now completes.',
+      actor: chatgpt,
+      key: 'eval/capture-embed',
+    },
+    {
+      title: 'Gmail subject header note',
+      text: 'Vault Gmail metadata pull reads Subject and From headers only.',
+      actor: owner,
+      key: 'eval/gmail-subject',
+    },
+    {
+      title: 'Drive modifiedTime note',
+      text: 'Drive vault pull orders files by modifiedTime descending.',
+      actor: cursor,
+      key: 'eval/drive-mtime',
+    },
+    {
+      title: 'Calendar timeMin note',
+      text: 'Calendar vault pull requests upcoming events with timeMin filter.',
+      actor: owner,
+      key: 'eval/cal-timemin',
+    },
+    {
+      title: 'MCP sync tool note',
+      text: 'MCP connections.sync enqueues connector jobs and ingests deltas.',
+      actor: cursor,
+      key: 'eval/mcp-sync',
+    },
+    {
+      title: 'Auth header bind note',
+      text: 'API resolves subjects via x-auth-user-id after /v1/auth/bind.',
+      actor: owner,
+      key: 'eval/x-auth',
+    },
+    {
+      title: 'RLS force note',
+      text: 'Tables enable FORCE ROW LEVEL SECURITY for Memory OS policies.',
+      actor: chatgpt,
+      key: 'eval/rls-force',
+    },
+    {
+      title: 'Checksum quarantine note',
+      text: 'Capture stores SHA-256 checksum on quarantine artifacts before ingest.',
+      actor: owner,
+      key: 'eval/sha256',
+    },
+    {
+      title: 'Review after consolidate note',
+      text: 'Candidate review queue still lists keepers after consolidation supersedes duplicates.',
+      actor: owner,
+      key: 'eval/review-consol',
+    },
+    {
+      title: 'Cursor handoff memory note',
+      text: 'Cursor can read agent handoff for project context assembly.',
+      actor: cursor,
+      key: 'eval/handoff-mem',
+    },
+    {
+      title: 'Shared vault ciphertext note',
+      text: 'Shared vault stores ciphertext blobs via api_vault_put get delete RPCs.',
+      actor: owner,
+      key: 'eval/vault-cipher',
+    },
+    {
+      title: 'List embedding field note',
+      text: 'api_list_memories returns embedding vectors for consolidation planning.',
+      actor: owner,
+      key: 'eval/list-embed',
+    },
+    {
+      title: 'Vault key policy note',
+      text: 'MEMORY_OS_VAULT_KEY is required outside local; do not reuse API secret.',
+      actor: owner,
+      key: 'eval/vault-key',
+    },
+    {
+      title: 'Pull credentials note',
+      text: 'resolvePullCredentials returns vault mode only when vault token exists.',
+      actor: owner,
+      key: 'eval/pull-creds',
+    },
+    {
+      title: 'Supabase vault backend note',
+      text: 'Default MEMORY_OS_VAULT_BACKEND is supabase when SUPABASE_URL is configured.',
+      actor: cursor,
+      key: 'eval/vault-supabase',
+    },
+    {
+      title: 'Authorize redirect note',
+      text: 'Web OAuth opens real authorize URL when provider CLIENT_ID is set.',
+      actor: owner,
+      key: 'eval/authorize-url',
+    },
+    {
+      title: 'Hybrid MCP ranking note',
+      text: 'MCP memory.search uses hybrid ranking with hybrid:rpc+embed reason.',
+      actor: cursor,
+      key: 'eval/mcp-hybrid',
+    },
+    {
+      title: 'Sync pullMode note',
+      text: 'Connector sync responses include pullMode and note for vault vs stub.',
+      actor: owner,
+      key: 'eval/pullmode',
+    },
+    {
+      title: 'Connector sync worker note',
+      text: 'worker connector-sync once tick ingests deltas and embeds captures.',
+      actor: chatgpt,
+      key: 'eval/sync-worker',
+    },
+    {
+      title: "Outbox consolidate enqueue note",
+      text: "api_enqueue_consolidation writes memory.consolidation.requested outbox events.",
+      actor: owner,
+      key: "eval/outbox-consol",
+    },
+    {
+      title: "Worker interval loop note",
+      text: "MEMORY_OS_WORKER_INTERVAL_MS enables consolidation and sync cron loops.",
+      actor: owner,
+      key: "eval/worker-interval",
+    },
+    {
+      title: "Complete consolidation job note",
+      text: "api_complete_consolidation marks consolidate jobs succeeded and publishes outbox.",
+      actor: chatgpt,
+      key: "eval/complete-consol",
+    },
+    {
+      title: "Idempotent consolidate minute note",
+      text: "Consolidation idempotency key buckets jobs by workspace and UTC minute.",
+      actor: owner,
+      key: "eval/consol-idem",
+    },
+    {
+      title: "Connector sync loop note",
+      text: "connector-sync worker loop reuses enqueue connector sync each interval tick.",
+      actor: cursor,
+      key: "eval/sync-loop",
+    },
+    {
+      title: "Vault cross process note",
+      text: "Shared vault ciphertext lets API OAuth and sync workers share tokens safely.",
+      actor: owner,
+      key: "eval/vault-cross",
+    },
+    {
+      title: "Hybrid sql vector note",
+      text: "SQL hybrid search accepts optional query embedding for vector re-rank.",
+      actor: chatgpt,
+      key: "eval/sql-hybrid",
+    },
+    {
+      title: "Supersede reason note",
+      text: "supersedeMemory stores consolidation reason on superseded candidate memories.",
+      actor: owner,
+      key: "eval/supersede-reason",
+    },
+    {
+      title: "MCP consolidation tool note",
+      text: "MCP consolidation.run plans and applies near-duplicate candidate merges.",
+      actor: owner,
+      key: "eval/mcp-consol",
+    },
+    {
+      title: "Web consolidation panel note",
+      text: "Web control surface exposes Run consolidation for owner subjects.",
+      actor: owner,
+      key: "eval/web-consol",
+    },
+    {
+      title: "Pull mode auto note",
+      text: "MEMORY_OS_CONNECTOR_PULL_MODE auto prefers vault tokens then stub deltas.",
+      actor: cursor,
+      key: "eval/pull-auto",
+    },
+    {
+      title: "Github issues delta note",
+      text: "GitHub vault pull lists repository issues updated since the cursor watermark.",
+      actor: chatgpt,
+      key: "eval/gh-issues",
+    },
+    {
+      title: "Gmail metadata only note",
+      text: "Gmail vault mode stores subject from headers without message bodies.",
+      actor: owner,
+      key: "eval/gmail-meta",
+    },
+    {
+      title: "Drive files list note",
+      text: "Google Drive vault pull lists files ordered by modifiedTime for ingest.",
+      actor: cursor,
+      key: "eval/drive-list",
+    },
+    {
+      title: "Calendar upcoming note",
+      text: "Google Calendar vault pull fetches upcoming events using timeMin bounds.",
+      actor: owner,
+      key: "eval/cal-up",
+    },
+    {
+      title: "Embed persist capture note",
+      text: "Capture path persists embedding jsonb and embedding_vector for hybrid retrieval.",
+      actor: chatgpt,
+      key: "eval/embed-persist",
+    },
+    {
+      title: "Review queue status note",
+      text: "list memories by status powers the candidate review queue in Web.",
+      actor: owner,
+      key: "eval/review-status",
+    },
+    {
+      title: "Auth bind session note",
+      text: "Auth bind maps Supabase auth user id onto Memory OS subjects.",
+      actor: owner,
+      key: "eval/auth-bind2",
+    },
+    {
+      title: "OAuth peek state note",
+      text: "OAuth callback peeks oauth_states before HTTP token exchange into vault.",
+      actor: owner,
+      key: "eval/oauth-peek",
+    },
+    {
+      title: "Fingerprint exchange note",
+      text: "OAuth exchange records code fingerprint without storing access tokens in Postgres.",
+      actor: chatgpt,
+      key: "eval/fingerprint",
+    },
+    {
+      title: "Dead letter consolidate note",
+      text: "Failed consolidation jobs can move to dead_letter after repeated attempts.",
+      actor: owner,
+      key: "eval/dl-consol",
+    },
+    {
+      title: "Processing jobs consolidate note",
+      text: "processing_jobs job_type consolidate is enqueued by the consolidation outbox RPC.",
+      actor: cursor,
+      key: "eval/pj-consol",
+    },
+    {
+      title: "Handoff project context note",
+      text: "Project context assembly includes handoffs Cursor can read under ACL.",
+      actor: cursor,
+      key: "eval/ctx-handoff",
+    },
+    {
+      title: "Sensitivity internal note",
+      text: "Internal sensitivity memories remain readable by ChatGPT under ACL allow entries.",
+      actor: chatgpt,
+      key: "eval/sens-int",
+    },
+    {
+      title: "Restricted deny cursor note",
+      text: "Restricted sensitivity memories stay invisible to Cursor actor searches.",
+      actor: cursor,
+      key: "eval/restr-deny",
+      sensitivity: 'restricted' as const,
+    },
+    {
+      title: "Quarantine artifact note",
+      text: "Text capture writes quarantine artifacts with checksum before ingest jobs.",
+      actor: owner,
+      key: "eval/quarantine2",
+    },
+    {
+      title: "Chunk hash note",
+      text: "Ingest jobs create hash chunks linked to candidate memories for provenance.",
+      actor: chatgpt,
+      key: "eval/chunk-hash",
+    },
+    {
+      title: "Trace id audit note",
+      text: "Audit log rows can carry trace_id for cross-agent decision reconstruction.",
+      actor: owner,
+      key: "eval/trace-audit",
+    },
+    {
+      title: "Workspace member check note",
+      text: "API RPCs assert workspace membership before mutating outbox or jobs.",
+      actor: owner,
+      key: "eval/ws-member",
+    },
+    {
+      title: "Actor key resolve note",
+      text: "x-actor-key resolves demo subjects for owner chatgpt and cursor clients.",
+      actor: chatgpt,
+      key: "eval/actor-key",
+    },
+    {
+      title: "Client id demo note",
+      text: "x-client-id demo-chatgpt binds the ChatGPT companion identity headers.",
+      actor: chatgpt,
+      key: "eval/client-id",
+    },
+    {
+      title: "Project state version note",
+      text: "Project state upserts keep a monotonic version for optimistic concurrency.",
+      actor: owner,
+      key: "eval/state-ver",
+    },
+    {
+      title: "Evidence provenance note",
+      text: "Evidence links preserve provenance from source events into memories.",
+      actor: cursor,
+      key: "eval/evidence",
+    },
+    {
+      title: "Temporal recorded at note",
+      text: "Memories store recordedAt temporal fields used by consolidation keepers.",
+      actor: owner,
+      key: "eval/temporal-recorded",
+    },
+    {
+      title: "Stub embed engine note",
+      text: "Stub embed engine hashes text into a fixed thirty-two dimension vector.",
+      actor: chatgpt,
+      key: "eval/stub-embed",
+    },
+    {
+      title: "Noop embed engine note",
+      text: "Noop embed engine returns empty vectors and skips embedding persistence.",
+      actor: owner,
+      key: "eval/noop-embed",
+    },
+    {
+      title: "OpenAI embed fallback note",
+      text: "OpenAI embed engine falls back to stub when API key is missing.",
+      actor: owner,
+      key: "eval/openai-fb",
+    },
+    {
+      title: "Vault allow fallback note",
+      text: "MEMORY_OS_VAULT_ALLOW_API_SECRET_FALLBACK is local-only and disabled in prod.",
+      actor: owner,
+      key: "eval/vault-fb",
+    },
+    {
+      title: "Ciphertext base64 note",
+      text: "Vault put encodes AES-GCM ciphertext as base64 for connector_vault_blobs.",
+      actor: cursor,
+      key: "eval/cipher-b64",
+    },
+    {
+      title: "Cron hosted next note",
+      text: "Hosted cron should call consolidation and connector-sync worker ticks periodically.",
+      actor: owner,
+      key: "eval/hosted-cron",
+    },
   ];
 
   for (const row of fixtures) {
@@ -364,10 +839,10 @@ describe('golden retrieval harness', () => {
     });
   }
 
-  expect(fixture.cases.length).toBeGreaterThanOrEqual(80);
+  expect(fixture.cases.length).toBeGreaterThanOrEqual(200);
 
   for (const testCase of fixture.cases) {
-    it(testCase.id, () => {
+    it(testCase.id, async () => {
       const authz = authzFor(testCase.actor);
       const canRead = authorize(authz, {
         resourceType: 'memory',
@@ -377,9 +852,11 @@ describe('golden retrieval harness', () => {
       });
       expect(canRead).toBe(testCase.must_allow);
 
-      const hits = searchMemories([...store.memories.values()], testCase.query, {
-        projectId,
-      }).filter((hit) =>
+      const hits = (
+        await searchMemoriesHybrid([...store.memories.values()], testCase.query, {
+          projectId,
+        })
+      ).filter((hit) =>
         authorize(authz, {
           resourceType: 'memory',
           action: 'read',

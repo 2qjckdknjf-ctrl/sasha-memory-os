@@ -1,12 +1,18 @@
-import { pullGithubStubDelta } from '@memory-os/connector-github';
-import { pullGmailStubDelta } from '@memory-os/connector-gmail';
-import { pullGoogleCalendarStubDelta } from '@memory-os/connector-google-calendar';
-import { pullGoogleDriveStubDelta } from '@memory-os/connector-google-drive';
+import { pullGithubDelta } from '@memory-os/connector-github';
+import { pullGmailDelta } from '@memory-os/connector-gmail';
+import { pullGoogleCalendarDelta } from '@memory-os/connector-google-calendar';
+import { pullGoogleDriveDelta } from '@memory-os/connector-google-drive';
 import {
+  createConfiguredVaultStore,
   createMemoryOsClient,
   loadMemoryOsEnv,
   SupabaseMemoryGateway,
 } from '@memory-os/db';
+import { embedMemoryText } from '@memory-os/retrieval';
+import {
+  resolveConnectorSyncOutcome,
+  type VaultStore,
+} from '@memory-os/connector-sdk';
 
 export const packageName = 'worker-connector-sync' as const;
 
@@ -23,6 +29,8 @@ const OWNER_ID =
 export type SyncPlanItem = {
   connectionId: string;
   connectorId: string;
+  displayName?: string;
+  vaultRef?: string | null;
   jobId?: string;
   eventId?: string;
 };
@@ -32,6 +40,8 @@ export type SyncPlan = {
   enqueued: SyncPlanItem[];
   captured: number;
   completed: Array<{ jobId: string; status: string; connectionId: string | null }>;
+  pendingOutbox: number;
+  deadLettered: number;
 };
 
 function requireGateway(
@@ -47,30 +57,51 @@ function requireGateway(
   return new SupabaseMemoryGateway(createMemoryOsClient(env), env.apiSecret);
 }
 
-function pullStubDelta(item: SyncPlanItem) {
+async function pullConnectorDelta(item: SyncPlanItem, vault: VaultStore) {
+  const common = {
+    connectionId: item.connectionId,
+    displayName: item.displayName ?? item.connectorId,
+    vaultRef: item.vaultRef ?? undefined,
+    vault,
+  };
   switch (item.connectorId) {
     case 'github':
-      return pullGithubStubDelta({
-        connectionId: item.connectionId,
-        displayName: item.connectorId,
-      });
+      return pullGithubDelta(common);
     case 'google-drive':
-      return pullGoogleDriveStubDelta({
-        connectionId: item.connectionId,
-        displayName: item.connectorId,
-      });
+      return pullGoogleDriveDelta(common);
     case 'gmail':
-      return pullGmailStubDelta({
-        connectionId: item.connectionId,
-        displayName: item.connectorId,
-      });
+      return pullGmailDelta(common);
     case 'google-calendar':
-      return pullGoogleCalendarStubDelta({
-        connectionId: item.connectionId,
-        displayName: item.connectorId,
-      });
+      return pullGoogleCalendarDelta(common);
     default:
       return null;
+  }
+}
+
+async function maybeEmbed(
+  gateway: SupabaseMemoryGateway,
+  subjectId: string,
+  title: string,
+  text: string,
+  captureResult: { process?: { memoryId?: string | null } | null },
+) {
+  const memoryId = captureResult.process?.memoryId;
+  if (!memoryId) return;
+  try {
+    const embedded = await embedMemoryText(title, text);
+    if (embedded.vector.length === 0) return;
+    await gateway.setMemoryEmbedding({
+      subjectId,
+      memoryId,
+      embedding: embedded.vector,
+      engine: embedded.engine,
+    });
+  } catch (err) {
+    const strict =
+      (process.env.MEMORY_OS_EMBED_STRICT ?? '').trim() === '1' ||
+      (process.env.MEMORY_OS_EMBED_STRICT ?? '').trim().toLowerCase() === 'true';
+    if (strict) throw err;
+    // ingest should not fail solely because embedding failed (non-strict)
   }
 }
 
@@ -79,12 +110,15 @@ async function ingestConnectorDelta(
   subjectId: string,
   workspaceId: string,
   item: SyncPlanItem,
-): Promise<number> {
-  const delta = pullStubDelta(item);
-  if (!delta) return 0;
+  vault: VaultStore,
+): Promise<{ captured: number; pullMode: string; note: string }> {
+  const delta = await pullConnectorDelta(item, vault);
+  if (!delta) {
+    return { captured: 0, pullMode: 'none', note: 'unsupported connector' };
+  }
   let captured = 0;
   for (const event of delta.items) {
-    await gateway.captureText({
+    const captureResult = await gateway.captureText({
       subjectId,
       workspaceId,
       projectId: PROJECT_ID,
@@ -95,9 +129,16 @@ async function ingestConnectorDelta(
       filename: `${item.connectorId}://${event.externalId}`,
       mimeType: 'text/plain',
     });
+    await maybeEmbed(gateway, subjectId, event.title, event.text, captureResult);
     captured += 1;
   }
-  return captured;
+  const pullMode =
+    'mode' in delta && typeof delta.mode === 'string' ? delta.mode : 'stub';
+  const note =
+    'note' in delta && typeof delta.note === 'string'
+      ? delta.note
+      : 'connector delta ingested';
+  return { captured, pullMode, note };
 }
 
 export async function planConnectorSync(options?: {
@@ -110,6 +151,17 @@ export async function planConnectorSync(options?: {
   const gateway = requireGateway(options?.gateway);
   const subjectId = options?.subjectId ?? OWNER_ID;
   const workspaceId = options?.workspaceId ?? WORKSPACE_ID;
+  const stale = await gateway.deadLetterStaleJobs({
+    subjectId,
+    workspaceId,
+    olderThanMinutes: Number(process.env.MEMORY_OS_JOB_STALE_MINUTES ?? 60),
+  });
+  const pending = await gateway.listOutboxPending({
+    subjectId,
+    workspaceId,
+    eventType: 'connector.sync.requested',
+    limit: 20,
+  });
   const result = await gateway.enqueueConnectorSync({
     subjectId,
     workspaceId,
@@ -119,22 +171,33 @@ export async function planConnectorSync(options?: {
   const completed: SyncPlan['completed'] = [];
   let captured = 0;
   const ingest = options?.ingest !== false;
+  const vault = createConfiguredVaultStore({ gateway });
 
   for (const item of result.enqueued ?? []) {
     if (!item.jobId) continue;
     try {
+      let pullMode = 'stub';
+      let note = 'connector delta ingested';
       if (ingest) {
-        captured += await ingestConnectorDelta(
+        const ingested = await ingestConnectorDelta(
           gateway,
           subjectId,
           workspaceId,
           item,
+          vault,
         );
+        captured += ingested.captured;
+        pullMode = ingested.pullMode;
+        note = ingested.note;
       }
+      const outcome = ingest
+        ? resolveConnectorSyncOutcome({ pullMode, note })
+        : { status: 'succeeded' as const, error: null };
       const done = await gateway.completeConnectorSync({
         subjectId,
         jobId: item.jobId,
-        status: 'succeeded',
+        status: outcome.status,
+        error: outcome.error,
       });
       completed.push({
         jobId: done.jobId,
@@ -146,7 +209,9 @@ export async function planConnectorSync(options?: {
           event: 'connector_sync_completed',
           connectorId: item.connectorId,
           ...done,
-          note: 'stub delta ingested; vault credentials not read',
+          pullMode,
+          note,
+          outcome: outcome.status,
         }),
       );
     } catch (err) {
@@ -170,6 +235,8 @@ export async function planConnectorSync(options?: {
     enqueued: result.enqueued ?? [],
     captured,
     completed,
+    pendingOutbox: pending.count,
+    deadLettered: stale.deadLettered,
   };
 }
 
@@ -178,12 +245,48 @@ export async function runConnectorSyncOnce(): Promise<SyncPlan> {
   return planConnectorSync();
 }
 
+export function parseWorkerIntervalMs(
+  env: NodeJS.ProcessEnv = process.env,
+): number | null {
+  const raw = env.MEMORY_OS_WORKER_INTERVAL_MS?.trim();
+  if (!raw) return null;
+  const n = Number(raw);
+  if (!Number.isFinite(n) || n < 1000) {
+    throw new Error('MEMORY_OS_WORKER_INTERVAL_MS must be >= 1000');
+  }
+  return n;
+}
+
+export async function startConnectorSyncLoop(
+  env: NodeJS.ProcessEnv = process.env,
+): Promise<void> {
+  const intervalMs = parseWorkerIntervalMs(env);
+  const tick = async () => {
+    const plan = await runConnectorSyncOnce();
+    console.log(JSON.stringify({ ok: true, ...plan }));
+  };
+  await tick();
+  if (intervalMs == null) return;
+  console.log(
+    JSON.stringify({
+      ok: true,
+      mode: 'loop',
+      intervalMs,
+      worker: 'connector-sync',
+    }),
+  );
+  setInterval(() => {
+    void tick().catch((err: Error) => {
+      console.error(err.message);
+    });
+  }, intervalMs);
+}
+
 const isDirectRun = process.argv[1]?.includes('connector-sync');
 if (isDirectRun) {
-  void runConnectorSyncOnce()
-    .then((plan) => {
-      console.log(JSON.stringify({ ok: true, ...plan }));
-      process.exit(0);
+  void startConnectorSyncLoop()
+    .then(() => {
+      if (!parseWorkerIntervalMs()) process.exit(0);
     })
     .catch((err: Error) => {
       console.error(err.message);

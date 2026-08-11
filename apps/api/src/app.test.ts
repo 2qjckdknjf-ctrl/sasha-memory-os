@@ -167,6 +167,208 @@ describe('memory api demo slice', () => {
     expect(body.memoryId).toBeTruthy();
   });
 
+  it('requires api secret on consolidation when auth enforced', async () => {
+    const prevRequire = process.env.MEMORY_OS_REQUIRE_API_AUTH;
+    const prevSecret = process.env.MEMORY_OS_API_SECRET;
+    process.env.MEMORY_OS_REQUIRE_API_AUTH = '1';
+    process.env.MEMORY_OS_API_SECRET = 'test-http-secret';
+    try {
+      const app = createApp({});
+      const ownerId = '33333333-3333-4333-8333-333333333301';
+      const denied = await app.request('/v1/consolidation/run', {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          'x-subject-id': ownerId,
+          'x-actor-key': 'owner',
+        },
+        body: JSON.stringify({
+          workspace_id: workspaceId,
+          actor_subject_id: ownerId,
+          apply: false,
+        }),
+      });
+      expect(denied.status).toBe(401);
+      const allowed = await app.request('/v1/consolidation/run', {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          'x-subject-id': ownerId,
+          'x-actor-key': 'owner',
+          'x-memory-os-api-secret': 'test-http-secret',
+        },
+        body: JSON.stringify({
+          workspace_id: workspaceId,
+          actor_subject_id: ownerId,
+          apply: false,
+        }),
+      });
+      expect(allowed.status).toBe(200);
+    } finally {
+      if (prevRequire === undefined) delete process.env.MEMORY_OS_REQUIRE_API_AUTH;
+      else process.env.MEMORY_OS_REQUIRE_API_AUTH = prevRequire;
+      if (prevSecret === undefined) delete process.env.MEMORY_OS_API_SECRET;
+      else process.env.MEMORY_OS_API_SECRET = prevSecret;
+    }
+  });
+
+  it('serves health with embed/vault modes', async () => {
+    const app = createApp({});
+    const res = await app.request('/health');
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.ok).toBe(true);
+    expect(body.embedEngine).toBeTruthy();
+    expect(body.vaultBackend).toBeTruthy();
+  });
+
+  it('gets memory offline with full content', async () => {
+    const app = createApp({});
+    const ownerId = '33333333-3333-4333-8333-333333333301';
+    const created = await app.request('/v1/memories', {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'x-subject-id': ownerId,
+        'x-actor-key': 'owner',
+      },
+      body: JSON.stringify({
+        workspace_id: workspaceId,
+        project_id: projectId,
+        memory_type: 'fact',
+        title: 'Full get',
+        content: 'x'.repeat(600),
+        actor_subject_id: ownerId,
+        idempotency_key: `get-full-${Date.now()}`,
+      }),
+    });
+    expect(created.status).toBe(201);
+    const body = (await created.json()) as { id: string };
+    expect(body.id).toBeTruthy();
+    const res = await app.request(`/v1/memories/${body.id}`, {
+      headers: {
+        'x-subject-id': ownerId,
+        'x-actor-key': 'owner',
+      },
+    });
+    expect(res.status).toBe(200);
+    const got = (await res.json()) as { memory: { content: string } };
+    expect(got.memory.content.length).toBe(600);
+  });
+
+  it('embeds offline rejection without supabase gateway', async () => {
+    const app = createApp({});
+    const ownerId = '33333333-3333-4333-8333-333333333301';
+    const res = await app.request(
+      '/v1/memories/11111111-1111-4111-8111-111111111199/embed',
+      {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          'x-subject-id': ownerId,
+          'x-actor-key': 'owner',
+        },
+        body: JSON.stringify({
+          workspace_id: workspaceId,
+          actor_subject_id: ownerId,
+          title: 't',
+          text: 'body',
+        }),
+      },
+    );
+    expect(res.status).toBe(501);
+  });
+
+  it('embed-missing offline rejection without supabase gateway', async () => {
+    const app = createApp({});
+    const ownerId = '33333333-3333-4333-8333-333333333301';
+    const res = await app.request('/v1/memories/embed-missing', {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'x-subject-id': ownerId,
+        'x-actor-key': 'owner',
+      },
+      body: JSON.stringify({
+        workspace_id: workspaceId,
+        actor_subject_id: ownerId,
+        limit: 5,
+      }),
+    });
+    expect(res.status).toBe(501);
+  });
+
+  it('returns empty outbox offline for owner', async () => {
+    const app = createApp({});
+    const ownerId = '33333333-3333-4333-8333-333333333301';
+    const res = await app.request(
+      `/v1/outbox/pending?workspace_id=${workspaceId}`,
+      {
+        headers: {
+          'x-subject-id': ownerId,
+          'x-actor-key': 'owner',
+        },
+      },
+    );
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.count).toBe(0);
+    expect(body.backend).toBe('memory-store');
+  });
+
+  it('runs offline consolidation for duplicate candidates', async () => {
+    const app = createApp({});
+    const ownerId = '33333333-3333-4333-8333-333333333301';
+    const common = {
+      workspace_id: workspaceId,
+      project_id: projectId,
+      actor_subject_id: chatgpt,
+      title: 'Offline consolidation twin',
+      text: 'duplicate candidate for consolidation harness',
+    };
+    await app.request('/v1/capture/text', {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'x-subject-id': chatgpt,
+      },
+      body: JSON.stringify({
+        ...common,
+        idempotency_key: `consol/offline-a-${Date.now()}`,
+      }),
+    });
+    await app.request('/v1/capture/text', {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'x-subject-id': chatgpt,
+      },
+      body: JSON.stringify({
+        ...common,
+        title: 'offline consolidation twin',
+        idempotency_key: `consol/offline-b-${Date.now()}`,
+      }),
+    });
+    const res = await app.request('/v1/consolidation/run', {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'x-subject-id': ownerId,
+        'x-actor-key': 'owner',
+      },
+      body: JSON.stringify({
+        workspace_id: workspaceId,
+        actor_subject_id: ownerId,
+        apply: true,
+      }),
+    });
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.backend).toBe('memory-store');
+    expect(body.planned).toBeGreaterThanOrEqual(1);
+    expect(body.applied.length).toBeGreaterThanOrEqual(1);
+  });
+
   it('idempotently ingests events', async () => {
     const app = createApp({});
     const payload = {

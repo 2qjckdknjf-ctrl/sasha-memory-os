@@ -13,6 +13,7 @@
     "test": "vitest run --passWithNoTests"
   },
   "dependencies": {
+    "@memory-os/connector-sdk": "workspace:*",
     "@supabase/supabase-js": "^2.112.3"
   }
 }

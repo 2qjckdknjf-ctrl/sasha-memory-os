@@ -21,3 +21,4 @@ build/
 coverage/
 *.tsbuildinfo
 .pnpm-store/
+.data/

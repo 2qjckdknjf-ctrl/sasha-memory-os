@@ -1,0 +1,81 @@
+name: Worker ticks
+
+# Alpha cron stubs — set MEMORY_OS_API_BASE_URL (deployed API) before relying on schedule.
+# Auth uses demo subject headers; API process holds MEMORY_OS_API_SECRET server-side.
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '15 */6 * * *'
+
+jobs:
+  consolidation-and-sync:
+    runs-on: ubuntu-latest
+    if: ${{ secrets.MEMORY_OS_API_BASE_URL != '' }}
+    steps:
+      - name: Enqueue + run consolidation (owner)
+        env:
+          API: ${{ secrets.MEMORY_OS_API_BASE_URL }}
+          SUBJECT: ${{ secrets.MEMORY_OS_OWNER_SUBJECT_ID }}
+          WORKSPACE: ${{ secrets.MEMORY_OS_WORKSPACE_ID }}
+        run: |
+          set -euo pipefail
+          SUBJECT="${SUBJECT:-33333333-3333-4333-8333-333333333301}"
+          WORKSPACE="${WORKSPACE:-11111111-1111-4111-8111-111111111111}"
+          curl -fsS -X POST "$API/v1/consolidation/run" \
+            -H "content-type: application/json" \
+            -H "x-subject-id: $SUBJECT" \
+            -H "x-actor-key: owner" \
+            -H "x-client-id: demo-owner" \
+            -H "x-memory-os-api-secret: ${{ secrets.MEMORY_OS_API_SECRET }}" \
+            -d "{\"workspace_id\":\"$WORKSPACE\",\"enqueue\":true,\"apply\":true}"
+
+      - name: Enqueue connector sync
+        env:
+          API: ${{ secrets.MEMORY_OS_API_BASE_URL }}
+          SUBJECT: ${{ secrets.MEMORY_OS_OWNER_SUBJECT_ID }}
+          WORKSPACE: ${{ secrets.MEMORY_OS_WORKSPACE_ID }}
+        run: |
+          set -euo pipefail
+          SUBJECT="${SUBJECT:-33333333-3333-4333-8333-333333333301}"
+          WORKSPACE="${WORKSPACE:-11111111-1111-4111-8111-111111111111}"
+          curl -fsS -X POST "$API/v1/connections/sync" \
+            -H "content-type: application/json" \
+            -H "x-subject-id: $SUBJECT" \
+            -H "x-actor-key: owner" \
+            -H "x-client-id: demo-owner" \
+            -H "x-memory-os-api-secret: ${{ secrets.MEMORY_OS_API_SECRET }}" \
+            -d "{\"workspace_id\":\"$WORKSPACE\"}"
+
+      - name: Dead-letter stale jobs
+        env:
+          API: ${{ secrets.MEMORY_OS_API_BASE_URL }}
+          SUBJECT: ${{ secrets.MEMORY_OS_OWNER_SUBJECT_ID }}
+          WORKSPACE: ${{ secrets.MEMORY_OS_WORKSPACE_ID }}
+        run: |
+          set -euo pipefail
+          SUBJECT="${SUBJECT:-33333333-3333-4333-8333-333333333301}"
+          WORKSPACE="${WORKSPACE:-11111111-1111-4111-8111-111111111111}"
+          curl -fsS -X POST "$API/v1/jobs/dead-letter-stale" \
+            -H "content-type: application/json" \
+            -H "x-subject-id: $SUBJECT" \
+            -H "x-actor-key: owner" \
+            -H "x-client-id: demo-owner" \
+            -H "x-memory-os-api-secret: ${{ secrets.MEMORY_OS_API_SECRET }}" \
+            -d "{\"workspace_id\":\"$WORKSPACE\",\"older_than_minutes\":60}"
+
+      - name: Embed memories missing vectors
+        env:
+          API: ${{ secrets.MEMORY_OS_API_BASE_URL }}
+          SUBJECT: ${{ secrets.MEMORY_OS_OWNER_SUBJECT_ID }}
+          WORKSPACE: ${{ secrets.MEMORY_OS_WORKSPACE_ID }}
+        run: |
+          set -euo pipefail
+          SUBJECT="${SUBJECT:-33333333-3333-4333-8333-333333333301}"
+          WORKSPACE="${WORKSPACE:-11111111-1111-4111-8111-111111111111}"
+          curl -fsS -X POST "$API/v1/memories/embed-missing" \
+            -H "content-type: application/json" \
+            -H "x-subject-id: $SUBJECT" \
+            -H "x-actor-key: owner" \
+            -H "x-client-id: demo-owner" \
+            -H "x-memory-os-api-secret: ${{ secrets.MEMORY_OS_API_SECRET }}" \
+            -d "{\"workspace_id\":\"$WORKSPACE\",\"actor_subject_id\":\"$SUBJECT\",\"limit\":50}"

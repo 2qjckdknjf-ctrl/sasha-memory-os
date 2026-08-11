@@ -92,6 +92,7 @@ export class SupabaseMemoryGateway {
     query: string;
     projectId?: string;
     includeHistory?: boolean;
+    queryEmbedding?: number[] | null;
   }) {
     const { data, error } = await this.client.rpc('api_search_memories', {
       p_secret: this.apiSecret,
@@ -99,6 +100,7 @@ export class SupabaseMemoryGateway {
       p_query: input.query,
       p_project_id: input.projectId ?? null,
       p_include_history: input.includeHistory ?? false,
+      p_query_embedding: input.queryEmbedding ?? null,
     });
     if (error) throw error;
     return data;
@@ -130,7 +132,34 @@ export class SupabaseMemoryGateway {
       projectId: string | null;
       recordedAt: string;
       metadata: Record<string, unknown>;
+      embedding?: number[] | null;
+      embeddingEngine?: string | null;
+      embeddingDims?: number | null;
     }>;
+  }
+
+  async getMemory(input: { subjectId: string; memoryId: string }) {
+    const { data, error } = await this.client.rpc('api_get_memory', {
+      p_secret: this.apiSecret,
+      p_subject_id: input.subjectId,
+      p_memory_id: input.memoryId,
+    });
+    if (error) throw error;
+    return data as {
+      id: string;
+      title: string;
+      content: string;
+      status: string;
+      sensitivity: string;
+      memoryType: string;
+      projectId: string | null;
+      workspaceId: string;
+      recordedAt: string;
+      metadata: Record<string, unknown>;
+      embedding?: number[] | null;
+      embeddingEngine?: string | null;
+      embeddingDims?: number | null;
+    };
   }
 
   async rlsProbe(input: {
@@ -227,12 +256,30 @@ export class SupabaseMemoryGateway {
     return data;
   }
 
+  async oauthPeekState(input: { subjectId: string; state: string }) {
+    const { data, error } = await this.client.rpc('api_oauth_peek_state', {
+      p_secret: this.apiSecret,
+      p_subject_id: input.subjectId,
+      p_state: input.state,
+    });
+    if (error) throw error;
+    return data as {
+      state: string;
+      workspaceId: string;
+      connectorId: string;
+      connectionId: string;
+      redirectUri: string | null;
+      scopes: string[];
+      expiresAt: string;
+    };
+  }
+
   async oauthCompleteStub(input: {
     subjectId: string;
     state: string;
     /** Prefer fingerprint — raw code must not be persisted. */
     codeFingerprint?: string | null;
-    exchangeMode?: 'stub' | 'credentials_ready';
+    exchangeMode?: 'stub' | 'credentials_ready' | 'exchanged';
     env?: string;
   }) {
     const { data, error } = await this.client.rpc('api_oauth_complete_stub', {
@@ -253,6 +300,7 @@ export class SupabaseMemoryGateway {
       tokenPersisted: boolean;
       exchangeMode?: string;
       codeFingerprint?: string | null;
+      tokensInVault?: boolean;
     };
   }
 
@@ -339,7 +387,36 @@ export class SupabaseMemoryGateway {
       p_mime_type: input.mimeType ?? 'text/plain',
     });
     if (error) throw error;
-    return data;
+    return data as {
+      eventId?: string;
+      artifactId?: string;
+      jobId?: string;
+      process?: { memoryId?: string | null } | null;
+      [key: string]: unknown;
+    };
+  }
+
+  async setMemoryEmbedding(input: {
+    subjectId: string;
+    memoryId: string;
+    embedding: number[];
+    engine?: string;
+  }) {
+    const { data, error } = await this.client.rpc('api_set_memory_embedding', {
+      p_secret: this.apiSecret,
+      p_subject_id: input.subjectId,
+      p_memory_id: input.memoryId,
+      p_embedding: input.embedding,
+      p_engine: input.engine ?? 'stub-hash',
+    });
+    if (error) throw error;
+    return data as {
+      memoryId: string;
+      engine: string | null;
+      dims: number;
+      embeddedAt: string;
+      hasVector: boolean;
+    };
   }
 
   async processIngestJob(subjectId: string, jobId: string) {
@@ -379,6 +456,8 @@ export class SupabaseMemoryGateway {
       enqueued: Array<{
         connectionId: string;
         connectorId: string;
+        displayName?: string;
+        vaultRef?: string | null;
         jobId?: string;
         eventId?: string;
         idempotencyKey?: string;
@@ -409,6 +488,62 @@ export class SupabaseMemoryGateway {
     };
   }
 
+  async supersedeMemory(input: {
+    subjectId: string;
+    duplicateId: string;
+    keeperId: string;
+    reason?: string;
+  }) {
+    const { data, error } = await this.client.rpc('api_supersede_memory', {
+      p_secret: this.apiSecret,
+      p_subject_id: input.subjectId,
+      p_duplicate_id: input.duplicateId,
+      p_keeper_id: input.keeperId,
+      p_reason: input.reason ?? 'consolidation: near-duplicate candidate',
+    });
+    if (error) throw error;
+    return data as {
+      duplicateId: string;
+      keeperId: string;
+      status: string;
+      supersededBy: string;
+      reason: string;
+    };
+  }
+
+  async vaultPut(input: { vaultRef: string; ciphertextBase64: string }) {
+    const { data, error } = await this.client.rpc('api_vault_put', {
+      p_secret: this.apiSecret,
+      p_vault_ref: input.vaultRef,
+      p_ciphertext: input.ciphertextBase64,
+    });
+    if (error) throw error;
+    return data as { vaultRef: string; ok: boolean };
+  }
+
+  async vaultGet(vaultRef: string) {
+    const { data, error } = await this.client.rpc('api_vault_get', {
+      p_secret: this.apiSecret,
+      p_vault_ref: vaultRef,
+    });
+    if (error) throw error;
+    return data as {
+      vaultRef: string;
+      found: boolean;
+      ciphertext?: string;
+      updatedAt?: string;
+    };
+  }
+
+  async vaultDelete(vaultRef: string) {
+    const { data, error } = await this.client.rpc('api_vault_delete', {
+      p_secret: this.apiSecret,
+      p_vault_ref: vaultRef,
+    });
+    if (error) throw error;
+    return data as { vaultRef: string; ok: boolean };
+  }
+
   async completeConnectorSync(input: {
     subjectId: string;
     jobId: string;
@@ -428,6 +563,116 @@ export class SupabaseMemoryGateway {
       status: string;
       connectionId: string | null;
       jobType: string;
+    };
+  }
+
+  async enqueueConsolidation(input: {
+    subjectId: string;
+    workspaceId: string;
+  }) {
+    const { data, error } = await this.client.rpc('api_enqueue_consolidation', {
+      p_secret: this.apiSecret,
+      p_subject_id: input.subjectId,
+      p_workspace_id: input.workspaceId,
+    });
+    if (error) throw error;
+    return data as {
+      jobId: string;
+      eventId: string;
+      idempotencyKey: string;
+      workspaceId: string;
+      inserted?: boolean;
+    };
+  }
+
+  async completeConsolidation(input: {
+    subjectId: string;
+    jobId: string;
+    status?: 'succeeded' | 'failed' | 'dead_letter';
+    error?: string | null;
+  }) {
+    const { data, error } = await this.client.rpc('api_complete_consolidation', {
+      p_secret: this.apiSecret,
+      p_subject_id: input.subjectId,
+      p_job_id: input.jobId,
+      p_status: input.status ?? 'succeeded',
+      p_error: input.error ?? null,
+    });
+    if (error) throw error;
+    return data as {
+      jobId: string;
+      status: string;
+      jobType: string;
+    };
+  }
+
+  async listOutboxPending(input: {
+    subjectId: string;
+    workspaceId: string;
+    eventType?: string | null;
+    limit?: number;
+  }) {
+    const { data, error } = await this.client.rpc('api_list_outbox_pending', {
+      p_secret: this.apiSecret,
+      p_subject_id: input.subjectId,
+      p_workspace_id: input.workspaceId,
+      p_event_type: input.eventType ?? null,
+      p_limit: input.limit ?? 50,
+    });
+    if (error) throw error;
+    return data as {
+      count: number;
+      events: Array<{
+        id: string;
+        workspaceId: string;
+        aggregateType: string;
+        aggregateId: string;
+        eventType: string;
+        payload: Record<string, unknown>;
+        createdAt: string;
+        attempts: number;
+        lastError: string | null;
+      }>;
+    };
+  }
+
+  async deadLetterStaleJobs(input: {
+    subjectId: string;
+    workspaceId: string;
+    olderThanMinutes?: number;
+  }) {
+    const { data, error } = await this.client.rpc('api_dead_letter_stale_jobs', {
+      p_secret: this.apiSecret,
+      p_subject_id: input.subjectId,
+      p_workspace_id: input.workspaceId,
+      p_older_than_minutes: input.olderThanMinutes ?? 60,
+    });
+    if (error) throw error;
+    return data as {
+      deadLettered: number;
+      olderThanMinutes: number;
+      cutoff: string;
+    };
+  }
+
+  async publishOutboxEvent(input: {
+    subjectId: string;
+    eventId: string;
+    error?: string | null;
+  }) {
+    const { data, error } = await this.client.rpc('api_publish_outbox_event', {
+      p_secret: this.apiSecret,
+      p_subject_id: input.subjectId,
+      p_event_id: input.eventId,
+      p_error: input.error ?? null,
+    });
+    if (error) throw error;
+    return data as {
+      id: string;
+      eventType: string;
+      publishedAt: string;
+      attempts: number;
+      lastError: string | null;
     };
   }
 }

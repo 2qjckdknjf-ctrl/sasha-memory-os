@@ -1,0 +1,31 @@
+# Alpha deploy target for @memory-os/api
+# fly launch --config fly.toml  (or fly apps create + fly deploy)
+
+app = "sasha-memory-os-api"
+primary_region = "fra"
+
+[build]
+  dockerfile = "apps/api/Dockerfile"
+
+[env]
+  PORT = "8787"
+  MEMORY_OS_ENV = "staging"
+
+[http_service]
+  internal_port = 8787
+  force_https = true
+  auto_stop_machines = "stop"
+  auto_start_machines = true
+  min_machines_running = 0
+
+  [[http_service.checks]]
+    interval = "30s"
+    timeout = "5s"
+    grace_period = "10s"
+    method = "GET"
+    path = "/health"
+
+[[vm]]
+  memory = "512mb"
+  cpu_kind = "shared"
+  cpus = 1

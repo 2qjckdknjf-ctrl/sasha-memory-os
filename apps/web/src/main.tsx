@@ -1,10 +1,14 @@
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { App } from './App';
+import { OAuthCallback } from './OAuthCallback';
 import './styles.css';
 
-createRoot(document.getElementById('root')!).render(
+const root = document.getElementById('root')!;
+const path = window.location.pathname.replace(/\/$/, '') || '/';
+
+createRoot(root).render(
   <StrictMode>
-    <App />
+    {path === '/oauth/callback' ? <OAuthCallback /> : <App />}
   </StrictMode>,
 );

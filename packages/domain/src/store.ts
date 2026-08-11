@@ -265,6 +265,47 @@ export class MemoryStore {
     this.memories.set(next.id, next);
     return next;
   }
+
+  supersedeMemory(input: {
+    duplicateId: string;
+    keeperId: string;
+    reason: string;
+    actorSubjectId: string;
+  }): MemoryRecord {
+    if (input.duplicateId === input.keeperId) {
+      throw new Error('duplicate and keeper must differ');
+    }
+    const duplicate = this.memories.get(input.duplicateId);
+    const keeper = this.memories.get(input.keeperId);
+    if (!duplicate || !keeper) throw new Error('memory not found');
+    const nextDup: MemoryRecord = {
+      ...duplicate,
+      status: 'superseded',
+      supersededBy: keeper.id,
+      metadata: {
+        ...duplicate.metadata,
+        status_reason: input.reason,
+        status_actor: input.actorSubjectId,
+        status_at: new Date().toISOString(),
+        consolidated_into: keeper.id,
+      },
+    };
+    const from = Array.isArray(keeper.metadata.consolidated_from)
+      ? [...(keeper.metadata.consolidated_from as string[])]
+      : [];
+    from.push(duplicate.id);
+    const nextKeeper: MemoryRecord = {
+      ...keeper,
+      metadata: {
+        ...keeper.metadata,
+        consolidated_from: from,
+        consolidated_at: new Date().toISOString(),
+      },
+    };
+    this.memories.set(nextDup.id, nextDup);
+    this.memories.set(nextKeeper.id, nextKeeper);
+    return nextDup;
+  }
 }
 
 export function createSeededStore(): MemoryStore {

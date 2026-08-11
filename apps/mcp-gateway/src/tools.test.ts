@@ -19,11 +19,81 @@ describe('mcp gateway alpha', () => {
         'connections.set_status',
         'capture.text',
         'connections.sync',
+        'oauth.start',
+        'oauth.callback',
+        'outbox.list_pending',
+        'jobs.dead_letter_stale',
+        'outbox.publish',
         'capture.document',
         'capture.link',
+        'consolidation.run',
         'memory.set_status',
+        'memory.get',
+        'memory.embed',
+        'memory.embed_missing',
       ]),
     );
+  });
+
+  it('lists empty outbox offline', async () => {
+    const mcp = createMcpHandlers();
+    const owner = '33333333-3333-4333-8333-333333333301';
+    const result = (await mcp.call('outbox.list_pending', {
+      workspace_id: workspaceId,
+      actor_subject_id: owner,
+    })) as { count: number; backend?: string };
+    expect(result.count).toBe(0);
+    expect(result.backend).toBe('memory-store');
+  });
+
+  it('starts oauth stub offline', async () => {
+    const mcp = createMcpHandlers();
+    const owner = '33333333-3333-4333-8333-333333333301';
+    const started = (await mcp.call('oauth.start', {
+      workspace_id: workspaceId,
+      connector_id: 'github',
+      display_name: 'MCP OAuth',
+      actor_subject_id: owner,
+      scopes: ['repositories.read'],
+    })) as { authorizeUrl: string; state: string; backend?: string };
+    expect(started.backend).toBe('memory-store');
+    expect(started.authorizeUrl).toContain('stub://oauth/github');
+    const done = (await mcp.call('oauth.callback', {
+      state: started.state,
+      code: 'mcp-code',
+      actor_subject_id: owner,
+    })) as { exchangeMode: string; tokenPersisted: boolean };
+    expect(done.exchangeMode).toBe('stub');
+    expect(done.tokenPersisted).toBe(false);
+  });
+
+  it('runs offline consolidation for duplicate titles', async () => {
+    const mcp = createMcpHandlers();
+    const owner = '33333333-3333-4333-8333-333333333301';
+    const chatgpt = '33333333-3333-4333-8333-333333333302';
+    await mcp.call('capture.text', {
+      workspace_id: workspaceId,
+      project_id: projectId,
+      title: 'Dup Note',
+      text: 'first',
+      actor_subject_id: chatgpt,
+      idempotency_key: 'mcp-dup-1',
+    });
+    await mcp.call('capture.text', {
+      workspace_id: workspaceId,
+      project_id: projectId,
+      title: 'dup note',
+      text: 'second',
+      actor_subject_id: chatgpt,
+      idempotency_key: 'mcp-dup-2',
+    });
+    const report = (await mcp.call('consolidation.run', {
+      workspace_id: workspaceId,
+      actor_subject_id: owner,
+      apply: true,
+    })) as { planned: number; applied: unknown[] };
+    expect(report.planned).toBeGreaterThanOrEqual(1);
+    expect(report.applied.length).toBeGreaterThanOrEqual(1);
   });
 
   it('sets memory status offline', async () => {

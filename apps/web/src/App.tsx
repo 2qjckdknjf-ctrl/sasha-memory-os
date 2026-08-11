@@ -59,6 +59,7 @@ export function App() {
       status?: string;
       lastSyncAt?: string | null;
       lastError?: string | null;
+      vaultRef?: string | null;
     }>
   >([]);
   const [captureTitle, setCaptureTitle] = useState('Meeting note');
@@ -73,6 +74,9 @@ export function App() {
   const [boundSubjectId, setBoundSubjectId] = useState<string | null>(null);
   const [reviewQueue, setReviewQueue] = useState<
     Array<{ id: string; title: string; content: string; status: string }>
+  >([]);
+  const [outboxPending, setOutboxPending] = useState<
+    Array<{ id?: string; eventType?: string; createdAt?: string; attempts?: number }>
   >([]);
 
   const subjectId = actors[actor];
@@ -101,7 +105,9 @@ export function App() {
       ]);
       return;
     }
-    setBackend((health.backend as 'supabase' | 'memory-store') ?? 'memory-store');
+    const nextBackend =
+      (health.backend as 'supabase' | 'memory-store') ?? 'memory-store';
+    setBackend(nextBackend);
     const ctx = await apiGet<RemoteContext>(
       `/v1/projects/${PROJECT_ID}/context`,
       subjectId,
@@ -112,6 +118,7 @@ export function App() {
       subjectId,
     );
     setConnections(conn.connections ?? []);
+    await refreshOutboxPending(nextBackend);
   }
 
   useEffect(() => {
@@ -317,6 +324,32 @@ export function App() {
     }
   }
 
+  async function refreshOutboxPending(
+    mode: 'supabase' | 'memory-store' | 'local' = backend,
+  ) {
+    if (mode === 'local') {
+      setOutboxPending([]);
+      return;
+    }
+    try {
+      const result = await apiGet<{
+        events?: Array<{
+          id?: string;
+          eventType?: string;
+          createdAt?: string;
+          attempts?: number;
+        }>;
+      }>(
+        `/v1/outbox/pending?workspace_id=${WORKSPACE_ID}&limit=20`,
+        subjectId,
+        actor,
+      );
+      setOutboxPending(result.events ?? []);
+    } catch {
+      setOutboxPending([]);
+    }
+  }
+
   async function refreshReviewQueue() {
     if (backend === 'local') {
       setReviewQueue(
@@ -362,6 +395,37 @@ export function App() {
       setLastCapture(`memory ${memoryId.slice(0, 8)}… → ${status}`);
       await onSearch();
       await refreshReviewQueue();
+    } catch (err) {
+      setError((err as Error).message);
+    }
+  }
+
+  async function onEmbedMemory(
+    memoryId: string,
+    opts?: { title?: string; text?: string },
+  ) {
+    setError(null);
+    try {
+      if (backend === 'local') {
+        setError('Re-embed requires API + Supabase backend');
+        return;
+      }
+      const result = await apiPost<{
+        memoryId?: string;
+        dims?: number;
+        engine?: string;
+        hasVector?: boolean;
+      }>(`/v1/memories/${memoryId}/embed`, subjectId, {
+        workspace_id: WORKSPACE_ID,
+        actor_subject_id: subjectId,
+        title: opts?.title,
+        text: opts?.text,
+      }, actor);
+      setLastCapture(
+        `embed ${memoryId.slice(0, 8)}… dims=${result.dims ?? '?'} engine=${
+          result.engine ?? '?'
+        }`,
+      );
     } catch (err) {
       setError((err as Error).message);
     }
@@ -801,6 +865,17 @@ export function App() {
                       >
                         Retract
                       </button>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          void onEmbedMemory(hit.memory!.id!, {
+                            title: hit.memory?.title,
+                            text: hit.memory?.content,
+                          })
+                        }
+                      >
+                        Re-embed
+                      </button>
                     </div>
                   ) : null}
                 </li>
@@ -822,6 +897,76 @@ export function App() {
             }}
           >
             Load candidates
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              void (async () => {
+                setError(null);
+                try {
+                  if (backend === 'local') {
+                    setError('Consolidation requires API backend');
+                    return;
+                  }
+                  const report = await apiPost<{
+                    planned?: number;
+                    applied?: unknown[];
+                    job?: { jobId?: string } | null;
+                  }>('/v1/consolidation/run', subjectId, {
+                    workspace_id: WORKSPACE_ID,
+                    actor_subject_id: subjectId,
+                    apply: true,
+                    enqueue: true,
+                  }, actor);
+                  setLastCapture(
+                    `consolidation planned=${report.planned ?? 0} applied=${report.applied?.length ?? 0}${
+                      report.job?.jobId ? ` job=${report.job.jobId}` : ''
+                    }`,
+                  );
+                  await refreshReviewQueue();
+                  setTick((n) => n + 1);
+                } catch (err) {
+                  setError((err as Error).message);
+                }
+              })();
+            }}
+          >
+            Run consolidation
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              void (async () => {
+                setError(null);
+                try {
+                  if (backend === 'local') {
+                    setError('Embed-missing requires API + Supabase backend');
+                    return;
+                  }
+                  const report = await apiPost<{
+                    scanned?: number;
+                    missing?: number;
+                    embedded?: number;
+                    failed?: unknown[];
+                  }>('/v1/memories/embed-missing', subjectId, {
+                    workspace_id: WORKSPACE_ID,
+                    actor_subject_id: subjectId,
+                    limit: 25,
+                  }, actor);
+                  setLastCapture(
+                    `embed-missing scanned=${report.scanned ?? 0} missing=${
+                      report.missing ?? 0
+                    } embedded=${report.embedded ?? 0} failed=${
+                      report.failed?.length ?? 0
+                    }`,
+                  );
+                } catch (err) {
+                  setError((err as Error).message);
+                }
+              })();
+            }}
+          >
+            Embed missing
           </button>
         </div>
         <ul className="timeline">
@@ -850,6 +995,17 @@ export function App() {
                   onClick={() => void onSetHitStatus(item.id, 'retracted')}
                 >
                   Retract
+                </button>
+                <button
+                  type="button"
+                  onClick={() =>
+                    void onEmbedMemory(item.id, {
+                      title: item.title,
+                      text: item.content,
+                    })
+                  }
+                >
+                  Re-embed
                 </button>
               </div>
             </li>
@@ -905,15 +1061,26 @@ export function App() {
                     connector_id: 'github',
                     display_name: 'OAuth pilot repos',
                     scopes: ['repositories.read'],
+                    redirect_uri: `${window.location.origin}/oauth/callback`,
                     actor_subject_id: subjectId,
                   }, actor);
-                  await apiPost('/v1/oauth/callback', subjectId, {
+                  const authorizeUrl = start.authorizeUrl ?? '';
+                  if (authorizeUrl.startsWith('http')) {
+                    window.location.assign(authorizeUrl);
+                    return;
+                  }
+                  const done = await apiPost<{
+                    exchangeMode?: string;
+                    tokensInVault?: boolean;
+                    vaultRef?: string;
+                    note?: string;
+                  }>('/v1/oauth/callback', subjectId, {
                     state: start.state,
                     code: 'stub-code',
                     actor_subject_id: subjectId,
                   }, actor);
                   setLastCapture(
-                    `oauth ${start.authorizeUrl ?? 'started'} → vault ref only`,
+                    `oauth ${authorizeUrl || 'stub'} → mode=${done.exchangeMode ?? 'stub'} vault=${done.tokensInVault ? 'yes' : 'no'}`,
                   );
                   setTick((n) => n + 1);
                 } catch (err) {
@@ -922,7 +1089,7 @@ export function App() {
               })();
             }}
           >
-            OAuth GitHub stub
+            OAuth GitHub
           </button>
           <button
             type="button"
@@ -936,11 +1103,19 @@ export function App() {
                   }
                   const plan = await apiPost<{
                     count?: number;
+                    captured?: number;
+                    completed?: Array<{ status?: string }>;
                   }>('/v1/connections/sync', subjectId, {
                     workspace_id: WORKSPACE_ID,
                     actor_subject_id: subjectId,
                   }, actor);
-                  setLastCapture(`connector sync enqueued: ${plan.count ?? 0}`);
+                  const failed = (plan.completed ?? []).filter(
+                    (row) => row.status && row.status !== 'succeeded',
+                  ).length;
+                  setLastCapture(
+                    `connector sync enqueued=${plan.count ?? 0} captured=${plan.captured ?? 0} failed=${failed}`,
+                  );
+                  await refreshOutboxPending();
                   setTick((n) => n + 1);
                 } catch (err) {
                   setError((err as Error).message);
@@ -950,7 +1125,86 @@ export function App() {
           >
             Enqueue connector sync
           </button>
+          <button
+            type="button"
+            onClick={() => {
+              void refreshOutboxPending().catch((err) =>
+                setError((err as Error).message),
+              );
+            }}
+          >
+            Load outbox
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              void (async () => {
+                setError(null);
+                try {
+                  if (backend === 'local') {
+                    setError('Dead-letter requires API backend');
+                    return;
+                  }
+                  const result = await apiPost<{
+                    deadLettered?: number;
+                  }>('/v1/jobs/dead-letter-stale', subjectId, {
+                    workspace_id: WORKSPACE_ID,
+                    older_than_minutes: 60,
+                  }, actor);
+                  setLastCapture(
+                    `dead-lettered stale jobs: ${result.deadLettered ?? 0}`,
+                  );
+                  await refreshOutboxPending();
+                  setTick((n) => n + 1);
+                } catch (err) {
+                  setError((err as Error).message);
+                }
+              })();
+            }}
+          >
+            Dead-letter stale jobs
+          </button>
         </div>
+        {outboxPending.length > 0 ? (
+          <ul className="timeline">
+            {outboxPending.map((ev, i) => (
+              <li className="item" key={ev.id ?? `outbox-${i}`}>
+                <div className="meta">
+                  <span className="badge state">outbox</span>
+                  <span>attempts {ev.attempts ?? 0}</span>
+                </div>
+                <h3>{ev.eventType ?? 'event'}</h3>
+                <p>{ev.createdAt ?? 'pending'}</p>
+                {ev.id && backend !== 'local' ? (
+                  <div className="actions">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        void (async () => {
+                          setError(null);
+                          try {
+                            await apiPost(
+                              `/v1/outbox/${ev.id}/publish`,
+                              subjectId,
+                              { error: 'acked from web' },
+                              actor,
+                            );
+                            await refreshOutboxPending();
+                            setTick((n) => n + 1);
+                          } catch (err) {
+                            setError((err as Error).message);
+                          }
+                        })();
+                      }}
+                    >
+                      Ack publish
+                    </button>
+                  </div>
+                ) : null}
+              </li>
+            ))}
+          </ul>
+        ) : null}
         <ul className="timeline">
           {connections.map((c, i) => (
             <li className="item" key={`${c.id ?? c.connectorId}-${i}`}>
@@ -963,6 +1217,7 @@ export function App() {
               </div>
               <h3>{c.displayName ?? c.connectorId}</h3>
               <p>{c.lastError ?? 'No sync errors reported.'}</p>
+              {c.vaultRef ? <p className="meta">vault {c.vaultRef}</p> : null}
               {c.id && backend !== 'local' ? (
                 <div className="actions">
                   <button

@@ -13,6 +13,9 @@ function authHeaders(
   const headers: Record<string, string> = { 'x-subject-id': subjectId };
   if (actorKey) headers['x-actor-key'] = actorKey;
   if (boundAuthUserId) headers['x-auth-user-id'] = boundAuthUserId;
+  // Private demo only — never ship a real API secret in a public web build.
+  const demoSecret = import.meta.env.VITE_MEMORY_API_SECRET?.trim();
+  if (demoSecret) headers['x-memory-os-api-secret'] = demoSecret;
   return headers;
 }
 

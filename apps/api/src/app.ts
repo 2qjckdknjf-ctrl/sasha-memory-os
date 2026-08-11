@@ -6,14 +6,15 @@ import {
   type AuthzContext,
 } from '@memory-os/authz';
 import { createSeededStore, type MemoryStore } from '@memory-os/domain';
-import { pullGithubStubDelta } from '@memory-os/connector-github';
-import { pullGmailStubDelta } from '@memory-os/connector-gmail';
-import { pullGoogleCalendarStubDelta } from '@memory-os/connector-google-calendar';
-import { pullGoogleDriveStubDelta } from '@memory-os/connector-google-drive';
+import { pullGithubDelta } from '@memory-os/connector-github';
+import { pullGmailDelta } from '@memory-os/connector-gmail';
+import { pullGoogleCalendarDelta } from '@memory-os/connector-google-calendar';
+import { pullGoogleDriveDelta } from '@memory-os/connector-google-drive';
 import {
   exchangeAuthorizationCode,
   fingerprintAuthorizationCode,
   resolveAuthorizeBase,
+  resolveConnectorSyncOutcome,
 } from '@memory-os/connector-sdk';
 import {
   bindAuthUserSchema,
@@ -35,8 +36,17 @@ import {
   extractTextFromBytes,
   fetchPublicLink,
 } from '@memory-os/ingestion';
-import { projectContext, searchMemoriesHybrid } from '@memory-os/retrieval';
+import {
+  createEmbeddingAdapter,
+  embedMemoryText,
+  planCandidateConsolidations,
+  projectContext,
+  rerankHitsHybrid,
+  searchMemoriesHybrid,
+} from '@memory-os/retrieval';
+import { createConfiguredVaultStore } from '@memory-os/db';
 import type { SupabaseMemoryGateway } from './supabase.js';
+import { requireHttpApiSecret } from './httpAuth.js';
 
 export type ApiVariables = {
   store: MemoryStore;
@@ -112,34 +122,76 @@ function isForbiddenError(err: unknown): boolean {
   return /forbidden|42501|unauthorized/i.test(message);
 }
 
-function pullConnectorStubDelta(item: {
-  connectorId: string;
-  connectionId: string;
-}) {
+async function maybeEmbedCapturedMemory(
+  gateway: SupabaseMemoryGateway,
+  input: {
+    subjectId: string;
+    title: string;
+    text: string;
+    captureResult: {
+      process?: { memoryId?: string | null } | null;
+      [key: string]: unknown;
+    };
+  },
+) {
+  const memoryId = input.captureResult.process?.memoryId;
+  if (!memoryId) return null;
+  try {
+    const embedded = await embedMemoryText(input.title, input.text);
+    if (embedded.vector.length === 0) return null;
+    return gateway.setMemoryEmbedding({
+      subjectId: input.subjectId,
+      memoryId,
+      embedding: embedded.vector,
+      engine: embedded.engine,
+    });
+  } catch (err) {
+    const strict =
+      (process.env.MEMORY_OS_EMBED_STRICT ?? '').trim() === '1' ||
+      (process.env.MEMORY_OS_EMBED_STRICT ?? '').trim().toLowerCase() === 'true';
+    if (strict) throw err;
+    // Capture must succeed even if embedding persistence fails (non-strict).
+    return null;
+  }
+}
+
+async function pullConnectorDelta(
+  item: {
+    connectorId: string;
+    connectionId: string;
+    displayName?: string;
+    vaultRef?: string | null;
+  },
+  vault: ReturnType<typeof createConfiguredVaultStore>,
+) {
+  const common = {
+    connectionId: item.connectionId,
+    displayName: item.displayName ?? item.connectorId,
+    vaultRef: item.vaultRef ?? undefined,
+    vault,
+  };
   switch (item.connectorId) {
     case 'github':
-      return pullGithubStubDelta({
-        connectionId: item.connectionId,
-        displayName: item.connectorId,
-      });
+      return pullGithubDelta(common);
     case 'google-drive':
-      return pullGoogleDriveStubDelta({
-        connectionId: item.connectionId,
-        displayName: item.connectorId,
-      });
+      return pullGoogleDriveDelta(common);
     case 'gmail':
-      return pullGmailStubDelta({
-        connectionId: item.connectionId,
-        displayName: item.connectorId,
-      });
+      return pullGmailDelta(common);
     case 'google-calendar':
-      return pullGoogleCalendarStubDelta({
-        connectionId: item.connectionId,
-        displayName: item.connectorId,
-      });
+      return pullGoogleCalendarDelta(common);
     default:
       return null;
   }
+}
+
+function resolveCorsOrigins(
+  env: NodeJS.ProcessEnv = process.env,
+): string[] {
+  const configured = env.MEMORY_OS_CORS_ORIGINS?.split(',')
+    .map((v) => v.trim())
+    .filter(Boolean);
+  if (configured && configured.length > 0) return configured;
+  return ['http://localhost:5173', 'http://127.0.0.1:5173'];
 }
 
 export function createApp(options?: {
@@ -153,13 +205,15 @@ export function createApp(options?: {
   app.use(
     '*',
     cors({
-      origin: ['http://localhost:5173', 'http://127.0.0.1:5173'],
+      origin: resolveCorsOrigins(),
       allowHeaders: [
         'Content-Type',
         'x-subject-id',
         'x-actor-key',
         'x-client-id',
         'x-auth-user-id',
+        'x-memory-os-api-secret',
+        'Authorization',
       ],
     }),
   );
@@ -235,8 +289,21 @@ export function createApp(options?: {
       ok: true,
       service: 'memory-api',
       backend: gateway ? 'supabase' : 'memory-store',
+      embedEngine: (process.env.MEMORY_OS_EMBED_ENGINE ?? 'stub').trim() || 'stub',
+      vaultBackend:
+        (process.env.MEMORY_OS_VAULT_BACKEND ?? '').trim() ||
+        (process.env.MEMORY_OS_SUPABASE_URL ? 'supabase' : 'local'),
+      connectorPullMode:
+        (process.env.MEMORY_OS_CONNECTOR_PULL_MODE ?? 'auto').trim() || 'auto',
     }),
   );
+
+  // Owner/cron ops — require HTTP API secret outside local/test (see httpAuth.ts).
+  app.use('/v1/consolidation/*', requireHttpApiSecret);
+  app.use('/v1/connections/sync', requireHttpApiSecret);
+  app.use('/v1/jobs/dead-letter-stale', requireHttpApiSecret);
+  app.use('/v1/outbox/*', requireHttpApiSecret);
+  app.use('/v1/memories/embed-missing', requireHttpApiSecret);
 
   app.get('/v1/me', (c) => {
     const authz = c.get('authz');
@@ -307,13 +374,14 @@ export function createApp(options?: {
       const completed: Array<Record<string, unknown>> = [];
       let captured = 0;
       if (body.complete_now !== false) {
+        const vault = createConfiguredVaultStore({ gateway: gw });
         for (const item of result.enqueued ?? []) {
           if (!item.jobId) continue;
           try {
-            const delta = pullConnectorStubDelta(item);
+            const delta = await pullConnectorDelta(item, vault);
             if (delta) {
               for (const event of delta.items) {
-                await gw.captureText({
+                const captureResult = await gw.captureText({
                   subjectId: actorSubjectId,
                   workspaceId,
                   projectId: seedProject,
@@ -324,16 +392,36 @@ export function createApp(options?: {
                   filename: `${item.connectorId}://${event.externalId}`,
                   mimeType: 'text/plain',
                 });
+                await maybeEmbedCapturedMemory(gw, {
+                  subjectId: actorSubjectId,
+                  title: event.title,
+                  text: event.text,
+                  captureResult,
+                });
                 captured += 1;
               }
             }
-            completed.push(
-              await gw.completeConnectorSync({
+            const pullMode =
+              delta && 'mode' in delta && typeof delta.mode === 'string'
+                ? delta.mode
+                : 'none';
+            const note =
+              delta && 'note' in delta && typeof delta.note === 'string'
+                ? delta.note
+                : delta
+                  ? undefined
+                  : 'unsupported connector';
+            const outcome = resolveConnectorSyncOutcome({ pullMode, note });
+            completed.push({
+              ...(await gw.completeConnectorSync({
                 subjectId: actorSubjectId,
                 jobId: item.jobId,
-                status: 'succeeded',
-              }),
-            );
+                status: outcome.status,
+                error: outcome.error,
+              })),
+              pullMode,
+              note,
+            });
           } catch (err) {
             completed.push(
               await gw.completeConnectorSync({
@@ -445,17 +533,24 @@ export function createApp(options?: {
       });
     }
     try {
-      // First complete with stub mode to resolve connection; raw code never sent to DB.
+      // Peek → HTTP exchange into vault → complete with mode. Raw code never sent to DB.
+      const peeked = await gw.oauthPeekState({
+        subjectId: body.actor_subject_id,
+        state: body.state,
+      });
+      const vault = createConfiguredVaultStore({ gateway: gw });
+      const exchange = await exchangeAuthorizationCode({
+        connectorId: peeked.connectorId,
+        connectionId: peeked.connectionId,
+        code: body.code,
+        redirectUri: peeked.redirectUri,
+        vault,
+      });
       const result = await gw.oauthCompleteStub({
         subjectId: body.actor_subject_id,
         state: body.state,
-        codeFingerprint,
-        exchangeMode: 'stub',
-      });
-      const exchange = exchangeAuthorizationCode({
-        connectorId: result.connectorId,
-        connectionId: result.connectionId,
-        code: body.code,
+        codeFingerprint: exchange.codeFingerprint ?? codeFingerprint,
+        exchangeMode: exchange.exchangeMode,
       });
       return c.json({
         ...result,
@@ -465,6 +560,7 @@ export function createApp(options?: {
         codeFingerprint: exchange.codeFingerprint,
         clientIdConfigured: exchange.clientIdConfigured,
         clientSecretConfigured: exchange.clientSecretConfigured,
+        tokensInVault: exchange.exchangeMode === 'exchanged',
         note: exchange.note,
       });
     } catch (err) {
@@ -634,7 +730,13 @@ export function createApp(options?: {
           sensitivity: body.sensitivity,
           processNow: body.process_now,
         });
-        return c.json(result, 201);
+        const embedding = await maybeEmbedCapturedMemory(gw, {
+          subjectId: body.actor_subject_id,
+          title: body.title,
+          text: body.text,
+          captureResult: result,
+        });
+        return c.json({ ...result, embedding }, 201);
       } catch (err) {
         if (isForbiddenError(err)) return c.json({ error: 'forbidden' }, 403);
         return c.json({ error: (err as Error).message }, 500);
@@ -703,11 +805,18 @@ export function createApp(options?: {
           filename: parsed.filename,
           mimeType: parsed.mimeType,
         });
+        const embedding = await maybeEmbedCapturedMemory(gw, {
+          subjectId: body.actor_subject_id,
+          title: body.title,
+          text: enrichedText,
+          captureResult: result,
+        });
         return c.json(
           {
             ...(result as Record<string, unknown>),
             extractedChars: parsed.text.length,
             pageHint: parsed.pageHint ?? null,
+            embedding,
           },
           201,
         );
@@ -784,12 +893,19 @@ export function createApp(options?: {
           filename: fetched.finalUrl,
           mimeType: 'text/html',
         });
+        const embedding = await maybeEmbedCapturedMemory(gw, {
+          subjectId: body.actor_subject_id,
+          title,
+          text,
+          captureResult: result,
+        });
         return c.json(
           {
             ...(result as Record<string, unknown>),
             url: fetched.url,
             finalUrl: fetched.finalUrl,
             extractedChars: fetched.text.length,
+            embedding,
           },
           201,
         );
@@ -852,6 +968,85 @@ export function createApp(options?: {
     }
   });
 
+  app.get('/v1/outbox/pending', async (c) => {
+    const authz = c.get('authz');
+    if (!authz.isOwner) return c.json({ error: 'forbidden' }, 403);
+    const gw = c.get('gateway');
+    if (!gw) {
+      return c.json({ count: 0, events: [], backend: 'memory-store' });
+    }
+    const workspaceId =
+      c.req.query('workspace_id')?.trim() || seedWorkspace;
+    const eventType = c.req.query('event_type')?.trim() || null;
+    const limitRaw = Number(c.req.query('limit') ?? '50');
+    try {
+      const result = await gw.listOutboxPending({
+        subjectId: authz.subjectId,
+        workspaceId,
+        eventType,
+        limit: Number.isFinite(limitRaw) ? limitRaw : 50,
+      });
+      return c.json({ ...result, backend: 'supabase' });
+    } catch (err) {
+      if (isForbiddenError(err)) return c.json({ error: 'forbidden' }, 403);
+      return c.json({ error: (err as Error).message }, 500);
+    }
+  });
+
+  app.post('/v1/jobs/dead-letter-stale', async (c) => {
+    const body = (await c.req.json().catch(() => ({}))) as {
+      workspace_id?: string;
+      older_than_minutes?: number;
+    };
+    const authz = c.get('authz');
+    if (!authz.isOwner) return c.json({ error: 'forbidden' }, 403);
+    const gw = c.get('gateway');
+    if (!gw) {
+      return c.json({
+        deadLettered: 0,
+        backend: 'memory-store',
+        note: 'dead-letter requires supabase backend',
+      });
+    }
+    try {
+      const result = await gw.deadLetterStaleJobs({
+        subjectId: authz.subjectId,
+        workspaceId: body.workspace_id ?? seedWorkspace,
+        olderThanMinutes: body.older_than_minutes,
+      });
+      return c.json({ ...result, backend: 'supabase' });
+    } catch (err) {
+      if (isForbiddenError(err)) return c.json({ error: 'forbidden' }, 403);
+      return c.json({ error: (err as Error).message }, 500);
+    }
+  });
+
+  app.post('/v1/outbox/:id/publish', async (c) => {
+    const eventId = c.req.param('id');
+    const body = (await c.req.json().catch(() => ({}))) as { error?: string };
+    const authz = c.get('authz');
+    if (!authz.isOwner) return c.json({ error: 'forbidden' }, 403);
+    const gw = c.get('gateway');
+    if (!gw) {
+      return c.json({
+        id: eventId,
+        publishedAt: new Date().toISOString(),
+        backend: 'memory-store',
+      });
+    }
+    try {
+      const result = await gw.publishOutboxEvent({
+        subjectId: authz.subjectId,
+        eventId,
+        error: body.error ?? null,
+      });
+      return c.json({ ...result, backend: 'supabase' });
+    } catch (err) {
+      if (isForbiddenError(err)) return c.json({ error: 'forbidden' }, 403);
+      return c.json({ error: (err as Error).message }, 500);
+    }
+  });
+
   app.get('/v1/memories', async (c) => {
     const authz = c.get('authz');
     const workspaceId = c.req.query('workspace_id') ?? seedWorkspace;
@@ -899,6 +1094,54 @@ export function createApp(options?: {
         metadata: m.metadata,
       }));
     return c.json({ memories });
+  });
+
+  app.get('/v1/memories/:id', async (c) => {
+    const memoryId = c.req.param('id');
+    const authz = c.get('authz');
+    const gw = c.get('gateway');
+    if (gw) {
+      try {
+        const memory = await gw.getMemory({
+          subjectId: authz.subjectId,
+          memoryId,
+        });
+        return c.json({ memory, backend: 'supabase' });
+      } catch (err) {
+        if (isForbiddenError(err)) return c.json({ error: 'forbidden' }, 403);
+        const message = (err as Error).message;
+        if (/not found|P0002/i.test(message)) {
+          return c.json({ error: 'memory not found' }, 404);
+        }
+        return c.json({ error: message }, 500);
+      }
+    }
+    const memory = c.get('store').memories.get(memoryId);
+    if (!memory) return c.json({ error: 'memory not found' }, 404);
+    if (
+      !authorize(authz, {
+        resourceType: 'memory',
+        action: 'read',
+        projectId: memory.projectId,
+        sensitivity: memory.sensitivity,
+      })
+    ) {
+      return c.json({ error: 'forbidden' }, 403);
+    }
+    return c.json({
+      memory: {
+        id: memory.id,
+        title: memory.title,
+        content: memory.content,
+        status: memory.status,
+        sensitivity: memory.sensitivity,
+        memoryType: memory.memoryType,
+        projectId: memory.projectId,
+        recordedAt: memory.recordedAt,
+        metadata: memory.metadata,
+      },
+      backend: 'memory-store',
+    });
   });
 
   app.post('/v1/memories', async (c) => {
@@ -951,6 +1194,142 @@ export function createApp(options?: {
     return c.json(memory, 201);
   });
 
+  app.post('/v1/consolidation/run', async (c) => {
+    const body = (await c.req.json().catch(() => ({}))) as {
+      workspace_id?: string;
+      actor_subject_id?: string;
+      apply?: boolean;
+      limit?: number;
+      enqueue?: boolean;
+    };
+    const authz = c.get('authz');
+    if (!authz.isOwner) return c.json({ error: 'forbidden' }, 403);
+    const workspaceId = body.workspace_id ?? seedWorkspace;
+    const actorSubjectId = body.actor_subject_id ?? authz.subjectId;
+    if (authz.subjectId !== actorSubjectId) {
+      return c.json({ error: 'forbidden' }, 403);
+    }
+    const apply = body.apply !== false;
+    const gw = c.get('gateway');
+    try {
+      if (gw) {
+        let jobMeta: {
+          jobId: string;
+          eventId: string;
+          idempotencyKey: string;
+        } | null = null;
+        if (body.enqueue) {
+          jobMeta = await gw.enqueueConsolidation({
+            subjectId: actorSubjectId,
+            workspaceId,
+          });
+        }
+        const rows = await gw.listMemories({
+          subjectId: actorSubjectId,
+          workspaceId,
+          status: 'candidate',
+          limit: body.limit ?? 100,
+        });
+        const planned = await planCandidateConsolidations(
+          rows.map((row) => ({
+            id: row.id,
+            title: row.title,
+            content: row.content,
+            status: row.status,
+            recordedAt: row.recordedAt,
+            embedding: Array.isArray(row.embedding) ? row.embedding : null,
+          })),
+        );
+        const applied = [];
+        const failed = [];
+        if (apply) {
+          for (const pair of planned) {
+            try {
+              applied.push(
+                await gw.supersedeMemory({
+                  subjectId: actorSubjectId,
+                  duplicateId: pair.duplicateId,
+                  keeperId: pair.keeperId,
+                  reason: `consolidation: ${pair.reason}`,
+                }),
+              );
+            } catch (err) {
+              failed.push({
+                pair,
+                error: err instanceof Error ? err.message : String(err),
+              });
+            }
+          }
+        }
+        if (jobMeta) {
+          const status =
+            failed.length > 0 && applied.length === 0 ? 'failed' : 'succeeded';
+          await gw.completeConsolidation({
+            subjectId: actorSubjectId,
+            jobId: jobMeta.jobId,
+            status,
+            error:
+              status === 'failed'
+                ? failed
+                    .map((f) =>
+                      typeof f === 'object' && f && 'error' in f
+                        ? String((f as { error: string }).error)
+                        : 'failed',
+                    )
+                    .join('; ')
+                    .slice(0, 500)
+                : null,
+          });
+        }
+        return c.json({
+          scanned: rows.length,
+          planned: planned.length,
+          pairs: planned,
+          applied,
+          failed,
+          backend: 'supabase',
+          job: jobMeta,
+        });
+      }
+
+      const storeLocal = c.get('store');
+      const candidates = [...storeLocal.memories.values()]
+        .filter((m) => m.status === 'candidate')
+        .map((m) => ({
+          id: m.id,
+          title: m.title,
+          content: m.content,
+          status: m.status,
+          recordedAt: m.recordedAt,
+        }));
+      const planned = await planCandidateConsolidations(candidates);
+      const applied = [];
+      if (apply) {
+        for (const pair of planned) {
+          applied.push(
+            storeLocal.supersedeMemory({
+              duplicateId: pair.duplicateId,
+              keeperId: pair.keeperId,
+              reason: `consolidation: ${pair.reason}`,
+              actorSubjectId,
+            }),
+          );
+        }
+      }
+      return c.json({
+        scanned: candidates.length,
+        planned: planned.length,
+        pairs: planned,
+        applied,
+        failed: [],
+        backend: 'memory-store',
+      });
+    } catch (err) {
+      if (isForbiddenError(err)) return c.json({ error: 'forbidden' }, 403);
+      return c.json({ error: (err as Error).message }, 500);
+    }
+  });
+
   app.post('/v1/memories/:id/status', async (c) => {
     const memoryId = c.req.param('id');
     const body = setMemoryStatusSchema.parse(await c.req.json());
@@ -992,6 +1371,131 @@ export function createApp(options?: {
       });
     } catch (err) {
       return c.json({ error: (err as Error).message }, 404);
+    }
+  });
+
+  app.post('/v1/memories/embed-missing', async (c) => {
+    const body = (await c.req.json().catch(() => ({}))) as {
+      workspace_id?: string;
+      actor_subject_id?: string;
+      status?: string | null;
+      limit?: number;
+    };
+    const authz = c.get('authz');
+    if (!authz.isOwner) return c.json({ error: 'forbidden' }, 403);
+    const actorSubjectId = body.actor_subject_id ?? authz.subjectId;
+    if (authz.subjectId !== actorSubjectId) {
+      return c.json({ error: 'forbidden' }, 403);
+    }
+    const gw = c.get('gateway');
+    if (!gw) {
+      return c.json({ error: 'supabase gateway required for embed persist' }, 501);
+    }
+    const limit = Math.min(Math.max(Number(body.limit ?? 25) || 25, 1), 100);
+    try {
+      const rows = await gw.listMemories({
+        subjectId: actorSubjectId,
+        workspaceId: body.workspace_id ?? seedWorkspace,
+        status: body.status ?? null,
+        limit: 200,
+      });
+      const missing = rows.filter(
+        (row) => !Array.isArray(row.embedding) || row.embedding.length === 0,
+      );
+      const batch = missing.slice(0, limit);
+      const embedded: Array<{
+        memoryId: string;
+        dims: number;
+        engine: string;
+      }> = [];
+      const failed: Array<{ memoryId: string; error: string }> = [];
+      for (const row of batch) {
+        try {
+          // list_memories truncates content — fetch full text for quality embed
+          const full = await gw.getMemory({
+            subjectId: actorSubjectId,
+            memoryId: row.id,
+          });
+          const vec = await embedMemoryText(full.title, full.content);
+          if (vec.vector.length === 0) {
+            failed.push({ memoryId: row.id, error: 'empty embedding vector' });
+            continue;
+          }
+          const saved = await gw.setMemoryEmbedding({
+            subjectId: actorSubjectId,
+            memoryId: row.id,
+            embedding: vec.vector,
+            engine: vec.engine,
+          });
+          embedded.push({
+            memoryId: row.id,
+            dims: saved.dims,
+            engine: saved.engine ?? vec.engine,
+          });
+        } catch (err) {
+          failed.push({
+            memoryId: row.id,
+            error: err instanceof Error ? err.message : String(err),
+          });
+        }
+      }
+      return c.json({
+        scanned: rows.length,
+        missing: missing.length,
+        embedded: embedded.length,
+        failed,
+        results: embedded,
+        backend: 'supabase',
+      });
+    } catch (err) {
+      if (isForbiddenError(err)) return c.json({ error: 'forbidden' }, 403);
+      return c.json({ error: (err as Error).message }, 500);
+    }
+  });
+
+  app.post('/v1/memories/:id/embed', async (c) => {
+    const memoryId = c.req.param('id');
+    const body = (await c.req.json().catch(() => ({}))) as {
+      workspace_id?: string;
+      actor_subject_id?: string;
+      title?: string;
+      text?: string;
+    };
+    const authz = c.get('authz');
+    if (!authz.isOwner) return c.json({ error: 'forbidden' }, 403);
+    const actorSubjectId = body.actor_subject_id ?? authz.subjectId;
+    if (authz.subjectId !== actorSubjectId) {
+      return c.json({ error: 'forbidden' }, 403);
+    }
+    const gw = c.get('gateway');
+    if (!gw) {
+      return c.json({ error: 'supabase gateway required for embed persist' }, 501);
+    }
+    try {
+      let title = body.title?.trim() || '';
+      let text = body.text?.trim() || '';
+      if (!title || !text) {
+        const hit = await gw.getMemory({
+          subjectId: actorSubjectId,
+          memoryId,
+        });
+        title = title || hit.title;
+        text = text || hit.content;
+      }
+      const embedded = await embedMemoryText(title, text);
+      if (embedded.vector.length === 0) {
+        return c.json({ error: 'empty embedding vector', engine: embedded.engine }, 422);
+      }
+      const result = await gw.setMemoryEmbedding({
+        subjectId: actorSubjectId,
+        memoryId,
+        embedding: embedded.vector,
+        engine: embedded.engine,
+      });
+      return c.json({ ...result, backend: 'supabase' });
+    } catch (err) {
+      if (isForbiddenError(err)) return c.json({ error: 'forbidden' }, 403);
+      return c.json({ error: (err as Error).message }, 500);
     }
   });
 
@@ -1153,13 +1657,41 @@ export function createApp(options?: {
     const gw = c.get('gateway');
     if (gw) {
       try {
-        const hits = await gw.search({
+        let queryEmbedding: number[] | null = null;
+        try {
+          const adapter = createEmbeddingAdapter();
+          const embedded = await adapter.embed({ texts: [body.query ?? ''] });
+          if ((embedded.vectors[0]?.length ?? 0) === 32) {
+            queryEmbedding = embedded.vectors[0] ?? null;
+          }
+        } catch {
+          queryEmbedding = null;
+        }
+        const raw = await gw.search({
           subjectId: authz.subjectId,
           query: body.query ?? '',
           projectId: body.project_id,
           includeHistory: body.include_history,
+          queryEmbedding,
         });
-        return c.json({ hits });
+        const list = (Array.isArray(raw) ? raw : []) as Array<{
+          memory: {
+            title?: string | null;
+            content?: string | null;
+            embedding?: number[] | null;
+          };
+          score: number;
+          reason?: string;
+        }>;
+        const hits = await rerankHitsHybrid(list, body.query ?? '', {
+          reason: 'hybrid:rpc+embed',
+        });
+        return c.json({
+          hits,
+          backend: 'supabase',
+          ranking: 'hybrid',
+          queryEmbeddingDims: queryEmbedding?.length ?? 0,
+        });
       } catch (err) {
         if (isForbiddenError(err)) return c.json({ error: 'forbidden' }, 403);
         return c.json({ error: (err as Error).message }, 500);

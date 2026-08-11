@@ -12,11 +12,12 @@
 
 **Subject + Connections control-plane alpha**: resolve via `x-subject-id` / `x-actor-key` / `x-client-id`; connection upsert + status (connect/reauth/revoke stubs); MCP `capture.text` + connection tools.
 
-**WP-07 harness stub**: `tests/eval/golden_retrieval.*` runs ACL-aware local retrieval cases.
+**WP-07 harness**: `tests/eval/golden_retrieval.*` — 200 ACL-aware hybrid retrieval cases.
 
-**OAuth broker + Auth bind alpha**: `connector_secrets` / `oauth_states`, `/v1/oauth/start|callback` (vault refs only), `/v1/auth/bind` + `x-auth-user-id` resolve; Web Auth panel binds session → subject.
+**OAuth broker + Auth bind alpha**: `connector_secrets` / `oauth_states`, `/v1/oauth/start|callback` + MCP `oauth.start` / `oauth.callback` (peek → HTTP exchange → shared vault; refs only in DB), `/v1/auth/bind` + `x-auth-user-id` resolve; Web Auth panel binds session → subject. Outbox ops: `GET /v1/outbox/pending`, `POST /v1/jobs/dead-letter-stale` (+ Web Load outbox / Dead-letter; MCP `outbox.list_pending` / `jobs.dead_letter_stale`). Deploy: `apps/api/Dockerfile` + `fly.toml`.
 
-**OCR + connector-sync alpha**: OCR engines; connector stub deltas (GitHub/Drive/Gmail/Calendar) → capture; MCP capture + sync ingest; OAuth fingerprint exchange (no tokens in DB); embedding stub (`MEMORY_OS_EMBED_ENGINE`); `POST /v1/memories/:id/status` + MCP `memory.set_status`; golden set = 80 cases.
+**OCR + connector-sync alpha**: OCR engines; vault-backed pulls for GitHub/Drive/Gmail/Calendar (`MEMORY_OS_CONNECTOR_PULL_MODE`, DB `vaultRef` on enqueue, token refresh on expiry) → capture; MCP stdio gateway + capture/sync/oauth/outbox tools; OAuth HTTP exchange into shared encrypted vault + Web `/oauth/callback`; embeddings on capture/sync with `EMBED_STRICT` + owner re-embed (`POST /v1/memories/:id/embed` / MCP `memory.embed` / Web); hybrid search; consolidation + idempotent connector outbox; HTTP API secret on owner ops outside local; golden = 200; Dockerfile/`fly.toml`/GH worker-ticks + `scripts/smoke-api.sh`.
+
 
 Owner checklist items below (ChatGPT MCP plan, region, golden set, DPIA, etc.) remain open for RG0.
 

@@ -19,6 +19,17 @@ Dedicated project (ADR-005). **Do not** mix with AISTROYKA / HiAir.
 - `capture_document_metadata` / event-type branch for text vs document
 - `subjects_and_connections_actions`
 - `oauth_broker_and_auth_binding` (vault refs + auth user bind)
+- `oauth_exchange_metadata` / `oauth_http_exchange` (peek state, `exchanged` mode)
+- `memory_embeddings` (jsonb + `vector(32)` HNSW + `api_set_memory_embedding`)
+- `search_hybrid_vector` (`api_search_memories` accepts optional query embedding)
+- `supersede_memory` (consolidation RPC `api_supersede_memory`)
+- `shared_connector_vault` (`api_vault_put|get|delete`)
+- `list_memories_embedding` (expose embedding on review/consolidation list)
+- `consolidation_outbox` (`api_enqueue_consolidation` / `api_complete_consolidation`)
+- `outbox_claim_dead_letter` (`api_list_outbox_pending` / `api_dead_letter_stale_jobs`)
+- `publish_outbox_event` (`api_publish_outbox_event`)
+- `vault_ref_enqueue_idempotent` (list connections `vaultRef`; enqueue outbox only on new jobs)
+- `consolidation_enqueue_idempotent` (one consolidate outbox per minute-bucket)
 
 Seed loaded: workspace `sasha-home`, project `aistroyka`, verified decision + state v1.
 
@@ -38,3 +49,11 @@ npx pnpm@9.15.9 dev:web   # http://localhost:5173
 ```
 
 Never commit `service_role` or `MEMORY_OS_API_SECRET`.
+
+## Remote smoke tests
+
+With `.env` loaded, `apps/api` vitest runs:
+
+- `src/supabase.rls.test.ts` — ACL/RLS probes
+- `src/supabase.rpcs.test.ts` — vault put/get/delete, consolidation outbox (enqueue→list→complete), embed + hybrid search
+- Owner catch-up: `POST /v1/memories/:id/embed`, `POST /v1/memories/embed-missing` (also MCP + Web + GH worker-ticks); full text via `api_get_memory` (list truncates to 500)

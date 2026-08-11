@@ -100,6 +100,9 @@ importers:
       '@memory-os/connector-google-drive':
         specifier: workspace:*
         version: link:../../connectors/google-drive
+      '@memory-os/connector-sdk':
+        specifier: workspace:*
+        version: link:../../packages/connector-sdk
       '@memory-os/db':
         specifier: workspace:^
         version: link:../../packages/db
@@ -115,6 +118,13 @@ importers:
       '@memory-os/schemas':
         specifier: workspace:^
         version: link:../../packages/schemas
+      dotenv:
+        specifier: ^17.4.2
+        version: 17.4.2
+    devDependencies:
+      tsx:
+        specifier: ^4.23.12
+        version: 4.23.12
 
   apps/web:
     dependencies:
@@ -197,6 +207,9 @@ importers:
 
   packages/db:
     dependencies:
+      '@memory-os/connector-sdk':
+        specifier: workspace:*
+        version: link:../connector-sdk
       '@supabase/supabase-js':
         specifier: ^2.112.3
         version: 2.112.3
@@ -250,18 +263,30 @@ importers:
       '@memory-os/connector-google-drive':
         specifier: workspace:*
         version: link:../../connectors/google-drive
+      '@memory-os/connector-sdk':
+        specifier: workspace:*
+        version: link:../../packages/connector-sdk
       '@memory-os/db':
         specifier: workspace:*
         version: link:../../packages/db
       '@memory-os/domain':
         specifier: workspace:*
         version: link:../../packages/domain
+      '@memory-os/retrieval':
+        specifier: workspace:*
+        version: link:../../packages/retrieval
 
   workers/consolidation:
     dependencies:
+      '@memory-os/db':
+        specifier: workspace:*
+        version: link:../../packages/db
       '@memory-os/domain':
         specifier: workspace:*
         version: link:../../packages/domain
+      '@memory-os/retrieval':
+        specifier: workspace:*
+        version: link:../../packages/retrieval
 
   workers/ingestion:
     dependencies:

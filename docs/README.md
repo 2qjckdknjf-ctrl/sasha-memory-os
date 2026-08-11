@@ -15,6 +15,7 @@
 | [engineering/RLS_MATRIX.md](engineering/RLS_MATRIX.md) | RLS / ACL matrix и negative cases |
 | [engineering/DEMO_SLICE.md](engineering/DEMO_SLICE.md) | decision → state → MCP → handoff |
 | [engineering/SUPABASE.md](engineering/SUPABASE.md) | Live project ref, region, migrations |
+| [engineering/MCP_CURSOR.md](engineering/MCP_CURSOR.md) | MCP stdio gateway for Cursor / Claude Desktop |
 
 ## Правило изменений
 

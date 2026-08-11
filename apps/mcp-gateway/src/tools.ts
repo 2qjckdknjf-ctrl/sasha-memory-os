@@ -2,12 +2,29 @@ import {
   createSeededStore,
   type MemoryStore,
 } from '@memory-os/domain';
-import type { SupabaseMemoryGateway } from '@memory-os/db';
-import { pullGithubStubDelta } from '@memory-os/connector-github';
-import { pullGmailStubDelta } from '@memory-os/connector-gmail';
-import { pullGoogleCalendarStubDelta } from '@memory-os/connector-google-calendar';
-import { pullGoogleDriveStubDelta } from '@memory-os/connector-google-drive';
-import { projectContext, searchMemories } from '@memory-os/retrieval';
+import {
+  createConfiguredVaultStore,
+  type SupabaseMemoryGateway,
+} from '@memory-os/db';
+import { pullGithubDelta } from '@memory-os/connector-github';
+import { pullGmailDelta } from '@memory-os/connector-gmail';
+import { pullGoogleCalendarDelta } from '@memory-os/connector-google-calendar';
+import { pullGoogleDriveDelta } from '@memory-os/connector-google-drive';
+import {
+  exchangeAuthorizationCode,
+  fingerprintAuthorizationCode,
+  resolveAuthorizeBase,
+  resolveConnectorSyncOutcome,
+  type VaultStore,
+} from '@memory-os/connector-sdk';
+import {
+  createEmbeddingAdapter,
+  embedMemoryText,
+  planCandidateConsolidations,
+  projectContext,
+  rerankHitsHybrid,
+  searchMemoriesHybrid,
+} from '@memory-os/retrieval';
 import {
   decodeBase64Document,
   extractTextFromBytes,
@@ -19,28 +36,71 @@ import {
   captureTextSchema,
   createDecisionSchema,
   createHandoffSchema,
+  oauthCompleteSchema,
+  oauthStartSchema,
   setConnectionStatusSchema,
   setMemoryStatusSchema,
   upsertConnectionSchema,
 } from '@memory-os/schemas';
+import { randomUUID } from 'node:crypto';
 
 const DEFAULT_PROJECT_ID = '44444444-4444-4444-8444-444444444401';
 
-function pullMcpConnectorDelta(item: {
-  connectorId: string;
-  connectionId: string;
-}) {
+async function pullMcpConnectorDelta(
+  item: {
+    connectorId: string;
+    connectionId: string;
+    displayName?: string;
+    vaultRef?: string | null;
+  },
+  vault?: VaultStore,
+) {
+  const common = {
+    connectionId: item.connectionId,
+    displayName: item.displayName ?? item.connectorId,
+    vaultRef: item.vaultRef ?? undefined,
+    vault,
+  };
   switch (item.connectorId) {
     case 'github':
-      return pullGithubStubDelta(item);
+      return pullGithubDelta(common);
     case 'google-drive':
-      return pullGoogleDriveStubDelta(item);
+      return pullGoogleDriveDelta(common);
     case 'gmail':
-      return pullGmailStubDelta(item);
+      return pullGmailDelta(common);
     case 'google-calendar':
-      return pullGoogleCalendarStubDelta(item);
+      return pullGoogleCalendarDelta(common);
     default:
       return null;
+  }
+}
+
+async function maybeEmbedMcpCapture(
+  gateway: SupabaseMemoryGateway,
+  input: {
+    subjectId: string;
+    title: string;
+    text: string;
+    captureResult: { process?: { memoryId?: string | null } | null };
+  },
+) {
+  const memoryId = input.captureResult.process?.memoryId;
+  if (!memoryId) return null;
+  try {
+    const embedded = await embedMemoryText(input.title, input.text);
+    if (embedded.vector.length === 0) return null;
+    return gateway.setMemoryEmbedding({
+      subjectId: input.subjectId,
+      memoryId,
+      embedding: embedded.vector,
+      engine: embedded.engine,
+    });
+  } catch (err) {
+    const strict =
+      (process.env.MEMORY_OS_EMBED_STRICT ?? '').trim() === '1' ||
+      (process.env.MEMORY_OS_EMBED_STRICT ?? '').trim().toLowerCase() === 'true';
+    if (strict) throw err;
+    return null;
   }
 }
 
@@ -138,7 +198,7 @@ export const mcpTools: McpTool[] = [
   },
   {
     name: 'connections.upsert',
-    description: 'Connect or refresh a connector account (OAuth stub)',
+    description: 'Connect or refresh a connector account',
     inputSchema: {
       type: 'object',
       properties: {
@@ -198,7 +258,7 @@ export const mcpTools: McpTool[] = [
   {
     name: 'connections.sync',
     description:
-      'Enqueue connector_sync jobs, ingest stub deltas, and mark jobs succeeded',
+      'Enqueue connector_sync jobs, ingest vault-backed or stub deltas, mark jobs done',
     inputSchema: {
       type: 'object',
       properties: {
@@ -209,6 +269,100 @@ export const mcpTools: McpTool[] = [
         complete_now: { type: 'boolean' },
       },
       required: ['workspace_id', 'actor_subject_id'],
+    },
+  },
+  {
+    name: 'oauth.start',
+    description:
+      'Start OAuth broker for a connector (returns authorizeUrl + state)',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        workspace_id: { type: 'string' },
+        connector_id: { type: 'string' },
+        display_name: { type: 'string' },
+        scopes: { type: 'array', items: { type: 'string' } },
+        redirect_uri: { type: 'string' },
+        actor_subject_id: { type: 'string' },
+      },
+      required: [
+        'workspace_id',
+        'connector_id',
+        'display_name',
+        'actor_subject_id',
+      ],
+    },
+  },
+  {
+    name: 'oauth.callback',
+    description:
+      'Complete OAuth: peek state → HTTP token exchange into vault → vault ref only in DB',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        state: { type: 'string' },
+        code: { type: 'string' },
+        actor_subject_id: { type: 'string' },
+      },
+      required: ['state', 'actor_subject_id'],
+    },
+  },
+  {
+    name: 'consolidation.run',
+    description: 'Plan/apply near-duplicate candidate consolidation (owner)',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        workspace_id: { type: 'string' },
+        actor_subject_id: { type: 'string' },
+        apply: { type: 'boolean' },
+        limit: { type: 'number' },
+        enqueue: {
+          type: 'boolean',
+          description: 'Also enqueue consolidate job + outbox event',
+        },
+      },
+      required: ['workspace_id', 'actor_subject_id'],
+    },
+  },
+  {
+    name: 'outbox.list_pending',
+    description: 'List unpublished outbox events for a workspace (owner ops)',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        workspace_id: { type: 'string' },
+        actor_subject_id: { type: 'string' },
+        event_type: { type: 'string' },
+        limit: { type: 'number' },
+      },
+      required: ['workspace_id', 'actor_subject_id'],
+    },
+  },
+  {
+    name: 'jobs.dead_letter_stale',
+    description: 'Mark queued/running jobs older than N minutes as dead_letter',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        workspace_id: { type: 'string' },
+        actor_subject_id: { type: 'string' },
+        older_than_minutes: { type: 'number' },
+      },
+      required: ['workspace_id', 'actor_subject_id'],
+    },
+  },
+  {
+    name: 'outbox.publish',
+    description: 'Mark one outbox event as published (ops recovery)',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        event_id: { type: 'string' },
+        actor_subject_id: { type: 'string' },
+        error: { type: 'string' },
+      },
+      required: ['event_id', 'actor_subject_id'],
     },
   },
   {
@@ -223,6 +377,48 @@ export const mcpTools: McpTool[] = [
         actor_subject_id: { type: 'string' },
       },
       required: ['memory_id', 'status', 'reason', 'actor_subject_id'],
+    },
+  },
+  {
+    name: 'memory.get',
+    description: 'Fetch a single memory with full content (ACL-aware)',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        memory_id: { type: 'string' },
+        actor_subject_id: { type: 'string' },
+      },
+      required: ['memory_id', 'actor_subject_id'],
+    },
+  },
+  {
+    name: 'memory.embed',
+    description: 'Recompute and persist embedding for a memory (owner)',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        memory_id: { type: 'string' },
+        workspace_id: { type: 'string' },
+        actor_subject_id: { type: 'string' },
+        title: { type: 'string' },
+        text: { type: 'string' },
+      },
+      required: ['memory_id', 'workspace_id', 'actor_subject_id'],
+    },
+  },
+  {
+    name: 'memory.embed_missing',
+    description:
+      'Embed memories that lack a vector (owner; batch catch-up, default limit 25)',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        workspace_id: { type: 'string' },
+        actor_subject_id: { type: 'string' },
+        status: { type: 'string' },
+        limit: { type: 'number' },
+      },
+      required: ['workspace_id', 'actor_subject_id'],
     },
   },
   {
@@ -290,20 +486,49 @@ export function createMcpHandlers(options?: {
     async call(name: string, args: Record<string, unknown>) {
       switch (name) {
         case 'memory.search': {
+          const query = String(args.query ?? '');
           if (gateway) {
-            const hits = await gateway.search({
+            let queryEmbedding: number[] | null = null;
+            try {
+              const adapter = createEmbeddingAdapter();
+              const embedded = await adapter.embed({ texts: [query] });
+              if ((embedded.vectors[0]?.length ?? 0) === 32) {
+                queryEmbedding = embedded.vectors[0] ?? null;
+              }
+            } catch {
+              queryEmbedding = null;
+            }
+            const raw = await gateway.search({
               subjectId: String(args.actor_subject_id),
-              query: String(args.query ?? ''),
+              query,
               projectId: args.project_id ? String(args.project_id) : undefined,
               includeHistory: Boolean(args.include_history),
+              queryEmbedding,
             });
-            return { hits };
+            const list = (Array.isArray(raw) ? raw : []) as Array<{
+              memory: {
+                title?: string | null;
+                content?: string | null;
+                embedding?: number[] | null;
+              };
+              score: number;
+              reason?: string;
+            }>;
+            const hits = await rerankHitsHybrid(list, query, {
+              reason: 'hybrid:rpc+embed',
+            });
+            return { hits, ranking: 'hybrid' };
           }
           return {
-            hits: searchMemories([...store.memories.values()], String(args.query ?? ''), {
-              projectId: args.project_id ? String(args.project_id) : undefined,
-              includeHistory: Boolean(args.include_history),
-            }),
+            hits: await searchMemoriesHybrid(
+              [...store.memories.values()],
+              query,
+              {
+                projectId: args.project_id ? String(args.project_id) : undefined,
+                includeHistory: Boolean(args.include_history),
+              },
+            ),
+            ranking: 'hybrid',
           };
         }
         case 'context.project': {
@@ -426,7 +651,7 @@ export function createMcpHandlers(options?: {
         case 'capture.text': {
           const input = captureTextSchema.parse(args);
           if (gateway) {
-            return gateway.captureText({
+            const result = await gateway.captureText({
               subjectId: input.actor_subject_id,
               workspaceId: input.workspace_id,
               projectId: input.project_id,
@@ -436,6 +661,13 @@ export function createMcpHandlers(options?: {
               sensitivity: input.sensitivity,
               processNow: input.process_now,
             });
+            const embedding = await maybeEmbedMcpCapture(gateway, {
+              subjectId: input.actor_subject_id,
+              title: input.title,
+              text: input.text,
+              captureResult: result,
+            });
+            return { ...result, embedding };
           }
           return store.captureText({
             workspaceId: input.workspace_id,
@@ -446,6 +678,74 @@ export function createMcpHandlers(options?: {
             idempotencyKey: input.idempotency_key,
             sensitivity: input.sensitivity,
           });
+        }
+        case 'oauth.start': {
+          const input = oauthStartSchema.parse(args);
+          const authorizeBase = resolveAuthorizeBase(input.connector_id);
+          if (!gateway) {
+            const state = randomUUID().replace(/-/g, '');
+            return {
+              state,
+              connectionId: randomUUID(),
+              authorizeUrl: `stub://oauth/${input.connector_id}?state=${state}`,
+              backend: 'memory-store',
+            };
+          }
+          return {
+            ...(await gateway.oauthStart({
+              subjectId: input.actor_subject_id,
+              workspaceId: input.workspace_id,
+              connectorId: input.connector_id,
+              displayName: input.display_name,
+              scopes: input.scopes,
+              redirectUri: input.redirect_uri,
+              authorizeBase,
+            })),
+            backend: 'supabase',
+          };
+        }
+        case 'oauth.callback': {
+          const input = oauthCompleteSchema.parse(args);
+          const code = input.code ?? '';
+          const codeFingerprint = fingerprintAuthorizationCode(code);
+          if (!gateway) {
+            return {
+              status: 'connected',
+              tokenPersisted: false,
+              vaultRef: `vault:local/connectors/stub/${input.state}`,
+              exchangeMode: 'stub',
+              codeFingerprint,
+              backend: 'memory-store',
+            };
+          }
+          const peeked = await gateway.oauthPeekState({
+            subjectId: input.actor_subject_id,
+            state: input.state,
+          });
+          const vault = createConfiguredVaultStore({ gateway });
+          const exchange = await exchangeAuthorizationCode({
+            connectorId: peeked.connectorId,
+            connectionId: peeked.connectionId,
+            code,
+            redirectUri: peeked.redirectUri,
+            vault,
+          });
+          const result = await gateway.oauthCompleteStub({
+            subjectId: input.actor_subject_id,
+            state: input.state,
+            codeFingerprint: exchange.codeFingerprint ?? codeFingerprint,
+            exchangeMode: exchange.exchangeMode,
+          });
+          return {
+            ...result,
+            vaultRef: exchange.vaultRef,
+            tokenPersisted: false,
+            exchangeMode: exchange.exchangeMode,
+            codeFingerprint: exchange.codeFingerprint,
+            clientIdConfigured: exchange.clientIdConfigured,
+            clientSecretConfigured: exchange.clientSecretConfigured,
+            backend: 'supabase',
+          };
         }
         case 'connections.sync': {
           if (!gateway) {
@@ -474,35 +774,357 @@ export function createMcpHandlers(options?: {
           const completed: Array<Record<string, unknown>> = [];
           let captured = 0;
           if (completeNow) {
+            const vault = createConfiguredVaultStore({ gateway });
             for (const item of result.enqueued ?? []) {
               if (!item.jobId) continue;
-              const delta = pullMcpConnectorDelta(item);
-              if (delta) {
-                for (const event of delta.items) {
-                  await gateway.captureText({
-                    subjectId,
-                    workspaceId,
-                    projectId,
-                    title: event.title,
-                    text: event.text,
-                    idempotencyKey: `connector-sync/${item.connectionId}/${event.externalId}`,
-                    processNow: true,
-                    filename: `${item.connectorId}://${event.externalId}`,
-                    mimeType: 'text/plain',
-                  });
-                  captured += 1;
+              try {
+                const delta = await pullMcpConnectorDelta(item, vault);
+                if (delta) {
+                  for (const event of delta.items) {
+                    const captureResult = await gateway.captureText({
+                      subjectId,
+                      workspaceId,
+                      projectId,
+                      title: event.title,
+                      text: event.text,
+                      idempotencyKey: `connector-sync/${item.connectionId}/${event.externalId}`,
+                      processNow: true,
+                      filename: `${item.connectorId}://${event.externalId}`,
+                      mimeType: 'text/plain',
+                    });
+                    await maybeEmbedMcpCapture(gateway, {
+                      subjectId,
+                      title: event.title,
+                      text: event.text,
+                      captureResult,
+                    });
+                    captured += 1;
+                  }
                 }
+                const pullMode =
+                  delta && 'mode' in delta && typeof delta.mode === 'string'
+                    ? delta.mode
+                    : 'none';
+                const note =
+                  delta && 'note' in delta && typeof delta.note === 'string'
+                    ? delta.note
+                    : delta
+                      ? undefined
+                      : 'unsupported connector';
+                const outcome = resolveConnectorSyncOutcome({ pullMode, note });
+                completed.push({
+                  ...(await gateway.completeConnectorSync({
+                    subjectId,
+                    jobId: item.jobId,
+                    status: outcome.status,
+                    error: outcome.error,
+                  })),
+                  pullMode,
+                  note,
+                });
+              } catch (err) {
+                completed.push(
+                  await gateway.completeConnectorSync({
+                    subjectId,
+                    jobId: item.jobId,
+                    status: 'failed',
+                    error: err instanceof Error ? err.message : String(err),
+                  }),
+                );
               }
-              completed.push(
-                await gateway.completeConnectorSync({
-                  subjectId,
-                  jobId: item.jobId,
-                  status: 'succeeded',
-                }),
-              );
             }
           }
           return { ...result, completed, captured };
+        }
+        case 'consolidation.run': {
+          const subjectId = String(args.actor_subject_id);
+          const workspaceId = String(args.workspace_id);
+          const apply = args.apply !== false;
+          if (!gateway) {
+            const candidates = [...store.memories.values()]
+              .filter((m) => m.status === 'candidate')
+              .map((m) => ({
+                id: m.id,
+                title: m.title,
+                content: m.content,
+                status: m.status,
+                recordedAt: m.recordedAt,
+              }));
+            const planned = await planCandidateConsolidations(candidates);
+            const applied = [];
+            if (apply) {
+              for (const pair of planned) {
+                applied.push(
+                  store.supersedeMemory({
+                    duplicateId: pair.duplicateId,
+                    keeperId: pair.keeperId,
+                    reason: `consolidation: ${pair.reason}`,
+                    actorSubjectId: subjectId,
+                  }),
+                );
+              }
+            }
+            return {
+              scanned: candidates.length,
+              planned: planned.length,
+              pairs: planned,
+              applied,
+              backend: 'memory-store',
+            };
+          }
+          let jobMeta: {
+            jobId: string;
+            eventId: string;
+            idempotencyKey: string;
+          } | null = null;
+          if (args.enqueue) {
+            jobMeta = await gateway.enqueueConsolidation({
+              subjectId,
+              workspaceId,
+            });
+          }
+          const rows = await gateway.listMemories({
+            subjectId,
+            workspaceId,
+            status: 'candidate',
+            limit: typeof args.limit === 'number' ? args.limit : 100,
+          });
+          const planned = await planCandidateConsolidations(
+            rows.map((row) => ({
+              id: row.id,
+              title: row.title,
+              content: row.content,
+              status: row.status,
+              recordedAt: row.recordedAt,
+              embedding: Array.isArray(row.embedding) ? row.embedding : null,
+            })),
+          );
+          const applied = [];
+          const failed = [];
+          if (apply) {
+            for (const pair of planned) {
+              try {
+                applied.push(
+                  await gateway.supersedeMemory({
+                    subjectId,
+                    duplicateId: pair.duplicateId,
+                    keeperId: pair.keeperId,
+                    reason: `consolidation: ${pair.reason}`,
+                  }),
+                );
+              } catch (err) {
+                failed.push({
+                  pair,
+                  error: err instanceof Error ? err.message : String(err),
+                });
+              }
+            }
+          }
+          if (jobMeta) {
+            const status =
+              failed.length > 0 && applied.length === 0 ? 'failed' : 'succeeded';
+            await gateway.completeConsolidation({
+              subjectId,
+              jobId: jobMeta.jobId,
+              status,
+              error:
+                status === 'failed'
+                  ? failed
+                      .map((f) => String(f.error))
+                      .join('; ')
+                      .slice(0, 500)
+                  : null,
+            });
+          }
+          return {
+            scanned: rows.length,
+            planned: planned.length,
+            pairs: planned,
+            applied,
+            failed,
+            backend: 'supabase',
+            job: jobMeta,
+          };
+        }
+        case 'outbox.list_pending': {
+          if (!gateway) {
+            return { count: 0, events: [], backend: 'memory-store' };
+          }
+          return {
+            ...(await gateway.listOutboxPending({
+              subjectId: String(args.actor_subject_id),
+              workspaceId: String(args.workspace_id),
+              eventType: args.event_type ? String(args.event_type) : null,
+              limit: typeof args.limit === 'number' ? args.limit : 50,
+            })),
+            backend: 'supabase',
+          };
+        }
+        case 'jobs.dead_letter_stale': {
+          if (!gateway) {
+            return {
+              deadLettered: 0,
+              backend: 'memory-store',
+              note: 'dead-letter requires supabase backend',
+            };
+          }
+          return {
+            ...(await gateway.deadLetterStaleJobs({
+              subjectId: String(args.actor_subject_id),
+              workspaceId: String(args.workspace_id),
+              olderThanMinutes:
+                typeof args.older_than_minutes === 'number'
+                  ? args.older_than_minutes
+                  : 60,
+            })),
+            backend: 'supabase',
+          };
+        }
+        case 'outbox.publish': {
+          if (!gateway) {
+            return {
+              id: String(args.event_id),
+              publishedAt: new Date().toISOString(),
+              backend: 'memory-store',
+            };
+          }
+          return {
+            ...(await gateway.publishOutboxEvent({
+              subjectId: String(args.actor_subject_id),
+              eventId: String(args.event_id),
+              error: args.error ? String(args.error) : null,
+            })),
+            backend: 'supabase',
+          };
+        }
+        case 'memory.get': {
+          const memoryId = String(args.memory_id);
+          const subjectId = String(args.actor_subject_id);
+          if (gateway) {
+            return {
+              memory: await gateway.getMemory({ subjectId, memoryId }),
+              backend: 'supabase',
+            };
+          }
+          const memory = store.memories.get(memoryId);
+          if (!memory) throw new Error('memory not found');
+          return {
+            memory: {
+              id: memory.id,
+              title: memory.title,
+              content: memory.content,
+              status: memory.status,
+              sensitivity: memory.sensitivity,
+              memoryType: memory.memoryType,
+              projectId: memory.projectId,
+              recordedAt: memory.recordedAt,
+              metadata: memory.metadata,
+            },
+            backend: 'memory-store',
+          };
+        }
+        case 'memory.embed': {
+          if (!gateway) {
+            return {
+              error: 'supabase gateway required for embed persist',
+              backend: 'memory-store',
+            };
+          }
+          const memoryId = String(args.memory_id);
+          const subjectId = String(args.actor_subject_id);
+          if (!args.workspace_id) {
+            throw new Error('workspace_id is required');
+          }
+          let title = args.title ? String(args.title) : '';
+          let text = args.text ? String(args.text) : '';
+          if (!title || !text) {
+            const hit = await gateway.getMemory({ subjectId, memoryId });
+            title = title || hit.title;
+            text = text || hit.content;
+          }
+          const embedded = await embedMemoryText(title, text);
+          if (embedded.vector.length === 0) {
+            throw new Error('empty embedding vector');
+          }
+          return {
+            ...(await gateway.setMemoryEmbedding({
+              subjectId,
+              memoryId,
+              embedding: embedded.vector,
+              engine: embedded.engine,
+            })),
+            backend: 'supabase',
+          };
+        }
+        case 'memory.embed_missing': {
+          if (!gateway) {
+            return {
+              error: 'supabase gateway required for embed persist',
+              backend: 'memory-store',
+            };
+          }
+          const subjectId = String(args.actor_subject_id);
+          const workspaceId = String(args.workspace_id);
+          const limit = Math.min(
+            Math.max(Number(args.limit ?? 25) || 25, 1),
+            100,
+          );
+          const rows = await gateway.listMemories({
+            subjectId,
+            workspaceId,
+            status: args.status ? String(args.status) : null,
+            limit: 200,
+          });
+          const missing = rows.filter(
+            (row) => !Array.isArray(row.embedding) || row.embedding.length === 0,
+          );
+          const batch = missing.slice(0, limit);
+          const results: Array<{
+            memoryId: string;
+            dims: number;
+            engine: string;
+          }> = [];
+          const failed: Array<{ memoryId: string; error: string }> = [];
+          for (const row of batch) {
+            try {
+              const full = await gateway.getMemory({
+                subjectId,
+                memoryId: row.id,
+              });
+              const vec = await embedMemoryText(full.title, full.content);
+              if (vec.vector.length === 0) {
+                failed.push({
+                  memoryId: row.id,
+                  error: 'empty embedding vector',
+                });
+                continue;
+              }
+              const saved = await gateway.setMemoryEmbedding({
+                subjectId,
+                memoryId: row.id,
+                embedding: vec.vector,
+                engine: vec.engine,
+              });
+              results.push({
+                memoryId: row.id,
+                dims: saved.dims,
+                engine: saved.engine ?? vec.engine,
+              });
+            } catch (err) {
+              failed.push({
+                memoryId: row.id,
+                error: err instanceof Error ? err.message : String(err),
+              });
+            }
+          }
+          return {
+            scanned: rows.length,
+            missing: missing.length,
+            embedded: results.length,
+            failed,
+            results,
+            backend: 'supabase',
+          };
         }
         case 'memory.set_status': {
           const input = setMemoryStatusSchema.parse({
@@ -547,7 +1169,7 @@ export function createMcpHandlers(options?: {
             .filter((line) => line !== null)
             .join('\n');
           if (gateway) {
-            return gateway.captureText({
+            const captureResult = await gateway.captureText({
               subjectId: input.actor_subject_id,
               workspaceId: input.workspace_id,
               projectId: input.project_id,
@@ -559,6 +1181,18 @@ export function createMcpHandlers(options?: {
               filename: parsed.filename,
               mimeType: parsed.mimeType,
             });
+            const embedding = await maybeEmbedMcpCapture(gateway, {
+              subjectId: input.actor_subject_id,
+              title: input.title,
+              text,
+              captureResult,
+            });
+            return {
+              ...captureResult,
+              extractedChars: parsed.text.length,
+              engine: parsed.engine,
+              embedding,
+            };
           }
           return {
             ...store.captureText({
@@ -587,7 +1221,7 @@ export function createMcpHandlers(options?: {
             .filter((line) => line !== null)
             .join('\n');
           if (gateway) {
-            return gateway.captureText({
+            const captureResult = await gateway.captureText({
               subjectId: input.actor_subject_id,
               workspaceId: input.workspace_id,
               projectId: input.project_id,
@@ -599,6 +1233,13 @@ export function createMcpHandlers(options?: {
               filename: fetched.finalUrl,
               mimeType: 'text/html',
             });
+            const embedding = await maybeEmbedMcpCapture(gateway, {
+              subjectId: input.actor_subject_id,
+              title,
+              text,
+              captureResult,
+            });
+            return { ...captureResult, embedding };
           }
           return store.captureText({
             workspaceId: input.workspace_id,
