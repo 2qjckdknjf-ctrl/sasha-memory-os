@@ -1,3 +1,8 @@
+import {
+  createTranscriptionAdapter,
+  isAudioMime,
+  type TranscriptionAdapter,
+} from './audio.js';
 import { createOcrAdapter, type OcrAdapter } from './ocr.js';
 import {
   parseDocument,
@@ -11,6 +16,7 @@ export type ExtractResult = ParseResult & {
 };
 
 const IMAGE_EXTS = ['.png', '.jpg', '.jpeg', '.webp', '.tif', '.tiff', '.bmp'];
+const AUDIO_EXTS = ['.mp3', '.wav', '.m4a', '.ogg', '.webm', '.aac', '.flac'];
 
 export function looksLikeImage(filename: string, mimeType?: string | null): boolean {
   const normalized = (mimeType ?? '').toLowerCase().split(';')[0]?.trim() ?? '';
@@ -19,18 +25,48 @@ export function looksLikeImage(filename: string, mimeType?: string | null): bool
   return IMAGE_EXTS.some((ext) => lower.endsWith(ext));
 }
 
+export function looksLikeAudio(filename: string, mimeType?: string | null): boolean {
+  const normalized = (mimeType ?? '').toLowerCase().split(';')[0]?.trim() ?? '';
+  if (normalized && isAudioMime(normalized)) return true;
+  const lower = filename.toLowerCase();
+  return AUDIO_EXTS.some((ext) => lower.endsWith(ext));
+}
+
 /**
- * Parse native text documents, or OCR images when an engine is configured.
+ * Parse native text documents, OCR images, or transcribe audio when configured.
  */
 export async function extractTextFromBytes(input: {
   filename: string;
   mimeType?: string | null;
   bytes: Buffer | Uint8Array;
   ocr?: OcrAdapter;
+  transcription?: TranscriptionAdapter;
 }): Promise<ExtractResult> {
   const bytes = Buffer.isBuffer(input.bytes)
     ? input.bytes
     : Buffer.from(input.bytes);
+
+  if (looksLikeAudio(input.filename, input.mimeType)) {
+    const transcription = input.transcription ?? createTranscriptionAdapter();
+    const mime =
+      (input.mimeType ?? '').toLowerCase().split(';')[0]?.trim() || 'audio/mpeg';
+    if (!transcription.supports(mime)) {
+      throw new Error(
+        `Transcription engine ${transcription.name} does not support ${mime}`,
+      );
+    }
+    const result = await transcription.transcribe({
+      bytes,
+      mimeType: mime,
+      filename: input.filename,
+    });
+    return {
+      text: result.text,
+      mimeType: 'text/plain' as SupportedMime,
+      filename: input.filename,
+      engine: result.engine,
+    };
+  }
 
   if (looksLikeImage(input.filename, input.mimeType)) {
     const ocr = input.ocr ?? createOcrAdapter();
