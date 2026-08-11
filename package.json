@@ -11,6 +11,9 @@
     "dev:web": "pnpm --filter @memory-os/web dev"
   },
   "devDependencies": {
+    "@memory-os/authz": "workspace:^",
+    "@memory-os/domain": "workspace:^",
+    "@memory-os/retrieval": "workspace:^",
     "@types/node": "^26.2.0",
     "dotenv": "^17.4.2",
     "typescript": "^5.8.2",

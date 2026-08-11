@@ -1,0 +1,27 @@
+{
+  "schema_version": "1.0",
+  "project_id": "44444444-4444-4444-8444-444444444401",
+  "cases": [
+    {
+      "id": "gr-001",
+      "query": "Slice 01",
+      "expect_memory_title_includes": "Slice",
+      "actor": "cursor",
+      "must_allow": true
+    },
+    {
+      "id": "gr-002",
+      "query": "WP-04",
+      "expect_content_includes": "capture",
+      "actor": "chatgpt",
+      "must_allow": true
+    },
+    {
+      "id": "gr-003",
+      "query": "personal bank account",
+      "actor": "cursor",
+      "must_allow": true,
+      "expect_empty_or_no_restricted": true
+    }
+  ]
+}

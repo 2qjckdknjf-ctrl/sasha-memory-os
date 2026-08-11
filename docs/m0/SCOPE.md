@@ -12,6 +12,8 @@
 
 **Subject + Connections control-plane alpha**: resolve via `x-subject-id` / `x-actor-key` / `x-client-id`; connection upsert + status (connect/reauth/revoke stubs); MCP `capture.text` + connection tools.
 
+**WP-07 harness stub**: `tests/eval/golden_retrieval.*` runs ACL-aware local retrieval cases.
+
 Owner checklist items below (ChatGPT MCP plan, region, golden set, DPIA, etc.) remain open for RG0.
 
 ## Цель

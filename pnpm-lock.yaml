@@ -12,6 +12,15 @@ importers:
         specifier: ^4.4.3
         version: 4.4.3
     devDependencies:
+      '@memory-os/authz':
+        specifier: workspace:^
+        version: link:packages/authz
+      '@memory-os/domain':
+        specifier: workspace:^
+        version: link:packages/domain
+      '@memory-os/retrieval':
+        specifier: workspace:^
+        version: link:packages/retrieval
       '@types/node':
         specifier: ^26.2.0
         version: 26.2.0

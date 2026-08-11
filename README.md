@@ -42,6 +42,7 @@ API uses Supabase RPCs + `MEMORY_OS_API_SECRET` (see `.env`). Web talks to API o
 
 ## Следующий шаг
 
+- Expand golden retrieval set toward 100–200 cases
 - Real OAuth broker for GitHub / Google (replace connection stubs)
 - Supabase Auth session → subject binding
 - OCR for scanned PDFs / image capture
