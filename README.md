@@ -83,8 +83,9 @@ npx pnpm@9.15.9 --filter @memory-os/mcp-gateway start
 OAuth redirect lands on Web `/oauth/callback` → API `/v1/oauth/callback`.  
 Outside `local`/`test`, owner ops require `x-memory-os-api-secret` (or `MEMORY_OS_REQUIRE_API_AUTH=1`).
 
-## Следующий шаг
+## Следующий шаг (план close demo-slice)
 
-- Optional: raise pgvector dims beyond 32 (OpenAI already requests `MEMORY_OS_OPENAI_EMBED_DIMS`, default 32 for SQL hybrid)
-- Managed KMS / supabase_vault extension (shared DB ciphertext vault works for alpha)
-- `fly deploy` + set `MEMORY_OS_API_BASE_URL` + `MEMORY_OS_API_SECRET` for hosted worker ticks
+1. ~~Зафиксировать код (commit/PR)~~ — [PR #1](https://github.com/2qjckdknjf-ctrl/sasha-memory-os/pull/1)
+2. **Deploy API** — `flyctl auth login` затем `./scripts/fly-deploy-api.sh` (нужен interactive login / `FLY_API_TOKEN`)
+3. **Cron** — выставить GH `MEMORY_OS_API_BASE_URL` (после deploy); `MEMORY_OS_API_SECRET` уже в secrets репо
+4. Harden prod — managed KMS / `supabase_vault`; optional pgvector dims >32 (`MEMORY_OS_OPENAI_EMBED_DIMS`)
