@@ -20,54 +20,53 @@ const projectId = '44444444-4444-4444-8444-444444444401';
 const owner = '33333333-3333-4333-8333-333333333301';
 
 describeRemote('remote Supabase RPCs (vault / embed / consolidation)', () => {
-  const gateway = new SupabaseMemoryGateway(
-    createMemoryOsClient(env!),
-    env!.apiSecret,
-  );
+  // Lazily construct — vitest still evaluates describe.skip bodies during collect.
+  const gateway = () =>
+    new SupabaseMemoryGateway(createMemoryOsClient(env!), env!.apiSecret);
 
   it('round-trips shared vault ciphertext', async () => {
     const vaultRef = `vault:test/rpc-${randomUUID()}`;
     const ciphertext = Buffer.from(`cipher-${Date.now()}`, 'utf8').toString(
       'base64',
     );
-    const put = await gateway.vaultPut({
+    const put = await gateway().vaultPut({
       vaultRef,
       ciphertextBase64: ciphertext,
     });
     expect(put.ok).toBe(true);
-    const got = await gateway.vaultGet(vaultRef);
+    const got = await gateway().vaultGet(vaultRef);
     expect(got.found).toBe(true);
     expect(got.ciphertext).toBe(ciphertext);
-    const del = await gateway.vaultDelete(vaultRef);
+    const del = await gateway().vaultDelete(vaultRef);
     expect(del.ok).toBe(true);
-    const missing = await gateway.vaultGet(vaultRef);
+    const missing = await gateway().vaultGet(vaultRef);
     expect(missing.found).toBe(false);
   });
 
   it('round-trips supabase_vault KMS secret', async () => {
     const vaultRef = `vault:kms/test-${randomUUID()}`;
     const plaintext = Buffer.from(`kms-${Date.now()}`, 'utf8').toString('base64');
-    const put = await gateway.vaultKmsPut({ vaultRef, plaintext });
+    const put = await gateway().vaultKmsPut({ vaultRef, plaintext });
     expect(put.ok).toBe(true);
     expect(put.backend).toBe('supabase_vault');
-    const got = await gateway.vaultKmsGet(vaultRef);
+    const got = await gateway().vaultKmsGet(vaultRef);
     expect(got.found).toBe(true);
     expect(got.plaintext).toBe(plaintext);
-    const del = await gateway.vaultKmsDelete(vaultRef);
+    const del = await gateway().vaultKmsDelete(vaultRef);
     expect(del.deleted).toBe(true);
-    const missing = await gateway.vaultKmsGet(vaultRef);
+    const missing = await gateway().vaultKmsGet(vaultRef);
     expect(missing.found).toBe(false);
   });
 
   it('enqueues consolidation, lists pending outbox, then completes', async () => {
-    const enq = await gateway.enqueueConsolidation({
+    const enq = await gateway().enqueueConsolidation({
       subjectId: owner,
       workspaceId,
     });
     expect(enq.jobId).toBeTruthy();
     expect(enq.idempotencyKey).toMatch(/^consolidate\//);
 
-    const again = await gateway.enqueueConsolidation({
+    const again = await gateway().enqueueConsolidation({
       subjectId: owner,
       workspaceId,
     });
@@ -76,7 +75,7 @@ describeRemote('remote Supabase RPCs (vault / embed / consolidation)', () => {
 
     // Same-minute idempotency: list only has a pending row when this minute
     // still has an unpublished outbox (first insert, or prior run not completed).
-    const pending = await gateway.listOutboxPending({
+    const pending = await gateway().listOutboxPending({
       subjectId: owner,
       workspaceId,
       eventType: 'memory.consolidation.requested',
@@ -90,14 +89,14 @@ describeRemote('remote Supabase RPCs (vault / embed / consolidation)', () => {
       ).toBe(true);
     }
 
-    const stale = await gateway.deadLetterStaleJobs({
+    const stale = await gateway().deadLetterStaleJobs({
       subjectId: owner,
       workspaceId,
       olderThanMinutes: 10_000,
     });
     expect(stale.deadLettered).toBe(0);
 
-    const done = await gateway.completeConsolidation({
+    const done = await gateway().completeConsolidation({
       subjectId: owner,
       jobId: enq.jobId,
       status: 'succeeded',
@@ -106,7 +105,7 @@ describeRemote('remote Supabase RPCs (vault / embed / consolidation)', () => {
     expect(done.jobType).toBe('consolidate');
 
     // complete() publishes the consolidation outbox row
-    const after = await gateway.listOutboxPending({
+    const after = await gateway().listOutboxPending({
       subjectId: owner,
       workspaceId,
       eventType: 'memory.consolidation.requested',
@@ -119,7 +118,7 @@ describeRemote('remote Supabase RPCs (vault / embed / consolidation)', () => {
     const eventId = pending.events.find((e) => e.payload?.jobId === enq.jobId)
       ?.id;
     if (eventId) {
-      const published = await gateway.publishOutboxEvent({
+      const published = await gateway().publishOutboxEvent({
         subjectId: owner,
         eventId,
         error: 'acked in rpc smoke',
@@ -134,7 +133,7 @@ describeRemote('remote Supabase RPCs (vault / embed / consolidation)', () => {
       'Hybrid vector smoke test for Memory OS embeddings. ' +
       'Pad '.repeat(80) +
       'TAIL_MARKER_XYZ';
-    const capture = (await gateway.captureText({
+    const capture = (await gateway().captureText({
       subjectId: owner,
       workspaceId,
       projectId,
@@ -145,12 +144,12 @@ describeRemote('remote Supabase RPCs (vault / embed / consolidation)', () => {
     })) as { process?: { memoryId?: string | null } };
     const memoryId = capture.process?.memoryId;
     expect(memoryId).toBeTruthy();
-    const got = await gateway.getMemory({
+    const got = await gateway().getMemory({
       subjectId: owner,
       memoryId: memoryId!,
     });
     expect(got.content).toContain('TAIL_MARKER_XYZ');
-    const listed = await gateway.listMemories({
+    const listed = await gateway().listMemories({
       subjectId: owner,
       workspaceId,
       projectId,
@@ -165,7 +164,7 @@ describeRemote('remote Supabase RPCs (vault / embed / consolidation)', () => {
       expect(listedHit!.content.includes('TAIL_MARKER_XYZ')).toBe(false);
     }
     const vector = Array.from({ length: 32 }, (_, i) => (i === 0 ? 1 : 0));
-    const embedded = await gateway.setMemoryEmbedding({
+    const embedded = await gateway().setMemoryEmbedding({
       subjectId: owner,
       memoryId: memoryId!,
       embedding: vector,
@@ -173,7 +172,7 @@ describeRemote('remote Supabase RPCs (vault / embed / consolidation)', () => {
     });
     expect(embedded.dims).toBe(32);
     expect(embedded.hasVector).toBe(true);
-    const hits = (await gateway.search({
+    const hits = (await gateway().search({
       subjectId: owner,
       query: 'Hybrid vector smoke',
       projectId,

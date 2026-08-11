@@ -20,13 +20,12 @@ const cursor = '33333333-3333-4333-8333-333333333303';
 const stranger = '99999999-9999-4999-8999-999999999999';
 
 describeRemote('remote Supabase RLS via API RPCs', () => {
-  const gateway = new SupabaseMemoryGateway(
-    createMemoryOsClient(env!),
-    env!.apiSecret,
-  );
+  // Lazily construct — vitest still evaluates describe.skip bodies during collect.
+  const gateway = () =>
+    new SupabaseMemoryGateway(createMemoryOsClient(env!), env!.apiSecret);
 
   it('lets cursor read project context', async () => {
-    const ctx = (await gateway.projectContext(cursor, projectId)) as {
+    const ctx = (await gateway().projectContext(cursor, projectId)) as {
       decisions: unknown[];
     };
     expect(ctx.decisions.length).toBeGreaterThan(0);
@@ -34,7 +33,7 @@ describeRemote('remote Supabase RLS via API RPCs', () => {
 
   it('lets chatgpt write decisions idempotently', async () => {
     const key = `remote-test/decision-${Date.now()}`;
-    const a = await gateway.createDecision({
+    const a = await gateway().createDecision({
       subjectId: chatgpt,
       workspaceId: '11111111-1111-4111-8111-111111111111',
       projectId,
@@ -42,7 +41,7 @@ describeRemote('remote Supabase RLS via API RPCs', () => {
       content: 'Created through api_create_decision RPC.',
       idempotencyKey: key,
     });
-    const b = await gateway.createDecision({
+    const b = await gateway().createDecision({
       subjectId: chatgpt,
       workspaceId: '11111111-1111-4111-8111-111111111111',
       projectId,
@@ -54,7 +53,7 @@ describeRemote('remote Supabase RLS via API RPCs', () => {
   });
 
   it('denies cursor write to memory', async () => {
-    const probe = (await gateway.rlsProbe({
+    const probe = (await gateway().rlsProbe({
       subjectId: cursor,
       projectId,
       sensitivity: 'internal',
@@ -64,7 +63,7 @@ describeRemote('remote Supabase RLS via API RPCs', () => {
   });
 
   it('denies cursor personal sensitivity', async () => {
-    const probe = (await gateway.rlsProbe({
+    const probe = (await gateway().rlsProbe({
       subjectId: cursor,
       projectId,
       sensitivity: 'personal',
@@ -73,7 +72,7 @@ describeRemote('remote Supabase RLS via API RPCs', () => {
   });
 
   it('denies stranger subject', async () => {
-    await expect(gateway.projectContext(stranger, projectId)).rejects.toThrow();
+    await expect(gateway().projectContext(stranger, projectId)).rejects.toThrow();
   });
 
   it('rejects wrong api secret', async () => {
