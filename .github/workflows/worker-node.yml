@@ -1,7 +1,6 @@
 name: Worker node ticks
 
-# Full Node consolidation + connector-sync (vault pulls) when Edge enqueue is not enough.
-# Enable with repo variable MEMORY_OS_ENABLE_NODE_WORKERS=1
+# Full Node consolidation + connector-sync (vault pulls).
 on:
   workflow_dispatch:
   schedule:
@@ -11,38 +10,21 @@ jobs:
   consolidate-and-sync:
     runs-on: ubuntu-latest
     steps:
-      - name: Check enable flag
-        id: gate
-        env:
-          ENABLE: ${{ vars.MEMORY_OS_ENABLE_NODE_WORKERS }}
-        run: |
-          if [ "$ENABLE" = "1" ]; then
-            echo "enabled=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "enabled=false" >> "$GITHUB_OUTPUT"
-            echo "Set repo variable MEMORY_OS_ENABLE_NODE_WORKERS=1 to run workers."
-          fi
-
       - uses: actions/checkout@v4
-        if: steps.gate.outputs.enabled == 'true'
 
       - uses: pnpm/action-setup@v4
-        if: steps.gate.outputs.enabled == 'true'
         with:
           version: 9.15.9
 
       - uses: actions/setup-node@v4
-        if: steps.gate.outputs.enabled == 'true'
         with:
           node-version: 22
           cache: pnpm
 
       - name: Install
-        if: steps.gate.outputs.enabled == 'true'
         run: pnpm install --frozen-lockfile
 
       - name: Consolidation once
-        if: steps.gate.outputs.enabled == 'true'
         env:
           MEMORY_OS_SUPABASE_URL: ${{ secrets.MEMORY_OS_SUPABASE_URL }}
           MEMORY_OS_SUPABASE_ANON_KEY: ${{ secrets.MEMORY_OS_SUPABASE_ANON_KEY }}
@@ -58,7 +40,6 @@ jobs:
         run: pnpm --filter @memory-os/worker-consolidation consolidate:once
 
       - name: Connector sync once
-        if: steps.gate.outputs.enabled == 'true'
         env:
           MEMORY_OS_SUPABASE_URL: ${{ secrets.MEMORY_OS_SUPABASE_URL }}
           MEMORY_OS_SUPABASE_ANON_KEY: ${{ secrets.MEMORY_OS_SUPABASE_ANON_KEY }}
