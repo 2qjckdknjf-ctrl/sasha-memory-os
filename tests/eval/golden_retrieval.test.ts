@@ -59,9 +59,90 @@ describe('golden retrieval harness', () => {
     workspaceId,
     projectId,
     title: 'WP-04 capture note',
-    text: 'Manual capture path for Memory OS.',
+    text: 'Manual capture path for Memory OS with quarantine hash chunks.',
     actorSubjectId: chatgpt,
     idempotencyKey: 'eval/wp04',
+  });
+  store.captureText({
+    workspaceId,
+    projectId,
+    title: 'AISTROYKA control note',
+    text: 'AISTROYKA project uses Memory OS as shared long-term memory.',
+    actorSubjectId: chatgpt,
+    idempotencyKey: 'eval/aistroyka',
+  });
+  store.captureText({
+    workspaceId,
+    projectId,
+    title: 'Connector sync plan',
+    text: 'Connector sync stub enqueues GitHub jobs without loading vault tokens.',
+    actorSubjectId: owner,
+    idempotencyKey: 'eval/connector-sync',
+  });
+  store.captureText({
+    workspaceId,
+    projectId,
+    title: 'OCR invoice note',
+    text: 'OCR scanned invoice total recorded for finance review.',
+    actorSubjectId: chatgpt,
+    idempotencyKey: 'eval/ocr-invoice',
+  });
+  store.captureText({
+    workspaceId,
+    projectId,
+    title: 'Memory Core ACL note',
+    text: 'Memory Core ACL temporal model and provenance for agents.',
+    actorSubjectId: owner,
+    idempotencyKey: 'eval/acl',
+  });
+  store.captureText({
+    workspaceId,
+    projectId,
+    title: 'GitHub connection note',
+    text: 'GitHub repos connected via broker; vault refs only.',
+    actorSubjectId: chatgpt,
+    idempotencyKey: 'eval/github',
+  });
+  store.captureText({
+    workspaceId,
+    projectId,
+    title: 'Link capture note',
+    text: 'Link capture uses SSRF-safe fetch for public URLs.',
+    actorSubjectId: cursor,
+    idempotencyKey: 'eval/link',
+  });
+  store.captureText({
+    workspaceId,
+    projectId,
+    title: 'OAuth vault note',
+    text: 'OAuth callback stores vault refs only, never raw tokens.',
+    actorSubjectId: owner,
+    idempotencyKey: 'eval/vault',
+  });
+  store.captureText({
+    workspaceId,
+    projectId,
+    title: 'Auth bind note',
+    text: 'Supabase Auth subject bind maps auth user to workspace subject.',
+    actorSubjectId: owner,
+    idempotencyKey: 'eval/auth-bind',
+  });
+  store.captureText({
+    workspaceId,
+    projectId,
+    title: 'Ingest pipeline note',
+    text: 'processing job ingest turns quarantine artifacts into candidate memories.',
+    actorSubjectId: owner,
+    idempotencyKey: 'eval/ingest',
+  });
+  store.captureText({
+    workspaceId,
+    projectId,
+    title: 'Restricted passport (should not leak)',
+    text: 'passport number and salary IBAN must stay restricted.',
+    actorSubjectId: owner,
+    idempotencyKey: 'eval/restricted',
+    sensitivity: 'restricted',
   });
 
   for (const testCase of fixture.cases) {

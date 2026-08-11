@@ -24,6 +24,7 @@
   "dependencies": {
     "@memory-os/domain": "workspace:^",
     "@memory-os/retrieval": "workspace:^",
+    "@supabase/supabase-js": "^2.98.0",
     "react": "^19.2.8",
     "react-dom": "^19.2.8"
   }

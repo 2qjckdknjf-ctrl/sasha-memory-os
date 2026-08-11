@@ -35,6 +35,110 @@
       "expect_memory_title_includes": "Slice",
       "actor": "owner",
       "must_allow": true
+    },
+    {
+      "id": "gr-006",
+      "query": "audit PR",
+      "expect_content_includes": "audit",
+      "actor": "cursor",
+      "must_allow": true
+    },
+    {
+      "id": "gr-007",
+      "query": "AISTROYKA",
+      "expect_content_includes": "AISTROYKA",
+      "actor": "chatgpt",
+      "must_allow": true
+    },
+    {
+      "id": "gr-008",
+      "query": "quarantine hash chunks",
+      "expect_content_includes": "capture",
+      "actor": "owner",
+      "must_allow": true
+    },
+    {
+      "id": "gr-009",
+      "query": "connector sync",
+      "expect_memory_title_includes": "Connector",
+      "actor": "owner",
+      "must_allow": true
+    },
+    {
+      "id": "gr-010",
+      "query": "OCR scanned invoice",
+      "expect_content_includes": "invoice",
+      "actor": "chatgpt",
+      "must_allow": true
+    },
+    {
+      "id": "gr-011",
+      "query": "salary IBAN",
+      "actor": "cursor",
+      "must_allow": true,
+      "expect_empty_or_no_restricted": true
+    },
+    {
+      "id": "gr-012",
+      "query": "project state stage",
+      "actor": "cursor",
+      "must_allow": true
+    },
+    {
+      "id": "gr-013",
+      "query": "Memory Core ACL",
+      "expect_content_includes": "ACL",
+      "actor": "owner",
+      "must_allow": true
+    },
+    {
+      "id": "gr-014",
+      "query": "GitHub repos",
+      "expect_content_includes": "GitHub",
+      "actor": "chatgpt",
+      "must_allow": true
+    },
+    {
+      "id": "gr-015",
+      "query": "SSRF",
+      "expect_content_includes": "SSRF",
+      "actor": "cursor",
+      "must_allow": true
+    },
+    {
+      "id": "gr-016",
+      "query": "vault refs only",
+      "expect_content_includes": "vault",
+      "actor": "owner",
+      "must_allow": true
+    },
+    {
+      "id": "gr-017",
+      "query": "subject bind",
+      "expect_memory_title_includes": "Auth",
+      "actor": "owner",
+      "must_allow": true
+    },
+    {
+      "id": "gr-018",
+      "query": "restricted passport",
+      "actor": "cursor",
+      "must_allow": true,
+      "expect_empty_or_no_restricted": true
+    },
+    {
+      "id": "gr-019",
+      "query": "Slice 01",
+      "expect_memory_title_includes": "Slice",
+      "actor": "chatgpt",
+      "must_allow": true
+    },
+    {
+      "id": "gr-020",
+      "query": "processing job ingest",
+      "expect_content_includes": "ingest",
+      "actor": "owner",
+      "must_allow": true
     }
   ]
 }

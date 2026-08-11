@@ -97,6 +97,9 @@ importers:
       '@memory-os/retrieval':
         specifier: workspace:^
         version: link:../../packages/retrieval
+      '@supabase/supabase-js':
+        specifier: ^2.98.0
+        version: 2.112.3
       react:
         specifier: ^19.2.8
         version: 19.2.8
@@ -208,6 +211,9 @@ importers:
 
   workers/connector-sync:
     dependencies:
+      '@memory-os/db':
+        specifier: workspace:*
+        version: link:../../packages/db
       '@memory-os/domain':
         specifier: workspace:*
         version: link:../../packages/domain

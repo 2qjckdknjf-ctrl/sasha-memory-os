@@ -1,11 +1,18 @@
 const API_BASE = import.meta.env.VITE_MEMORY_API_URL ?? 'http://localhost:8787';
 
+let boundAuthUserId: string | null = null;
+
+export function setBoundAuthUserId(authUserId: string | null): void {
+  boundAuthUserId = authUserId;
+}
+
 function authHeaders(
   subjectId: string,
   actorKey?: string,
 ): Record<string, string> {
   const headers: Record<string, string> = { 'x-subject-id': subjectId };
   if (actorKey) headers['x-actor-key'] = actorKey;
+  if (boundAuthUserId) headers['x-auth-user-id'] = boundAuthUserId;
   return headers;
 }
 

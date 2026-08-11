@@ -23,8 +23,8 @@ import {
 } from '@memory-os/schemas';
 import {
   decodeBase64Document,
+  extractTextFromBytes,
   fetchPublicLink,
-  parseDocument,
 } from '@memory-os/ingestion';
 import { projectContext, searchMemories } from '@memory-os/retrieval';
 import type { SupabaseMemoryGateway } from './supabase.js';
@@ -230,6 +230,40 @@ export function createApp(options?: {
     try {
       const connections = await gw.listConnections(authz.subjectId, workspaceId);
       return c.json({ connections });
+    } catch (err) {
+      if (isForbiddenError(err)) return c.json({ error: 'forbidden' }, 403);
+      return c.json({ error: (err as Error).message }, 500);
+    }
+  });
+
+  app.post('/v1/connections/sync', async (c) => {
+    const body = (await c.req.json().catch(() => ({}))) as {
+      workspace_id?: string;
+      connection_id?: string;
+      actor_subject_id?: string;
+    };
+    const authz = c.get('authz');
+    const workspaceId = body.workspace_id ?? seedWorkspace;
+    const actorSubjectId = body.actor_subject_id ?? authz.subjectId;
+    if (!authz.isOwner && authz.subjectId !== actorSubjectId) {
+      return c.json({ error: 'forbidden' }, 403);
+    }
+    const gw = c.get('gateway');
+    if (!gw) {
+      return c.json({
+        count: 0,
+        enqueued: [],
+        backend: 'memory-store',
+        note: 'connector sync requires supabase backend',
+      });
+    }
+    try {
+      const result = await gw.enqueueConnectorSync({
+        subjectId: actorSubjectId,
+        workspaceId,
+        connectionId: body.connection_id ?? null,
+      });
+      return c.json(result, 202);
     } catch (err) {
       if (isForbiddenError(err)) return c.json({ error: 'forbidden' }, 403);
       return c.json({ error: (err as Error).message }, 500);
@@ -533,7 +567,7 @@ export function createApp(options?: {
 
     let parsed;
     try {
-      parsed = await parseDocument({
+      parsed = await extractTextFromBytes({
         filename: body.filename,
         mimeType: body.mime_type,
         bytes: decodeBase64Document(body.content_base64),
@@ -544,6 +578,7 @@ export function createApp(options?: {
 
     const enrichedText = [
       `Source file: ${parsed.filename} (${parsed.mimeType})`,
+      parsed.engine !== 'native' ? `OCR engine: ${parsed.engine}` : null,
       parsed.pageHint ? `Pages: ${parsed.pageHint}` : null,
       '',
       parsed.text,

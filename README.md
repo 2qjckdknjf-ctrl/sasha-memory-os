@@ -46,6 +46,6 @@ OAuth broker (stub): `POST /v1/oauth/start` → `POST /v1/oauth/callback` stores
 ## Следующий шаг
 
 - Wire real GitHub/Google OAuth clients + vault/KMS secret material
-- Browser Supabase Auth session → automatic subject bind
-- Expand golden retrieval set toward 100–200 cases
-- Real OCR engine behind `MEMORY_OS_OCR_ENGINE`
+- Expand golden retrieval set toward 100–200 cases (20 seeded now)
+- Production OCR: install system `tesseract` and set `MEMORY_OS_OCR_ENGINE=tesseract` (or `fixture` for UTF-8 image fixtures)
+- Connector providers: consume vault refs from `connector_sync` jobs

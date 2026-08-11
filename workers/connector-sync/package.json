@@ -9,10 +9,12 @@
     ".": "./src/index.ts"
   },
   "scripts": {
+    "sync:once": "tsx src/index.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run --passWithNoTests"
   },
   "dependencies": {
+    "@memory-os/db": "workspace:*",
     "@memory-os/domain": "workspace:*"
   }
 }

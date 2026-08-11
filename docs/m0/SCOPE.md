@@ -14,7 +14,9 @@
 
 **WP-07 harness stub**: `tests/eval/golden_retrieval.*` runs ACL-aware local retrieval cases.
 
-**OAuth broker + Auth bind alpha**: `connector_secrets` / `oauth_states`, `/v1/oauth/start|callback` (vault refs only), `/v1/auth/bind` + `x-auth-user-id` resolve; OCR adapter contract (`stub`).
+**OAuth broker + Auth bind alpha**: `connector_secrets` / `oauth_states`, `/v1/oauth/start|callback` (vault refs only), `/v1/auth/bind` + `x-auth-user-id` resolve; Web Auth panel binds session → subject.
+
+**OCR + connector-sync alpha**: `MEMORY_OS_OCR_ENGINE=stub|fixture|tesseract`; `extractTextFromBytes` for image capture; `POST /v1/connections/sync` + `api_enqueue_connector_sync` jobs; golden retrieval fixture expanded to 20 cases.
 
 Owner checklist items below (ChatGPT MCP plan, region, golden set, DPIA, etc.) remain open for RG0.
 

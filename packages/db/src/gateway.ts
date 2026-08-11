@@ -320,4 +320,28 @@ export class SupabaseMemoryGateway {
     if (error) throw error;
     return data;
   }
+
+  async enqueueConnectorSync(input: {
+    subjectId: string;
+    workspaceId: string;
+    connectionId?: string | null;
+  }) {
+    const { data, error } = await this.client.rpc('api_enqueue_connector_sync', {
+      p_secret: this.apiSecret,
+      p_subject_id: input.subjectId,
+      p_workspace_id: input.workspaceId,
+      p_connection_id: input.connectionId ?? null,
+    });
+    if (error) throw error;
+    return data as {
+      count: number;
+      enqueued: Array<{
+        connectionId: string;
+        connectorId: string;
+        jobId?: string;
+        eventId?: string;
+        idempotencyKey?: string;
+      }>;
+    };
+  }
 }

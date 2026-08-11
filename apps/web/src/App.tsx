@@ -1,6 +1,7 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { createSeededStore } from '@memory-os/domain';
-import { apiGet, apiHealth, apiPatch, apiPost } from './api';
+import { apiGet, apiHealth, apiPatch, apiPost, setBoundAuthUserId } from './api';
+import { AuthPanel } from './AuthPanel';
 
 
 const PROJECT_ID = '44444444-4444-4444-8444-444444444401';
@@ -59,8 +60,19 @@ export function App() {
   const [docFile, setDocFile] = useState<File | null>(null);
   const [linkUrl, setLinkUrl] = useState('https://example.com');
   const [linkTitle, setLinkTitle] = useState('Linked note');
+  const [boundSubjectId, setBoundSubjectId] = useState<string | null>(null);
 
   const subjectId = actors[actor];
+
+  const onAuthBound = useCallback((authUserId: string, subjectIdBound: string) => {
+    setBoundAuthUserId(authUserId);
+    setBoundSubjectId(subjectIdBound);
+  }, []);
+
+  const onAuthUnbound = useCallback(() => {
+    setBoundAuthUserId(null);
+    setBoundSubjectId(null);
+  }, []);
 
   async function refreshRemote() {
     const health = await apiHealth();
@@ -501,6 +513,13 @@ export function App() {
       </div>
 
       {error ? <p className="hint" style={{ color: 'var(--warn)' }}>{error}</p> : null}
+      {boundSubjectId ? (
+        <p className="meta">
+          Auth bound subject {boundSubjectId.slice(0, 8)}… (x-auth-user-id attached)
+        </p>
+      ) : null}
+
+      <AuthPanel onBound={onAuthBound} onUnbound={onAuthUnbound} />
 
       <div className="grid">
         <section className="panel">
@@ -755,6 +774,32 @@ export function App() {
             }}
           >
             OAuth GitHub stub
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              void (async () => {
+                setError(null);
+                try {
+                  if (backend === 'local') {
+                    setError('Connector sync requires API backend');
+                    return;
+                  }
+                  const plan = await apiPost<{
+                    count?: number;
+                  }>('/v1/connections/sync', subjectId, {
+                    workspace_id: WORKSPACE_ID,
+                    actor_subject_id: subjectId,
+                  }, actor);
+                  setLastCapture(`connector sync enqueued: ${plan.count ?? 0}`);
+                  setTick((n) => n + 1);
+                } catch (err) {
+                  setError((err as Error).message);
+                }
+              })();
+            }}
+          >
+            Enqueue connector sync
           </button>
         </div>
         <ul className="timeline">
