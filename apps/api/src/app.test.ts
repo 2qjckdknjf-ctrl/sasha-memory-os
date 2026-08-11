@@ -8,7 +8,7 @@ const chatgpt = '33333333-3333-4333-8333-333333333302';
 
 describe('memory api demo slice', () => {
   it('serves project context to cursor', async () => {
-    const app = createApp();
+    const app = createApp({});
     const res = await app.request(`/v1/projects/${projectId}/context`, {
       headers: { 'x-subject-id': cursor },
     });
@@ -18,7 +18,7 @@ describe('memory api demo slice', () => {
   });
 
   it('creates handoff from cursor', async () => {
-    const app = createApp();
+    const app = createApp({});
     const res = await app.request('/v1/handoffs', {
       method: 'POST',
       headers: {
@@ -45,7 +45,7 @@ describe('memory api demo slice', () => {
   });
 
   it('idempotently ingests events', async () => {
-    const app = createApp();
+    const app = createApp({});
     const payload = {
       schema_version: '1.0',
       workspace_id: workspaceId,

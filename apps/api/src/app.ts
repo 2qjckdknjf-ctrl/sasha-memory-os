@@ -1,4 +1,5 @@
 import { Hono } from 'hono';
+import { cors } from 'hono/cors';
 import { authorize, type AuthzContext } from '@memory-os/authz';
 import { createSeededStore, type MemoryStore } from '@memory-os/domain';
 import {
@@ -8,10 +9,12 @@ import {
   upsertProjectStateSchema,
 } from '@memory-os/schemas';
 import { projectContext, searchMemories } from '@memory-os/retrieval';
+import type { SupabaseMemoryGateway } from './supabase.js';
 
 export type ApiVariables = {
   store: MemoryStore;
   authz: AuthzContext;
+  gateway: SupabaseMemoryGateway | null;
 };
 
 const seedWorkspace = '11111111-1111-4111-8111-111111111111';
@@ -71,17 +74,82 @@ function seedAuthz(subjectId: string): AuthzContext {
   };
 }
 
-export function createApp(store: MemoryStore = createSeededStore()) {
+function isForbiddenError(err: unknown): boolean {
+  const message = err instanceof Error ? err.message : String(err);
+  return /forbidden|42501|unauthorized/i.test(message);
+}
+
+export function createApp(options?: {
+  store?: MemoryStore;
+  gateway?: SupabaseMemoryGateway | null;
+}) {
+  const store = options?.store ?? createSeededStore();
+  const gateway = options?.gateway ?? null;
   const app = new Hono<{ Variables: ApiVariables }>();
+
+  app.use(
+    '*',
+    cors({
+      origin: ['http://localhost:5173', 'http://127.0.0.1:5173'],
+      allowHeaders: ['Content-Type', 'x-subject-id'],
+    }),
+  );
 
   app.use('*', async (c, next) => {
     const subjectId = c.req.header('x-subject-id') ?? owner;
     c.set('store', store);
+    c.set('gateway', gateway);
     c.set('authz', seedAuthz(subjectId));
     await next();
   });
 
-  app.get('/health', (c) => c.json({ ok: true, service: 'memory-api' }));
+  app.get('/health', (c) =>
+    c.json({
+      ok: true,
+      service: 'memory-api',
+      backend: gateway ? 'supabase' : 'memory-store',
+    }),
+  );
+
+  app.get('/v1/rls/probe', async (c) => {
+    const projectId = c.req.query('project_id') ?? seedProject;
+    const sensitivity = c.req.query('sensitivity') ?? 'internal';
+    const authz = c.get('authz');
+    const gw = c.get('gateway');
+    if (!gw) {
+      return c.json({
+        subjectId: authz.subjectId,
+        backend: 'memory-store',
+        canReadMemory: authorize(authz, {
+          resourceType: 'memory',
+          action: 'read',
+          projectId,
+          sensitivity: sensitivity as 'internal',
+        }),
+        canWriteMemory: authorize(authz, {
+          resourceType: 'memory',
+          action: 'write',
+          projectId,
+          sensitivity: sensitivity as 'internal',
+        }),
+        canWriteHandoff: authorize(authz, {
+          resourceType: 'handoff',
+          action: 'write',
+          projectId,
+        }),
+      });
+    }
+    try {
+      const probe = await gw.rlsProbe({
+        subjectId: authz.subjectId,
+        projectId,
+        sensitivity,
+      });
+      return c.json(probe);
+    } catch (err) {
+      return c.json({ error: (err as Error).message }, 500);
+    }
+  });
 
   app.post('/v1/ingestion/events', async (c) => {
     const body = ingestionEnvelopeSchema.parse(await c.req.json());
@@ -93,19 +161,15 @@ export function createApp(store: MemoryStore = createSeededStore()) {
         projectId: body.scope.project_id,
         sensitivity: body.scope.sensitivity,
       }) &&
-      !authz.isOwner
+      !authz.isOwner &&
+      !authorize(authz, {
+        resourceType: 'memory',
+        action: 'write',
+        projectId: body.scope.project_id,
+        sensitivity: body.scope.sensitivity,
+      })
     ) {
-      // owners + agents with memory write for demo
-      if (
-        !authorize(authz, {
-          resourceType: 'memory',
-          action: 'write',
-          projectId: body.scope.project_id,
-          sensitivity: body.scope.sensitivity,
-        })
-      ) {
-        return c.json({ error: 'forbidden' }, 403);
-      }
+      return c.json({ error: 'forbidden' }, 403);
     }
     const event = c.get('store').ingestEvent({
       workspaceId: body.workspace_id,
@@ -134,6 +198,29 @@ export function createApp(store: MemoryStore = createSeededStore()) {
     ) {
       return c.json({ error: 'forbidden' }, 403);
     }
+
+    const gw = c.get('gateway');
+    if (gw) {
+      try {
+        const memory = await gw.createDecision({
+          subjectId: body.actor_subject_id,
+          workspaceId: body.workspace_id,
+          projectId: body.project_id,
+          title: body.title,
+          content: body.content,
+          idempotencyKey: body.idempotency_key,
+          importance: body.importance,
+          confidence: body.confidence,
+          sensitivity: body.sensitivity,
+          rationale: body.rationale,
+        });
+        return c.json(memory, 201);
+      } catch (err) {
+        if (isForbiddenError(err)) return c.json({ error: 'forbidden' }, 403);
+        return c.json({ error: (err as Error).message }, 500);
+      }
+    }
+
     const memory = c.get('store').createDecision({
       workspaceId: body.workspace_id,
       projectId: body.project_id,
@@ -148,7 +235,7 @@ export function createApp(store: MemoryStore = createSeededStore()) {
     return c.json(memory, 201);
   });
 
-  app.get('/v1/projects/:id/context', (c) => {
+  app.get('/v1/projects/:id/context', async (c) => {
     const projectId = c.req.param('id');
     const authz = c.get('authz');
     if (
@@ -161,13 +248,22 @@ export function createApp(store: MemoryStore = createSeededStore()) {
     ) {
       return c.json({ error: 'forbidden' }, 403);
     }
-    const store = c.get('store');
-    return c.json(
-      projectContext([...store.memories.values()], projectId),
-    );
+
+    const gw = c.get('gateway');
+    if (gw) {
+      try {
+        const ctx = await gw.projectContext(authz.subjectId, projectId);
+        return c.json(ctx);
+      } catch (err) {
+        if (isForbiddenError(err)) return c.json({ error: 'forbidden' }, 403);
+        return c.json({ error: (err as Error).message }, 500);
+      }
+    }
+
+    return c.json(projectContext([...c.get('store').memories.values()], projectId));
   });
 
-  app.get('/v1/projects/:id/state', (c) => {
+  app.get('/v1/projects/:id/state', async (c) => {
     const projectId = c.req.param('id');
     const authz = c.get('authz');
     if (
@@ -179,6 +275,20 @@ export function createApp(store: MemoryStore = createSeededStore()) {
     ) {
       return c.json({ error: 'forbidden' }, 403);
     }
+
+    const gw = c.get('gateway');
+    if (gw) {
+      try {
+        const ctx = (await gw.projectContext(authz.subjectId, projectId)) as {
+          state?: unknown;
+        };
+        return c.json(ctx.state ?? null);
+      } catch (err) {
+        if (isForbiddenError(err)) return c.json({ error: 'forbidden' }, 403);
+        return c.json({ error: (err as Error).message }, 500);
+      }
+    }
+
     return c.json(c.get('store').getProjectState(projectId));
   });
 
@@ -195,6 +305,28 @@ export function createApp(store: MemoryStore = createSeededStore()) {
     ) {
       return c.json({ error: 'forbidden' }, 403);
     }
+    const gw = c.get('gateway');
+    if (gw) {
+      try {
+        const state = await gw.upsertProjectState({
+          subjectId: body.actor_subject_id,
+          workspaceId: body.workspace_id,
+          projectId,
+          expectedVersion: body.expected_version,
+          state: body.state,
+          summary: body.summary,
+        });
+        return c.json(state);
+      } catch (err) {
+        const message = (err as Error).message;
+        if (isForbiddenError(err)) return c.json({ error: 'forbidden' }, 403);
+        if (/conflict|40001/i.test(message)) {
+          return c.json({ error: message }, 409);
+        }
+        return c.json({ error: message }, 500);
+      }
+    }
+
     try {
       const state = c.get('store').upsertProjectState({
         workspaceId: body.workspace_id,
@@ -222,6 +354,24 @@ export function createApp(store: MemoryStore = createSeededStore()) {
     ) {
       return c.json({ error: 'forbidden' }, 403);
     }
+
+    const gw = c.get('gateway');
+    if (gw) {
+      try {
+        const handoff = await gw.createHandoff({
+          subjectId: body.from_subject_id,
+          workspaceId: body.workspace_id,
+          projectId: body.project_id,
+          toSubjectId: body.to_subject_id,
+          payload: body.payload,
+        });
+        return c.json(handoff, 201);
+      } catch (err) {
+        if (isForbiddenError(err)) return c.json({ error: 'forbidden' }, 403);
+        return c.json({ error: (err as Error).message }, 500);
+      }
+    }
+
     const handoff = c.get('store').createHandoff({
       workspaceId: body.workspace_id,
       projectId: body.project_id,
@@ -240,8 +390,24 @@ export function createApp(store: MemoryStore = createSeededStore()) {
       include_history?: boolean;
     }>();
     const authz = c.get('authz');
-    const store = c.get('store');
-    const allowed = [...store.memories.values()].filter((m) =>
+    const gw = c.get('gateway');
+    if (gw) {
+      try {
+        const hits = await gw.search({
+          subjectId: authz.subjectId,
+          query: body.query ?? '',
+          projectId: body.project_id,
+          includeHistory: body.include_history,
+        });
+        return c.json({ hits });
+      } catch (err) {
+        if (isForbiddenError(err)) return c.json({ error: 'forbidden' }, 403);
+        return c.json({ error: (err as Error).message }, 500);
+      }
+    }
+
+    const storeLocal = c.get('store');
+    const allowed = [...storeLocal.memories.values()].filter((m) =>
       authorize(authz, {
         resourceType: 'memory',
         action: 'read',

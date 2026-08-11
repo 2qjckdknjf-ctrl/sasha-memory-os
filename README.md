@@ -28,11 +28,14 @@
 npx pnpm@9.15.9 install
 npx pnpm@9.15.9 typecheck
 npx pnpm@9.15.9 test
-npx pnpm@9.15.9 --filter @memory-os/web dev
+npx pnpm@9.15.9 dev:api
+npx pnpm@9.15.9 dev:web
 ```
+
+API uses Supabase RPCs + `MEMORY_OS_API_SECRET` (see `.env`). Web talks to API on `:8787`.
 
 ## Следующий шаг
 
-- Wire API to Supabase (service_role server-side only)
-- Authenticated RLS negative suite against remote
-- Expand Web control center (search / connections)
+- Project state upsert RPC
+- Connections UI / connector health
+- Real Auth subjects instead of `x-subject-id` demo header

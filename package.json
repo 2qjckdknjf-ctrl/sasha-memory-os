@@ -6,10 +6,13 @@
   "scripts": {
     "typecheck": "pnpm -r run typecheck",
     "test": "pnpm -r run test && vitest run --config vitest.workspace.config.ts",
-    "lint": "echo \"No lint config in WP-01; reserved for M1.\""
+    "lint": "echo \"No lint config in WP-01; reserved for M1.\"",
+    "dev:api": "pnpm --filter @memory-os/api dev",
+    "dev:web": "pnpm --filter @memory-os/web dev"
   },
   "devDependencies": {
     "@types/node": "^26.2.0",
+    "dotenv": "^17.4.2",
     "typescript": "^5.8.2",
     "vitest": "^3.0.9"
   },

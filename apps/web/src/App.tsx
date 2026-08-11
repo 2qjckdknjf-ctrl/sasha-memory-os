@@ -1,10 +1,7 @@
-import { useMemo, useState } from 'react';
-import {
-  createSeededStore,
-  type Handoff,
-  type MemoryRecord,
-  type ProjectStateVersion,
-} from '@memory-os/domain';
+import { useEffect, useMemo, useState } from 'react';
+import { createSeededStore } from '@memory-os/domain';
+import { apiGet, apiHealth, apiPost } from './api';
+
 
 const PROJECT_ID = '44444444-4444-4444-8444-444444444401';
 const WORKSPACE_ID = '11111111-1111-4111-8111-111111111111';
@@ -20,85 +17,252 @@ const actors: Record<Actor, string> = {
 };
 
 type TimelineEntry =
-  | { kind: 'decision'; at: string; memory: MemoryRecord }
-  | { kind: 'state'; at: string; state: ProjectStateVersion }
-  | { kind: 'handoff'; at: string; handoff: Handoff };
+  | { kind: 'decision'; at: string; title: string; content: string; status: string }
+  | { kind: 'state'; at: string; summary: string; version: number; next: string }
+  | { kind: 'handoff'; at: string; summary: string };
+
+type RemoteContext = {
+  decisions?: Array<Record<string, unknown>>;
+  state?: Record<string, unknown> | null;
+  latestHandoff?: Record<string, unknown> | null;
+};
 
 export function App() {
-  const [store] = useState(() => createSeededStore());
+  const [localStore] = useState(() => createSeededStore());
   const [actor, setActor] = useState<Actor>('cursor');
+  const [backend, setBackend] = useState<'supabase' | 'memory-store' | 'local'>('local');
+  const [remote, setRemote] = useState<RemoteContext | null>(null);
+  const [search, setSearch] = useState('Slice');
+  const [hits, setHits] = useState<Array<{ memory?: { title?: string; content?: string } }>>([]);
   const [title, setTitle] = useState('Continue remediation after audit');
   const [content, setContent] = useState(
     'Next engineering work follows the Slice 01 kickoff decision.',
   );
+  const [error, setError] = useState<string | null>(null);
   const [tick, setTick] = useState(0);
+
+  const subjectId = actors[actor];
+
+  async function refreshRemote() {
+    const health = await apiHealth();
+    if (!health) {
+      setBackend('local');
+      setRemote(null);
+      return;
+    }
+    setBackend((health.backend as 'supabase' | 'memory-store') ?? 'memory-store');
+    const ctx = await apiGet<RemoteContext>(
+      `/v1/projects/${PROJECT_ID}/context`,
+      subjectId,
+    );
+    setRemote(ctx);
+  }
+
+  useEffect(() => {
+    void refreshRemote().catch((err: Error) => setError(err.message));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [actor, tick]);
 
   const timeline = useMemo(() => {
     void tick;
+    if (remote) {
+      const entries: TimelineEntry[] = [];
+      for (const d of remote.decisions ?? []) {
+        entries.push({
+          kind: 'decision',
+          at: String(d.recorded_at ?? d.recordedAt ?? new Date().toISOString()),
+          title: String(d.title ?? 'decision'),
+          content: String(d.content ?? ''),
+          status: String(d.status ?? 'verified'),
+        });
+      }
+      if (remote.state) {
+        const state = remote.state.state as { next?: string[] } | undefined;
+        entries.push({
+          kind: 'state',
+          at: String(remote.state.created_at ?? new Date().toISOString()),
+          summary: String(remote.state.summary ?? 'project state'),
+          version: Number(remote.state.version ?? 0),
+          next: (state?.next ?? []).join(', ') || '—',
+        });
+      }
+      if (remote.latestHandoff) {
+        const payload = remote.latestHandoff.payload as {
+          recommended_next?: string[];
+          completed?: string[];
+        };
+        entries.push({
+          kind: 'handoff',
+          at: String(remote.latestHandoff.created_at ?? new Date().toISOString()),
+          summary:
+            payload?.recommended_next?.join(', ') ||
+            payload?.completed?.join(', ') ||
+            'handoff',
+        });
+      }
+      return entries.sort((a, b) => b.at.localeCompare(a.at));
+    }
+
     const entries: TimelineEntry[] = [];
-    for (const memory of store.listCurrentMemories(WORKSPACE_ID, PROJECT_ID)) {
+    for (const memory of localStore.listCurrentMemories(WORKSPACE_ID, PROJECT_ID)) {
       if (memory.memoryType === 'decision') {
         entries.push({
           kind: 'decision',
           at: memory.recordedAt,
-          memory,
+          title: memory.title,
+          content: memory.content,
+          status: memory.status,
         });
       }
     }
-    const state = store.getProjectState(PROJECT_ID);
+    const state = localStore.getProjectState(PROJECT_ID);
     if (state) {
-      entries.push({ kind: 'state', at: state.createdAt, state });
+      entries.push({
+        kind: 'state',
+        at: state.createdAt,
+        summary: state.summary ?? state.state.stage,
+        version: state.version,
+        next: state.state.next.join(', ') || '—',
+      });
     }
-    for (const handoff of store.handoffs.get(PROJECT_ID) ?? []) {
-      entries.push({ kind: 'handoff', at: handoff.createdAt, handoff });
+    for (const handoff of localStore.handoffs.get(PROJECT_ID) ?? []) {
+      entries.push({
+        kind: 'handoff',
+        at: handoff.createdAt,
+        summary:
+          handoff.payload.recommended_next.join(', ') ||
+          handoff.payload.completed.join(', '),
+      });
     }
     return entries.sort((a, b) => b.at.localeCompare(a.at));
-  }, [store, tick]);
+  }, [localStore, remote, tick]);
 
-  const state = store.getProjectState(PROJECT_ID);
+  const stateSummary = useMemo(() => {
+    if (remote?.state) {
+      const st = remote.state.state as {
+        stage?: string;
+        completed?: string[];
+        next?: string[];
+        active_decisions?: string[];
+      };
+      return {
+        stage: st.stage ?? '—',
+        completed: (st.completed ?? []).join(', ') || '—',
+        next: (st.next ?? []).join(', ') || '—',
+        active: st.active_decisions?.length ?? 0,
+      };
+    }
+    const state = localStore.getProjectState(PROJECT_ID);
+    if (!state) return null;
+    return {
+      stage: state.state.stage,
+      completed: state.state.completed.join(', ') || '—',
+      next: state.state.next.join(', ') || '—',
+      active: state.state.active_decisions.length,
+    };
+  }, [localStore, remote, tick]);
 
-  function refresh() {
-    setTick((n) => n + 1);
+  async function onStoreDecision() {
+    setError(null);
+    try {
+      if (backend !== 'local') {
+        await apiPost('/v1/memories', subjectId, {
+          workspace_id: WORKSPACE_ID,
+          project_id: PROJECT_ID,
+          title,
+          content,
+          actor_subject_id: subjectId,
+          idempotency_key: `web/${actor}/${Date.now()}`,
+          importance: 0.7,
+          confidence: 0.9,
+          sensitivity: 'internal',
+        });
+      } else {
+        localStore.createDecision({
+          workspaceId: WORKSPACE_ID,
+          projectId: PROJECT_ID,
+          title,
+          content,
+          actorSubjectId: subjectId,
+          idempotencyKey: `web/${actor}/${Date.now()}`,
+        });
+      }
+      setTick((n) => n + 1);
+    } catch (err) {
+      setError((err as Error).message);
+    }
   }
 
-  function onStoreDecision() {
-    store.createDecision({
-      workspaceId: WORKSPACE_ID,
-      projectId: PROJECT_ID,
-      title,
-      content,
-      actorSubjectId: actors[actor],
-      idempotencyKey: `web/${actor}/${Date.now()}`,
-    });
-    refresh();
+  async function onCreateHandoff() {
+    setError(null);
+    try {
+      if (backend !== 'local') {
+        await apiPost('/v1/handoffs', subjectId, {
+          workspace_id: WORKSPACE_ID,
+          project_id: PROJECT_ID,
+          from_subject_id: CURSOR,
+          to_subject_id: CHATGPT,
+          idempotency_key: `web-handoff-${Date.now()}`,
+          payload: {
+            completed: ['Loaded project context from Memory OS'],
+            artifacts: [],
+            validation: ['typecheck', 'unit tests'],
+            open_items: ['Keep expanding control center'],
+            blockers: [],
+            recommended_next: ['Wire search UX'],
+          },
+        });
+      } else {
+        localStore.createHandoff({
+          workspaceId: WORKSPACE_ID,
+          projectId: PROJECT_ID,
+          fromSubjectId: CURSOR,
+          toSubjectId: CHATGPT,
+          payload: {
+            completed: ['Loaded project context from Memory OS'],
+            artifacts: [],
+            validation: ['typecheck', 'unit tests'],
+            open_items: [],
+            blockers: [],
+            recommended_next: ['Wire search UX'],
+          },
+        });
+      }
+      setTick((n) => n + 1);
+    } catch (err) {
+      setError((err as Error).message);
+    }
   }
 
-  function onCreateHandoff() {
-    store.createHandoff({
-      workspaceId: WORKSPACE_ID,
-      projectId: PROJECT_ID,
-      fromSubjectId: actors.cursor,
-      toSubjectId: actors.chatgpt,
-      payload: {
-        completed: ['Loaded project context from Memory OS'],
-        artifacts: [],
-        validation: ['typecheck', 'unit tests'],
-        open_items: ['Apply remote seed verification'],
-        blockers: [],
-        recommended_next: ['Continue Web control center'],
-      },
-    });
-    refresh();
+  async function onSearch() {
+    setError(null);
+    try {
+      if (backend !== 'local') {
+        const result = await apiPost<{ hits: typeof hits }>('/v1/search', subjectId, {
+          query: search,
+          project_id: PROJECT_ID,
+        });
+        setHits(result.hits ?? []);
+      } else {
+        const { searchMemories } = await import('@memory-os/retrieval');
+        setHits(
+          searchMemories([...localStore.memories.values()], search, {
+            projectId: PROJECT_ID,
+          }).map((h) => ({ memory: h.memory })),
+        );
+      }
+    } catch (err) {
+      setError((err as Error).message);
+    }
   }
 
   return (
     <main className="app">
       <h1 className="brand">Sasha Memory OS</h1>
       <p className="lede">
-        Control center timeline for AISTROYKA: current decisions, project state,
-        and agent handoffs. Demo store is seeded locally; Supabase project
-        <code> sasha-memory-os </code>
-        holds the canonical schema.
+        Control center for AISTROYKA — decisions, project state, handoffs, search.
+        Backend: <strong>{backend}</strong>
+        {backend === 'supabase' ? ' (live RPCs)' : null}
       </p>
 
       <div className="toolbar" role="group" aria-label="Actor">
@@ -112,52 +276,54 @@ export function App() {
             {key}
           </button>
         ))}
-        <button type="button" onClick={onCreateHandoff}>
+        <button type="button" onClick={() => void onCreateHandoff()}>
           Cursor handoff
         </button>
+        <button type="button" onClick={() => setTick((n) => n + 1)}>
+          Refresh
+        </button>
       </div>
+
+      {error ? <p className="hint" style={{ color: 'var(--warn)' }}>{error}</p> : null}
 
       <div className="grid">
         <section className="panel">
           <h2>Project timeline</h2>
           <ul className="timeline">
-            {timeline.map((entry) => {
+            {timeline.map((entry, idx) => {
               if (entry.kind === 'decision') {
                 return (
-                  <li className="item" key={`d-${entry.memory.id}`}>
+                  <li className="item" key={`d-${idx}-${entry.title}`}>
                     <div className="meta">
                       <span className="badge decision">decision</span>
-                      <span>{entry.memory.status}</span>
+                      <span>{entry.status}</span>
                       <span>{new Date(entry.at).toLocaleString()}</span>
                     </div>
-                    <h3>{entry.memory.title}</h3>
-                    <p>{entry.memory.content}</p>
+                    <h3>{entry.title}</h3>
+                    <p>{entry.content}</p>
                   </li>
                 );
               }
               if (entry.kind === 'state') {
                 return (
-                  <li className="item" key={`s-${entry.state.id}`}>
+                  <li className="item" key={`s-${idx}-${entry.version}`}>
                     <div className="meta">
-                      <span className="badge state">state v{entry.state.version}</span>
+                      <span className="badge state">state v{entry.version}</span>
                       <span>{new Date(entry.at).toLocaleString()}</span>
                     </div>
-                    <h3>{entry.state.summary ?? entry.state.state.stage}</h3>
-                    <p>Next: {entry.state.state.next.join(', ') || '—'}</p>
+                    <h3>{entry.summary}</h3>
+                    <p>Next: {entry.next}</p>
                   </li>
                 );
               }
               return (
-                <li className="item" key={`h-${entry.handoff.id}`}>
+                <li className="item" key={`h-${idx}-${entry.at}`}>
                   <div className="meta">
                     <span className="badge handoff">handoff</span>
                     <span>{new Date(entry.at).toLocaleString()}</span>
                   </div>
                   <h3>Agent handoff</h3>
-                  <p>
-                    {entry.handoff.payload.recommended_next.join(', ') ||
-                      entry.handoff.payload.completed.join(', ')}
-                  </p>
+                  <p>{entry.summary}</p>
                 </li>
               );
             })}
@@ -166,16 +332,14 @@ export function App() {
 
         <aside className="panel">
           <h2>Working state</h2>
-          {state ? (
+          {stateSummary ? (
             <div className="state-block">
               <div>
-                Stage: <strong>{state.state.stage}</strong>
+                Stage: <strong>{stateSummary.stage}</strong>
               </div>
-              <div>Completed: {state.state.completed.join(', ') || '—'}</div>
-              <div>Next: {state.state.next.join(', ') || '—'}</div>
-              <div>
-                Active decisions: {state.state.active_decisions.length}
-              </div>
+              <div>Completed: {stateSummary.completed}</div>
+              <div>Next: {stateSummary.next}</div>
+              <div>Active decisions: {stateSummary.active}</div>
             </div>
           ) : (
             <p className="hint">No project state yet.</p>
@@ -185,16 +349,12 @@ export function App() {
             className="form"
             onSubmit={(e) => {
               e.preventDefault();
-              onStoreDecision();
+              void onStoreDecision();
             }}
           >
             <label>
               Decision title
-              <input
-                value={title}
-                onChange={(e) => setTitle(e.target.value)}
-                required
-              />
+              <input value={title} onChange={(e) => setTitle(e.target.value)} required />
             </label>
             <label>
               Content
@@ -206,10 +366,28 @@ export function App() {
               />
             </label>
             <button type="submit">Remember as {actor}</button>
-            <p className="hint">
-              Writes go to the in-browser MemoryStore for now; API/MCP use the
-              same contracts.
-            </p>
+          </form>
+
+          <form
+            className="form"
+            onSubmit={(e) => {
+              e.preventDefault();
+              void onSearch();
+            }}
+          >
+            <label>
+              Search
+              <input value={search} onChange={(e) => setSearch(e.target.value)} />
+            </label>
+            <button type="submit">Search memories</button>
+            <ul className="timeline">
+              {hits.map((hit, i) => (
+                <li className="item" key={`hit-${i}`}>
+                  <h3>{hit.memory?.title ?? 'hit'}</h3>
+                  <p>{hit.memory?.content ?? ''}</p>
+                </li>
+              ))}
+            </ul>
           </form>
         </aside>
       </div>

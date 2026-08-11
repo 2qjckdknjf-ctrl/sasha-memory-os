@@ -26,5 +26,17 @@ Seed loaded: workspace `sasha-home`, project `aistroyka`, verified decision + st
 
 ## Local env
 
-Copy `.env.example` → `.env` and fill publishable/anon key from the dashboard (or MCP `get_publishable_keys`).  
-Never commit `service_role`.
+Copy `.env.example` → `.env` and fill:
+
+- `MEMORY_OS_SUPABASE_ANON_KEY` / publishable key
+- `MEMORY_OS_API_SECRET` — must match `app.runtime_config.api_secret`
+
+API talks to Postgres through `public.api_*` RPCs (SECURITY DEFINER + ACL).  
+The browser never receives the API secret; only `apps/api` does.
+
+```bash
+npx pnpm@9.15.9 dev:api   # http://localhost:8787 backend=supabase
+npx pnpm@9.15.9 dev:web   # http://localhost:5173
+```
+
+Never commit `service_role` or `MEMORY_OS_API_SECRET`.
