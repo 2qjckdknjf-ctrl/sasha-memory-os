@@ -19,7 +19,7 @@
 **OCR + connector-sync alpha**: OCR engines; vault-backed pulls for GitHub/Drive/Gmail/Calendar (`MEMORY_OS_CONNECTOR_PULL_MODE`, DB `vaultRef` on enqueue, token refresh on expiry) → capture; MCP stdio gateway + capture/sync/oauth/outbox tools; OAuth HTTP exchange into shared encrypted vault + Web `/oauth/callback`; embeddings on capture/sync with `EMBED_STRICT` + owner re-embed (`POST /v1/memories/:id/embed` / MCP `memory.embed` / Web); hybrid search; consolidation + idempotent connector outbox; HTTP API secret on owner ops outside local; golden = 200; Dockerfile/`fly.toml`/GH worker-ticks + `scripts/smoke-api.sh`.
 
 
-Owner checklist items below (ChatGPT MCP plan, region, golden set, DPIA, etc.) remain open for RG0.
+RG0 drafts landed: [RG0_CHECKLIST.md](./RG0_CHECKLIST.md), data classes/retention, threat/DPIA, ChatGPT MCP plan. **Owner accept checkboxes** in those docs remain open.
 
 ## Цель
 
@@ -68,16 +68,16 @@ Owner checklist items below (ChatGPT MCP plan, region, golden set, DPIA, etc.) r
 
 ## Открытые решения (§26) — не блокируют baseline
 
-- [ ] ChatGPT plan / workspace MCP capability (read-only + Web write fallback).
-- [ ] Embedding model (adapter + versioned embeddings).
+- [ ] ChatGPT plan / workspace MCP capability — draft: [CHATGPT_MCP_PLAN.md](./CHATGPT_MCP_PLAN.md) (A MCP write / B Web write fallback).
+- [x] Embedding model — adapter `stub|noop|openai` + versioned `embedding_engine` / dims 32|1536 (owner picks prod default).
 - [ ] LLM для extraction / rerank (provider-neutral contract).
-- [ ] Queue implementation (Postgres-backed abstraction для V1).
-- [ ] Data region / residency (отдельный EU region, если доступен).
-- [ ] Полный mailbox / Drive vs selected labels/files.
-- [ ] Retention raw conversations.
-- [ ] Full Photos indexing (нет для V1; selected / opt-in beta).
-- [ ] Knowledge graph (после M12, не dependency Core).
-- [ ] Dangerous writes для агентов (никакие по умолчанию).
+- [x] Queue implementation — Postgres outbox + `processing_jobs` (V1 alpha).
+- [x] Data region — `eu-central-1` proposed/live; owner accept in [DATA_CLASSES_AND_RETENTION.md](./DATA_CLASSES_AND_RETENTION.md).
+- [ ] Полный mailbox / Drive vs selected labels/files — default: selected scopes.
+- [x] Retention raw conversations — not default memory; see retention table.
+- [x] Full Photos indexing — OUT for V1; selected / opt-in later.
+- [x] Knowledge graph — after M12, not Core dependency.
+- [x] Dangerous writes для агентов — none by default.
 
 ## Рекомендуемый первый demo slice
 

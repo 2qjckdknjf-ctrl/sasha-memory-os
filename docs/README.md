@@ -9,6 +9,10 @@
 | [baseline/architecture.png](baseline/architecture.png) | Обзорная архитектурная схема |
 | [baseline/ingestion-flow.png](baseline/ingestion-flow.png) | Universal ingestion pipeline |
 | [m0/SCOPE.md](m0/SCOPE.md) | Краткий scope M0 / RG0 и первые work packages |
+| [m0/RG0_CHECKLIST.md](m0/RG0_CHECKLIST.md) | RG0 gate tracker |
+| [m0/DATA_CLASSES_AND_RETENTION.md](m0/DATA_CLASSES_AND_RETENTION.md) | Region, data classes, retention |
+| [m0/THREAT_MODEL_DPIA.md](m0/THREAT_MODEL_DPIA.md) | Initial threat model / DPIA |
+| [m0/CHATGPT_MCP_PLAN.md](m0/CHATGPT_MCP_PLAN.md) | ChatGPT MCP capability + fallbacks |
 | [adr/](adr/) | Architecture Decision Records |
 | [engineering/ENVIRONMENT_MATRIX.md](engineering/ENVIRONMENT_MATRIX.md) | local / dev / staging / prod |
 | [engineering/SECRETS_POLICY.md](engineering/SECRETS_POLICY.md) | Хранение и запреты для secrets |

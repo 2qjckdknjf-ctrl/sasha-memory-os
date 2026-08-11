@@ -85,8 +85,9 @@ Outside `local`/`test`, owner ops require `x-memory-os-api-secret` (or `MEMORY_O
 
 ## Следующий шаг
 
-1. ~~Alpha close + hosted ticks~~ — Edge `worker-ticks` v2 (real consolidate + embed-missing) + GH cron
+1. ~~Alpha close + hosted ticks~~ — Edge `worker-ticks` v2 + GH `Worker ticks`
 2. ~~KMS / HQ vector columns~~ — `supabase_vault` + `embedding_vector_hq(1536)`
-3. Full Node API host — `./scripts/fly-deploy-api.sh` (needs Fly login) or keep Edge for ops ticks
-4. RG0 owner gates — ChatGPT MCP plan, DPIA, retention/data classes
-5. Connector pull on Edge still enqueues only (full vault pull remains Node worker / local API)
+3. ~~Full connector pull path~~ — GH `Worker node ticks` (vault sync + consolidation)
+4. ~~RG0 drafts~~ — [docs/m0/RG0_CHECKLIST.md](docs/m0/RG0_CHECKLIST.md) (owner accept checkboxes)
+5. Optional: full HTTP API on Fly — `./scripts/fly-deploy-api.sh` (needs `flyctl auth login`)
+6. Owner: accept RG0 docs + confirm ChatGPT MCP capability A/B
