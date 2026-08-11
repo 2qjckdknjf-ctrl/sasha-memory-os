@@ -2,6 +2,8 @@
 
 Status: **working plan** — capability depends on OpenAI workspace/plan; code paths already support fallbacks.
 
+**Alpha operating mode (until owner confirms A):** **B** — MCP/HTTP read + Web/HTTP write. HTTP MCP endpoint landed (`POST /mcp`) for when custom MCP write (A) becomes available.
+
 ## Goal
 
 ChatGPT uses Memory OS as external long-term memory: search/context read; capture/decision write when the platform allows custom MCP tools.
@@ -54,6 +56,19 @@ See [MCP_CURSOR.md](../engineering/MCP_CURSOR.md). Demo subject for ChatGPT acto
   }
 }
 ```
+
+## HTTP MCP (mode A host path) — ready on API / standalone
+
+```bash
+# With API
+curl -sS http://localhost:8787/mcp \
+  -H 'content-type: application/json' \
+  -d '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}'
+# Hosted (after Fly or any public API URL): POST {MEMORY_OS_API_BASE_URL}/mcp
+# Bearer required outside local/test
+```
+
+Standalone: `pnpm --filter @memory-os/mcp-gateway start:http` → `POST http://127.0.0.1:8790/mcp`.
 
 ## Mode B write headers (HTTP / Web)
 

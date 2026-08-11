@@ -1,10 +1,20 @@
-# MCP Gateway — Cursor / Claude Desktop
+# MCP Gateway — Cursor / Claude Desktop / HTTP
 
 Runnable stdio server:
 
 ```bash
 npx pnpm@9.15.9 --filter @memory-os/mcp-gateway start
 ```
+
+HTTP JSON-RPC (remote / ChatGPT when host reachable):
+
+```bash
+# Standalone :8790
+npx pnpm@9.15.9 --filter @memory-os/mcp-gateway start:http
+# Or via API (same process as HTTP API): POST http://localhost:8787/mcp
+```
+
+Outside `local`/`test`, send `Authorization: Bearer $MEMORY_OS_API_SECRET` or `x-memory-os-api-secret`.
 
 Backend: Supabase when `MEMORY_OS_SUPABASE_*` + `MEMORY_OS_API_SECRET` are set in repo-root `.env`; otherwise in-memory store.
 

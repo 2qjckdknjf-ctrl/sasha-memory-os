@@ -16,6 +16,8 @@
 | [m0/RISK_REGISTER.md](m0/RISK_REGISTER.md) | RG0 risk register |
 | [m0/EVAL_PLAN.md](m0/EVAL_PLAN.md) | Test / eval plan |
 | [m0/BACKLOG_M1_M3.md](m0/BACKLOG_M1_M3.md) | Backlog M1–M3 vs alpha |
+| [engineering/STAGING_PROMOTE.md](engineering/STAGING_PROMOTE.md) | Staging promote runbook |
+| [engineering/MCP_CURSOR.md](engineering/MCP_CURSOR.md) | MCP stdio + HTTP |
 | [adr/](adr/) | Architecture Decision Records |
 | [engineering/ENVIRONMENT_MATRIX.md](engineering/ENVIRONMENT_MATRIX.md) | local / dev / staging / prod |
 | [engineering/SECRETS_POLICY.md](engineering/SECRETS_POLICY.md) | Хранение и запреты для secrets |

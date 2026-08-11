@@ -74,10 +74,12 @@ Then set GitHub secret `MEMORY_OS_API_BASE_URL` so `.github/workflows/worker-tic
 
 Outbox ops: `GET /v1/outbox/pending`, `POST /v1/jobs/dead-letter-stale`, `POST /v1/outbox/:id/publish`. MCP: `oauth.*`, `outbox.*`, `jobs.dead_letter_stale`.
 
-MCP stdio (Cursor / Claude Desktop): see [docs/engineering/MCP_CURSOR.md](docs/engineering/MCP_CURSOR.md)
+MCP stdio / HTTP (Cursor, Claude, ChatGPT host path): [docs/engineering/MCP_CURSOR.md](docs/engineering/MCP_CURSOR.md)
 
 ```bash
 npx pnpm@9.15.9 --filter @memory-os/mcp-gateway start
+npx pnpm@9.15.9 --filter @memory-os/mcp-gateway start:http   # :8790/mcp
+# or POST http://localhost:8787/mcp on the API
 ```
 
 OAuth redirect lands on Web `/oauth/callback` → API `/v1/oauth/callback`.  
@@ -89,5 +91,6 @@ Outside `local`/`test`, owner ops require `x-memory-os-api-secret` (or `MEMORY_O
 2. ~~KMS / HQ vector columns~~ — `supabase_vault` + `embedding_vector_hq(1536)`
 3. ~~Full connector pull path~~ — GH `Worker node ticks` (vault sync + consolidation)
 4. ~~RG0 artifact set~~ — checklist, risk, eval, backlog M1–M3, retention, DPIA, ChatGPT MCP ([RG0_CHECKLIST.md](docs/m0/RG0_CHECKLIST.md))
-5. Optional: full HTTP API on Fly — `./scripts/fly-deploy-api.sh` (needs `flyctl auth login`)
-6. Owner: accept RG0 checkboxes + ChatGPT MCP **A** or **B**
+5. ~~HTTP MCP host path~~ — `POST /mcp` (+ standalone `:8790`); alpha ops mode **B** until A confirmed
+6. Optional: full HTTP API on Fly — `./scripts/fly-deploy-api.sh` (needs `flyctl auth login`)
+7. Owner: accept RG0 checkboxes + confirm ChatGPT MCP **A** or keep **B**

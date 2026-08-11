@@ -12,7 +12,9 @@
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run",
     "start": "tsx src/stdio.ts",
-    "dev": "tsx src/stdio.ts"
+    "start:http": "tsx src/http.ts",
+    "dev": "tsx src/stdio.ts",
+    "dev:http": "tsx src/http.ts"
   },
   "dependencies": {
     "@memory-os/connector-github": "workspace:*",

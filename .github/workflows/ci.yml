@@ -28,3 +28,6 @@ jobs:
 
       - name: Test
         run: pnpm test
+
+      - name: Dependency audit (critical)
+        run: pnpm audit --audit-level=critical

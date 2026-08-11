@@ -15,7 +15,8 @@ Exit gate: unknown external blockers cleared; owner accepts V1/OUT; scope/risk/e
 | Hosted ops ticks | Edge `worker-ticks` v2 + GH `Worker ticks` / `Worker node ticks` |
 | Data classes / retention (draft) | [DATA_CLASSES_AND_RETENTION.md](./DATA_CLASSES_AND_RETENTION.md) |
 | Threat model / DPIA (draft) | [THREAT_MODEL_DPIA.md](./THREAT_MODEL_DPIA.md) |
-| ChatGPT MCP plan | [CHATGPT_MCP_PLAN.md](./CHATGPT_MCP_PLAN.md) |
+| ChatGPT MCP plan + HTTP `/mcp` | [CHATGPT_MCP_PLAN.md](./CHATGPT_MCP_PLAN.md), [MCP_CURSOR.md](../engineering/MCP_CURSOR.md) |
+| Staging promote runbook | [STAGING_PROMOTE.md](../engineering/STAGING_PROMOTE.md) |
 | Risk register | [RISK_REGISTER.md](./RISK_REGISTER.md) |
 | Eval plan | [EVAL_PLAN.md](./EVAL_PLAN.md) |
 | Backlog M1–M3 | [BACKLOG_M1_M3.md](./BACKLOG_M1_M3.md) |

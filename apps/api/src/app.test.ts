@@ -214,12 +214,29 @@ describe('memory api demo slice', () => {
 
   it('serves health with embed/vault modes', async () => {
     const app = createApp({});
+    const mcpHealth = await app.request('/mcp/health');
+    expect(mcpHealth.status).toBe(200);
+    const mcpInit = await app.request('/mcp', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        jsonrpc: '2.0',
+        id: 1,
+        method: 'initialize',
+        params: {},
+      }),
+    });
+    expect(mcpInit.status).toBe(200);
+    const mcpBody = await mcpInit.json();
+    expect(mcpBody.result.serverInfo.name).toBe('memory-os-mcp-gateway');
+
     const res = await app.request('/health');
     expect(res.status).toBe(200);
     const body = await res.json();
     expect(body.ok).toBe(true);
     expect(body.embedEngine).toBeTruthy();
     expect(body.vaultBackend).toBeTruthy();
+    expect(body.mcp).toBe('/mcp');
   });
 
   it('gets memory offline with full content', async () => {

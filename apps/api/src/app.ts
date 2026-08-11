@@ -45,6 +45,11 @@ import {
   searchMemoriesHybrid,
 } from '@memory-os/retrieval';
 import { createConfiguredVaultStore } from '@memory-os/db';
+import {
+  createMcpHandlers,
+  handleMcpJsonRpc,
+  type JsonRpcReq,
+} from '@memory-os/mcp-gateway';
 import type { SupabaseMemoryGateway } from './supabase.js';
 import { requireHttpApiSecret } from './httpAuth.js';
 
@@ -200,6 +205,7 @@ export function createApp(options?: {
 }) {
   const store = options?.store ?? createSeededStore();
   const gateway = options?.gateway ?? null;
+  const mcp = createMcpHandlers({ store, gateway });
   const app = new Hono<{ Variables: ApiVariables }>();
 
   app.use(
@@ -295,8 +301,37 @@ export function createApp(options?: {
         (process.env.MEMORY_OS_SUPABASE_URL ? 'supabase' : 'local'),
       connectorPullMode:
         (process.env.MEMORY_OS_CONNECTOR_PULL_MODE ?? 'auto').trim() || 'auto',
+      mcp: '/mcp',
     }),
   );
+
+  // Remote MCP JSON-RPC (ChatGPT mode A when host reachable). Auth outside local/test.
+  app.use('/mcp', requireHttpApiSecret);
+  app.get('/mcp/health', (c) =>
+    c.json({
+      ok: true,
+      service: 'memory-os-mcp',
+      backend: mcp.backend,
+    }),
+  );
+  app.post('/mcp', async (c) => {
+    let msg: JsonRpcReq;
+    try {
+      msg = (await c.req.json()) as JsonRpcReq;
+    } catch {
+      return c.json(
+        {
+          jsonrpc: '2.0',
+          id: null,
+          error: { code: -32700, message: 'Parse error' },
+        },
+        400,
+      );
+    }
+    const result = await handleMcpJsonRpc(mcp, msg);
+    if (result === null) return c.body(null, 204);
+    return c.json(result);
+  });
 
   // Owner/cron ops — require HTTP API secret outside local/test (see httpAuth.ts).
   app.use('/v1/consolidation/*', requireHttpApiSecret);

@@ -66,6 +66,9 @@ importers:
       '@memory-os/ingestion':
         specifier: workspace:*
         version: link:../../packages/ingestion
+      '@memory-os/mcp-gateway':
+        specifier: workspace:*
+        version: link:../mcp-gateway
       '@memory-os/retrieval':
         specifier: workspace:^
         version: link:../../packages/retrieval

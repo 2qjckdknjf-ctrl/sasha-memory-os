@@ -24,4 +24,11 @@ curl -fsS "$API/v1/outbox/pending?limit=5" \
   "${SECRET_HEADER[@]}" \
   | tee /tmp/memory-os-outbox.json
 echo
+echo "== POST $API/mcp initialize"
+curl -fsS "$API/mcp" \
+  -H "content-type: application/json" \
+  "${SECRET_HEADER[@]}" \
+  -d '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}' \
+  | tee /tmp/memory-os-mcp.json
+echo
 echo "smoke ok"
