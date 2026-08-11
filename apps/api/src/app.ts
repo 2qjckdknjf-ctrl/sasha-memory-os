@@ -6,6 +6,9 @@ import {
   type AuthzContext,
 } from '@memory-os/authz';
 import { createSeededStore, type MemoryStore } from '@memory-os/domain';
+import { pullGithubStubDelta } from '@memory-os/connector-github';
+import { pullGmailStubDelta } from '@memory-os/connector-gmail';
+import { pullGoogleDriveStubDelta } from '@memory-os/connector-google-drive';
 import { resolveAuthorizeBase } from '@memory-os/connector-sdk';
 import {
   bindAuthUserSchema,
@@ -266,19 +269,64 @@ export function createApp(options?: {
         connectionId: body.connection_id ?? null,
       });
       const completed: Array<Record<string, unknown>> = [];
+      let captured = 0;
       if (body.complete_now !== false) {
         for (const item of result.enqueued ?? []) {
           if (!item.jobId) continue;
-          completed.push(
-            await gw.completeConnectorSync({
-              subjectId: actorSubjectId,
-              jobId: item.jobId,
-              status: 'succeeded',
-            }),
-          );
+          try {
+            const delta =
+              item.connectorId === 'github'
+                ? pullGithubStubDelta({
+                    connectionId: item.connectionId,
+                    displayName: item.connectorId,
+                  })
+                : item.connectorId === 'google-drive'
+                  ? pullGoogleDriveStubDelta({
+                      connectionId: item.connectionId,
+                      displayName: item.connectorId,
+                    })
+                  : item.connectorId === 'gmail'
+                    ? pullGmailStubDelta({
+                        connectionId: item.connectionId,
+                        displayName: item.connectorId,
+                      })
+                    : null;
+            if (delta) {
+              for (const event of delta.items) {
+                await gw.captureText({
+                  subjectId: actorSubjectId,
+                  workspaceId,
+                  projectId: seedProject,
+                  title: event.title,
+                  text: event.text,
+                  idempotencyKey: `connector-sync/${item.connectionId}/${event.externalId}`,
+                  processNow: true,
+                  filename: `${item.connectorId}://${event.externalId}`,
+                  mimeType: 'text/plain',
+                });
+                captured += 1;
+              }
+            }
+            completed.push(
+              await gw.completeConnectorSync({
+                subjectId: actorSubjectId,
+                jobId: item.jobId,
+                status: 'succeeded',
+              }),
+            );
+          } catch (err) {
+            completed.push(
+              await gw.completeConnectorSync({
+                subjectId: actorSubjectId,
+                jobId: item.jobId,
+                status: 'failed',
+                error: (err as Error).message,
+              }),
+            );
+          }
         }
       }
-      return c.json({ ...result, completed }, 202);
+      return c.json({ ...result, completed, captured }, 202);
     } catch (err) {
       if (isForbiddenError(err)) return c.json({ error: 'forbidden' }, 403);
       return c.json({ error: (err as Error).message }, 500);

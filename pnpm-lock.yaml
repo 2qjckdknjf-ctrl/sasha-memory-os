@@ -42,6 +42,15 @@ importers:
       '@memory-os/authz':
         specifier: workspace:^
         version: link:../../packages/authz
+      '@memory-os/connector-github':
+        specifier: workspace:*
+        version: link:../../connectors/github
+      '@memory-os/connector-gmail':
+        specifier: workspace:*
+        version: link:../../connectors/gmail
+      '@memory-os/connector-google-drive':
+        specifier: workspace:*
+        version: link:../../connectors/google-drive
       '@memory-os/connector-sdk':
         specifier: workspace:*
         version: link:../../packages/connector-sdk
@@ -82,6 +91,9 @@ importers:
       '@memory-os/domain':
         specifier: workspace:*
         version: link:../../packages/domain
+      '@memory-os/ingestion':
+        specifier: workspace:*
+        version: link:../../packages/ingestion
       '@memory-os/retrieval':
         specifier: workspace:^
         version: link:../../packages/retrieval
@@ -211,6 +223,15 @@ importers:
 
   workers/connector-sync:
     dependencies:
+      '@memory-os/connector-github':
+        specifier: workspace:*
+        version: link:../../connectors/github
+      '@memory-os/connector-gmail':
+        specifier: workspace:*
+        version: link:../../connectors/gmail
+      '@memory-os/connector-google-drive':
+        specifier: workspace:*
+        version: link:../../connectors/google-drive
       '@memory-os/db':
         specifier: workspace:*
         version: link:../../packages/db

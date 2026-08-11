@@ -5,6 +5,13 @@ import {
 import type { SupabaseMemoryGateway } from '@memory-os/db';
 import { projectContext, searchMemories } from '@memory-os/retrieval';
 import {
+  decodeBase64Document,
+  extractTextFromBytes,
+  fetchPublicLink,
+} from '@memory-os/ingestion';
+import {
+  captureDocumentSchema,
+  captureLinkSchema,
   captureTextSchema,
   createDecisionSchema,
   createHandoffSchema,
@@ -174,6 +181,56 @@ export const mcpTools: McpTool[] = [
         actor_subject_id: { type: 'string' },
       },
       required: ['workspace_id', 'actor_subject_id'],
+    },
+  },
+  {
+    name: 'capture.document',
+    description: 'Capture TXT/PDF/DOCX/image (OCR) into candidate memory',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        workspace_id: { type: 'string' },
+        project_id: { type: 'string' },
+        title: { type: 'string' },
+        filename: { type: 'string' },
+        mime_type: { type: 'string' },
+        content_base64: { type: 'string' },
+        actor_subject_id: { type: 'string' },
+        idempotency_key: { type: 'string' },
+        process_now: { type: 'boolean' },
+      },
+      required: [
+        'workspace_id',
+        'project_id',
+        'title',
+        'filename',
+        'content_base64',
+        'actor_subject_id',
+        'idempotency_key',
+      ],
+    },
+  },
+  {
+    name: 'capture.link',
+    description: 'Capture a public URL via SSRF-safe fetch into candidate memory',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        workspace_id: { type: 'string' },
+        project_id: { type: 'string' },
+        url: { type: 'string' },
+        title: { type: 'string' },
+        actor_subject_id: { type: 'string' },
+        idempotency_key: { type: 'string' },
+        process_now: { type: 'boolean' },
+      },
+      required: [
+        'workspace_id',
+        'project_id',
+        'url',
+        'actor_subject_id',
+        'idempotency_key',
+      ],
     },
   },
 ];
@@ -363,6 +420,85 @@ export function createMcpHandlers(options?: {
             connectionId: args.connection_id
               ? String(args.connection_id)
               : null,
+          });
+        }
+        case 'capture.document': {
+          const input = captureDocumentSchema.parse(args);
+          const parsed = await extractTextFromBytes({
+            filename: input.filename,
+            mimeType: input.mime_type,
+            bytes: decodeBase64Document(input.content_base64),
+          });
+          const text = [
+            `Source file: ${parsed.filename} (${parsed.mimeType})`,
+            parsed.engine !== 'native' ? `OCR engine: ${parsed.engine}` : null,
+            '',
+            parsed.text,
+          ]
+            .filter((line) => line !== null)
+            .join('\n');
+          if (gateway) {
+            return gateway.captureText({
+              subjectId: input.actor_subject_id,
+              workspaceId: input.workspace_id,
+              projectId: input.project_id,
+              title: input.title,
+              text,
+              idempotencyKey: input.idempotency_key,
+              sensitivity: input.sensitivity,
+              processNow: input.process_now,
+              filename: parsed.filename,
+              mimeType: parsed.mimeType,
+            });
+          }
+          return {
+            ...store.captureText({
+              workspaceId: input.workspace_id,
+              projectId: input.project_id,
+              title: input.title,
+              text,
+              actorSubjectId: input.actor_subject_id,
+              idempotencyKey: input.idempotency_key,
+              sensitivity: input.sensitivity,
+            }),
+            extractedChars: parsed.text.length,
+            engine: parsed.engine,
+          };
+        }
+        case 'capture.link': {
+          const input = captureLinkSchema.parse(args);
+          const fetched = await fetchPublicLink(input.url);
+          const title = input.title ?? fetched.title;
+          const text = [
+            `Source URL: ${fetched.finalUrl}`,
+            fetched.contentType ? `Content-Type: ${fetched.contentType}` : null,
+            '',
+            fetched.text,
+          ]
+            .filter((line) => line !== null)
+            .join('\n');
+          if (gateway) {
+            return gateway.captureText({
+              subjectId: input.actor_subject_id,
+              workspaceId: input.workspace_id,
+              projectId: input.project_id,
+              title,
+              text,
+              idempotencyKey: input.idempotency_key,
+              sensitivity: input.sensitivity,
+              processNow: input.process_now,
+              filename: fetched.finalUrl,
+              mimeType: 'text/html',
+            });
+          }
+          return store.captureText({
+            workspaceId: input.workspace_id,
+            projectId: input.project_id,
+            title,
+            text,
+            actorSubjectId: input.actor_subject_id,
+            idempotencyKey: input.idempotency_key,
+            sensitivity: input.sensitivity,
           });
         }
         default: {

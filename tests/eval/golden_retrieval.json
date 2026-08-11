@@ -105,7 +105,6 @@
       "actor": "cursor",
       "must_allow": true
     },
-
     {
       "id": "gr-016",
       "query": "vault refs only",
@@ -134,13 +133,152 @@
       "actor": "chatgpt",
       "must_allow": true
     },
-
     {
       "id": "gr-020",
       "query": "processing job ingest",
       "expect_content_includes": "ingest",
       "actor": "owner",
       "must_allow": true
+    },
+    {
+      "id": "gr-021",
+      "query": "salary band confidential",
+      "actor": "cursor",
+      "must_allow": true,
+      "expect_no_sensitivity": "confidential"
+    },
+    {
+      "id": "gr-022",
+      "query": "salary band confidential",
+      "expect_content_includes": "salary",
+      "actor": "owner",
+      "must_allow": true
+    },
+    {
+      "id": "gr-023",
+      "query": "ROMA agent",
+      "expect_content_includes": "ROMA",
+      "actor": "chatgpt",
+      "must_allow": true
+    },
+    {
+      "id": "gr-024",
+      "query": "pgvector hybrid",
+      "expect_content_includes": "pgvector",
+      "actor": "cursor",
+      "must_allow": true
+    },
+    {
+      "id": "gr-025",
+      "query": "DPIA privacy",
+      "expect_content_includes": "DPIA",
+      "actor": "owner",
+      "must_allow": true
+    },
+    {
+      "id": "gr-026",
+      "query": "temporal supersedes",
+      "expect_content_includes": "supersedes",
+      "actor": "chatgpt",
+      "must_allow": true
+    },
+    {
+      "id": "gr-027",
+      "query": "correction review UX",
+      "expect_content_includes": "correction",
+      "actor": "cursor",
+      "must_allow": true
+    },
+    {
+      "id": "gr-028",
+      "query": "embedding baseline",
+      "expect_content_includes": "embedding",
+      "actor": "owner",
+      "must_allow": true
+    },
+    {
+      "id": "gr-029",
+      "query": "consolidation worker",
+      "expect_memory_title_includes": "Consolidation",
+      "actor": "chatgpt",
+      "must_allow": true
+    },
+    {
+      "id": "gr-030",
+      "query": "Apple bridge",
+      "expect_content_includes": "Apple",
+      "actor": "owner",
+      "must_allow": true
+    },
+    {
+      "id": "gr-031",
+      "query": "Google Drive degraded",
+      "expect_content_includes": "Drive",
+      "actor": "cursor",
+      "must_allow": true
+    },
+    {
+      "id": "gr-032",
+      "query": "Gmail metadata",
+      "expect_content_includes": "Gmail",
+      "actor": "chatgpt",
+      "must_allow": true
+    },
+    {
+      "id": "gr-033",
+      "query": "calendar event",
+      "expect_content_includes": "calendar",
+      "actor": "owner",
+      "must_allow": true
+    },
+    {
+      "id": "gr-034",
+      "query": "provenance chain",
+      "expect_content_includes": "provenance",
+      "actor": "cursor",
+      "must_allow": true
+    },
+    {
+      "id": "gr-035",
+      "query": "eu-central-1 region",
+      "expect_content_includes": "eu-central-1",
+      "actor": "owner",
+      "must_allow": true
+    },
+    {
+      "id": "gr-036",
+      "query": "outbox events",
+      "expect_content_includes": "outbox",
+      "actor": "chatgpt",
+      "must_allow": true
+    },
+    {
+      "id": "gr-037",
+      "query": "passport number",
+      "actor": "chatgpt",
+      "must_allow": true,
+      "expect_empty_or_no_restricted": true
+    },
+    {
+      "id": "gr-038",
+      "query": "passport number",
+      "expect_content_includes": "passport",
+      "actor": "owner",
+      "must_allow": true
+    },
+    {
+      "id": "gr-039",
+      "query": "synthetic GitHub PR",
+      "expect_content_includes": "Pull request",
+      "actor": "owner",
+      "must_allow": true
+    },
+    {
+      "id": "gr-040",
+      "query": "forbidden personal secrets",
+      "actor": "cursor",
+      "must_allow": true,
+      "expect_no_sensitivity": "confidential"
     }
   ]
 }

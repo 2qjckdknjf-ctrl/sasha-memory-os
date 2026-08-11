@@ -17,6 +17,9 @@
   "dependencies": {
     "@hono/node-server": "^2.1.0",
     "@memory-os/authz": "workspace:^",
+    "@memory-os/connector-github": "workspace:*",
+    "@memory-os/connector-gmail": "workspace:*",
+    "@memory-os/connector-google-drive": "workspace:*",
     "@memory-os/connector-sdk": "workspace:*",
     "@memory-os/db": "workspace:^",
     "@memory-os/domain": "workspace:*",

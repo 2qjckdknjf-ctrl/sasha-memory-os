@@ -19,8 +19,27 @@ describe('mcp gateway alpha', () => {
         'connections.set_status',
         'capture.text',
         'connections.sync',
+        'capture.document',
+        'capture.link',
       ]),
     );
+  });
+
+  it('captures document offline via base64 text', async () => {
+    const mcp = createMcpHandlers();
+    const chatgpt = '33333333-3333-4333-8333-333333333302';
+    const result = (await mcp.call('capture.document', {
+      workspace_id: workspaceId,
+      project_id: projectId,
+      title: 'MCP doc',
+      filename: 'note.txt',
+      mime_type: 'text/plain',
+      content_base64: Buffer.from('Document via MCP').toString('base64'),
+      actor_subject_id: chatgpt,
+      idempotency_key: 'mcp-doc-1',
+    })) as { memoryId: string; extractedChars?: number };
+    expect(result.memoryId).toBeTruthy();
+    expect(result.extractedChars).toBeGreaterThan(0);
   });
 
   it('returns offline stub for connections.sync', async () => {

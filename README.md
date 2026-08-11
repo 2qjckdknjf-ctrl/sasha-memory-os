@@ -45,7 +45,7 @@ OAuth broker (stub): `POST /v1/oauth/start` → `POST /v1/oauth/callback` stores
 
 ## Следующий шаг
 
-- Set `MEMORY_OS_OAUTH_GITHUB_CLIENT_ID` / `MEMORY_OS_OAUTH_GOOGLE_CLIENT_ID` (+ vault/KMS) for real broker redirects
-- Web Auth: copy anon key into `apps/web/.env` (`VITE_MEMORY_OS_SUPABASE_*`) from root `.env`
-- Expand golden retrieval set toward 100–200 cases (20 seeded now)
-- Connector providers: replace stub complete with real vault-backed delta pull
+- Set `MEMORY_OS_OAUTH_GITHUB_CLIENT_ID` / `MEMORY_OS_OAUTH_GOOGLE_CLIENT_ID` (+ vault/KMS) for real broker token exchange
+- Expand golden retrieval set toward 100–200 cases (40 seeded now)
+- Replace GitHub/Drive/Gmail stub deltas with vault-backed provider pulls
+- Google Calendar stub + real OAuth token exchange into KMS/vault
