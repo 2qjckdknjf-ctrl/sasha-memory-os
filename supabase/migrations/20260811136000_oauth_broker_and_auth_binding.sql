@@ -63,11 +63,11 @@ RETURNS jsonb
 LANGUAGE plpgsql
 VOLATILE
 SECURITY DEFINER
-SET search_path = public, app
+SET search_path = public, app, extensions
 AS $$
 DECLARE
   v_account_id uuid;
-  v_state text := encode(gen_random_bytes(24), 'hex');
+  v_state text := replace(gen_random_uuid()::text || gen_random_uuid()::text, '-', '');
   v_state_id uuid;
   v_authorize text;
   v_scopes text[] := coalesce(p_scopes, '{}');
