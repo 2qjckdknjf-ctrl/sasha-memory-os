@@ -69,6 +69,9 @@ importers:
       '@memory-os/mcp-gateway':
         specifier: workspace:*
         version: link:../mcp-gateway
+      '@memory-os/observability':
+        specifier: workspace:*
+        version: link:../../packages/observability
       '@memory-os/retrieval':
         specifier: workspace:^
         version: link:../../packages/retrieval

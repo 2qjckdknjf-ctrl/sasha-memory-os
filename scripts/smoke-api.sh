@@ -31,4 +31,12 @@ curl -fsS "$API/mcp" \
   -d '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}' \
   | tee /tmp/memory-os-mcp.json
 echo
+echo "== POST $API/v1/extraction/preview"
+curl -fsS "$API/v1/extraction/preview" \
+  -H "content-type: application/json" \
+  -H "x-subject-id: $SUBJECT" \
+  -H "x-actor-key: owner" \
+  -d '{"title":"Smoke","text":"Memory OS stays in eu-central-1."}' \
+  | tee /tmp/memory-os-extract.json
+echo
 echo "smoke ok"

@@ -26,8 +26,10 @@
     "@memory-os/domain": "workspace:*",
     "@memory-os/ingestion": "workspace:*",
     "@memory-os/mcp-gateway": "workspace:*",
+    "@memory-os/observability": "workspace:*",
     "@memory-os/retrieval": "workspace:^",
     "@memory-os/schemas": "workspace:^",
+
     "@supabase/supabase-js": "^2.112.3",
     "dotenv": "^17.4.2",
     "hono": "^4.13.1"

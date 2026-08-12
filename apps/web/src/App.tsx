@@ -860,6 +860,24 @@ export function App() {
             {extractionPreview ? (
               <p className="meta">{extractionPreview}</p>
             ) : null}
+            {extractionCandidates.length > 0 ? (
+              <ul className="timeline">
+                {extractionCandidates.map((c, i) => (
+                  <li className="item" key={`${c.title}-${i}`}>
+                    <div className="meta">
+                      <span className="badge state">
+                        {c.memoryType ?? 'fact'}
+                      </span>
+                      {typeof c.confidence === 'number' ? (
+                        <span>conf {c.confidence.toFixed(2)}</span>
+                      ) : null}
+                    </div>
+                    <h3>{c.title}</h3>
+                    <p>{c.content.slice(0, 240)}</p>
+                  </li>
+                ))}
+              </ul>
+            ) : null}
           </form>
 
           <form

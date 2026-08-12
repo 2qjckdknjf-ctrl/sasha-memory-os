@@ -1,5 +1,8 @@
 import { randomUUID } from 'node:crypto';
 import type { Context, Next } from 'hono';
+import { createLogger } from '@memory-os/observability';
+
+const log = createLogger('memory-api');
 
 function shouldLogHttp(env: NodeJS.ProcessEnv = process.env): boolean {
   const flag = (env.MEMORY_OS_HTTP_LOG ?? '').trim().toLowerCase();
@@ -22,14 +25,11 @@ export async function withRequestId(
   const started = Date.now();
   await next();
   if (!shouldLogHttp()) return;
-  console.log(
-    JSON.stringify({
-      msg: 'http',
-      requestId,
-      method: c.req.method,
-      path: c.req.path,
-      status: c.res.status,
-      ms: Date.now() - started,
-    }),
-  );
+  log.info('http', {
+    requestId,
+    method: c.req.method,
+    path: c.req.path,
+    status: c.res.status,
+    ms: Date.now() - started,
+  });
 }
