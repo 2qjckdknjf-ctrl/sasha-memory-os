@@ -85,6 +85,14 @@ export function App() {
   const [extractionPreview, setExtractionPreview] = useState<string | null>(
     null,
   );
+  const [extractionCandidates, setExtractionCandidates] = useState<
+    Array<{
+      title: string;
+      content: string;
+      memoryType?: string;
+      confidence?: number;
+    }>
+  >([]);
 
   const subjectId = actors[actor];
 
@@ -780,16 +788,28 @@ export function App() {
                     }
                     const result = await apiPost<{
                       engine?: string;
-                      candidates?: Array<{ title?: string; content?: string }>;
+                      candidates?: Array<{
+                        title?: string;
+                        content?: string;
+                        memoryType?: string;
+                        confidence?: number;
+                      }>;
                     }>('/v1/extraction/preview', subjectId, {
                       title: captureTitle,
                       text: captureText,
                     }, actor);
+                    const rows = (result.candidates ?? [])
+                      .filter((c) => c.title && c.content)
+                      .map((c) => ({
+                        title: String(c.title),
+                        content: String(c.content),
+                        memoryType: c.memoryType,
+                        confidence: c.confidence,
+                      }));
+                    setExtractionCandidates(rows);
                     setExtractionPreview(
-                      `${result.engine ?? 'extract'}: ${
-                        result.candidates?.length ?? 0
-                      } candidates — ${
-                        result.candidates?.[0]?.title ?? 'none'
+                      `${result.engine ?? 'extract'}: ${rows.length} candidates — ${
+                        rows[0]?.title ?? 'none'
                       }`,
                     );
                   } catch (err) {
@@ -799,6 +819,43 @@ export function App() {
               }}
             >
               Preview extraction
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                void (async () => {
+                  setError(null);
+                  try {
+                    if (backend === 'local') {
+                      setError('Extraction apply requires API backend');
+                      return;
+                    }
+                    if (extractionCandidates.length === 0) {
+                      setError('Preview extraction first');
+                      return;
+                    }
+                    const result = await apiPost<{
+                      applied?: number;
+                      failed?: number;
+                    }>('/v1/extraction/apply', subjectId, {
+                      workspace_id: WORKSPACE_ID,
+                      project_id: PROJECT_ID,
+                      actor_subject_id: subjectId,
+                      idempotency_prefix: `web-extract-${Date.now()}`,
+                      candidates: extractionCandidates,
+                    }, actor);
+                    setExtractionPreview(
+                      `applied ${result.applied ?? 0} · failed ${result.failed ?? 0}`,
+                    );
+                    setTick((n) => n + 1);
+                    void refreshReviewQueue().catch(() => undefined);
+                  } catch (err) {
+                    setError((err as Error).message);
+                  }
+                })();
+              }}
+            >
+              Apply extraction
             </button>
             {extractionPreview ? (
               <p className="meta">{extractionPreview}</p>

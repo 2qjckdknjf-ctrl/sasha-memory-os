@@ -34,6 +34,7 @@ describe('mcp gateway alpha', () => {
         'memory.export',
         'jobs.get',
         'extraction.preview',
+        'extraction.apply',
       ]),
     );
   });
@@ -47,6 +48,27 @@ describe('mcp gateway alpha', () => {
     })) as { preview: boolean; candidates: unknown[] };
     expect(result.preview).toBe(true);
     expect(result.candidates.length).toBeGreaterThan(0);
+  });
+
+  it('applies extraction candidates offline', async () => {
+    const mcp = createMcpHandlers();
+    const owner = '33333333-3333-4333-8333-333333333301';
+    const result = (await mcp.call('extraction.apply', {
+      workspace_id: workspaceId,
+      project_id: projectId,
+      actor_subject_id: owner,
+      idempotency_prefix: 'mcp-extract-apply-1',
+      candidates: [
+        {
+          title: 'Vault rule',
+          content: 'Vault refs stay out of Postgres.',
+          memoryType: 'fact',
+          confidence: 0.8,
+        },
+      ],
+    })) as { applied: number; failed: number };
+    expect(result.applied).toBe(1);
+    expect(result.failed).toBe(0);
   });
 
   it('exports memories for owner offline', async () => {

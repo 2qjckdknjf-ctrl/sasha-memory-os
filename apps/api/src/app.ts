@@ -17,6 +17,7 @@ import {
   resolveConnectorSyncOutcome,
 } from '@memory-os/connector-sdk';
 import {
+  applyExtractionSchema,
   bindAuthUserSchema,
   captureDocumentSchema,
   captureLinkSchema,
@@ -1808,6 +1809,137 @@ export function createApp(options?: {
     } catch (err) {
       return c.json({ error: (err as Error).message }, 500);
     }
+  });
+
+  app.post('/v1/extraction/apply', async (c) => {
+    const body = applyExtractionSchema.parse(await c.req.json());
+    const authz = c.get('authz');
+    if (
+      !authorize(authz, {
+        resourceType: 'memory',
+        action: 'write',
+        projectId: body.project_id,
+        sensitivity: body.sensitivity,
+      })
+    ) {
+      return c.json({ error: 'forbidden' }, 403);
+    }
+
+    const gw = c.get('gateway');
+    const created: Array<{
+      index: number;
+      memoryType: string;
+      memoryId?: string;
+      mode: 'decision' | 'capture';
+      error?: string;
+    }> = [];
+
+    for (let i = 0; i < body.candidates.length; i += 1) {
+      const candidate = body.candidates[i]!;
+      const idempotencyKey = `${body.idempotency_prefix}:${i}`;
+      try {
+        if (candidate.memoryType === 'decision') {
+          if (gw) {
+            const memory = await gw.createDecision({
+              subjectId: body.actor_subject_id,
+              workspaceId: body.workspace_id,
+              projectId: body.project_id,
+              title: candidate.title,
+              content: candidate.content,
+              idempotencyKey,
+              confidence: candidate.confidence,
+              sensitivity: body.sensitivity,
+            });
+            created.push({
+              index: i,
+              memoryType: candidate.memoryType,
+              memoryId: String((memory as { id?: string }).id ?? ''),
+              mode: 'decision',
+            });
+          } else {
+            const memory = c.get('store').createDecision({
+              workspaceId: body.workspace_id,
+              projectId: body.project_id,
+              title: candidate.title,
+              content: candidate.content,
+              actorSubjectId: body.actor_subject_id,
+              idempotencyKey,
+              confidence: candidate.confidence,
+              sensitivity: body.sensitivity,
+            });
+            created.push({
+              index: i,
+              memoryType: candidate.memoryType,
+              memoryId: memory.id,
+              mode: 'decision',
+            });
+          }
+        } else if (gw) {
+          const result = await gw.captureText({
+            subjectId: body.actor_subject_id,
+            workspaceId: body.workspace_id,
+            projectId: body.project_id,
+            title: candidate.title,
+            text: candidate.content,
+            idempotencyKey,
+            sensitivity: body.sensitivity,
+            processNow: true,
+          });
+          await maybeEmbedCapturedMemory(gw, {
+            subjectId: body.actor_subject_id,
+            title: candidate.title,
+            text: candidate.content,
+            captureResult: result as {
+              process?: { memoryId?: string | null } | null;
+            },
+          });
+          const memoryId =
+            (result as { process?: { memoryId?: string }; memoryId?: string })
+              .process?.memoryId ??
+            (result as { memoryId?: string }).memoryId;
+          created.push({
+            index: i,
+            memoryType: candidate.memoryType,
+            memoryId: memoryId ? String(memoryId) : undefined,
+            mode: 'capture',
+          });
+        } else {
+          const result = c.get('store').captureText({
+            workspaceId: body.workspace_id,
+            projectId: body.project_id,
+            title: candidate.title,
+            text: candidate.content,
+            actorSubjectId: body.actor_subject_id,
+            idempotencyKey,
+            sensitivity: body.sensitivity,
+          });
+          created.push({
+            index: i,
+            memoryType: candidate.memoryType,
+            memoryId: result.memoryId,
+            mode: 'capture',
+          });
+        }
+      } catch (err) {
+        created.push({
+          index: i,
+          memoryType: candidate.memoryType,
+          mode: candidate.memoryType === 'decision' ? 'decision' : 'capture',
+          error: err instanceof Error ? err.message : String(err),
+        });
+      }
+    }
+
+    const ok = created.filter((row) => !row.error).length;
+    return c.json(
+      {
+        applied: ok,
+        failed: created.length - ok,
+        items: created,
+        backend: gw ? 'supabase' : 'memory-store',
+      },
+      201,
+    );
   });
 
   app.post('/v1/search', async (c) => {

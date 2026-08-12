@@ -56,7 +56,7 @@ Architecture context: ADRs `docs/adr/`, [DEMO_SLICE.md](../engineering/DEMO_SLIC
 
 1. Owner accept RG0 docs (scope / retention / risks / MCP A|B).  
 2. Optional Fly full API.  
-3. M4 Memory Core depth — extraction adapter landed (`MEMORY_OS_EXTRACT_ENGINE`); persist-from-preview + review UX next.
+3. M4 Memory Core depth — extraction preview + **apply** landed (`/v1/extraction/apply`, MCP `extraction.apply`); richer review UX next.
 
 ## Owner accept
 

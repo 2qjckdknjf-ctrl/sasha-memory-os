@@ -93,6 +93,6 @@ Outside `local`/`test`, owner ops require `x-memory-os-api-secret` (or `MEMORY_O
 4. ~~RG0 artifact set~~ — checklist, risk, eval, backlog M1–M3, retention, DPIA, ChatGPT MCP ([RG0_CHECKLIST.md](docs/m0/RG0_CHECKLIST.md))
 5. ~~HTTP MCP host path~~ — `POST /mcp` (+ standalone `:8790`); alpha ops mode **B** until A confirmed
 6. ~~M1/M2/M3 alpha close-ups~~ — promote, observability, export, temporal, poison, Whisper STT, job UI
-7. ~~M4 extraction preview~~ — `MEMORY_OS_EXTRACT_ENGINE` + `/v1/extraction/preview` + MCP/Web
+7. ~~M4 extraction preview/apply~~ — `/v1/extraction/preview|apply` + MCP/Web
 8. ~~RG0 owner accept~~ — [OWNER_ACCEPT_2026-08-12.md](docs/m0/OWNER_ACCEPT_2026-08-12.md); MCP **B now**, **A preferred**
-9. Optional: full HTTP API on Fly — `./scripts/fly-deploy-api.sh` (needs interactive `flyctl auth login` or `FLY_API_TOKEN`)
+9. Optional: full HTTP API on Fly — `./scripts/fly-deploy-api.sh` (`flyctl auth login` or `FLY_API_TOKEN`)

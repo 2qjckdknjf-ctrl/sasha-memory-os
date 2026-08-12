@@ -32,6 +32,7 @@ import {
   fetchPublicLink,
 } from '@memory-os/ingestion';
 import {
+  applyExtractionSchema,
   captureDocumentSchema,
   captureLinkSchema,
   captureTextSchema,
@@ -464,6 +465,40 @@ export const mcpTools: McpTool[] = [
         actor_subject_id: { type: 'string' },
       },
       required: ['text', 'actor_subject_id'],
+    },
+  },
+  {
+    name: 'extraction.apply',
+    description:
+      'Persist extraction candidates as decisions or capture→candidate memories',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        workspace_id: { type: 'string' },
+        project_id: { type: 'string' },
+        actor_subject_id: { type: 'string' },
+        sensitivity: { type: 'string' },
+        idempotency_prefix: { type: 'string' },
+        candidates: {
+          type: 'array',
+          items: {
+            type: 'object',
+            properties: {
+              title: { type: 'string' },
+              content: { type: 'string' },
+              memoryType: { type: 'string' },
+              confidence: { type: 'number' },
+            },
+          },
+        },
+      },
+      required: [
+        'workspace_id',
+        'project_id',
+        'actor_subject_id',
+        'idempotency_prefix',
+        'candidates',
+      ],
     },
   },
   {
@@ -1204,6 +1239,116 @@ export function createMcpHandlers(options?: {
             ...result,
             actor_subject_id: String(args.actor_subject_id),
             preview: true,
+          };
+        }
+        case 'extraction.apply': {
+          const input = applyExtractionSchema.parse(args);
+          const created: Array<{
+            index: number;
+            memoryType: string;
+            memoryId?: string;
+            mode: 'decision' | 'capture';
+            error?: string;
+          }> = [];
+          for (let i = 0; i < input.candidates.length; i += 1) {
+            const candidate = input.candidates[i]!;
+            const idempotencyKey = `${input.idempotency_prefix}:${i}`;
+            try {
+              if (candidate.memoryType === 'decision') {
+                if (gateway) {
+                  const memory = await gateway.createDecision({
+                    subjectId: input.actor_subject_id,
+                    workspaceId: input.workspace_id,
+                    projectId: input.project_id,
+                    title: candidate.title,
+                    content: candidate.content,
+                    idempotencyKey,
+                    confidence: candidate.confidence,
+                    sensitivity: input.sensitivity,
+                  });
+                  created.push({
+                    index: i,
+                    memoryType: candidate.memoryType,
+                    memoryId: String((memory as { id?: string }).id ?? ''),
+                    mode: 'decision',
+                  });
+                } else {
+                  const memory = store.createDecision({
+                    workspaceId: input.workspace_id,
+                    projectId: input.project_id,
+                    title: candidate.title,
+                    content: candidate.content,
+                    actorSubjectId: input.actor_subject_id,
+                    idempotencyKey,
+                    confidence: candidate.confidence,
+                    sensitivity: input.sensitivity,
+                  });
+                  created.push({
+                    index: i,
+                    memoryType: candidate.memoryType,
+                    memoryId: memory.id,
+                    mode: 'decision',
+                  });
+                }
+              } else if (gateway) {
+                const captureResult = await gateway.captureText({
+                  subjectId: input.actor_subject_id,
+                  workspaceId: input.workspace_id,
+                  projectId: input.project_id,
+                  title: candidate.title,
+                  text: candidate.content,
+                  idempotencyKey,
+                  sensitivity: input.sensitivity,
+                  processNow: true,
+                });
+                await maybeEmbedMcpCapture(gateway, {
+                  subjectId: input.actor_subject_id,
+                  title: candidate.title,
+                  text: candidate.content,
+                  captureResult,
+                });
+                const memoryId =
+                  captureResult.process?.memoryId ??
+                  (captureResult as { memoryId?: string }).memoryId;
+                created.push({
+                  index: i,
+                  memoryType: candidate.memoryType,
+                  memoryId: memoryId ? String(memoryId) : undefined,
+                  mode: 'capture',
+                });
+              } else {
+                const result = store.captureText({
+                  workspaceId: input.workspace_id,
+                  projectId: input.project_id,
+                  title: candidate.title,
+                  text: candidate.content,
+                  actorSubjectId: input.actor_subject_id,
+                  idempotencyKey,
+                  sensitivity: input.sensitivity,
+                });
+                created.push({
+                  index: i,
+                  memoryType: candidate.memoryType,
+                  memoryId: result.memoryId,
+                  mode: 'capture',
+                });
+              }
+            } catch (err) {
+              created.push({
+                index: i,
+                memoryType: candidate.memoryType,
+                mode:
+                  candidate.memoryType === 'decision' ? 'decision' : 'capture',
+                error: err instanceof Error ? err.message : String(err),
+              });
+            }
+          }
+          const ok = created.filter((row) => !row.error).length;
+          return {
+            applied: ok,
+            failed: created.length - ok,
+            items: created,
+            backend: gateway ? 'supabase' : 'memory-store',
           };
         }
         case 'memory.embed_missing': {

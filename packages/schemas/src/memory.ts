@@ -102,8 +102,28 @@ export const setMemoryStatusSchema = z.object({
   actor_subject_id: z.string().uuid(),
 });
 
+export const extractionCandidateSchema = z.object({
+  title: z.string().min(1).max(200),
+  content: z.string().min(1).max(4000),
+  memoryType: z
+    .enum(['fact', 'decision', 'preference', 'idea', 'task', 'event'])
+    .default('fact'),
+  confidence: z.number().min(0).max(1).default(0.5),
+});
+
+/** Persist extraction preview candidates as memories (decisions or capture→candidate). */
+export const applyExtractionSchema = z.object({
+  workspace_id: z.string().uuid(),
+  project_id: z.string().uuid(),
+  actor_subject_id: z.string().uuid(),
+  sensitivity: sensitivitySchema.default('internal'),
+  idempotency_prefix: z.string().min(1).max(200),
+  candidates: z.array(extractionCandidateSchema).min(1).max(8),
+});
+
 export type MemoryRecord = z.infer<typeof memoryRecordSchema>;
 export type CreateDecisionInput = z.infer<typeof createDecisionSchema>;
 export type UpsertProjectStateInput = z.infer<typeof upsertProjectStateSchema>;
 export type CreateHandoffInput = z.infer<typeof createHandoffSchema>;
 export type SetMemoryStatusInput = z.infer<typeof setMemoryStatusSchema>;
+export type ApplyExtractionInput = z.infer<typeof applyExtractionSchema>;

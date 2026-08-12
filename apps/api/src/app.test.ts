@@ -286,6 +286,42 @@ describe('memory api demo slice', () => {
     expect(String(body.engine)).toMatch(/extraction/);
   });
 
+  it('applies extraction candidates into memories', async () => {
+    const app = createApp({});
+    const res = await app.request('/v1/extraction/apply', {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'x-actor-key': 'chatgpt',
+      },
+      body: JSON.stringify({
+        workspace_id: workspaceId,
+        project_id: projectId,
+        actor_subject_id: chatgpt,
+        idempotency_prefix: `extract-apply-${Date.now()}`,
+        candidates: [
+          {
+            title: 'Region fact',
+            content: 'Primary region is eu-central-1',
+            memoryType: 'fact',
+            confidence: 0.8,
+          },
+          {
+            title: 'Ship decision',
+            content: 'Accept RG0 and continue M4 extraction path',
+            memoryType: 'decision',
+            confidence: 0.9,
+          },
+        ],
+      }),
+    });
+    expect(res.status).toBe(201);
+    const body = await res.json();
+    expect(body.applied).toBe(2);
+    expect(body.failed).toBe(0);
+    expect(body.items).toHaveLength(2);
+  });
+
   it('filters memories by recorded_at window', async () => {
     const app = createApp({});
     const ownerId = '33333333-3333-4333-8333-333333333301';
