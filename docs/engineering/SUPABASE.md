@@ -22,7 +22,7 @@ Dedicated project (ADR-005). **Do not** mix with AISTROYKA / HiAir.
 - `oauth_exchange_metadata` / `oauth_http_exchange` (peek state, `exchanged` mode)
 - `memory_embeddings` (jsonb + `vector(32)` HNSW + `api_set_memory_embedding`)
 - `search_hybrid_vector` (`api_search_memories` accepts optional query embedding)
-- `search_rrf_temporal` (recorded_at window + status authority on `api_search_memories`; apply with `SUPABASE_ACCESS_TOKEN=… ./scripts/apply-remote-migration.sh supabase/migrations/20260812083002_search_rrf_temporal.sql` — client still filters temporally until applied)
+- `search_rrf_temporal` (**applied remote 2026-08-12**) — recorded_at window + status authority on `api_search_memories`
 - `supersede_memory` (consolidation RPC `api_supersede_memory`)
 - `shared_connector_vault` (`api_vault_put|get|delete`)
 - `list_memories_embedding` (expose embedding on review/consolidation list)

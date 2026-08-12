@@ -96,8 +96,7 @@ export class SupabaseMemoryGateway {
     recordedAfter?: string | null;
     recordedBefore?: string | null;
   }) {
-    // Omit temporal args when unset so older RPC signatures still resolve
-    // until search_rrf_temporal is applied on the remote project.
+    // Omit temporal args when unset (keeps PostgREST overload matching simple).
     const args: Record<string, unknown> = {
       p_secret: this.apiSecret,
       p_subject_id: input.subjectId,

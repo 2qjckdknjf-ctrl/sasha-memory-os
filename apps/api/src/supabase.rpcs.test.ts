@@ -197,6 +197,25 @@ describeRemote('remote Supabase RPCs (vault / embed / consolidation)', () => {
         queryEmbedding: vector,
       })) as unknown[];
       expect(Array.isArray(hits)).toBe(true);
+
+      // search_rrf_temporal: recorded_at window on remote RPC
+      const inWindow = (await gateway().search({
+        subjectId: owner,
+        query: 'Hybrid vector smoke',
+        projectId,
+        queryEmbedding: vector,
+        recordedAfter: '2000-01-01T00:00:00.000Z',
+        recordedBefore: '2099-01-01T00:00:00.000Z',
+      })) as unknown[];
+      expect(Array.isArray(inWindow)).toBe(true);
+      const future = (await gateway().search({
+        subjectId: owner,
+        query: 'Hybrid vector smoke',
+        projectId,
+        queryEmbedding: vector,
+        recordedAfter: '2099-01-01T00:00:00.000Z',
+      })) as unknown[];
+      expect(future).toHaveLength(0);
     },
     20_000,
   );

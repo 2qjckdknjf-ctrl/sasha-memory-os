@@ -99,5 +99,6 @@ Outside `local`/`test`, owner ops require `x-memory-os-api-secret` (or `MEMORY_O
 10. ~~M4 review UX~~ — selective extract apply, bulk review, MCP `extraction.run`
 11. ~~M5 retrieval polish~~ — RRF hybrid, authority, context packer, temporal search (alpha)
 12. M6 ChatGPT remote A — `MEMORY_OS_MCP_PROFILE=chatgpt` + `scripts/smoke-mcp-chatgpt.sh` + `scripts/tunnel-api.sh`
-13. Apply remote `search_rrf_temporal` — `scripts/apply-remote-migration.sh` (needs `SUPABASE_ACCESS_TOKEN`)
+13. ~~Apply remote `search_rrf_temporal`~~ — applied 2026-08-12
 14. ~~Web search pack-context UX~~ — agent citation block in control center
+15. M6 ChatGPT: tunnel/HTTPS + Developer mode registration when ready
