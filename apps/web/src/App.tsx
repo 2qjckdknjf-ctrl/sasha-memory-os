@@ -82,6 +82,9 @@ export function App() {
   const [jobLookup, setJobLookup] = useState<Record<string, unknown> | null>(
     null,
   );
+  const [extractionPreview, setExtractionPreview] = useState<string | null>(
+    null,
+  );
 
   const subjectId = actors[actor];
 
@@ -765,6 +768,41 @@ export function App() {
               />
             </label>
             <button type="submit">Capture text</button>
+            <button
+              type="button"
+              onClick={() => {
+                void (async () => {
+                  setError(null);
+                  try {
+                    if (backend === 'local') {
+                      setError('Extraction preview requires API backend');
+                      return;
+                    }
+                    const result = await apiPost<{
+                      engine?: string;
+                      candidates?: Array<{ title?: string; content?: string }>;
+                    }>('/v1/extraction/preview', subjectId, {
+                      title: captureTitle,
+                      text: captureText,
+                    }, actor);
+                    setExtractionPreview(
+                      `${result.engine ?? 'extract'}: ${
+                        result.candidates?.length ?? 0
+                      } candidates — ${
+                        result.candidates?.[0]?.title ?? 'none'
+                      }`,
+                    );
+                  } catch (err) {
+                    setError((err as Error).message);
+                  }
+                })();
+              }}
+            >
+              Preview extraction
+            </button>
+            {extractionPreview ? (
+              <p className="meta">{extractionPreview}</p>
+            ) : null}
           </form>
 
           <form

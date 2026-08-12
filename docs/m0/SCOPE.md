@@ -70,8 +70,8 @@ RG0 artifact set landed: [RG0_CHECKLIST.md](./RG0_CHECKLIST.md) (scope, risk, ev
 
 - [ ] ChatGPT plan / workspace MCP capability — draft: [CHATGPT_MCP_PLAN.md](./CHATGPT_MCP_PLAN.md) (A MCP write / B Web write fallback).
 - [x] Embedding model — adapter `stub|noop|openai` + versioned `embedding_engine` / dims 32|1536 (owner picks prod default).
-- [ ] LLM для extraction / rerank (provider-neutral contract).
-- [x] OCR / transcription adapters — OCR + `stub|fixture` transcription (real STT later).
+- [x] LLM для extraction — adapter `stub|fixture|openai` + `POST /v1/extraction/preview` / MCP `extraction.preview` (rerank LLM later).
+- [x] OCR / transcription adapters — OCR + `stub|fixture|openai` Whisper.
 - [x] Queue implementation — Postgres outbox + `processing_jobs` (V1 alpha).
 - [x] Data region — `eu-central-1` proposed/live; owner accept in [DATA_CLASSES_AND_RETENTION.md](./DATA_CLASSES_AND_RETENTION.md).
 - [ ] Полный mailbox / Drive vs selected labels/files — default: selected scopes.

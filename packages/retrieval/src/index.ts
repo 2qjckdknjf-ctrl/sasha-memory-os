@@ -10,6 +10,7 @@ import {
 export const packageName = 'retrieval' as const;
 export * from './embeddings.js';
 export * from './consolidate.js';
+export * from './extraction.js';
 
 export interface SearchHit {
   memory: MemoryRecord;

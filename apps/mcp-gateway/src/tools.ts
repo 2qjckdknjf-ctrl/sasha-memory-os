@@ -19,6 +19,7 @@ import {
 } from '@memory-os/connector-sdk';
 import {
   createEmbeddingAdapter,
+  createExtractionAdapter,
   embedMemoryText,
   planCandidateConsolidations,
   projectContext,
@@ -449,6 +450,20 @@ export const mcpTools: McpTool[] = [
         actor_subject_id: { type: 'string' },
       },
       required: ['job_id', 'actor_subject_id'],
+    },
+  },
+  {
+    name: 'extraction.preview',
+    description:
+      'Preview memory extraction candidates from text (does not persist)',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        title: { type: 'string' },
+        text: { type: 'string' },
+        actor_subject_id: { type: 'string' },
+      },
+      required: ['text', 'actor_subject_id'],
     },
   },
   {
@@ -1177,6 +1192,19 @@ export function createMcpHandlers(options?: {
           const job = await gateway.getJob(subjectId, jobId);
           if (!job) throw new Error('job not found');
           return { job, backend: 'supabase' };
+        }
+        case 'extraction.preview': {
+          const text = String(args.text ?? '').trim();
+          if (!text) throw new Error('text is required');
+          const result = await createExtractionAdapter().extract({
+            title: args.title ? String(args.title) : undefined,
+            text,
+          });
+          return {
+            ...result,
+            actor_subject_id: String(args.actor_subject_id),
+            preview: true,
+          };
         }
         case 'memory.embed_missing': {
           if (!gateway) {

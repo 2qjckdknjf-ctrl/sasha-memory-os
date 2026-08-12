@@ -38,6 +38,7 @@ import {
 } from '@memory-os/ingestion';
 import {
   createEmbeddingAdapter,
+  createExtractionAdapter,
   embedMemoryText,
   planCandidateConsolidations,
   projectContext,
@@ -1784,6 +1785,29 @@ export function createApp(options?: {
       payload: body.payload,
     });
     return c.json(handoff, 201);
+  });
+
+  app.post('/v1/extraction/preview', async (c) => {
+    const authz = c.get('authz');
+    const body = (await c.req.json().catch(() => ({}))) as {
+      title?: string;
+      text?: string;
+    };
+    const text = String(body.text ?? '').trim();
+    if (!text) return c.json({ error: 'text is required' }, 400);
+    try {
+      const result = await createExtractionAdapter().extract({
+        title: body.title ? String(body.title) : undefined,
+        text,
+      });
+      return c.json({
+        ...result,
+        subjectId: authz.subjectId,
+        preview: true,
+      });
+    } catch (err) {
+      return c.json({ error: (err as Error).message }, 500);
+    }
   });
 
   app.post('/v1/search', async (c) => {

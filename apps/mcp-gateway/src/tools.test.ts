@@ -33,8 +33,20 @@ describe('mcp gateway alpha', () => {
         'memory.embed_missing',
         'memory.export',
         'jobs.get',
+        'extraction.preview',
       ]),
     );
+  });
+
+  it('previews extraction offline', async () => {
+    const mcp = createMcpHandlers();
+    const result = (await mcp.call('extraction.preview', {
+      title: 'Note',
+      text: 'Vault refs stay out of Postgres.',
+      actor_subject_id: cursor,
+    })) as { preview: boolean; candidates: unknown[] };
+    expect(result.preview).toBe(true);
+    expect(result.candidates.length).toBeGreaterThan(0);
   });
 
   it('exports memories for owner offline', async () => {

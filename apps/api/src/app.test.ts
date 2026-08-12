@@ -266,6 +266,26 @@ describe('memory api demo slice', () => {
     expect(body.requestId).toBe('test-req-health-1');
   });
 
+  it('previews extraction candidates', async () => {
+    const app = createApp({});
+    const res = await app.request('/v1/extraction/preview', {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'x-actor-key': 'chatgpt',
+      },
+      body: JSON.stringify({
+        title: 'Pilot',
+        text: 'We keep Memory OS in eu-central-1.',
+      }),
+    });
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.preview).toBe(true);
+    expect(body.candidates.length).toBeGreaterThan(0);
+    expect(String(body.engine)).toMatch(/extraction/);
+  });
+
   it('filters memories by recorded_at window', async () => {
     const app = createApp({});
     const ownerId = '33333333-3333-4333-8333-333333333301';
