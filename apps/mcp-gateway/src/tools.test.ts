@@ -31,8 +31,41 @@ describe('mcp gateway alpha', () => {
         'memory.get',
         'memory.embed',
         'memory.embed_missing',
+        'memory.export',
+        'jobs.get',
       ]),
     );
+  });
+
+  it('exports memories for owner offline', async () => {
+    const mcp = createMcpHandlers();
+    const owner = '33333333-3333-4333-8333-333333333301';
+    await mcp.call('capture.text', {
+      workspace_id: workspaceId,
+      project_id: projectId,
+      title: 'Export via MCP',
+      text: 'portable dump from mcp tool',
+      actor_subject_id: owner,
+      idempotency_key: 'mcp-export-1',
+      process_now: true,
+    });
+    const dump = (await mcp.call('memory.export', {
+      workspace_id: workspaceId,
+      actor_subject_id: owner,
+      limit: 50,
+    })) as { format: string; count: number };
+    expect(dump.format).toBe('memory-os.export.memories.v1');
+    expect(dump.count).toBeGreaterThan(0);
+  });
+
+  it('returns stub job status offline', async () => {
+    const mcp = createMcpHandlers();
+    const result = (await mcp.call('jobs.get', {
+      job_id: '00000000-0000-4000-8000-000000000099',
+      actor_subject_id: cursor,
+    })) as { status: string; backend?: string };
+    expect(result.status).toBe('succeeded');
+    expect(result.backend).toBe('memory-store');
   });
 
   it('lists empty outbox offline', async () => {

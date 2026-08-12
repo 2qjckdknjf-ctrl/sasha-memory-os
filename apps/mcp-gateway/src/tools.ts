@@ -422,8 +422,39 @@ export const mcpTools: McpTool[] = [
     },
   },
   {
+    name: 'memory.export',
+    description:
+      'Owner portable dump of memories (full content; optional recorded_at window)',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        workspace_id: { type: 'string' },
+        actor_subject_id: { type: 'string' },
+        project_id: { type: 'string' },
+        status: { type: 'string' },
+        limit: { type: 'number' },
+        recorded_after: { type: 'string' },
+        recorded_before: { type: 'string' },
+      },
+      required: ['workspace_id', 'actor_subject_id'],
+    },
+  },
+  {
+    name: 'jobs.get',
+    description: 'Fetch ingestion/processing job status by id',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        job_id: { type: 'string' },
+        actor_subject_id: { type: 'string' },
+      },
+      required: ['job_id', 'actor_subject_id'],
+    },
+  },
+  {
     name: 'capture.document',
-    description: 'Capture TXT/PDF/DOCX/image (OCR) into candidate memory',
+    description:
+      'Capture TXT/PDF/DOCX/image (OCR) / audio (STT) into candidate memory',
     inputSchema: {
       type: 'object',
       properties: {
@@ -1055,6 +1086,97 @@ export function createMcpHandlers(options?: {
             })),
             backend: 'supabase',
           };
+        }
+        case 'memory.export': {
+          const subjectId = String(args.actor_subject_id);
+          const workspaceId = String(args.workspace_id);
+          const ownerId = '33333333-3333-4333-8333-333333333301';
+          if (subjectId !== ownerId) {
+            throw new Error('memory.export requires owner actor');
+          }
+          const limit = Math.min(
+            Math.max(Number(args.limit ?? 200) || 200, 1),
+            500,
+          );
+          const recordedAfter = args.recorded_after
+            ? String(args.recorded_after)
+            : null;
+          const recordedBefore = args.recorded_before
+            ? String(args.recorded_before)
+            : null;
+          const exportedAt = new Date().toISOString();
+          if (gateway) {
+            const listed = await gateway.listMemories({
+              subjectId,
+              workspaceId,
+              projectId: args.project_id ? String(args.project_id) : null,
+              status: args.status ? String(args.status) : null,
+              limit,
+              recordedAfter,
+              recordedBefore,
+            });
+            const memories = [];
+            for (const row of listed) {
+              memories.push(
+                await gateway.getMemory({ subjectId, memoryId: row.id }),
+              );
+            }
+            return {
+              format: 'memory-os.export.memories.v1',
+              exportedAt,
+              workspaceId,
+              subjectId,
+              count: memories.length,
+              memories,
+              recordedAfter,
+              recordedBefore,
+              backend: 'supabase',
+            };
+          }
+          const memories = [...store.memories.values()]
+            .filter((m) => {
+              if (args.project_id && m.projectId !== String(args.project_id)) {
+                return false;
+              }
+              if (args.status && m.status !== String(args.status)) return false;
+              if (recordedAfter && m.recordedAt < recordedAfter) return false;
+              if (recordedBefore && m.recordedAt > recordedBefore) return false;
+              return true;
+            })
+            .sort((a, b) => b.recordedAt.localeCompare(a.recordedAt))
+            .slice(0, limit)
+            .map((m) => ({
+              id: m.id,
+              title: m.title,
+              content: m.content,
+              status: m.status,
+              sensitivity: m.sensitivity,
+              memoryType: m.memoryType,
+              projectId: m.projectId,
+              recordedAt: m.recordedAt,
+              metadata: m.metadata,
+            }));
+          return {
+            format: 'memory-os.export.memories.v1',
+            exportedAt,
+            workspaceId,
+            subjectId,
+            count: memories.length,
+            memories,
+            recordedAfter,
+            recordedBefore,
+            backend: 'memory-store',
+          };
+        }
+        case 'jobs.get': {
+          const jobId = String(args.job_id);
+          const subjectId = String(args.actor_subject_id);
+          if (!gateway) {
+            return { id: jobId, status: 'succeeded', backend: 'memory-store' };
+          }
+          const job = await gateway.getJob(subjectId, jobId);
+          if (!job) throw new Error('job not found');
+          return { job, backend: 'supabase' };
         }
         case 'memory.embed_missing': {
           if (!gateway) {

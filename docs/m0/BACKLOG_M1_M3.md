@@ -46,18 +46,17 @@ Architecture context: ADRs `docs/adr/`, [DEMO_SLICE.md](../engineering/DEMO_SLIC
 | PDF/DOCX + OCR adapters | Done (alpha) | Engines present |
 | SSRF-safe link fetch | Done | Tests |
 | Chunks + job status | Done | process_now / jobs |
-| Audio transcription | Done (adapter alpha) | `MEMORY_OS_TRANSCRIBE_ENGINE=stub|fixture` |
+| Audio transcription | Done (alpha) | `stub|fixture|openai` (Whisper) |
 | Poison-file isolation suite | Done (alpha) | oversized/empty/unsupported + SSRF link deny |
+| Job status UI | Done (alpha) | Web load/process + MCP `jobs.get` |
 
-**M3 exit remaining:** real STT provider (OpenAI Whisper etc.); job UI completeness.
+**M3 exit remaining:** job UI polish only if product needs richer history; production Whisper key ops.
 
 ## Ordered next (post-RG0 owner accept)
 
 1. Owner accept RG0 docs (scope / retention / risks / MCP A|B).  
 2. Optional Fly full API.  
-3. Close M1 remaining (promote runbook + observability).  
-4. M2 temporal/export polish.  
-5. M3 audio + poison suite → then M4 Memory Core depth (extraction LLM, review UX).
+3. M4 Memory Core depth (extraction LLM, review UX).
 
 ## Owner accept
 

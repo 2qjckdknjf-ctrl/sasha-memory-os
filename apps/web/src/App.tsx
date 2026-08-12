@@ -78,6 +78,10 @@ export function App() {
   const [outboxPending, setOutboxPending] = useState<
     Array<{ id?: string; eventType?: string; createdAt?: string; attempts?: number }>
   >([]);
+  const [jobLookupId, setJobLookupId] = useState('');
+  const [jobLookup, setJobLookup] = useState<Record<string, unknown> | null>(
+    null,
+  );
 
   const subjectId = actors[actor];
 
@@ -534,6 +538,7 @@ export function App() {
           idempotency_key: `web-capture-${Date.now()}`,
           process_now: true,
         });
+        if (result.jobId) setJobLookupId(result.jobId);
         setLastCapture(
           `job ${result.jobId ?? '?'} · memory ${
             result.process?.memoryId ?? result.memoryId ?? '?'
@@ -778,10 +783,10 @@ export function App() {
               />
             </label>
             <label>
-              File (.txt / .pdf / .docx)
+              File (.txt / .pdf / .docx / audio)
               <input
                 type="file"
-                accept=".txt,.md,.pdf,.docx,text/plain,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                accept=".txt,.md,.pdf,.docx,.mp3,.wav,.m4a,.ogg,.webm,text/plain,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,audio/*"
                 onChange={(e) => setDocFile(e.target.files?.[0] ?? null)}
                 required
               />
@@ -814,6 +819,91 @@ export function App() {
             </label>
             <button type="submit">Capture link</button>
             {lastCapture ? <p className="meta">{lastCapture}</p> : null}
+          </form>
+
+          <form
+            className="form"
+            onSubmit={(e) => {
+              e.preventDefault();
+              void (async () => {
+                setError(null);
+                try {
+                  if (!jobLookupId.trim()) {
+                    setError('Enter a job id');
+                    return;
+                  }
+                  if (backend === 'local') {
+                    setJobLookup({
+                      id: jobLookupId.trim(),
+                      status: 'succeeded',
+                      backend: 'local',
+                    });
+                    return;
+                  }
+                  const job = await apiGet<Record<string, unknown>>(
+                    `/v1/jobs/${encodeURIComponent(jobLookupId.trim())}`,
+                    subjectId,
+                    actor,
+                  );
+                  setJobLookup(job);
+                } catch (err) {
+                  setJobLookup(null);
+                  setError((err as Error).message);
+                }
+              })();
+            }}
+          >
+            <label>
+              Job id
+              <input
+                value={jobLookupId}
+                onChange={(e) => setJobLookupId(e.target.value)}
+                placeholder="from last capture"
+              />
+            </label>
+            <div className="actions">
+              <button type="submit">Load job status</button>
+              <button
+                type="button"
+                onClick={() => {
+                  void (async () => {
+                    setError(null);
+                    try {
+                      if (!jobLookupId.trim()) {
+                        setError('Enter a job id');
+                        return;
+                      }
+                      if (backend === 'local') {
+                        setError('Process job requires API backend');
+                        return;
+                      }
+                      const result = await apiPost<Record<string, unknown>>(
+                        `/v1/jobs/${encodeURIComponent(jobLookupId.trim())}/process`,
+                        subjectId,
+                        {},
+                        actor,
+                      );
+                      setJobLookup(result);
+                      setLastCapture(
+                        `processed job ${jobLookupId.trim()} · memory ${
+                          (result as { memoryId?: string }).memoryId ?? '?'
+                        }`,
+                      );
+                      setTick((n) => n + 1);
+                    } catch (err) {
+                      setError((err as Error).message);
+                    }
+                  })();
+                }}
+              >
+                Process job now
+              </button>
+            </div>
+            {jobLookup ? (
+              <pre className="meta" style={{ whiteSpace: 'pre-wrap' }}>
+                {JSON.stringify(jobLookup, null, 2)}
+              </pre>
+            ) : null}
           </form>
 
           <form

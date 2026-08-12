@@ -32,6 +32,6 @@ Backend: Supabase when `MEMORY_OS_SUPABASE_*` + `MEMORY_OS_API_SECRET` are set i
 }
 ```
 
-Tools include `memory.search`, `memory.get`, `memory.embed`, `memory.embed_missing`, `capture.*`, `connections.*`, `oauth.*`, `consolidation.run`, `outbox.*`, `jobs.dead_letter_stale`.
+Tools include `memory.search`, `memory.get`, `memory.export`, `memory.embed`, `memory.embed_missing`, `capture.*`, `connections.*`, `oauth.*`, `consolidation.run`, `outbox.*`, `jobs.get`, `jobs.dead_letter_stale`.
 
 Pass `actor_subject_id` / `workspace_id` in tool args (demo UUIDs from README).
