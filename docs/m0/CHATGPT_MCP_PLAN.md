@@ -39,7 +39,9 @@ ChatGPT uses Memory OS as external long-term memory: search/context read; captur
 
 ### ChatGPT Developer mode registration
 
-1. Host API (or `mcp-gateway start:http`) on a public **HTTPS** URL — ChatGPT does not use local stdio.  
+1. Host API on a public **HTTPS** URL — ChatGPT does not use local stdio.  
+   - Local demo: run API, then `./scripts/tunnel-api.sh` (Cloudflare quick tunnel) → use printed `https://….trycloudflare.com/mcp`.  
+   - Durable host: deferred (Fly scaffold kept).  
 2. Set `MEMORY_OS_MCP_PROFILE=chatgpt` and `MEMORY_OS_API_SECRET` on the host.  
 3. In ChatGPT: enable **Developer mode** → create app → MCP URL `{API}/mcp` → auth **Bearer token** = API secret.  
 4. Confirm discovered tools are only the pilot set (no oauth/outbox/consolidation).  

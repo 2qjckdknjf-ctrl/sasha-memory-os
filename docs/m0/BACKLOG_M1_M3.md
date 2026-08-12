@@ -58,8 +58,9 @@ Architecture context: ADRs `docs/adr/`, [DEMO_SLICE.md](../engineering/DEMO_SLIC
 2. ~~Fly full API~~ — deferred  
 3. ~~M4 review UX~~ — selective apply + bulk approve/dispute + MCP `extraction.run`  
 4. ~~M5 retrieval polish~~ — RRF hybrid + authority + context packer + temporal search (alpha); apply `search_rrf_temporal` remotely when Supabase MCP/CLI available  
-5. M6 ChatGPT remote A — pilot profile + Streamable HTTP annotations/smoke ready; needs public HTTPS host + ChatGPT Developer mode registration  
-6. Hosted public API URL when chosen (Fly deferred)
+5. M6 ChatGPT remote A — pilot profile + Streamable HTTP + tunnel script ready; register in ChatGPT Developer mode when HTTPS URL live  
+6. Apply remote `search_rrf_temporal` via `scripts/apply-remote-migration.sh` when `SUPABASE_ACCESS_TOKEN` available  
+7. Hosted public API URL when chosen (Fly deferred)
 
 ## Owner accept
 

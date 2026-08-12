@@ -38,6 +38,8 @@ Live Supabase project: `sasha-memory-os` (`vpxblcxsvlylqyldiuwr`, `eu-central-1`
 
 ## MCP remote
 
-- API: `POST {API}/mcp` (JSON-RPC; Bearer / `x-memory-os-api-secret` outside local).  
+- API: `POST {API}/mcp` (JSON-RPC Streamable HTTP; Bearer / `x-memory-os-api-secret` outside local).  
 - Standalone: `pnpm --filter @memory-os/mcp-gateway start:http` → `:8790/mcp`.  
+- ChatGPT pilot: `MEMORY_OS_MCP_PROFILE=chatgpt`; local HTTPS via `./scripts/tunnel-api.sh`.  
+- Pending SQL: `SUPABASE_ACCESS_TOKEN=… ./scripts/apply-remote-migration.sh supabase/migrations/20260812083002_search_rrf_temporal.sql`.  
 - See [MCP_CURSOR.md](./MCP_CURSOR.md) + [CHATGPT_MCP_PLAN.md](../m0/CHATGPT_MCP_PLAN.md).

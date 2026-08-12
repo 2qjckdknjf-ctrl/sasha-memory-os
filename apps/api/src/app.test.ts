@@ -276,6 +276,63 @@ describe('memory api demo slice', () => {
     expect(body.requestId).toBe('test-req-health-1');
   });
 
+  it('exposes ChatGPT pilot tools when MEMORY_OS_MCP_PROFILE=chatgpt', async () => {
+    const prev = process.env.MEMORY_OS_MCP_PROFILE;
+    process.env.MEMORY_OS_MCP_PROFILE = 'chatgpt';
+    try {
+      const app = createApp({});
+      const listed = await app.request('/mcp', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          jsonrpc: '2.0',
+          id: 2,
+          method: 'tools/list',
+          params: {},
+        }),
+      });
+      expect(listed.status).toBe(200);
+      const body = await listed.json();
+      const names = (
+        body.result.tools as Array<{ name: string }>
+      ).map((t) => t.name);
+      expect(names).toEqual(
+        expect.arrayContaining([
+          'memory.search',
+          'capture.text',
+          'memory.store_decision',
+        ]),
+      );
+      expect(names).not.toContain('oauth.start');
+      expect(names).not.toContain('consolidation.run');
+
+      const blocked = await app.request('/mcp', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          jsonrpc: '2.0',
+          id: 3,
+          method: 'tools/call',
+          params: {
+            name: 'oauth.start',
+            arguments: {
+              workspace_id: workspaceId,
+              connector_id: 'github',
+              actor_subject_id: chatgpt,
+            },
+          },
+        }),
+      });
+      const blockedBody = await blocked.json();
+      expect(String(blockedBody.error?.message ?? '')).toMatch(
+        /not available/i,
+      );
+    } finally {
+      if (prev === undefined) delete process.env.MEMORY_OS_MCP_PROFILE;
+      else process.env.MEMORY_OS_MCP_PROFILE = prev;
+    }
+  });
+
   it('searches with RRF ranking and packed context', async () => {
     const app = createApp({});
     const res = await app.request('/v1/search', {

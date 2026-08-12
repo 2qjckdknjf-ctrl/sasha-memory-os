@@ -34,6 +34,13 @@ export function App() {
   const [backend, setBackend] = useState<'supabase' | 'memory-store' | 'local'>('local');
   const [remote, setRemote] = useState<RemoteContext | null>(null);
   const [search, setSearch] = useState('Slice');
+  const [packContext, setPackContext] = useState(true);
+  const [searchContext, setSearchContext] = useState<{
+    text?: string;
+    packedCount?: number;
+    truncated?: boolean;
+    citations?: Array<{ index: number; memoryId: string | null; title: string }>;
+  } | null>(null);
   const [hits, setHits] = useState<
     Array<{
       memory?: {
@@ -43,6 +50,7 @@ export function App() {
         status?: string;
       };
       reason?: string;
+      score?: number;
     }>
   >([]);
   const [title, setTitle] = useState('Continue remediation after audit');
@@ -319,22 +327,47 @@ export function App() {
     setError(null);
     try {
       if (backend !== 'local') {
-        const result = await apiPost<{ hits: typeof hits }>('/v1/search', subjectId, {
+        const result = await apiPost<{
+          hits: typeof hits;
+          ranking?: string;
+          context?: {
+            text?: string;
+            packedCount?: number;
+            truncated?: boolean;
+            citations?: Array<{
+              index: number;
+              memoryId: string | null;
+              title: string;
+            }>;
+          };
+        }>('/v1/search', subjectId, {
           query: search,
           project_id: PROJECT_ID,
-        });
+          pack_context: packContext,
+          max_context_chars: 3_000,
+        }, actor);
         setHits(result.hits ?? []);
+        setSearchContext(packContext ? (result.context ?? null) : null);
       } else {
-        const { searchMemoriesHybrid } = await import('@memory-os/retrieval');
+        const { packSearchContext, searchMemoriesHybrid } = await import(
+          '@memory-os/retrieval'
+        );
+        const localHits = await searchMemoriesHybrid(
+          [...localStore.memories.values()],
+          search,
+          { projectId: PROJECT_ID },
+        );
         setHits(
-          (
-            await searchMemoriesHybrid([...localStore.memories.values()], search, {
-              projectId: PROJECT_ID,
-            })
-          ).map((h) => ({
+          localHits.map((h) => ({
             memory: h.memory,
             reason: h.reason,
+            score: h.score,
           })),
+        );
+        setSearchContext(
+          packContext
+            ? packSearchContext(localHits, { maxChars: 3_000 })
+            : null,
         );
       }
     } catch (err) {
@@ -1091,7 +1124,29 @@ export function App() {
               Search
               <input value={search} onChange={(e) => setSearch(e.target.value)} />
             </label>
+            <label style={{ display: 'flex', gap: '0.4rem', alignItems: 'center' }}>
+              <input
+                type="checkbox"
+                checked={packContext}
+                onChange={(e) => setPackContext(e.target.checked)}
+              />
+              Pack context for agents
+            </label>
             <button type="submit">Search memories</button>
+            {searchContext?.text ? (
+              <div className="item">
+                <div className="meta">
+                  <span className="badge state">context</span>
+                  <span>
+                    packed {searchContext.packedCount ?? 0}
+                    {searchContext.truncated ? ' · truncated' : ''}
+                  </span>
+                </div>
+                <pre className="meta" style={{ whiteSpace: 'pre-wrap' }}>
+                  {searchContext.text}
+                </pre>
+              </div>
+            ) : null}
             <ul className="timeline">
               {hits.map((hit, i) => (
                 <li className="item" key={hit.memory?.id ?? `hit-${i}`}>
@@ -1100,6 +1155,9 @@ export function App() {
                       {hit.memory?.status ?? 'unknown'}
                     </span>
                     {hit.reason ? <span>{hit.reason}</span> : null}
+                    {typeof hit.score === 'number' ? (
+                      <span>score {hit.score.toFixed(4)}</span>
+                    ) : null}
                   </div>
                   <h3>{hit.memory?.title ?? 'hit'}</h3>
                   <p>{hit.memory?.content ?? ''}</p>
