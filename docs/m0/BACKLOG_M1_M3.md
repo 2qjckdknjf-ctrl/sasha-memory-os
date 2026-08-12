@@ -60,5 +60,5 @@ Architecture context: ADRs `docs/adr/`, [DEMO_SLICE.md](../engineering/DEMO_SLIC
 
 ## Owner accept
 
-- [ ] Backlog M1–M3 accepted as planning baseline  
-- [ ] Post-RG0 order above accepted (or amended)
+- [x] Backlog M1–M3 accepted as planning baseline  
+- [x] Post-RG0 order above accepted (or amended) — see [OWNER_ACCEPT_2026-08-12.md](./OWNER_ACCEPT_2026-08-12.md)

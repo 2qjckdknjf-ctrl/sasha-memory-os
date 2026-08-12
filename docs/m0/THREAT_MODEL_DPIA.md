@@ -1,6 +1,6 @@
 # Threat model + initial DPIA (RG0)
 
-Status: **initial draft for owner review** — not a legal sign-off.
+Status: **owner accepted for alpha 2026-08-12** — not a formal legal sign-off; revisit when data volume grows.
 
 ## System summary
 
@@ -58,6 +58,6 @@ Lawful basis (proposed): legitimate interest / consent for personal productivity
 
 ## Owner accept
 
-- [ ] Threat table accepted  
-- [ ] Residual risks accepted or mitigated by config (e.g. embed=stub)  
-- [ ] DPIA promoted to formal review if/when personal data volume grows
+- [x] Threat table accepted  
+- [x] Residual risks accepted or mitigated by config (e.g. embed=stub)  
+- [x] DPIA promoted to formal review if/when personal data volume grows

@@ -1,6 +1,6 @@
 # Data classes, region, retention (RG0)
 
-Status: **proposed baseline for owner accept** (alpha live project already matches region).
+Status: **owner accepted 2026-08-12** — see [OWNER_ACCEPT_2026-08-12.md](./OWNER_ACCEPT_2026-08-12.md).
 
 ## Region / residency
 
@@ -46,6 +46,6 @@ Sensitivity labels (existing): `public` | `internal` | `confidential` | `restric
 
 ## Owner accept
 
-- [ ] Region `eu-central-1` accepted for V1 alpha/prod path  
-- [ ] Data classes A–F accepted  
-- [ ] Retention table accepted (or amended in ADR)
+- [x] Region `eu-central-1` accepted for V1 alpha/prod path  
+- [x] Data classes A–F accepted  
+- [x] Retention table accepted (or amended in ADR)

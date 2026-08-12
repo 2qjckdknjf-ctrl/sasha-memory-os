@@ -2,6 +2,8 @@
 
 Exit gate: unknown external blockers cleared; owner accepts V1/OUT; scope/risk/eval/backlog exist.
 
+**Status: OWNER ACCEPTED 2026-08-12** — [OWNER_ACCEPT_2026-08-12.md](./OWNER_ACCEPT_2026-08-12.md).
+
 ## Landed in-repo (alpha)
 
 | Item | Evidence |
@@ -13,27 +15,28 @@ Exit gate: unknown external blockers cleared; owner accepts V1/OUT; scope/risk/e
 | Demo slice | `docs/engineering/DEMO_SLICE.md` |
 | Live Supabase EU | `docs/engineering/SUPABASE.md` (`eu-central-1`) |
 | Hosted ops ticks | Edge `worker-ticks` v2 + GH `Worker ticks` / `Worker node ticks` |
-| Data classes / retention (draft) | [DATA_CLASSES_AND_RETENTION.md](./DATA_CLASSES_AND_RETENTION.md) |
-| Threat model / DPIA (draft) | [THREAT_MODEL_DPIA.md](./THREAT_MODEL_DPIA.md) |
+| Data classes / retention | [DATA_CLASSES_AND_RETENTION.md](./DATA_CLASSES_AND_RETENTION.md) |
+| Threat model / DPIA | [THREAT_MODEL_DPIA.md](./THREAT_MODEL_DPIA.md) |
 | ChatGPT MCP plan + HTTP `/mcp` | [CHATGPT_MCP_PLAN.md](./CHATGPT_MCP_PLAN.md), [MCP_CURSOR.md](../engineering/MCP_CURSOR.md) |
 | Staging promote runbook | [STAGING_PROMOTE.md](../engineering/STAGING_PROMOTE.md) |
 | Risk register | [RISK_REGISTER.md](./RISK_REGISTER.md) |
 | Eval plan | [EVAL_PLAN.md](./EVAL_PLAN.md) |
 | Backlog M1–M3 | [BACKLOG_M1_M3.md](./BACKLOG_M1_M3.md) |
+| Owner accept record | [OWNER_ACCEPT_2026-08-12.md](./OWNER_ACCEPT_2026-08-12.md) |
 
-## Owner decisions still required
+## Owner decisions
 
-| Item | Doc |
+| Item | Status |
 |---|---|
-| Accept V1 / OUT boundaries | [SCOPE.md](./SCOPE.md) |
-| Accept region + retention + data classes | [DATA_CLASSES_AND_RETENTION.md](./DATA_CLASSES_AND_RETENTION.md) |
-| Accept threat/DPIA residual risks | [THREAT_MODEL_DPIA.md](./THREAT_MODEL_DPIA.md) |
-| Accept risk register + no unknown blockers | [RISK_REGISTER.md](./RISK_REGISTER.md) |
-| Accept eval baseline + M1–M3 backlog | [EVAL_PLAN.md](./EVAL_PLAN.md), [BACKLOG_M1_M3.md](./BACKLOG_M1_M3.md) |
-| Confirm ChatGPT MCP capability A or B | [CHATGPT_MCP_PLAN.md](./CHATGPT_MCP_PLAN.md) |
-| Optional: host full HTTP API on Fly | `scripts/fly-deploy-api.sh` (login required) |
+| Accept V1 / OUT boundaries | **Accepted** |
+| Accept region + retention + data classes | **Accepted** (`eu-central-1`) |
+| Accept threat/DPIA residual risks | **Accepted** (alpha) |
+| Accept risk register + no unknown blockers | **Accepted** |
+| Accept eval baseline + M1–M3 backlog | **Accepted** |
+| ChatGPT MCP capability | **B now**; **A preferred** when write MCP available |
+| Optional: host full HTTP API on Fly | Attempt when `flyctl` auth / `FLY_API_TOKEN` available |
 
-## Explicitly not blocking RG0 code path
+## Explicitly not blocking RG0
 
 - Fly full API (ops covered by Edge + Node GH workers)  
 - Dims 1536 default (column + path landed; opt-in via env)  

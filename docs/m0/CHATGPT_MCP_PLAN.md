@@ -1,8 +1,8 @@
 # ChatGPT custom MCP plan (RG0)
 
-Status: **working plan** — capability depends on OpenAI workspace/plan; code paths already support fallbacks.
+Status: **owner accepted 2026-08-12** — see [OWNER_ACCEPT_2026-08-12.md](./OWNER_ACCEPT_2026-08-12.md).
 
-**Alpha operating mode (until owner confirms A):** **B** — MCP/HTTP read + Web/HTTP write. HTTP MCP endpoint landed (`POST /mcp`) for when custom MCP write (A) becomes available.
+**Owner decision:** **B now** (MCP/HTTP read + Web/HTTP write). **A preferred** when ChatGPT workspace supports custom MCP write tools. HTTP MCP (`POST /mcp`) ready for A. Fallback B accepted.
 
 ## Goal
 
@@ -88,6 +88,6 @@ Capture: `POST /v1/capture/text` · Decision: typed memory store via API/MCP · 
 
 ## Owner accept
 
-- [ ] Confirmed ChatGPT plan/workspace MCP capability (A / B)  
-- [ ] Accept fallback B if A write is unavailable  
-- [ ] Pilot project for first ChatGPT↔Memory OS loop chosen
+- [x] Confirmed ChatGPT plan/workspace MCP capability: **B now**; **A preferred** when write MCP available  
+- [x] Accept fallback B if A write is unavailable  
+- [x] Pilot project for first ChatGPT↔Memory OS loop chosen — `44444444-4444-4444-8444-444444444401`

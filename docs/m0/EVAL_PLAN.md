@@ -1,6 +1,6 @@
 # Test / eval plan (RG0)
 
-Status: **active harness** — owner accepts as V1 alpha eval baseline.
+Status: **owner accepted 2026-08-12** as V1 alpha eval baseline.
 
 ## Goals
 
@@ -46,5 +46,5 @@ npx pnpm@9.15.9 test -- tests/eval/golden_retrieval.test.ts
 
 ## Owner accept
 
-- [ ] 200 golden + CI suites accepted as RG0 eval baseline  
-- [ ] Hosted worker success accepted as ops health signal
+- [x] 200 golden + CI suites accepted as RG0 eval baseline  
+- [x] Hosted worker success accepted as ops health signal

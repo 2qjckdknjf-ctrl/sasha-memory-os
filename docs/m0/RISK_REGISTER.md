@@ -1,6 +1,6 @@
 # Risk register (RG0)
 
-Status: **draft for owner accept**. Complements [THREAT_MODEL_DPIA.md](./THREAT_MODEL_DPIA.md).
+Status: **owner accepted 2026-08-12**. Complements [THREAT_MODEL_DPIA.md](./THREAT_MODEL_DPIA.md).
 
 Scoring: Impact / Likelihood = L(1–3) × I(1–3). Residual after current alpha mitigations.
 
@@ -28,6 +28,6 @@ Scoring: Impact / Likelihood = L(1–3) × I(1–3). Residual after current alph
 
 ## Owner accept
 
-- [ ] Risk table accepted  
-- [ ] No unknown external blocker for M6/M9/M11  
-- [ ] Residual scores accepted or amended
+- [x] Risk table accepted  
+- [x] No unknown external blocker for M6/M9/M11  
+- [x] Residual scores accepted or amended

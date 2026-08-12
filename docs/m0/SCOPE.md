@@ -19,7 +19,7 @@
 **OCR + connector-sync alpha**: OCR engines; vault-backed pulls for GitHub/Drive/Gmail/Calendar (`MEMORY_OS_CONNECTOR_PULL_MODE`, DB `vaultRef` on enqueue, token refresh on expiry) → capture; MCP stdio gateway + capture/sync/oauth/outbox tools; OAuth HTTP exchange into shared encrypted vault + Web `/oauth/callback`; embeddings on capture/sync with `EMBED_STRICT` + owner re-embed (`POST /v1/memories/:id/embed` / MCP `memory.embed` / Web); hybrid search; consolidation + idempotent connector outbox; HTTP API secret on owner ops outside local; golden = 200; Dockerfile/`fly.toml`/GH worker-ticks + `scripts/smoke-api.sh`.
 
 
-RG0 artifact set landed: [RG0_CHECKLIST.md](./RG0_CHECKLIST.md) (scope, risk, eval, backlog M1–M3, data classes, threat/DPIA, ChatGPT MCP). **Owner accept checkboxes** remain open.
+RG0 **owner-accepted 2026-08-12** — [OWNER_ACCEPT_2026-08-12.md](./OWNER_ACCEPT_2026-08-12.md), [RG0_CHECKLIST.md](./RG0_CHECKLIST.md).
 
 ## Цель
 
@@ -27,9 +27,9 @@ RG0 artifact set landed: [RG0_CHECKLIST.md](./RG0_CHECKLIST.md) (scope, risk, ev
 
 ## Exit gate: RG0
 
-- Нет неизвестного внешнего dependency, которое делает M6/M9/M11 невозможным — see [RISK_REGISTER.md](./RISK_REGISTER.md).
-- Owner принимает V1 / OUT границы (ниже) + checkboxes в RG0 docs.
-- Artifacts: scope (this file), risk register, architecture (ADRs + engineering), [EVAL_PLAN.md](./EVAL_PLAN.md), [BACKLOG_M1_M3.md](./BACKLOG_M1_M3.md).
+- [x] Нет неизвестного внешнего dependency, которое делает M6/M9/M11 невозможным — see [RISK_REGISTER.md](./RISK_REGISTER.md).
+- [x] Owner принимает V1 / OUT границы (ниже) + checkboxes в RG0 docs — [OWNER_ACCEPT_2026-08-12.md](./OWNER_ACCEPT_2026-08-12.md).
+- [x] Artifacts: scope (this file), risk register, architecture (ADRs + engineering), [EVAL_PLAN.md](./EVAL_PLAN.md), [BACKLOG_M1_M3.md](./BACKLOG_M1_M3.md).
 
 ## Работы M0
 
@@ -68,13 +68,13 @@ RG0 artifact set landed: [RG0_CHECKLIST.md](./RG0_CHECKLIST.md) (scope, risk, ev
 
 ## Открытые решения (§26) — не блокируют baseline
 
-- [ ] ChatGPT plan / workspace MCP capability — draft: [CHATGPT_MCP_PLAN.md](./CHATGPT_MCP_PLAN.md) (A MCP write / B Web write fallback).
+- [x] ChatGPT MCP — **B now**, **A preferred** when write MCP available — [CHATGPT_MCP_PLAN.md](./CHATGPT_MCP_PLAN.md).
 - [x] Embedding model — adapter `stub|noop|openai` + versioned `embedding_engine` / dims 32|1536 (owner picks prod default).
 - [x] LLM для extraction — adapter `stub|fixture|openai` + `POST /v1/extraction/preview` / MCP `extraction.preview` (rerank LLM later).
 - [x] OCR / transcription adapters — OCR + `stub|fixture|openai` Whisper.
 - [x] Queue implementation — Postgres outbox + `processing_jobs` (V1 alpha).
-- [x] Data region — `eu-central-1` proposed/live; owner accept in [DATA_CLASSES_AND_RETENTION.md](./DATA_CLASSES_AND_RETENTION.md).
-- [ ] Полный mailbox / Drive vs selected labels/files — default: selected scopes.
+- [x] Data region — `eu-central-1` accepted ([DATA_CLASSES_AND_RETENTION.md](./DATA_CLASSES_AND_RETENTION.md)).
+- [x] Полный mailbox / Drive vs selected labels/files — **selected scopes** for V1.
 - [x] Retention raw conversations — not default memory; see retention table.
 - [x] Full Photos indexing — OUT for V1; selected / opt-in later.
 - [x] Knowledge graph — after M12, not Core dependency.
