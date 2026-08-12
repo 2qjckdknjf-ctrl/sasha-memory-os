@@ -20,7 +20,7 @@ Live Supabase project: `sasha-memory-os` (`vpxblcxsvlylqyldiuwr`, `eu-central-1`
 3. Deploy Edge ticks: `./scripts/deploy-edge-ticks.sh` → health `version: 2`.  
 4. Confirm GH secrets: `MEMORY_OS_API_BASE_URL`, `MEMORY_OS_API_SECRET`, Supabase URL/anon, vault, embed.  
 5. Dispatch `Worker ticks` + `Worker node ticks`; both success.  
-6. Optional Fly API: `flyctl auth login` → `./scripts/fly-deploy-api.sh` → point `MEMORY_OS_API_BASE_URL` at Fly if replacing Edge for HTTP.  
+6. Fly API: **skipped by default** (deferred). If needed later: `flyctl auth login` → `./scripts/fly-deploy-api.sh`.  
 7. Smoke: `MEMORY_OS_API_BASE_URL=… ./scripts/smoke-api.sh` (full HTTP) and/or MCP `POST /mcp` initialize.  
 8. Web: point at API base; OAuth callback URL matches registered redirect.
 
