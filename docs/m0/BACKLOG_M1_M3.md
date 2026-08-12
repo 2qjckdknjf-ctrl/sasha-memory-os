@@ -57,7 +57,8 @@ Architecture context: ADRs `docs/adr/`, [DEMO_SLICE.md](../engineering/DEMO_SLIC
 1. ~~Owner accept RG0~~  
 2. ~~Fly full API~~ — deferred  
 3. ~~M4 review UX~~ — selective apply + bulk approve/dispute + MCP `extraction.run`  
-4. M5 retrieval polish / M6 ChatGPT remote A when workspace ready  
+4. M5 retrieval polish — RRF hybrid + authority + context packer + temporal search (alpha landing); apply `search_rrf_temporal` remotely when Supabase MCP/CLI available  
+5. M6 ChatGPT remote A when workspace ready  
 
 ## Owner accept
 

@@ -72,6 +72,27 @@ describe('mcp gateway alpha', () => {
     expect(result.failed).toBe(0);
   });
 
+  it('searches with RRF and packed context offline', async () => {
+    const mcp = createMcpHandlers();
+    const cursor = '33333333-3333-4333-8333-333333333303';
+    const result = (await mcp.call('memory.search', {
+      query: 'Slice 01',
+      project_id: projectId,
+      actor_subject_id: cursor,
+      pack_context: true,
+      max_context_chars: 1500,
+    })) as {
+      ranking: string;
+      hits: Array<{ reason?: string }>;
+      context?: { packedCount: number; text: string };
+    };
+    expect(result.ranking).toBe('hybrid-rrf');
+    expect(result.hits.length).toBeGreaterThan(0);
+    expect(result.hits[0]?.reason).toBe('hybrid:rrf');
+    expect(result.context?.packedCount).toBeGreaterThan(0);
+    expect(result.context?.text).toContain('[1]');
+  });
+
   it('runs extract+apply offline', async () => {
     const mcp = createMcpHandlers();
     const owner = '33333333-3333-4333-8333-333333333301';

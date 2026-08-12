@@ -266,6 +266,47 @@ describe('memory api demo slice', () => {
     expect(body.requestId).toBe('test-req-health-1');
   });
 
+  it('searches with RRF ranking and packed context', async () => {
+    const app = createApp({});
+    const res = await app.request('/v1/search', {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'x-actor-key': 'cursor',
+      },
+      body: JSON.stringify({
+        query: 'Slice 01',
+        project_id: projectId,
+        pack_context: true,
+        max_context_chars: 2_000,
+      }),
+    });
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.ranking).toBe('hybrid-rrf');
+    expect(Array.isArray(body.hits)).toBe(true);
+    expect(body.hits.length).toBeGreaterThan(0);
+    expect(body.hits[0]?.reason).toBe('hybrid:rrf');
+    expect(body.context?.packedCount).toBeGreaterThan(0);
+    expect(String(body.context?.text ?? '')).toContain('[1]');
+
+    const emptyWindow = await app.request('/v1/search', {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'x-actor-key': 'cursor',
+      },
+      body: JSON.stringify({
+        query: 'Slice 01',
+        project_id: projectId,
+        recorded_after: '2099-01-01T00:00:00.000Z',
+      }),
+    });
+    expect(emptyWindow.status).toBe(200);
+    const emptyBody = await emptyWindow.json();
+    expect(emptyBody.hits).toHaveLength(0);
+  });
+
   it('previews extraction candidates', async () => {
     const app = createApp({});
     const res = await app.request('/v1/extraction/preview', {

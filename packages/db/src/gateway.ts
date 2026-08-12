@@ -93,15 +93,22 @@ export class SupabaseMemoryGateway {
     projectId?: string;
     includeHistory?: boolean;
     queryEmbedding?: number[] | null;
+    recordedAfter?: string | null;
+    recordedBefore?: string | null;
   }) {
-    const { data, error } = await this.client.rpc('api_search_memories', {
+    // Omit temporal args when unset so older RPC signatures still resolve
+    // until search_rrf_temporal is applied on the remote project.
+    const args: Record<string, unknown> = {
       p_secret: this.apiSecret,
       p_subject_id: input.subjectId,
       p_query: input.query,
       p_project_id: input.projectId ?? null,
       p_include_history: input.includeHistory ?? false,
       p_query_embedding: input.queryEmbedding ?? null,
-    });
+    };
+    if (input.recordedAfter) args.p_recorded_after = input.recordedAfter;
+    if (input.recordedBefore) args.p_recorded_before = input.recordedBefore;
+    const { data, error } = await this.client.rpc('api_search_memories', args);
     if (error) throw error;
     return data;
   }

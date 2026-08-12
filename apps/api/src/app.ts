@@ -41,6 +41,7 @@ import {
   createEmbeddingAdapter,
   createExtractionAdapter,
   embedMemoryText,
+  packSearchContext,
   planCandidateConsolidations,
   projectContext,
   rerankHitsHybrid,
@@ -2005,9 +2006,14 @@ export function createApp(options?: {
       query: string;
       project_id?: string;
       include_history?: boolean;
+      recorded_after?: string;
+      recorded_before?: string;
+      pack_context?: boolean;
+      max_context_chars?: number;
     }>();
     const authz = c.get('authz');
     const gw = c.get('gateway');
+    const pack = Boolean(body.pack_context);
     if (gw) {
       try {
         let queryEmbedding: number[] | null = null;
@@ -2026,24 +2032,39 @@ export function createApp(options?: {
           projectId: body.project_id,
           includeHistory: body.include_history,
           queryEmbedding,
+          recordedAfter: body.recorded_after,
+          recordedBefore: body.recorded_before,
         });
         const list = (Array.isArray(raw) ? raw : []) as Array<{
           memory: {
+            id?: string | null;
             title?: string | null;
             content?: string | null;
+            status?: string | null;
+            recordedAt?: string | null;
+            recorded_at?: string | null;
             embedding?: number[] | null;
           };
           score: number;
           reason?: string;
         }>;
         const hits = await rerankHitsHybrid(list, body.query ?? '', {
-          reason: 'hybrid:rpc+embed',
+          reason: 'hybrid:rpc+rrf',
+          recordedAfter: body.recorded_after,
+          recordedBefore: body.recorded_before,
         });
         return c.json({
           hits,
           backend: 'supabase',
-          ranking: 'hybrid',
+          ranking: 'hybrid-rrf',
           queryEmbeddingDims: queryEmbedding?.length ?? 0,
+          ...(pack
+            ? {
+                context: packSearchContext(hits, {
+                  maxChars: body.max_context_chars,
+                }),
+              }
+            : {}),
         });
       } catch (err) {
         if (isForbiddenError(err)) return c.json({ error: 'forbidden' }, 403);
@@ -2063,8 +2084,20 @@ export function createApp(options?: {
     const hits = await searchMemoriesHybrid(allowed, body.query ?? '', {
       projectId: body.project_id,
       includeHistory: body.include_history,
+      recordedAfter: body.recorded_after,
+      recordedBefore: body.recorded_before,
     });
-    return c.json({ hits });
+    return c.json({
+      hits,
+      ranking: 'hybrid-rrf',
+      ...(pack
+        ? {
+            context: packSearchContext(hits, {
+              maxChars: body.max_context_chars,
+            }),
+          }
+        : {}),
+    });
   });
 
   return app;

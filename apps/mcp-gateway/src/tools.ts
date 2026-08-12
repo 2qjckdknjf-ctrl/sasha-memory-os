@@ -21,6 +21,7 @@ import {
   createEmbeddingAdapter,
   createExtractionAdapter,
   embedMemoryText,
+  packSearchContext,
   planCandidateConsolidations,
   projectContext,
   rerankHitsHybrid,
@@ -118,13 +119,18 @@ export interface McpTool {
 export const mcpTools: McpTool[] = [
   {
     name: 'memory.search',
-    description: 'Hybrid/structured search over allowed memories',
+    description:
+      'Hybrid RRF search over allowed memories (optional temporal window + packed context)',
     inputSchema: {
       type: 'object',
       properties: {
         query: { type: 'string' },
         project_id: { type: 'string' },
         include_history: { type: 'boolean' },
+        recorded_after: { type: 'string' },
+        recorded_before: { type: 'string' },
+        pack_context: { type: 'boolean' },
+        max_context_chars: { type: 'number' },
         actor_subject_id: { type: 'string' },
       },
       required: ['query', 'actor_subject_id'],
@@ -697,6 +703,17 @@ export function createMcpHandlers(options?: {
       switch (name) {
         case 'memory.search': {
           const query = String(args.query ?? '');
+          const recordedAfter = args.recorded_after
+            ? String(args.recorded_after)
+            : undefined;
+          const recordedBefore = args.recorded_before
+            ? String(args.recorded_before)
+            : undefined;
+          const pack = Boolean(args.pack_context);
+          const maxContextChars =
+            typeof args.max_context_chars === 'number'
+              ? args.max_context_chars
+              : undefined;
           if (gateway) {
             let queryEmbedding: number[] | null = null;
             try {
@@ -714,31 +731,51 @@ export function createMcpHandlers(options?: {
               projectId: args.project_id ? String(args.project_id) : undefined,
               includeHistory: Boolean(args.include_history),
               queryEmbedding,
+              recordedAfter,
+              recordedBefore,
             });
             const list = (Array.isArray(raw) ? raw : []) as Array<{
               memory: {
+                id?: string | null;
                 title?: string | null;
                 content?: string | null;
+                status?: string | null;
+                recordedAt?: string | null;
+                recorded_at?: string | null;
                 embedding?: number[] | null;
               };
               score: number;
               reason?: string;
             }>;
             const hits = await rerankHitsHybrid(list, query, {
-              reason: 'hybrid:rpc+embed',
+              reason: 'hybrid:rpc+rrf',
+              recordedAfter,
+              recordedBefore,
             });
-            return { hits, ranking: 'hybrid' };
+            return {
+              hits,
+              ranking: 'hybrid-rrf',
+              ...(pack
+                ? { context: packSearchContext(hits, { maxChars: maxContextChars }) }
+                : {}),
+            };
           }
+          const hits = await searchMemoriesHybrid(
+            [...store.memories.values()],
+            query,
+            {
+              projectId: args.project_id ? String(args.project_id) : undefined,
+              includeHistory: Boolean(args.include_history),
+              recordedAfter,
+              recordedBefore,
+            },
+          );
           return {
-            hits: await searchMemoriesHybrid(
-              [...store.memories.values()],
-              query,
-              {
-                projectId: args.project_id ? String(args.project_id) : undefined,
-                includeHistory: Boolean(args.include_history),
-              },
-            ),
-            ranking: 'hybrid',
+            hits,
+            ranking: 'hybrid-rrf',
+            ...(pack
+              ? { context: packSearchContext(hits, { maxChars: maxContextChars }) }
+              : {}),
           };
         }
         case 'context.project': {
