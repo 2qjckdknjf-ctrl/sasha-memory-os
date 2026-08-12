@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
-# Plan step: deploy API → then set GH MEMORY_OS_API_BASE_URL for worker-ticks.
-# Requires: flyctl logged in (or FLY_API_TOKEN) + local .env with MEMORY_OS_* secrets.
+# Optional / deferred: host full Node HTTP API on Fly.
+# Current ops use Supabase Edge worker-ticks + GH Node workers — Fly is not required.
+# If needed later: flyctl auth login (or FLY_API_TOKEN) + local .env, then run this script.
+# After deploy you may point MEMORY_OS_API_BASE_URL at the Fly hostname.
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"

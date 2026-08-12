@@ -8,7 +8,7 @@ Private alpha promote path for Sasha Memory OS.
 |---|---|---|
 | local | `pnpm dev:api` / `dev:web` | repo `.env` (never commit) |
 | staging ops | Supabase Edge `worker-ticks` + GH `Worker ticks` / `Worker node ticks` | GH Actions secrets |
-| staging API (optional) | Fly `sasha-memory-os-api` via `./scripts/fly-deploy-api.sh` | Fly secrets from `.env` |
+| staging API (deferred) | Local / future Fly — scaffold `./scripts/fly-deploy-api.sh` only | Not required for current ops |
 | prod | Same shape as staging; separate project/secrets when promoted | Dedicated only |
 
 Live Supabase project: `sasha-memory-os` (`vpxblcxsvlylqyldiuwr`, `eu-central-1`) — see [SUPABASE.md](./SUPABASE.md).

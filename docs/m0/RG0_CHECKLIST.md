@@ -34,10 +34,11 @@ Exit gate: unknown external blockers cleared; owner accepts V1/OUT; scope/risk/e
 | Accept risk register + no unknown blockers | **Accepted** |
 | Accept eval baseline + M1–M3 backlog | **Accepted** |
 | ChatGPT MCP capability | **B now**; **A preferred** when write MCP available |
-| Optional: host full HTTP API on Fly | Attempt when `flyctl` auth / `FLY_API_TOKEN` available |
+| Optional: host full HTTP API on Fly | **Deferred** — not required; scaffold kept (`fly.toml`, `scripts/fly-deploy-api.sh`) |
 
 ## Explicitly not blocking RG0
 
-- Fly full API (ops covered by Edge + Node GH workers)  
+- Fly full API — deferred; ops covered by Edge + Node GH workers  
+
 - Dims 1536 default (column + path landed; opt-in via env)  
 - Apple companion / Photos full index (V1 backlog / OUT)

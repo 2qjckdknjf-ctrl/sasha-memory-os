@@ -12,7 +12,7 @@ Scoring: Impact / Likelihood = L(1–3) × I(1–3). Residual after current alph
 | R4 | Connector over-ingest (full mailbox) | 2 | 2 | 4 | Selected scopes preferred; stub/auto pull modes | Keep selected labels/files for V1 |
 | R5 | RLS/ACL regression | 1 | 3 | 3 | Golden 200 + RLS tests + remote smoke | Gate merges on CI |
 | R6 | Worker/outbox stall | 2 | 2 | 4 | Edge ticks + Node GH workers + dead-letter | Watch GH Actions + health |
-| R7 | No Fly full HTTP API | 2 | 1 | 2 | Edge + Node workers cover ops | Optional Fly when auth available |
+| R7 | No Fly full HTTP API | 1 | 1 | 1 | Deferred by owner; Edge + Node workers cover ops | Revisit only if public Node API needed |
 | R8 | Wrong cloud project / region | 1 | 3 | 3 | Dedicated `sasha-memory-os` `eu-central-1` | Never reuse AISTROYKA/HiAir |
 | R9 | Supersede/consolidation false merge | 2 | 2 | 4 | Title+embed plan; owner review queue | Tunable thresholds in M4+ |
 | R10 | Apple companion / Photos delay | 3 | 1 | 3 | Explicit V1 backlog / OUT for full index | Do not block Core |

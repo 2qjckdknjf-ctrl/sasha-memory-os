@@ -53,7 +53,8 @@ Lawful basis (proposed): legitimate interest / consent for personal productivity
 ## Residual risks (owner must accept)
 
 1. OpenAI embeddings / Whisper leave EU when `MEMORY_OS_EMBED_ENGINE=openai` or `MEMORY_OS_TRANSCRIBE_ENGINE=openai`.  
-2. Full Node API not yet on Fly — ops via Edge + GH Node workers (authenticated secrets).  
+2. Full Node API not on Fly by choice (deferred) — ops via Edge + GH Node workers (authenticated secrets).  
+
 3. ChatGPT custom MCP write may be unavailable → Web/MCP stdio fallback.
 
 ## Owner accept

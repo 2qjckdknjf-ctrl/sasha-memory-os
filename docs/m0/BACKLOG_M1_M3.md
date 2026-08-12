@@ -13,13 +13,13 @@ Architecture context: ADRs `docs/adr/`, [DEMO_SLICE.md](../engineering/DEMO_SLIC
 | Migrations + seed | Done | Live Supabase EU |
 | Queue / outbox abstraction | Done (V1 alpha) | Postgres outbox + jobs |
 | Object / artifact storage paths | Partial | Quarantine + checksum; bucket hardening later |
-| Staging one-command deploy | Partial | Edge + GH workers live; Fly API optional |
+| Staging one-command deploy | Done (ops path) | Edge + GH workers; Fly API deferred (scaffold only) |
 | Staging promote runbook | Done | [STAGING_PROMOTE.md](../engineering/STAGING_PROMOTE.md) |
 | Remote MCP HTTP | Done (alpha) | `POST /mcp` on API + `start:http` |
 | Tracing/logging runbooks | Partial | request-id + JSON HTTP logs; OTel later |
 | Dependency audit in CI | Done | `pnpm audit --audit-level=critical` |
 
-**M1 exit remaining:** optional Fly HTTP API; distributed tracing later.
+**M1 exit remaining:** distributed tracing later. Fly HTTP API deferred (not blocking).
 
 ## M2 — Event store, provenance, access
 
