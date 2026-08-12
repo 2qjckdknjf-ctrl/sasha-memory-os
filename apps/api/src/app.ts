@@ -1811,6 +1811,64 @@ export function createApp(options?: {
     }
   });
 
+  app.post('/v1/extraction/run', async (c) => {
+    const body = (await c.req.json().catch(() => ({}))) as {
+      title?: string;
+      text?: string;
+      workspace_id?: string;
+      project_id?: string;
+      actor_subject_id?: string;
+      apply?: boolean;
+      idempotency_prefix?: string;
+      sensitivity?: string;
+    };
+    const text = String(body.text ?? '').trim();
+    if (!text) return c.json({ error: 'text is required' }, 400);
+    try {
+      const preview = await createExtractionAdapter().extract({
+        title: body.title ? String(body.title) : undefined,
+        text,
+      });
+      if (!body.apply) {
+        return c.json({
+          ...preview,
+          preview: true,
+          applied: false,
+        });
+      }
+      // Re-enter apply path via internal request shape.
+      const applyBody = applyExtractionSchema.parse({
+        workspace_id: body.workspace_id ?? seedWorkspace,
+        project_id: body.project_id ?? seedProject,
+        actor_subject_id: body.actor_subject_id ?? c.get('authz').subjectId,
+        sensitivity: body.sensitivity,
+        idempotency_prefix:
+          body.idempotency_prefix ?? `extract-run-${Date.now()}`,
+        candidates: preview.candidates,
+      });
+      const applyRes = await app.request('/v1/extraction/apply', {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          'x-subject-id': applyBody.actor_subject_id,
+        },
+        body: JSON.stringify(applyBody),
+      });
+      const applyJson = await applyRes.json();
+      if (!applyRes.ok) {
+        return c.json(applyJson, applyRes.status as 400 | 403 | 500);
+      }
+      return c.json({
+        ...preview,
+        preview: false,
+        applied: true,
+        apply: applyJson,
+      });
+    } catch (err) {
+      return c.json({ error: (err as Error).message }, 500);
+    }
+  });
+
   app.post('/v1/extraction/apply', async (c) => {
     const body = applyExtractionSchema.parse(await c.req.json());
     const authz = c.get('authz');

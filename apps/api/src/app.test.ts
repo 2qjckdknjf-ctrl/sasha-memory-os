@@ -286,6 +286,30 @@ describe('memory api demo slice', () => {
     expect(String(body.engine)).toMatch(/extraction/);
   });
 
+  it('runs extraction with apply flag', async () => {
+    const app = createApp({});
+    const res = await app.request('/v1/extraction/run', {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'x-actor-key': 'chatgpt',
+      },
+      body: JSON.stringify({
+        title: 'Run',
+        text: 'Approve selected extraction candidates in review.',
+        workspace_id: workspaceId,
+        project_id: projectId,
+        actor_subject_id: chatgpt,
+        apply: true,
+        idempotency_prefix: `extract-run-${Date.now()}`,
+      }),
+    });
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.applied).toBe(true);
+    expect(body.apply?.applied).toBeGreaterThan(0);
+  });
+
   it('applies extraction candidates into memories', async () => {
     const app = createApp({});
     const res = await app.request('/v1/extraction/apply', {

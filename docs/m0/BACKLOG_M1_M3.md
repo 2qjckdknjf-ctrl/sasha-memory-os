@@ -52,11 +52,12 @@ Architecture context: ADRs `docs/adr/`, [DEMO_SLICE.md](../engineering/DEMO_SLIC
 
 **M3 exit remaining:** job UI polish only if product needs richer history; production Whisper key ops.
 
-## Ordered next (post-RG0 owner accept)
+## Ordered next (post-RG0)
 
-1. Owner accept RG0 docs (scope / retention / risks / MCP A|B).  
-2. Optional Fly full API.  
-3. M4 Memory Core depth — extraction preview + **apply** landed (`/v1/extraction/apply`, MCP `extraction.apply`); richer review UX next.
+1. ~~Owner accept RG0~~  
+2. ~~Fly full API~~ — deferred  
+3. ~~M4 review UX~~ — selective apply + bulk approve/dispute + MCP `extraction.run`  
+4. M5 retrieval polish / M6 ChatGPT remote A when workspace ready  
 
 ## Owner accept
 

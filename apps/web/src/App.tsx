@@ -93,6 +93,9 @@ export function App() {
       confidence?: number;
     }>
   >([]);
+  const [extractionSelected, setExtractionSelected] = useState<Set<number>>(
+    () => new Set(),
+  );
 
   const subjectId = actors[actor];
 
@@ -379,19 +382,35 @@ export function App() {
       );
       return;
     }
-    const result = await apiGet<{ memories: typeof reviewQueue }>(
-      `/v1/memories?workspace_id=${WORKSPACE_ID}&project_id=${PROJECT_ID}&status=candidate`,
-      subjectId,
-      actor,
+    const [candidates, disputed] = await Promise.all([
+      apiGet<{ memories: typeof reviewQueue }>(
+        `/v1/memories?workspace_id=${WORKSPACE_ID}&project_id=${PROJECT_ID}&status=candidate&limit=50`,
+        subjectId,
+        actor,
+      ),
+      apiGet<{ memories: typeof reviewQueue }>(
+        `/v1/memories?workspace_id=${WORKSPACE_ID}&project_id=${PROJECT_ID}&status=disputed&limit=50`,
+        subjectId,
+        actor,
+      ),
+    ]);
+    const merged = [...(candidates.memories ?? []), ...(disputed.memories ?? [])];
+    const seen = new Set<string>();
+    setReviewQueue(
+      merged.filter((m) => {
+        if (seen.has(m.id)) return false;
+        seen.add(m.id);
+        return true;
+      }),
     );
-    setReviewQueue(result.memories ?? []);
   }
 
   async function onSetHitStatus(
     memoryId: string,
     status: 'verified' | 'disputed' | 'retracted',
-  ) {
-    setError(null);
+    options?: { quiet?: boolean },
+  ): Promise<boolean> {
+    if (!options?.quiet) setError(null);
     try {
       if (backend === 'local') {
         localStore.setMemoryStatus({
@@ -407,12 +426,36 @@ export function App() {
           actor_subject_id: subjectId,
         }, actor);
       }
-      setLastCapture(`memory ${memoryId.slice(0, 8)}… → ${status}`);
-      await onSearch();
-      await refreshReviewQueue();
+      if (!options?.quiet) {
+        setLastCapture(`memory ${memoryId.slice(0, 8)}… → ${status}`);
+        await onSearch();
+        await refreshReviewQueue();
+      }
+      return true;
     } catch (err) {
-      setError((err as Error).message);
+      if (!options?.quiet) setError((err as Error).message);
+      return false;
     }
+  }
+
+  async function onBulkReviewStatus(
+    status: 'verified' | 'disputed' | 'retracted',
+  ) {
+    setError(null);
+    if (reviewQueue.length === 0) {
+      setError('Review queue empty — load candidates first');
+      return;
+    }
+    let ok = 0;
+    let failed = 0;
+    for (const item of reviewQueue) {
+      const done = await onSetHitStatus(item.id, status, { quiet: true });
+      if (done) ok += 1;
+      else failed += 1;
+    }
+    setLastCapture(`bulk ${status}: ok=${ok} failed=${failed}`);
+    await onSearch();
+    await refreshReviewQueue();
   }
 
   async function onEmbedMemory(
@@ -807,6 +850,7 @@ export function App() {
                         confidence: c.confidence,
                       }));
                     setExtractionCandidates(rows);
+                    setExtractionSelected(new Set(rows.map((_, i) => i)));
                     setExtractionPreview(
                       `${result.engine ?? 'extract'}: ${rows.length} candidates — ${
                         rows[0]?.title ?? 'none'
@@ -830,8 +874,11 @@ export function App() {
                       setError('Extraction apply requires API backend');
                       return;
                     }
-                    if (extractionCandidates.length === 0) {
-                      setError('Preview extraction first');
+                    const selected = extractionCandidates.filter((_, i) =>
+                      extractionSelected.has(i),
+                    );
+                    if (selected.length === 0) {
+                      setError('Select at least one extraction candidate');
                       return;
                     }
                     const result = await apiPost<{
@@ -842,7 +889,7 @@ export function App() {
                       project_id: PROJECT_ID,
                       actor_subject_id: subjectId,
                       idempotency_prefix: `web-extract-${Date.now()}`,
-                      candidates: extractionCandidates,
+                      candidates: selected,
                     }, actor);
                     setExtractionPreview(
                       `applied ${result.applied ?? 0} · failed ${result.failed ?? 0}`,
@@ -855,7 +902,7 @@ export function App() {
                 })();
               }}
             >
-              Apply extraction
+              Apply selected
             </button>
             {extractionPreview ? (
               <p className="meta">{extractionPreview}</p>
@@ -865,9 +912,23 @@ export function App() {
                 {extractionCandidates.map((c, i) => (
                   <li className="item" key={`${c.title}-${i}`}>
                     <div className="meta">
-                      <span className="badge state">
-                        {c.memoryType ?? 'fact'}
-                      </span>
+                      <label style={{ display: 'flex', gap: '0.4rem', alignItems: 'center' }}>
+                        <input
+                          type="checkbox"
+                          checked={extractionSelected.has(i)}
+                          onChange={() => {
+                            setExtractionSelected((prev) => {
+                              const next = new Set(prev);
+                              if (next.has(i)) next.delete(i);
+                              else next.add(i);
+                              return next;
+                            });
+                          }}
+                        />
+                        <span className="badge state">
+                          {c.memoryType ?? 'fact'}
+                        </span>
+                      </label>
                       {typeof c.confidence === 'number' ? (
                         <span>conf {c.confidence.toFixed(2)}</span>
                       ) : null}
@@ -1100,6 +1161,26 @@ export function App() {
             }}
           >
             Load candidates
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              void onBulkReviewStatus('verified').catch((err) =>
+                setError((err as Error).message),
+              );
+            }}
+          >
+            Approve all
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              void onBulkReviewStatus('disputed').catch((err) =>
+                setError((err as Error).message),
+              );
+            }}
+          >
+            Dispute all
           </button>
           <button
             type="button"

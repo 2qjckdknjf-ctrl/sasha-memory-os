@@ -35,6 +35,7 @@ describe('mcp gateway alpha', () => {
         'jobs.get',
         'extraction.preview',
         'extraction.apply',
+        'extraction.run',
       ]),
     );
   });
@@ -69,6 +70,27 @@ describe('mcp gateway alpha', () => {
     })) as { applied: number; failed: number };
     expect(result.applied).toBe(1);
     expect(result.failed).toBe(0);
+  });
+
+  it('runs extract+apply offline', async () => {
+    const mcp = createMcpHandlers();
+    const owner = '33333333-3333-4333-8333-333333333301';
+    const result = (await mcp.call('extraction.run', {
+      title: 'Run',
+      text: 'Selected scopes for Drive sync.',
+      workspace_id: workspaceId,
+      project_id: projectId,
+      actor_subject_id: owner,
+      apply: true,
+      idempotency_prefix: 'mcp-extract-run-1',
+    })) as {
+      applied: boolean;
+      candidates: unknown[];
+      apply?: { applied: number };
+    };
+    expect(result.applied).toBe(true);
+    expect(result.candidates.length).toBeGreaterThan(0);
+    expect(result.apply?.applied).toBeGreaterThan(0);
   });
 
   it('exports memories for owner offline', async () => {

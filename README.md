@@ -95,4 +95,6 @@ Outside `local`/`test`, owner ops require `x-memory-os-api-secret` (or `MEMORY_O
 6. ~~M1/M2/M3 alpha close-ups~~ — promote, observability, export, temporal, poison, Whisper STT, job UI
 7. ~~M4 extraction preview/apply~~ — `/v1/extraction/preview|apply` + MCP/Web
 8. ~~RG0 owner accept~~ — [OWNER_ACCEPT_2026-08-12.md](docs/m0/OWNER_ACCEPT_2026-08-12.md); MCP **B now**, **A preferred**
-9. Fly full HTTP API — **deferred** (not needed now; ops via Edge + GH Node workers). Scaffold kept: `fly.toml`, `./scripts/fly-deploy-api.sh`
+9. Fly full HTTP API — **deferred** (scaffold kept)
+10. ~~M4 review UX~~ — selective extract apply, bulk review, MCP `extraction.run`
+11. M5 retrieval polish / M6 ChatGPT remote A when workspace ready

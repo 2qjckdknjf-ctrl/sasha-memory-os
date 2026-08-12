@@ -43,6 +43,7 @@ import {
   setConnectionStatusSchema,
   setMemoryStatusSchema,
   upsertConnectionSchema,
+  type ApplyExtractionInput,
 } from '@memory-os/schemas';
 import { randomUUID } from 'node:crypto';
 
@@ -502,6 +503,25 @@ export const mcpTools: McpTool[] = [
     },
   },
   {
+    name: 'extraction.run',
+    description:
+      'Extract candidates from text; optionally apply them (apply=true)',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        title: { type: 'string' },
+        text: { type: 'string' },
+        workspace_id: { type: 'string' },
+        project_id: { type: 'string' },
+        actor_subject_id: { type: 'string' },
+        apply: { type: 'boolean' },
+        idempotency_prefix: { type: 'string' },
+        sensitivity: { type: 'string' },
+      },
+      required: ['text', 'actor_subject_id'],
+    },
+  },
+  {
     name: 'capture.document',
     description:
       'Capture TXT/PDF/DOCX/image (OCR) / audio (STT) into candidate memory',
@@ -560,6 +580,115 @@ export function createMcpHandlers(options?: {
 }) {
   const store = options?.store ?? createSeededStore();
   const gateway = options?.gateway ?? null;
+
+  async function applyExtraction(input: ApplyExtractionInput) {
+    const created: Array<{
+      index: number;
+      memoryType: string;
+      memoryId?: string;
+      mode: 'decision' | 'capture';
+      error?: string;
+    }> = [];
+    for (let i = 0; i < input.candidates.length; i += 1) {
+      const candidate = input.candidates[i]!;
+      const idempotencyKey = `${input.idempotency_prefix}:${i}`;
+      try {
+        if (candidate.memoryType === 'decision') {
+          if (gateway) {
+            const memory = await gateway.createDecision({
+              subjectId: input.actor_subject_id,
+              workspaceId: input.workspace_id,
+              projectId: input.project_id,
+              title: candidate.title,
+              content: candidate.content,
+              idempotencyKey,
+              confidence: candidate.confidence,
+              sensitivity: input.sensitivity,
+            });
+            created.push({
+              index: i,
+              memoryType: candidate.memoryType,
+              memoryId: String((memory as { id?: string }).id ?? ''),
+              mode: 'decision',
+            });
+          } else {
+            const memory = store.createDecision({
+              workspaceId: input.workspace_id,
+              projectId: input.project_id,
+              title: candidate.title,
+              content: candidate.content,
+              actorSubjectId: input.actor_subject_id,
+              idempotencyKey,
+              confidence: candidate.confidence,
+              sensitivity: input.sensitivity,
+            });
+            created.push({
+              index: i,
+              memoryType: candidate.memoryType,
+              memoryId: memory.id,
+              mode: 'decision',
+            });
+          }
+        } else if (gateway) {
+          const captureResult = await gateway.captureText({
+            subjectId: input.actor_subject_id,
+            workspaceId: input.workspace_id,
+            projectId: input.project_id,
+            title: candidate.title,
+            text: candidate.content,
+            idempotencyKey,
+            sensitivity: input.sensitivity,
+            processNow: true,
+          });
+          await maybeEmbedMcpCapture(gateway, {
+            subjectId: input.actor_subject_id,
+            title: candidate.title,
+            text: candidate.content,
+            captureResult,
+          });
+          const memoryId =
+            captureResult.process?.memoryId ??
+            (captureResult as { memoryId?: string }).memoryId;
+          created.push({
+            index: i,
+            memoryType: candidate.memoryType,
+            memoryId: memoryId ? String(memoryId) : undefined,
+            mode: 'capture',
+          });
+        } else {
+          const result = store.captureText({
+            workspaceId: input.workspace_id,
+            projectId: input.project_id,
+            title: candidate.title,
+            text: candidate.content,
+            actorSubjectId: input.actor_subject_id,
+            idempotencyKey,
+            sensitivity: input.sensitivity,
+          });
+          created.push({
+            index: i,
+            memoryType: candidate.memoryType,
+            memoryId: result.memoryId,
+            mode: 'capture',
+          });
+        }
+      } catch (err) {
+        created.push({
+          index: i,
+          memoryType: candidate.memoryType,
+          mode: candidate.memoryType === 'decision' ? 'decision' : 'capture',
+          error: err instanceof Error ? err.message : String(err),
+        });
+      }
+    }
+    const ok = created.filter((row) => !row.error).length;
+    return {
+      applied: ok,
+      failed: created.length - ok,
+      items: created,
+      backend: gateway ? ('supabase' as const) : ('memory-store' as const),
+    };
+  }
 
   return {
     tools: mcpTools,
@@ -1242,113 +1371,40 @@ export function createMcpHandlers(options?: {
           };
         }
         case 'extraction.apply': {
-          const input = applyExtractionSchema.parse(args);
-          const created: Array<{
-            index: number;
-            memoryType: string;
-            memoryId?: string;
-            mode: 'decision' | 'capture';
-            error?: string;
-          }> = [];
-          for (let i = 0; i < input.candidates.length; i += 1) {
-            const candidate = input.candidates[i]!;
-            const idempotencyKey = `${input.idempotency_prefix}:${i}`;
-            try {
-              if (candidate.memoryType === 'decision') {
-                if (gateway) {
-                  const memory = await gateway.createDecision({
-                    subjectId: input.actor_subject_id,
-                    workspaceId: input.workspace_id,
-                    projectId: input.project_id,
-                    title: candidate.title,
-                    content: candidate.content,
-                    idempotencyKey,
-                    confidence: candidate.confidence,
-                    sensitivity: input.sensitivity,
-                  });
-                  created.push({
-                    index: i,
-                    memoryType: candidate.memoryType,
-                    memoryId: String((memory as { id?: string }).id ?? ''),
-                    mode: 'decision',
-                  });
-                } else {
-                  const memory = store.createDecision({
-                    workspaceId: input.workspace_id,
-                    projectId: input.project_id,
-                    title: candidate.title,
-                    content: candidate.content,
-                    actorSubjectId: input.actor_subject_id,
-                    idempotencyKey,
-                    confidence: candidate.confidence,
-                    sensitivity: input.sensitivity,
-                  });
-                  created.push({
-                    index: i,
-                    memoryType: candidate.memoryType,
-                    memoryId: memory.id,
-                    mode: 'decision',
-                  });
-                }
-              } else if (gateway) {
-                const captureResult = await gateway.captureText({
-                  subjectId: input.actor_subject_id,
-                  workspaceId: input.workspace_id,
-                  projectId: input.project_id,
-                  title: candidate.title,
-                  text: candidate.content,
-                  idempotencyKey,
-                  sensitivity: input.sensitivity,
-                  processNow: true,
-                });
-                await maybeEmbedMcpCapture(gateway, {
-                  subjectId: input.actor_subject_id,
-                  title: candidate.title,
-                  text: candidate.content,
-                  captureResult,
-                });
-                const memoryId =
-                  captureResult.process?.memoryId ??
-                  (captureResult as { memoryId?: string }).memoryId;
-                created.push({
-                  index: i,
-                  memoryType: candidate.memoryType,
-                  memoryId: memoryId ? String(memoryId) : undefined,
-                  mode: 'capture',
-                });
-              } else {
-                const result = store.captureText({
-                  workspaceId: input.workspace_id,
-                  projectId: input.project_id,
-                  title: candidate.title,
-                  text: candidate.content,
-                  actorSubjectId: input.actor_subject_id,
-                  idempotencyKey,
-                  sensitivity: input.sensitivity,
-                });
-                created.push({
-                  index: i,
-                  memoryType: candidate.memoryType,
-                  memoryId: result.memoryId,
-                  mode: 'capture',
-                });
-              }
-            } catch (err) {
-              created.push({
-                index: i,
-                memoryType: candidate.memoryType,
-                mode:
-                  candidate.memoryType === 'decision' ? 'decision' : 'capture',
-                error: err instanceof Error ? err.message : String(err),
-              });
-            }
+          return applyExtraction(applyExtractionSchema.parse(args));
+        }
+        case 'extraction.run': {
+          const text = String(args.text ?? '').trim();
+          if (!text) throw new Error('text is required');
+          const preview = await createExtractionAdapter().extract({
+            title: args.title ? String(args.title) : undefined,
+            text,
+          });
+          const apply = Boolean(args.apply);
+          if (!apply) {
+            return {
+              ...preview,
+              actor_subject_id: String(args.actor_subject_id),
+              preview: true,
+              applied: false,
+            };
           }
-          const ok = created.filter((row) => !row.error).length;
+          const applied = await applyExtraction(
+            applyExtractionSchema.parse({
+              workspace_id: args.workspace_id,
+              project_id: args.project_id,
+              actor_subject_id: args.actor_subject_id,
+              sensitivity: args.sensitivity,
+              idempotency_prefix:
+                args.idempotency_prefix ?? `extract-run-${Date.now()}`,
+              candidates: preview.candidates,
+            }),
+          );
           return {
-            applied: ok,
-            failed: created.length - ok,
-            items: created,
-            backend: gateway ? 'supabase' : 'memory-store',
+            ...preview,
+            preview: false,
+            applied: true,
+            apply: applied,
           };
         }
         case 'memory.embed_missing': {
