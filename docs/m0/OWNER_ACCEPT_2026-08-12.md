@@ -17,8 +17,13 @@
 | ChatGPT MCP | **B now** (MCP/HTTP read + Web/HTTP write). **A preferred** when ChatGPT workspace supports custom MCP write. Fallback B accepted. |
 | Pilot project | Seed project `44444444-4444-4444-8444-444444444401` (demo Slice / Memory OS pilot) |
 | Connector scope default | **Selected** labels/files (not full mailbox/Drive) |
-| Fly full HTTP API | Optional; attempt login/deploy separately |
+| Fly full HTTP API | Optional — `flyctl auth login` needs interactive browser / `FLY_API_TOKEN` (headless CLI cannot finish alone) |
 
 ## Effect
 
-RG0 exit gate **owner-accept side closed**. Remaining optional: Fly-hosted Node API when `flyctl` auth available.
+RG0 exit gate **owner-accept side closed**. Remaining optional: Fly-hosted Node API after:
+
+```bash
+flyctl auth login   # or: export FLY_API_TOKEN=...
+./scripts/fly-deploy-api.sh
+```
