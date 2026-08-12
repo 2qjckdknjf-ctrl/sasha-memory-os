@@ -21,7 +21,10 @@ const env = loadMemoryOsEnv();
 const gateway = env
   ? new SupabaseMemoryGateway(createMemoryOsClient(env), env.apiSecret)
   : null;
-const mcp = createMcpHandlers({ gateway });
+const mcp = createMcpHandlers({
+  gateway,
+  profile: process.env.MEMORY_OS_MCP_PROFILE,
+});
 
 const port = Number(process.env.MEMORY_OS_MCP_HTTP_PORT ?? '8790');
 
@@ -69,7 +72,23 @@ const server = createServer(async (req, res) => {
       ok: true,
       service: 'memory-os-mcp-http',
       backend: mcp.backend,
+      profile: mcp.profile,
+      transport: 'streamable-http',
     });
+    return;
+  }
+
+  // Streamable HTTP: GET on MCP endpoint may open SSE; this gateway is
+  // stateless JSON-only, so advertise POST-only (405) per MCP transport rules.
+  if (
+    req.method === 'GET' &&
+    (url.pathname === '/mcp' || url.pathname === '/')
+  ) {
+    res.writeHead(405, {
+      allow: 'POST',
+      'content-type': 'application/json; charset=utf-8',
+    });
+    res.end(JSON.stringify({ error: 'method_not_allowed', allow: ['POST'] }));
     return;
   }
 
@@ -110,6 +129,6 @@ const server = createServer(async (req, res) => {
 
 server.listen(port, () => {
   process.stderr.write(
-    `memory-os mcp-http :${port} backend=${mcp.backend} POST /mcp\n`,
+    `memory-os mcp-http :${port} backend=${mcp.backend} profile=${mcp.profile} POST /mcp\n`,
   );
 });

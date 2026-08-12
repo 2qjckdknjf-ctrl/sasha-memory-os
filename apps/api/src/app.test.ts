@@ -239,19 +239,29 @@ describe('memory api demo slice', () => {
     const app = createApp({});
     const mcpHealth = await app.request('/mcp/health');
     expect(mcpHealth.status).toBe(200);
+    const mcpHealthBody = await mcpHealth.json();
+    expect(mcpHealthBody.transport).toBe('streamable-http');
+    expect(mcpHealthBody.profile).toBeTruthy();
+    const mcpGet = await app.request('/mcp');
+    expect(mcpGet.status).toBe(405);
     const mcpInit = await app.request('/mcp', {
       method: 'POST',
-      headers: { 'content-type': 'application/json' },
+      headers: {
+        'content-type': 'application/json',
+        accept: 'application/json, text/event-stream',
+      },
       body: JSON.stringify({
         jsonrpc: '2.0',
         id: 1,
         method: 'initialize',
-        params: {},
+        params: { protocolVersion: '2025-03-26' },
       }),
     });
     expect(mcpInit.status).toBe(200);
     const mcpBody = await mcpInit.json();
     expect(mcpBody.result.serverInfo.name).toBe('memory-os-mcp-gateway');
+    expect(mcpBody.result.protocolVersion).toBe('2025-03-26');
+    expect(String(mcpBody.result.instructions ?? '')).toMatch(/Memory OS/i);
 
     const res = await app.request('/health', {
       headers: { 'x-request-id': 'test-req-health-1' },

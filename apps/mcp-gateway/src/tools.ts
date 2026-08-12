@@ -47,6 +47,14 @@ import {
   type ApplyExtractionInput,
 } from '@memory-os/schemas';
 import { randomUUID } from 'node:crypto';
+import {
+  adaptToolSchemaForProfile,
+  applyProfileDefaults,
+  getMcpProfile,
+  isToolAllowed,
+  toolAnnotations,
+  type McpProfileName,
+} from './profile.js';
 
 const DEFAULT_PROJECT_ID = '44444444-4444-4444-8444-444444444401';
 
@@ -114,6 +122,11 @@ export interface McpTool {
   name: string;
   description: string;
   inputSchema: Record<string, unknown>;
+  annotations?: {
+    readOnlyHint?: boolean;
+    destructiveHint?: boolean;
+    openWorldHint?: boolean;
+  };
 }
 
 export const mcpTools: McpTool[] = [
@@ -583,9 +596,19 @@ export const mcpTools: McpTool[] = [
 export function createMcpHandlers(options?: {
   store?: MemoryStore;
   gateway?: SupabaseMemoryGateway | null;
+  profile?: McpProfileName | string | null;
 }) {
   const store = options?.store ?? createSeededStore();
   const gateway = options?.gateway ?? null;
+  const profile = getMcpProfile(options?.profile);
+  const tools: McpTool[] = mcpTools
+    .filter((tool) => isToolAllowed(profile, tool.name))
+    .map((tool) => ({
+      ...tool,
+      inputSchema: adaptToolSchemaForProfile(profile, tool.inputSchema),
+      annotations: toolAnnotations(tool.name),
+    }));
+
 
   async function applyExtraction(input: ApplyExtractionInput) {
     const created: Array<{
@@ -697,9 +720,17 @@ export function createMcpHandlers(options?: {
   }
 
   return {
-    tools: mcpTools,
+    tools,
+    profile: profile.name,
+    instructions: profile.instructions,
     backend: gateway ? ('supabase' as const) : ('memory-store' as const),
-    async call(name: string, args: Record<string, unknown>) {
+    async call(name: string, rawArgs: Record<string, unknown>) {
+      if (!isToolAllowed(profile, name)) {
+        throw new Error(
+          `Tool ${name} is not available on MCP profile '${profile.name}'`,
+        );
+      }
+      const args = applyProfileDefaults(profile, rawArgs);
       switch (name) {
         case 'memory.search': {
           const query = String(args.query ?? '');

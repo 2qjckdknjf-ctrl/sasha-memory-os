@@ -16,6 +16,21 @@ export type JsonRpcRes = {
   error?: { code: number; message: string };
 };
 
+const SUPPORTED_PROTOCOL_VERSIONS = [
+  '2025-03-26',
+  '2024-11-05',
+] as const;
+
+function negotiateProtocolVersion(requested: unknown): string {
+  const value = String(requested ?? '').trim();
+  if (
+    (SUPPORTED_PROTOCOL_VERSIONS as readonly string[]).includes(value)
+  ) {
+    return value;
+  }
+  return '2024-11-05';
+}
+
 function ok(
   id: string | number | null | undefined,
   result: unknown,
@@ -44,13 +59,17 @@ export async function handleMcpJsonRpc(
   switch (method) {
     case 'initialize':
       return ok(msg.id, {
-        protocolVersion: '2024-11-05',
+        protocolVersion: negotiateProtocolVersion(
+          msg.params?.protocolVersion,
+        ),
         capabilities: { tools: {} },
         serverInfo: {
           name: 'memory-os-mcp-gateway',
           version: '0.0.0',
           backend: mcp.backend,
+          profile: mcp.profile,
         },
+        instructions: mcp.instructions,
       });
     case 'notifications/initialized':
     case 'initialized':
@@ -63,6 +82,7 @@ export async function handleMcpJsonRpc(
           name: t.name,
           description: t.description,
           inputSchema: t.inputSchema,
+          annotations: t.annotations,
         })),
       });
     case 'tools/call': {

@@ -25,11 +25,32 @@ ChatGPT uses Memory OS as external long-term memory: search/context read; captur
 | Owner | `33333333-3333-4333-8333-333333333301` | Full owner ops |
 | Cursor | `33333333-3333-4333-8333-333333333303` | Project read + handoff |
 
+## Mode A readiness (in-repo)
+
+| Item | Status |
+|---|---|
+| Streamable HTTP `POST /mcp` (JSON-RPC) | Ready on API + standalone `:8790` |
+| `GET /mcp` long-lived SSE | Not offered (405) — JSON responses are valid Streamable HTTP |
+| Bearer / `x-memory-os-api-secret` | Required outside `local`/`test` |
+| Pilot tool allowlist | `MEMORY_OS_MCP_PROFILE=chatgpt` |
+| Defaults for actor/workspace/project | Filled when omitted on chatgpt profile |
+| `readOnlyHint` annotations + `instructions` | On `initialize` / `tools/list` |
+| Smoke loop | `scripts/smoke-mcp-chatgpt.sh` |
+
+### ChatGPT Developer mode registration
+
+1. Host API (or `mcp-gateway start:http`) on a public **HTTPS** URL — ChatGPT does not use local stdio.  
+2. Set `MEMORY_OS_MCP_PROFILE=chatgpt` and `MEMORY_OS_API_SECRET` on the host.  
+3. In ChatGPT: enable **Developer mode** → create app → MCP URL `{API}/mcp` → auth **Bearer token** = API secret.  
+4. Confirm discovered tools are only the pilot set (no oauth/outbox/consolidation).  
+5. Smoke: `MEMORY_OS_API_BASE_URL=https://… MEMORY_OS_API_SECRET=… ./scripts/smoke-mcp-chatgpt.sh`  
+6. In chat: search with `pack_context` → `memory.store_decision` → Web timeline shows candidate.
+
 ## Integration steps (when ChatGPT workspace ready)
 
 1. Confirm workspace supports custom MCP (read+write or read-only).  
-2. Expose MCP over a reachable host (stdio bridge / remote MCP URL — product-dependent).  
-3. Register tools below (ChatGPT pilot set first; owner-only later).  
+2. Expose MCP over a reachable HTTPS host (Fly deferred; any public API URL works).  
+3. Register with `MEMORY_OS_MCP_PROFILE=chatgpt`.  
 4. Bind ChatGPT actor → subject via seed/`auth.bind` if using Supabase Auth later.  
 5. Verify: golden-style query + store decision + Web timeline shows candidate.
 
@@ -39,7 +60,7 @@ ChatGPT uses Memory OS as external long-term memory: search/context read; captur
 `memory.search`, `memory.get`, `context.project`, `capture.text`, `memory.store_decision`, `handoff.create`, `memory.set_status`
 
 **Owner ops (do not expose to ChatGPT by default):**  
-`oauth.*`, `outbox.*`, `jobs.dead_letter_stale`, `consolidation.run`, `memory.embed*`, `connections.*`
+`oauth.*`, `outbox.*`, `jobs.dead_letter_stale`, `consolidation.run`, `memory.embed*`, `connections.*`, `extraction.*`
 
 ## Cursor / Claude stdio (mode C) — ready now
 
@@ -57,15 +78,20 @@ See [MCP_CURSOR.md](../engineering/MCP_CURSOR.md). Demo subject for ChatGPT acto
 }
 ```
 
-## HTTP MCP (mode A host path) — ready on API / standalone
+## HTTP MCP (mode A host path)
 
 ```bash
+# Profile for ChatGPT pilot surface
+export MEMORY_OS_MCP_PROFILE=chatgpt
+
 # With API
 curl -sS http://localhost:8787/mcp \
   -H 'content-type: application/json' \
-  -d '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}'
-# Hosted (after Fly or any public API URL): POST {MEMORY_OS_API_BASE_URL}/mcp
-# Bearer required outside local/test
+  -H 'accept: application/json, text/event-stream' \
+  -d '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-03-26"}}'
+
+# Smoke
+./scripts/smoke-mcp-chatgpt.sh
 ```
 
 Standalone: `pnpm --filter @memory-os/mcp-gateway start:http` → `POST http://127.0.0.1:8790/mcp`.

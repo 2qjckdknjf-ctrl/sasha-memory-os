@@ -210,7 +210,11 @@ export function createApp(options?: {
 }) {
   const store = options?.store ?? createSeededStore();
   const gateway = options?.gateway ?? null;
-  const mcp = createMcpHandlers({ store, gateway });
+  const mcp = createMcpHandlers({
+    store,
+    gateway,
+    profile: process.env.MEMORY_OS_MCP_PROFILE,
+  });
   const app = new Hono<{ Variables: ApiVariables }>();
 
   app.use(
@@ -311,19 +315,28 @@ export function createApp(options?: {
       connectorPullMode:
         (process.env.MEMORY_OS_CONNECTOR_PULL_MODE ?? 'auto').trim() || 'auto',
       mcp: '/mcp',
+      mcpProfile: mcp.profile,
       requestId: c.get('requestId'),
     }),
   );
 
-  // Remote MCP JSON-RPC (ChatGPT mode A when host reachable). Auth outside local/test.
+  // Remote MCP Streamable HTTP (ChatGPT mode A when host reachable).
+  // Auth outside local/test. POST returns application/json JSON-RPC responses.
   app.use('/mcp', requireHttpApiSecret);
   app.get('/mcp/health', (c) =>
     c.json({
       ok: true,
       service: 'memory-os-mcp',
       backend: mcp.backend,
+      profile: mcp.profile,
+      transport: 'streamable-http',
     }),
   );
+  // Stateless JSON-only: no long-lived GET SSE stream on /mcp.
+  app.get('/mcp', (c) => {
+    c.header('Allow', 'POST');
+    return c.json({ error: 'method_not_allowed', allow: ['POST'] }, 405);
+  });
   app.post('/mcp', async (c) => {
     let msg: JsonRpcReq;
     try {

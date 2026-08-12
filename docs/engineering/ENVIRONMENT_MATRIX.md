@@ -9,6 +9,14 @@ Related: [ADR-005](../adr/ADR-005-secrets-and-environments.md), baseline §24.4.
 | **staging** | Production-like RLS, indexes, queues, OAuth test apps | Dedicated Memory OS **staging** project | Staging OAuth + synthetic pilot data; no uncontrolled prod copies | CI on release candidate / manual promote |
 | **production** | Private beta / GA | Dedicated Memory OS **prod** project | Real owner data under privacy policy | Explicit promote after release gates |
 
+## Notable runtime flags
+
+| Variable | Notes |
+|---|---|
+| `MEMORY_OS_MCP_PROFILE` | `full` (default) or `chatgpt` — ChatGPT pilot tool allowlist + default subject/workspace/project |
+| `MEMORY_OS_CHATGPT_SUBJECT_ID` | Override ChatGPT demo subject for MCP defaults |
+| `MEMORY_OS_DEFAULT_WORKSPACE_ID` / `MEMORY_OS_DEFAULT_PROJECT_ID` | MCP default IDs when tool args omit them |
+
 ## Rules
 
 1. Memory OS projects are **never** shared with AISTROYKA, HiAir, or other product production databases.
