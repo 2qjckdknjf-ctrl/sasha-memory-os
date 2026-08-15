@@ -11,9 +11,17 @@ M6 supports two capability modes:
 
 ## Current state — 2026-08-15
 
-**Backend/hosting gate: PASS. ChatGPT product-side registration/acceptance: PENDING.**
+**Backend/hosting gate: PASS. ChatGPT product-side acceptance: MODE A PASS.**
 
-The durable M6 endpoint is implemented as the Supabase Edge Function `memory-mcp` in the dedicated `sasha-memory-os` project (`vpxblcxsvlylqyldiuwr`). The Edge adapter exposes Streamable HTTP MCP over public HTTPS, reports the Supabase backend, enforces the restricted `chatgpt` profile, and validates the supplied Memory OS API secret through the existing database API-secret boundary.
+Final ChatGPT development registration:
+
+- Name: `Sasha Memory OS`
+- App ID: `asdk_app_6a8075f4f4088191bf10606929d0ab79`
+- Version ID: `asdk_app_v_6a8075f4f418819180efe5d34f39464a`
+- Authentication: Supabase OAuth 2.1 with dynamic client registration
+- Acceptance date: 2026-08-15
+
+The durable M6 endpoint is implemented as the Supabase Edge Function `memory-mcp` in the dedicated `sasha-memory-os` project (`vpxblcxsvlylqyldiuwr`). The Edge adapter exposes Streamable HTTP MCP over public HTTPS, reports the Supabase backend, enforces the restricted `chatgpt` profile, validates ChatGPT OAuth access tokens, and retains the existing API-secret boundary for legacy callers.
 
 Canonical public base (no secret):
 
@@ -53,12 +61,14 @@ Never commit real secret values.
 
 ## Authentication boundary
 
-The Supabase function is deployed with platform `verify_jwt=false` intentionally because ChatGPT uses the Memory OS MCP secret rather than a Supabase user JWT. This does **not** make the MCP write path anonymous:
+The Supabase function is deployed with platform `verify_jwt=false` intentionally because MCP discovery must remain public and the function implements the protected-resource/OAuth challenge itself. This does **not** make the MCP read/write path anonymous:
 
-1. the function requires `x-memory-os-api-secret` or Bearer authentication on `POST /mcp`;
-2. the supplied secret is validated through `api_rls_probe` / the existing API-secret database boundary;
-3. an invalid or absent secret is rejected;
-4. tool calls still execute through the existing ACL-aware Supabase RPC surface.
+1. `initialize`, `ping`, and `tools/list` expose metadata only and carry no private memory content;
+2. tool calls require a valid Supabase OAuth access token or the legacy Memory OS API secret;
+3. OAuth JWT issuer, expiry, client ID, audience, live user, and the private owner email allowlist are validated by the Edge Function;
+4. the legacy secret is validated through the existing database API-secret boundary;
+5. an invalid or absent credential is rejected with an MCP OAuth challenge;
+6. authenticated tool calls still execute through the existing ACL-aware Supabase RPC surface.
 
 The public health endpoint carries no memory content and no secret.
 
@@ -159,11 +169,12 @@ This sequence is now automated in CI and passed on run `31878741659`.
 
 ## ChatGPT registration and capability probe
 
-Create or update one development registration:
+The accepted development registration is:
 
 - Name: `Sasha Memory OS`
 - MCP URL: `https://vpxblcxsvlylqyldiuwr.supabase.co/functions/v1/memory-mcp/mcp`
-- Authentication: Memory OS API secret, configured only in ChatGPT's app authentication UI; never store the plaintext bearer secret in docs
+- Authentication: Supabase OAuth 2.1 / OIDC with PKCE and dynamic client registration
+- Consent UI: `https://2qjckdknjf-ctrl.github.io/sasha-memory-os/`
 
 Perform acceptance on ChatGPT web first because custom MCP/developer-mode feature availability can differ by account/workspace and client surface.
 
@@ -179,11 +190,52 @@ Then run this capability probe from a normal ChatGPT conversation:
 
 Do not weaken server-side ACL/auth just to make a plan-limited ChatGPT write action work.
 
+## ChatGPT acceptance evidence — 2026-08-15
+
+ChatGPT Scan Tools returned exactly these seven actions:
+
+1. `memory.search`
+2. `memory.get`
+3. `context.project`
+4. `capture.text`
+5. `memory.store_decision`
+6. `handoff.create`
+7. `memory.set_status`
+
+Normal-chat read acceptance:
+
+- Query: `Порядок начала Slice 01`
+- Memory ID: `66666666-6666-4666-8666-666666666601`
+- Status: `verified`
+- Confidence: `0.99`
+- Context: `Slice 01 начинается после Product Design Audit PR #215.`
+- Result: PASS
+
+Normal-chat write/read-after-write acceptance:
+
+- Tool: `memory.store_decision`
+- Idempotency key: `chatgpt-m6-20260815T144111943Z-3446dbf1`
+- Created Memory ID: `741dd042-6cb4-415a-b358-909127f2f65c`
+- Created status: `verified`
+- Read-after-write query: the exact idempotency key above
+- Search result Memory ID: `741dd042-6cb4-415a-b358-909127f2f65c`
+- Result: PASS; write and read-after-write IDs match
+
+Capability classification: **Mode A PASS**.
+
+Blockers found and resolved during acceptance:
+
+1. Supabase Edge Functions rewrote the HTML consent response to `text/plain`; the consent page was moved to GitHub Pages.
+2. Supabase rejected the consent-page origin until Auth `site_url` and `oauth_server_authorization_path` were aligned with the GitHub Pages URL.
+3. The first ChatGPT read reached `memory.search` but the RPC boundary returned `unauthorized api secret`; PostgREST now exposes the service role primarily in `request.jwt.claims`, so migration `20260815144500_service_role_claims_compat.sql` added current and legacy claim compatibility. The repeated read then passed.
+
+No other legacy Memory OS registration was removed during this acceptance run.
+
 ## Duplicate registration cleanup
 
 Do not remove old registrations until the final `Sasha Memory OS` registration passes the applicable capability mode.
 
-After acceptance:
+After acceptance, perform duplicate cleanup only as a separate deliberate action:
 
 - Keep: `Sasha Memory OS`
 - Remove: `Sasha Memory OS Pilot`
@@ -206,13 +258,13 @@ Record the final registration identity/technical ID if the ChatGPT UI exposes on
 - [x] CI exact ChatGPT seven-tool allowlist passes.
 - [x] Backend MCP smoke passes against the live Supabase connection.
 - [x] Backend MCP write/get/read-after-write passes against live Supabase.
-- [ ] Final ChatGPT registration named `Sasha Memory OS` points at the canonical Edge MCP URL.
-- [ ] ChatGPT discovers exactly the expected restricted tool surface.
-- [ ] Normal-chat read test passes.
-- [ ] Capability is recorded as either **Mode A PASS** or **Mode B ACCEPTED**.
-- [ ] For Mode A: actual ChatGPT write + read-after-write passes.
-- [ ] For Mode B: normal-chat read passes and the accepted Web/HTTP write fallback is retained/verified.
+- [x] Final ChatGPT registration named `Sasha Memory OS` points at the canonical Edge MCP URL.
+- [x] ChatGPT discovers exactly the expected restricted tool surface.
+- [x] Normal-chat read test passes.
+- [x] Capability is recorded as **Mode A PASS**.
+- [x] Actual ChatGPT write + read-after-write passes.
+- [x] Mode B fallback is not required for this accepted ChatGPT connection.
 - [ ] Exactly one final `Sasha Memory OS` registration remains.
-- [ ] README / backlog are updated with acceptance date, capability mode, connection method, and evidence.
+- [x] README / backlog are updated with acceptance date, capability mode, connection method, and evidence.
 
-Do not mark M6 complete solely because the backend is green. The remaining gate is now specifically the ChatGPT product-side registration and normal-chat acceptance.
+ChatGPT product-side acceptance is complete. Duplicate-registration cleanup remains a separate destructive follow-up and was intentionally not performed during the acceptance run.

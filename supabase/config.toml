@@ -20,9 +20,8 @@ enabled = true
 port = 54323
 
 [auth]
-site_url = "https://vpxblcxsvlylqyldiuwr.supabase.co/functions/v1/memory-mcp"
+site_url = "https://2qjckdknjf-ctrl.github.io"
 additional_redirect_urls = [
-  "https://vpxblcxsvlylqyldiuwr.supabase.co/functions/v1/memory-mcp/oauth/consent",
   "https://2qjckdknjf-ctrl.github.io/sasha-memory-os/**",
 ]
 
@@ -41,7 +40,7 @@ verify_enabled = true
 
 [auth.oauth_server]
 enabled = true
-authorization_url_path = "/oauth/consent"
+authorization_url_path = "/sasha-memory-os/"
 allow_dynamic_registration = true
 
 # ChatGPT authenticates through Supabase OAuth 2.1. Legacy Memory OS API-secret
