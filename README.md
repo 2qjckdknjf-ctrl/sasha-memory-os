@@ -26,7 +26,7 @@
 - Connector-sync / consolidation CLI ticks; optional `MEMORY_OS_WORKER_INTERVAL_MS` loop
 - Golden retrieval harness: 200 hybrid ACL cases
 - Web timeline / review / OAuth / consolidation controls: `apps/web`
-- **M6 ChatGPT Mode A PASS (2026-08-15):** final `Sasha Memory OS` custom MCP app connected through Supabase OAuth 2.1; exact seven-tool scan, normal-chat read, `memory.store_decision`, and read-after-write all passed. Legacy registration cleanup remains a separate follow-up.
+- **M6 ChatGPT Mode A PASS (2026-08-15):** final `Sasha Memory OS` custom MCP app connected through Supabase OAuth 2.1; exact seven-tool scan, normal-chat read, `memory.store_decision`, and read-after-write all passed. The stale `Sasha Mamory OS` registration was removed; exactly one personal Sasha registration remains.
 
 ## Репозиторий
 
@@ -105,4 +105,4 @@ Outside `local`/`test`, owner ops require `x-memory-os-api-secret` (or `MEMORY_O
 12. ~~M6 backend/hosting~~ — durable Supabase Edge MCP + authenticated live Supabase search/write/get/read-after-write PASS (2026-08-15)
 13. ~~Apply remote `search_rrf_temporal`~~ — applied 2026-08-12
 14. ~~Web search pack-context UX~~ — agent citation block in control center
-15. ~~M6 ChatGPT app acceptance~~ — `Sasha Memory OS`, Supabase OAuth 2.1, exact seven-tool discovery, normal-chat read, write, and read-after-write: **Mode A PASS** (2026-08-15). Follow-up: inventory/clean legacy registrations deliberately, then merge PR #2.
+15. ~~M6 ChatGPT app acceptance and duplicate cleanup~~ — `Sasha Memory OS`, Supabase OAuth 2.1, exact seven-tool discovery, normal-chat read, write, and read-after-write: **Mode A PASS** (2026-08-15). Stale registration removed; merge PR #2.

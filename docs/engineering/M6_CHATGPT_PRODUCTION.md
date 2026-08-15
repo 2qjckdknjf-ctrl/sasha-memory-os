@@ -229,17 +229,17 @@ Blockers found and resolved during acceptance:
 2. Supabase rejected the consent-page origin until Auth `site_url` and `oauth_server_authorization_path` were aligned with the GitHub Pages URL.
 3. The first ChatGPT read reached `memory.search` but the RPC boundary returned `unauthorized api secret`; PostgREST now exposes the service role primarily in `request.jwt.claims`, so migration `20260815144500_service_role_claims_compat.sql` added current and legacy claim compatibility. The repeated read then passed.
 
-No other legacy Memory OS registration was removed during this acceptance run.
+The acceptance run did not remove legacy registrations before the final app passed. The follow-up inventory then found one stale personal registration, `Sasha Mamory OS` (`asdk_app_6a7cae046c74819194fc59b8f18467b6`), still pointing at the expired `trycloudflare.com` endpoint. It was removed after Mode A acceptance, and a repeated `Sasha` catalog search returned exactly one personal registration: the connected final `Sasha Memory OS` app.
 
 ## Duplicate registration cleanup
 
 Do not remove old registrations until the final `Sasha Memory OS` registration passes the applicable capability mode.
 
-After acceptance, perform duplicate cleanup only as a separate deliberate action:
+Cleanup result on 2026-08-15:
 
 - Keep: `Sasha Memory OS`
-- Remove: `Sasha Memory OS Pilot`
-- Remove: `Sasha MOS 27772`
+- Removed: `Sasha Mamory OS` (`asdk_app_6a7cae046c74819194fc59b8f18467b6`)
+- Final catalog inventory: exactly one personal Sasha registration
 
 Record the final registration identity/technical ID if the ChatGPT UI exposes one. Never invent it in repository files.
 
@@ -264,7 +264,7 @@ Record the final registration identity/technical ID if the ChatGPT UI exposes on
 - [x] Capability is recorded as **Mode A PASS**.
 - [x] Actual ChatGPT write + read-after-write passes.
 - [x] Mode B fallback is not required for this accepted ChatGPT connection.
-- [ ] Exactly one final `Sasha Memory OS` registration remains.
+- [x] Exactly one final `Sasha Memory OS` registration remains.
 - [x] README / backlog are updated with acceptance date, capability mode, connection method, and evidence.
 
-ChatGPT product-side acceptance is complete. Duplicate-registration cleanup remains a separate destructive follow-up and was intentionally not performed during the acceptance run.
+ChatGPT product-side acceptance and duplicate-registration cleanup are complete.
