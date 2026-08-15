@@ -90,7 +90,7 @@ If ChatGPT itself restricts write actions, the server may still advertise the ap
 
 ## Repository-side evidence — 2026-08-15
 
-GitHub Actions run `31878741659` passed the repository and live M6 gate:
+GitHub Actions run `31890725293` passed the repository and live M6 gate:
 
 - typecheck — PASS
 - full test suite + golden retrieval/security tests — PASS
@@ -104,7 +104,7 @@ GitHub Actions run `31878741659` passed the repository and live M6 gate:
 
 ## Live Supabase Edge evidence — 2026-08-15
 
-CI run `31878741659` used the repository's existing protected `MEMORY_OS_SUPABASE_URL` and `MEMORY_OS_API_SECRET` secrets and executed the same smoke script against the deployed Edge Function.
+CI run `31890725293` used the repository's existing protected `MEMORY_OS_SUPABASE_URL` and `MEMORY_OS_API_SECRET` secrets and executed the same smoke script against the deployed Edge Function.
 
 Observed evidence:
 
@@ -165,7 +165,7 @@ Expected sequence:
 7. `memory.get` returns the written decision.
 8. A search for the unique write marker returns the new decision.
 
-This sequence is now automated in CI and passed on run `31878741659`.
+This sequence is now automated in CI and passed on run `31890725293`.
 
 ## ChatGPT registration and capability probe
 
