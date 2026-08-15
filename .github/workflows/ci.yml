@@ -71,58 +71,56 @@ jobs:
           MEMORY_OS_API_SECRET: ci-m6-test-secret
         run: ./scripts/smoke-mcp-chatgpt.sh
 
-      - name: Discover existing live M6 route
+      - name: Live Supabase Edge M6 smoke
+        env:
+          LIVE_SECRET: ${{ secrets.MEMORY_OS_API_SECRET }}
+          LIVE_SUPABASE_URL: ${{ secrets.MEMORY_OS_SUPABASE_URL }}
+        run: |
+          if [[ -z "$LIVE_SUPABASE_URL" || -z "$LIVE_SECRET" ]]; then
+            echo "m6_edge_smoke=skipped_missing_repo_secrets"
+            exit 0
+          fi
+
+          base="${LIVE_SUPABASE_URL%/}/functions/v1/memory-mcp"
+          echo "m6_edge_endpoint_configured=true"
+
+          unauth=$(curl -sS --connect-timeout 5 --max-time 20 \
+            -o /tmp/m6-edge-unauth.json -w '%{http_code}' \
+            -H 'content-type: application/json' \
+            -H 'accept: application/json, text/event-stream' \
+            --data-binary '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-03-26"}}' \
+            "$base/mcp" || true)
+          echo "m6_edge_unauth_http=$unauth"
+          test "$unauth" = "401"
+
+          MEMORY_OS_API_BASE_URL="$base" \
+          MEMORY_OS_API_SECRET="$LIVE_SECRET" \
+          ./scripts/smoke-mcp-chatgpt.sh
+
+          echo "m6_edge_smoke=pass"
+
+      - name: Discover legacy live M6 route
         continue-on-error: true
         env:
           LIVE_API: ${{ secrets.MEMORY_OS_API_BASE_URL }}
           LIVE_SECRET: ${{ secrets.MEMORY_OS_API_SECRET }}
-          LIVE_SUPABASE_URL: ${{ secrets.MEMORY_OS_SUPABASE_URL }}
-          LIVE_SUPABASE_SERVICE_ROLE: ${{ secrets.MEMORY_OS_SUPABASE_SERVICE_ROLE_KEY }}
-          FLY_TOKEN: ${{ secrets.FLY_API_TOKEN }}
         run: |
           set +e
           bool() { if [[ -n "$1" ]]; then printf 'true'; else printf 'false'; fi; }
-          echo "m6_live_api_configured=$(bool "$LIVE_API")"
-          echo "m6_live_api_secret_configured=$(bool "$LIVE_SECRET")"
-          echo "m6_supabase_url_secret_configured=$(bool "$LIVE_SUPABASE_URL")"
-          echo "m6_supabase_service_role_configured=$(bool "$LIVE_SUPABASE_SERVICE_ROLE")"
-          echo "m6_fly_token_configured=$(bool "$FLY_TOKEN")"
-
+          echo "m6_legacy_api_configured=$(bool "$LIVE_API")"
           if [[ -z "$LIVE_API" ]]; then
-            echo "m6_live_probe=skipped_no_api_base"
+            echo "m6_legacy_probe=skipped_no_api_base"
             exit 0
           fi
-
           header=()
           if [[ -n "$LIVE_SECRET" ]]; then
             header=(-H "x-memory-os-api-secret: $LIVE_SECRET")
           fi
           base="${LIVE_API%/}"
           code=$(curl -sS --connect-timeout 5 --max-time 15 \
-            -o /tmp/m6-live-health.json -w '%{http_code}' \
+            -o /tmp/m6-legacy-health.json -w '%{http_code}' \
             "${header[@]}" "$base/mcp/health" || true)
-          echo "m6_live_mcp_health_http=$code"
-
-          if [[ "$code" != "200" ]]; then
-            echo "m6_live_mcp_route=not_ready"
-            exit 0
-          fi
-
-          node - <<'NODE'
-          const fs = require('fs');
-          try {
-            const h = JSON.parse(fs.readFileSync('/tmp/m6-live-health.json', 'utf8'));
-            console.log(`m6_live_service=${h.service ?? 'unknown'}`);
-            console.log(`m6_live_backend=${h.backend ?? 'unknown'}`);
-            console.log(`m6_live_profile=${h.profile ?? 'unknown'}`);
-            console.log(`m6_live_transport=${h.transport ?? 'unknown'}`);
-            const ready = h.ok === true && h.service === 'memory-os-mcp' && h.backend === 'supabase' && h.profile === 'chatgpt';
-            console.log(`m6_live_readiness=${ready ? 'candidate_ready' : 'wrong_runtime'}`);
-          } catch (err) {
-            console.log('m6_live_readiness=invalid_health_payload');
-            process.exitCode = 0;
-          }
-          NODE
+          echo "m6_legacy_mcp_health_http=$code"
 
       - name: Container logs
         if: always()
