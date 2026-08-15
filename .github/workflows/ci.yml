@@ -54,10 +54,13 @@ jobs:
           docker logs memory-os-m6
           exit 1
 
-      - name: Verify MCP rejects unauthenticated requests
+      - name: Verify MCP POST rejects unauthenticated requests
         run: |
           code=$(curl -sS -o /tmp/memory-os-mcp-unauth.json -w '%{http_code}' \
-            http://127.0.0.1:8787/mcp/health || true)
+            -H 'content-type: application/json' \
+            -H 'accept: application/json, text/event-stream' \
+            --data-binary '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-03-26"}}' \
+            http://127.0.0.1:8787/mcp || true)
           echo "status=$code"
           cat /tmp/memory-os-mcp-unauth.json || true
           test "$code" = "401"
