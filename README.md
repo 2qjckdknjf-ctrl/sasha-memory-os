@@ -105,4 +105,4 @@ Outside `local`/`test`, owner ops require `x-memory-os-api-secret` (or `MEMORY_O
 12. ~~M6 backend/hosting~~ — durable Supabase Edge MCP + authenticated live Supabase search/write/get/read-after-write PASS (2026-08-15)
 13. ~~Apply remote `search_rrf_temporal`~~ — applied 2026-08-12
 14. ~~Web search pack-context UX~~ — agent citation block in control center
-15. ~~M6 ChatGPT app acceptance and duplicate cleanup~~ — `Sasha Memory OS`, Supabase OAuth 2.1, exact seven-tool discovery, normal-chat read, write, and read-after-write: **Mode A PASS** (2026-08-15). Stale registration removed; merge PR #2.
+15. ~~M6 ChatGPT app acceptance and duplicate cleanup~~ — `Sasha Memory OS`, Supabase OAuth 2.1, exact seven-tool discovery, normal-chat read, write, and read-after-write: **Mode A PASS** (2026-08-15). Stale registration removed; PR #2 merged.

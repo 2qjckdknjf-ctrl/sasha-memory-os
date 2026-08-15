@@ -20,6 +20,7 @@ Final ChatGPT development registration:
 - Version ID: `asdk_app_v_6a8075f4f418819180efe5d34f39464a`
 - Authentication: Supabase OAuth 2.1 with dynamic client registration
 - Acceptance date: 2026-08-15
+- Closeout PR: [#2](https://github.com/2qjckdknjf-ctrl/sasha-memory-os/pull/2), merged as `8cbe8502e27b31a685b8c5b384b55bbd913de709`
 
 The durable M6 endpoint is implemented as the Supabase Edge Function `memory-mcp` in the dedicated `sasha-memory-os` project (`vpxblcxsvlylqyldiuwr`). The Edge adapter exposes Streamable HTTP MCP over public HTTPS, reports the Supabase backend, enforces the restricted `chatgpt` profile, validates ChatGPT OAuth access tokens, and retains the existing API-secret boundary for legacy callers.
 
