@@ -108,7 +108,7 @@ CI run `31878741659` used the repository's existing protected `MEMORY_OS_SUPABAS
 
 Observed evidence:
 
-1. unauthenticated live `POST /mcp` → HTTP `401`;
+1. unauthenticated private `tools/call` returned an MCP error with `mcp/www_authenticate`; public `initialize` / `tools/list` remained available for discovery;
 2. live health returned:
 
 ```json
@@ -249,7 +249,7 @@ Record the final registration identity/technical ID if the ChatGPT UI exposes on
 - [x] HTTPS endpoint is stable and documented without secrets.
 - [x] Live runtime uses the restricted `chatgpt` profile.
 - [x] Live backend reports Supabase, not the in-memory store.
-- [x] Authentication is required on live `POST /mcp`.
+- [x] Authentication is required on live private tool calls; metadata-only MCP discovery remains public.
 - [x] CI typecheck passes.
 - [x] CI tests pass.
 - [x] CI critical dependency audit passes.

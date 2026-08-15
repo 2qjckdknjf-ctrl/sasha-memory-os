@@ -88,10 +88,14 @@ jobs:
             -o /tmp/m6-edge-unauth.json -w '%{http_code}' \
             -H 'content-type: application/json' \
             -H 'accept: application/json, text/event-stream' \
-            --data-binary '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-03-26"}}' \
+            --data-binary '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"memory.search","arguments":{"query":"authorization probe"}}}' \
             "$base/mcp" || true)
           echo "m6_edge_unauth_http=$unauth"
-          test "$unauth" = "401"
+          test "$unauth" = "200"
+          jq -e '
+            .result.isError == true and
+            (.result._meta["mcp/www_authenticate"] | length > 0)
+          ' /tmp/m6-edge-unauth.json >/dev/null
 
           MEMORY_OS_API_BASE_URL="$base" \
           MEMORY_OS_API_SECRET="$LIVE_SECRET" \
