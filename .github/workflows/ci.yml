@@ -31,3 +31,105 @@ jobs:
 
       - name: Dependency audit (critical)
         run: pnpm audit --audit-level=critical
+
+      - name: Build hosted API image
+        run: docker build -f apps/api/Dockerfile -t memory-os-api:ci .
+
+      - name: Start production-like ChatGPT MCP container
+        run: |
+          docker run -d --name memory-os-m6 \
+            -e MEMORY_OS_ENV=staging \
+            -e MEMORY_OS_MCP_PROFILE=chatgpt \
+            -e MEMORY_OS_REQUIRE_API_AUTH=1 \
+            -e MEMORY_OS_API_SECRET=ci-m6-test-secret \
+            -p 8787:8787 \
+            memory-os-api:ci
+          for i in $(seq 1 30); do
+            if curl -fsS http://127.0.0.1:8787/health >/tmp/memory-os-health.json; then
+              cat /tmp/memory-os-health.json
+              exit 0
+            fi
+            sleep 1
+          done
+          docker logs memory-os-m6
+          exit 1
+
+      - name: Verify MCP POST rejects unauthenticated requests
+        run: |
+          code=$(curl -sS -o /tmp/memory-os-mcp-unauth.json -w '%{http_code}' \
+            -H 'content-type: application/json' \
+            -H 'accept: application/json, text/event-stream' \
+            --data-binary '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-03-26"}}' \
+            http://127.0.0.1:8787/mcp || true)
+          echo "status=$code"
+          cat /tmp/memory-os-mcp-unauth.json || true
+          test "$code" = "401"
+
+      - name: Smoke ChatGPT MCP runtime
+        env:
+          MEMORY_OS_API_BASE_URL: http://127.0.0.1:8787
+          MEMORY_OS_API_SECRET: ci-m6-test-secret
+        run: ./scripts/smoke-mcp-chatgpt.sh
+
+      - name: Live Supabase Edge M6 smoke
+        env:
+          LIVE_SECRET: ${{ secrets.MEMORY_OS_API_SECRET }}
+          LIVE_SUPABASE_URL: ${{ secrets.MEMORY_OS_SUPABASE_URL }}
+        run: |
+          if [[ -z "$LIVE_SUPABASE_URL" || -z "$LIVE_SECRET" ]]; then
+            echo "m6_edge_smoke=skipped_missing_repo_secrets"
+            exit 0
+          fi
+
+          base="${LIVE_SUPABASE_URL%/}/functions/v1/memory-mcp"
+          echo "m6_edge_endpoint_configured=true"
+
+          unauth=$(curl -sS --connect-timeout 5 --max-time 20 \
+            -o /tmp/m6-edge-unauth.json -w '%{http_code}' \
+            -H 'content-type: application/json' \
+            -H 'accept: application/json, text/event-stream' \
+            --data-binary '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"memory.search","arguments":{"query":"authorization probe"}}}' \
+            "$base/mcp" || true)
+          echo "m6_edge_unauth_http=$unauth"
+          test "$unauth" = "200"
+          jq -e '
+            .result.isError == true and
+            (.result._meta["mcp/www_authenticate"] | length > 0)
+          ' /tmp/m6-edge-unauth.json >/dev/null
+
+          MEMORY_OS_API_BASE_URL="$base" \
+          MEMORY_OS_API_SECRET="$LIVE_SECRET" \
+          ./scripts/smoke-mcp-chatgpt.sh
+
+          echo "m6_edge_smoke=pass"
+
+      - name: Discover legacy live M6 route
+        continue-on-error: true
+        env:
+          LIVE_API: ${{ secrets.MEMORY_OS_API_BASE_URL }}
+          LIVE_SECRET: ${{ secrets.MEMORY_OS_API_SECRET }}
+        run: |
+          set +e
+          bool() { if [[ -n "$1" ]]; then printf 'true'; else printf 'false'; fi; }
+          echo "m6_legacy_api_configured=$(bool "$LIVE_API")"
+          if [[ -z "$LIVE_API" ]]; then
+            echo "m6_legacy_probe=skipped_no_api_base"
+            exit 0
+          fi
+          header=()
+          if [[ -n "$LIVE_SECRET" ]]; then
+            header=(-H "x-memory-os-api-secret: $LIVE_SECRET")
+          fi
+          base="${LIVE_API%/}"
+          code=$(curl -sS --connect-timeout 5 --max-time 15 \
+            -o /tmp/m6-legacy-health.json -w '%{http_code}' \
+            "${header[@]}" "$base/mcp/health" || true)
+          echo "m6_legacy_mcp_health_http=$code"
+
+      - name: Container logs
+        if: always()
+        run: docker logs memory-os-m6 || true
+
+      - name: Stop ChatGPT-profile API container
+        if: always()
+        run: docker rm -f memory-os-m6 || true

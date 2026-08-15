@@ -12,6 +12,7 @@
 - [Secrets policy](docs/engineering/SECRETS_POLICY.md)
 - [RLS matrix](docs/engineering/RLS_MATRIX.md)
 - [Demo slice](docs/engineering/DEMO_SLICE.md)
+- [M6 ChatGPT production closeout](docs/engineering/M6_CHATGPT_PRODUCTION.md)
 
 ## Статус
 
@@ -25,6 +26,7 @@
 - Connector-sync / consolidation CLI ticks; optional `MEMORY_OS_WORKER_INTERVAL_MS` loop
 - Golden retrieval harness: 200 hybrid ACL cases
 - Web timeline / review / OAuth / consolidation controls: `apps/web`
+- **M6 ChatGPT Mode A PASS (2026-08-15):** final `Sasha Memory OS` custom MCP app connected through Supabase OAuth 2.1; exact seven-tool scan, normal-chat read, `memory.store_decision`, and read-after-write all passed. The stale `Sasha Mamory OS` registration was removed; exactly one personal Sasha registration remains.
 
 ## Репозиторий
 
@@ -82,6 +84,8 @@ npx pnpm@9.15.9 --filter @memory-os/mcp-gateway start:http   # :8790/mcp
 # or POST http://localhost:8787/mcp on the API
 ```
 
+Durable ChatGPT MCP transport is deployed as Supabase Edge Function `memory-mcp`; see [M6_CHATGPT_PRODUCTION.md](docs/engineering/M6_CHATGPT_PRODUCTION.md). Never commit the MCP/API secret.
+
 OAuth redirect lands on Web `/oauth/callback` → API `/v1/oauth/callback`.  
 Outside `local`/`test`, owner ops require `x-memory-os-api-secret` (or `MEMORY_OS_REQUIRE_API_AUTH=1`).
 
@@ -98,7 +102,7 @@ Outside `local`/`test`, owner ops require `x-memory-os-api-secret` (or `MEMORY_O
 9. Fly full HTTP API — **deferred** (scaffold kept)
 10. ~~M4 review UX~~ — selective extract apply, bulk review, MCP `extraction.run`
 11. ~~M5 retrieval polish~~ — RRF hybrid, authority, context packer, temporal search (alpha)
-12. M6 ChatGPT remote A — `MEMORY_OS_MCP_PROFILE=chatgpt` + `scripts/smoke-mcp-chatgpt.sh` + `scripts/tunnel-api.sh`
+12. ~~M6 backend/hosting~~ — durable Supabase Edge MCP + authenticated live Supabase search/write/get/read-after-write PASS (2026-08-15)
 13. ~~Apply remote `search_rrf_temporal`~~ — applied 2026-08-12
 14. ~~Web search pack-context UX~~ — agent citation block in control center
-15. M6 ChatGPT: tunnel/HTTPS + Developer mode registration when ready
+15. ~~M6 ChatGPT app acceptance and duplicate cleanup~~ — `Sasha Memory OS`, Supabase OAuth 2.1, exact seven-tool discovery, normal-chat read, write, and read-after-write: **Mode A PASS** (2026-08-15). Stale registration removed; merge PR #2.

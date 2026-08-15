@@ -10,6 +10,8 @@ primary_region = "fra"
 [env]
   PORT = "8787"
   MEMORY_OS_ENV = "staging"
+  MEMORY_OS_MCP_PROFILE = "chatgpt"
+  MEMORY_OS_REQUIRE_API_AUTH = "1"
 
 [http_service]
   internal_port = 8787
