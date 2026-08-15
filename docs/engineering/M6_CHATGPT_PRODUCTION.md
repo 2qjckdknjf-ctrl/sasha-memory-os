@@ -9,31 +9,41 @@ M6 supports two capability modes:
 - **Mode A — MCP read + write** when the active ChatGPT account/workspace permits custom MCP write actions.
 - **Mode B — MCP read + Web/HTTP write fallback** when ChatGPT exposes only read/fetch actions. Mode B is an accepted M6 fallback; do not misclassify a ChatGPT product-plan restriction as a Memory OS backend failure.
 
-For private development/testing, ChatGPT may connect to either a reachable remote MCP endpoint or an OpenAI Secure MCP Tunnel when that feature is available to the account/workspace. A stable public HTTPS endpoint remains the preferred durable deployment and is required before treating the service as independently reachable without a tunnel.
+## Current state — 2026-08-15
+
+**Backend/hosting gate: PASS. ChatGPT product-side registration/acceptance: PENDING.**
+
+The durable M6 endpoint is implemented as the Supabase Edge Function `memory-mcp` in the dedicated `sasha-memory-os` project (`vpxblcxsvlylqyldiuwr`). The Edge adapter exposes Streamable HTTP MCP over public HTTPS, reports the Supabase backend, enforces the restricted `chatgpt` profile, and validates the supplied Memory OS API secret through the existing database API-secret boundary.
+
+Canonical public base (no secret):
+
+```text
+https://vpxblcxsvlylqyldiuwr.supabase.co/functions/v1/memory-mcp
+```
+
+Canonical MCP URL:
+
+```text
+https://vpxblcxsvlylqyldiuwr.supabase.co/functions/v1/memory-mcp/mcp
+```
+
+The previous/legacy `MEMORY_OS_API_BASE_URL` route is **not** the canonical M6 endpoint; its `/mcp/health` still returns 405 and must not be used for final ChatGPT registration.
 
 ## Runtime contract
 
-The API process serves both the HTTP API and Streamable HTTP MCP endpoint:
+The durable Edge adapter serves:
 
-- `GET /health`
-- `GET /mcp/health`
-- `GET /mcp` → `405` with `Allow: POST`
-- `POST /mcp` → JSON-RPC MCP
+- `GET .../memory-mcp/health` or `GET .../memory-mcp/mcp/health`
+- `GET .../memory-mcp/mcp` → `405`
+- `POST .../memory-mcp/mcp` → JSON-RPC MCP
 
-Required hosted configuration:
+The repository API container still supports the same `/mcp` contract for local/staging validation.
+
+Required logical configuration:
 
 ```text
-MEMORY_OS_ENV=staging            # switch to production after acceptance
 MEMORY_OS_MCP_PROFILE=chatgpt
-MEMORY_OS_REQUIRE_API_AUTH=1
-MEMORY_OS_SUPABASE_URL=...
-MEMORY_OS_SUPABASE_SERVICE_ROLE_KEY=...
 MEMORY_OS_API_SECRET=...
-```
-
-Optional explicit profile defaults:
-
-```text
 MEMORY_OS_CHATGPT_SUBJECT_ID=33333333-3333-4333-8333-333333333302
 MEMORY_OS_DEFAULT_WORKSPACE_ID=11111111-1111-4111-8111-111111111111
 MEMORY_OS_DEFAULT_PROJECT_ID=44444444-4444-4444-8444-444444444401
@@ -41,9 +51,20 @@ MEMORY_OS_DEFAULT_PROJECT_ID=44444444-4444-4444-8444-444444444401
 
 Never commit real secret values.
 
+## Authentication boundary
+
+The Supabase function is deployed with platform `verify_jwt=false` intentionally because ChatGPT uses the Memory OS MCP secret rather than a Supabase user JWT. This does **not** make the MCP write path anonymous:
+
+1. the function requires `x-memory-os-api-secret` or Bearer authentication on `POST /mcp`;
+2. the supplied secret is validated through `api_rls_probe` / the existing API-secret database boundary;
+3. an invalid or absent secret is rejected;
+4. tool calls still execute through the existing ACL-aware Supabase RPC surface.
+
+The public health endpoint carries no memory content and no secret.
+
 ## Allowed ChatGPT tools
 
-The `chatgpt` profile must expose exactly:
+The `chatgpt` profile exposes exactly:
 
 1. `memory.search`
 2. `memory.get`
@@ -53,70 +74,77 @@ The `chatgpt` profile must expose exactly:
 6. `handoff.create`
 7. `memory.set_status`
 
-Owner/ops tools such as OAuth, connector administration, embeddings, consolidation, outbox operations, and extraction must not be exposed by this profile.
+Owner/ops tools such as OAuth, connector administration, embeddings, consolidation, outbox operations, and extraction are not exposed by this profile.
 
 If ChatGPT itself restricts write actions, the server may still advertise the approved seven-tool profile; acceptance must record which actions the active ChatGPT account actually permits.
 
-## Pre-deploy validation
+## Repository-side evidence — 2026-08-15
 
-The image must build before any hosted rollout:
-
-```bash
-pnpm install --frozen-lockfile
-pnpm typecheck
-pnpm test
-pnpm audit --audit-level=critical
-docker build -f apps/api/Dockerfile -t memory-os-api:m6 .
-```
-
-CI must run the same build gate so workspace-packaging regressions are caught before deployment.
-
-### Repository-side evidence — 2026-08-15
-
-GitHub Actions CI run `31877937594` passed the complete repository-side M6 gate on the PR branch:
+GitHub Actions run `31878741659` passed the repository and live M6 gate:
 
 - typecheck — PASS
 - full test suite + golden retrieval/security tests — PASS
 - critical dependency audit — PASS (`No known vulnerabilities found`)
 - hosted API Docker image build — PASS
-- production-like container starts with `MEMORY_OS_ENV=staging`, `MEMORY_OS_MCP_PROFILE=chatgpt`, `MEMORY_OS_REQUIRE_API_AUTH=1` — PASS
-- unauthenticated `POST /mcp` is rejected with HTTP `401` — PASS
-- authenticated MCP health / initialize — PASS
-- exact seven-tool ChatGPT allowlist — PASS
-- `memory.search` — PASS
-- `memory.store_decision` — PASS
-- `memory.get` of the stored decision — PASS
-- unique-marker read-after-write search — PASS
+- production-like local container with `chatgpt` profile — PASS
+- unauthenticated local `POST /mcp` → 401 — PASS
+- local MCP initialize + exact seven-tool allowlist — PASS
+- local search/write/get/read-after-write — PASS
+- authenticated live Supabase Edge smoke — PASS
 
-This CI runtime deliberately uses the in-memory backend because repository CI has no production Supabase secrets. It proves packaging, profile isolation, auth enforcement, MCP protocol behavior, and the read/write loop, but it does **not** replace the required live Supabase/ChatGPT acceptance.
+## Live Supabase Edge evidence — 2026-08-15
 
-## Connection options
+CI run `31878741659` used the repository's existing protected `MEMORY_OS_SUPABASE_URL` and `MEMORY_OS_API_SECRET` secrets and executed the same smoke script against the deployed Edge Function.
 
-### Option 1 — durable HTTPS host (preferred)
+Observed evidence:
 
-The repository keeps Fly.io scaffolding in `fly.toml`. The selected host must terminate HTTPS and run the API with the restricted ChatGPT profile.
+1. unauthenticated live `POST /mcp` → HTTP `401`;
+2. live health returned:
 
-Set runtime secrets only in the host secret store. Do not pass secret values into repository files, PR comments, logs, or documentation.
+```json
+{"ok":true,"service":"memory-os-mcp","backend":"supabase","profile":"chatgpt","transport":"streamable-http","adapter":"supabase-edge"}
+```
 
-The current Fly alpha configuration uses `min_machines_running=0`; this may introduce cold starts. Before calling the endpoint production-grade, either keep capacity warm or explicitly accept the latency tradeoff.
+3. `GET /mcp` → `405`;
+4. `initialize` negotiated protocol `2025-03-26`;
+5. `tools/list` returned exactly the seven approved ChatGPT tools;
+6. live `memory.search` returned real Supabase memories;
+7. live `memory.store_decision` created a real decision;
+8. live `memory.get` returned that decision with backend `supabase`;
+9. unique-marker read-after-write search found the new decision;
+10. smoke ended with `m6_edge_smoke=pass`.
 
-### Option 2 — Secure MCP Tunnel (private validation)
+This proves the Memory OS backend itself supports the complete M6 read/write loop over durable public HTTPS.
 
-When the ChatGPT workspace/account provides Secure MCP Tunnel, it can be used to validate a private/local MCP service without opening public ingress. Treat this as a development/private connectivity path, not as proof that an independently hosted public endpoint exists.
+## Deployment
 
-Whichever option is used, the acceptance evidence must identify the exact connection method and endpoint/tunnel identity without recording secrets.
+The canonical durable deployment is now Supabase Edge Function `memory-mcp`.
+
+Source:
+
+```text
+supabase/functions/memory-mcp/index.ts
+```
+
+Reproducible deployment helper:
+
+```bash
+./scripts/deploy-memory-mcp.sh
+```
+
+The repository keeps the older full API/Fly scaffolding for other workloads, but it is no longer required to prove the ChatGPT MCP transport itself.
 
 ## Remote/backend smoke
 
-For a directly reachable HTTPS host:
+For the durable Edge host:
 
 ```bash
-MEMORY_OS_API_BASE_URL=https://HOST \
+MEMORY_OS_API_BASE_URL=https://vpxblcxsvlylqyldiuwr.supabase.co/functions/v1/memory-mcp \
 MEMORY_OS_API_SECRET='***' \
 ./scripts/smoke-mcp-chatgpt.sh
 ```
 
-Expected backend sequence:
+Expected sequence:
 
 1. `/mcp/health` returns `ok: true`, `profile: chatgpt`, backend `supabase`.
 2. `GET /mcp` returns `405`.
@@ -125,19 +153,19 @@ Expected backend sequence:
 5. `memory.search` succeeds with profile defaults.
 6. Direct MCP `memory.store_decision` succeeds at the backend level.
 7. `memory.get` returns the written decision.
-8. A search for the unique write marker returns the new decision (read-after-write).
+8. A search for the unique write marker returns the new decision.
 
-The direct backend write test proves that Memory OS itself supports the write path even if the active ChatGPT plan later blocks invoking write actions from ChatGPT UI.
+This sequence is now automated in CI and passed on run `31878741659`.
 
 ## ChatGPT registration and capability probe
 
 Create or update one development registration:
 
 - Name: `Sasha Memory OS`
-- Connection: direct MCP URL ending in `/mcp`, or Secure MCP Tunnel when used for private validation
-- Authentication: configured outside the repository; never store the bearer secret in docs
+- MCP URL: `https://vpxblcxsvlylqyldiuwr.supabase.co/functions/v1/memory-mcp/mcp`
+- Authentication: Memory OS API secret, configured only in ChatGPT's app authentication UI; never store the plaintext bearer secret in docs
 
-Perform the first acceptance on **ChatGPT web**, because custom MCP/developer-mode feature availability is controlled by the ChatGPT account/workspace and can differ by surface.
+Perform acceptance on ChatGPT web first because custom MCP/developer-mode feature availability can differ by account/workspace and client surface.
 
 Then run this capability probe from a normal ChatGPT conversation:
 
@@ -145,9 +173,9 @@ Then run this capability probe from a normal ChatGPT conversation:
 2. `memory.get` for one returned memory.
 3. `context.project` for the pilot project.
 4. Attempt `memory.store_decision` with a unique idempotency key.
-5. If the ChatGPT UI permits the write, search for the unique decision and verify read-after-write (**Mode A PASS**).
-6. If the ChatGPT UI does not permit custom MCP write actions but the backend smoke write passed, record **Mode B ACCEPTED** and verify the corresponding write through the Web/HTTP fallback.
-7. Run `capture.text` only when the active ChatGPT capability permits write actions; otherwise validate capture through the accepted Web/HTTP path.
+5. If ChatGPT permits the write, search for the unique decision and verify read-after-write (**Mode A PASS**).
+6. If ChatGPT does not permit custom MCP write actions but backend smoke has passed, record **Mode B ACCEPTED** and retain Web/HTTP for writes.
+7. Validate `capture.text` through ChatGPT only when write actions are available; otherwise validate it through the accepted Web/HTTP path.
 
 Do not weaken server-side ACL/auth just to make a plan-limited ChatGPT write action work.
 
@@ -165,27 +193,26 @@ Record the final registration identity/technical ID if the ChatGPT UI exposes on
 
 ## M6 exit criteria
 
-M6 is complete only when all applicable items are true:
-
-- [ ] A private tunnel or durable HTTPS connection to the MCP service is working.
-- [ ] If durable hosting is selected, HTTPS endpoint is stable and documented without secrets.
-- [ ] Live runtime uses `MEMORY_OS_MCP_PROFILE=chatgpt`.
-- [ ] Live backend reports Supabase, not the in-memory store.
-- [ ] Authentication is required on live `POST /mcp` outside local/test.
+- [x] Durable public HTTPS connection to the MCP service is working.
+- [x] HTTPS endpoint is stable and documented without secrets.
+- [x] Live runtime uses the restricted `chatgpt` profile.
+- [x] Live backend reports Supabase, not the in-memory store.
+- [x] Authentication is required on live `POST /mcp`.
 - [x] CI typecheck passes.
 - [x] CI tests pass.
 - [x] CI critical dependency audit passes.
 - [x] CI hosted API Docker image build passes.
 - [x] CI production-like MCP auth gate passes.
 - [x] CI exact ChatGPT seven-tool allowlist passes.
-- [x] CI MCP write/get/read-after-write loop passes.
-- [ ] Backend MCP smoke passes against the chosen live connection and Supabase backend.
-- [ ] ChatGPT discovers the expected restricted tool surface.
+- [x] Backend MCP smoke passes against the live Supabase connection.
+- [x] Backend MCP write/get/read-after-write passes against live Supabase.
+- [ ] Final ChatGPT registration named `Sasha Memory OS` points at the canonical Edge MCP URL.
+- [ ] ChatGPT discovers exactly the expected restricted tool surface.
 - [ ] Normal-chat read test passes.
 - [ ] Capability is recorded as either **Mode A PASS** or **Mode B ACCEPTED**.
-- [ ] For Mode A: ChatGPT write + read-after-write passes.
-- [ ] For Mode B: live backend write passes and Web/HTTP write fallback is verified.
+- [ ] For Mode A: actual ChatGPT write + read-after-write passes.
+- [ ] For Mode B: normal-chat read passes and the accepted Web/HTTP write fallback is retained/verified.
 - [ ] Exactly one final `Sasha Memory OS` registration remains.
 - [ ] README / backlog are updated with acceptance date, capability mode, connection method, and evidence.
 
-Do not mark M6 complete solely because code, a tunnel, a hosted URL, or a ChatGPT registration exists. Live retrieval evidence is mandatory; write evidence must be collected at the Memory OS backend and through ChatGPT itself whenever the active ChatGPT capability allows it.
+Do not mark M6 complete solely because the backend is green. The remaining gate is now specifically the ChatGPT product-side registration and normal-chat acceptance.
