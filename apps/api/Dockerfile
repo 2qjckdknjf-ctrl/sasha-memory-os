@@ -6,12 +6,14 @@ RUN corepack enable && corepack prepare pnpm@9.15.9 --activate
 
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml tsconfig.base.json tsconfig.json ./
 COPY apps/api/package.json apps/api/tsconfig.json ./apps/api/
+COPY apps/mcp-gateway/package.json apps/mcp-gateway/tsconfig.json ./apps/mcp-gateway/
 COPY packages ./packages
 COPY connectors ./connectors
 
 RUN pnpm install --frozen-lockfile --filter @memory-os/api...
 
 COPY apps/api ./apps/api
+COPY apps/mcp-gateway ./apps/mcp-gateway
 
 ENV NODE_ENV=production
 ENV PORT=8787
