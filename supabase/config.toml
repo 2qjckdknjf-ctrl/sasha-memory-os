@@ -19,8 +19,33 @@ sql_paths = ["./seed.sql"]
 enabled = true
 port = 54323
 
-# ChatGPT sends the Memory OS API secret as Bearer/x-memory-os-api-secret.
-# Platform JWT verification is disabled because the function validates the
-# Memory OS secret against the existing SECURITY DEFINER RPC boundary.
+[auth]
+site_url = "https://vpxblcxsvlylqyldiuwr.supabase.co/functions/v1/memory-mcp"
+additional_redirect_urls = [
+  "https://vpxblcxsvlylqyldiuwr.supabase.co/functions/v1/memory-mcp/oauth/consent",
+  "https://2qjckdknjf-ctrl.github.io/sasha-memory-os/**",
+]
+
+[auth.email]
+enable_signup = true
+double_confirm_changes = true
+enable_confirmations = true
+secure_password_change = false
+max_frequency = "1m"
+otp_length = 8
+otp_expiry = 3600
+
+[auth.mfa.totp]
+enroll_enabled = true
+verify_enabled = true
+
+[auth.oauth_server]
+enabled = true
+authorization_url_path = "/oauth/consent"
+allow_dynamic_registration = true
+
+# ChatGPT authenticates through Supabase OAuth 2.1. Legacy Memory OS API-secret
+# clients remain supported. JWT verification stays disabled here because the
+# function implements MCP resource discovery and validates OAuth/API credentials.
 [functions.memory-mcp]
 verify_jwt = false

@@ -1,0 +1,155 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Sasha Memory OS authorization</title>
+  <style>
+    :root { color-scheme: dark; font-family: Inter, ui-sans-serif, system-ui, -apple-system, sans-serif; }
+    body { margin: 0; min-height: 100vh; display: grid; place-items: center; background: #0b0d10; color: #f5f7fa; }
+    main { width: min(92vw, 520px); padding: 28px; border: 1px solid #2a2f38; border-radius: 18px; background: #14181e; box-shadow: 0 20px 60px #0008; }
+    h1 { margin: 0 0 10px; font-size: 24px; }
+    p { color: #b7c0cc; line-height: 1.5; }
+    .card { margin: 18px 0; padding: 16px; border-radius: 12px; background: #0e1217; }
+    .row { display: flex; gap: 10px; flex-wrap: wrap; }
+    input { box-sizing: border-box; width: 100%; padding: 12px 14px; border: 1px solid #39414d; border-radius: 10px; background: #0b0d10; color: #fff; font-size: 16px; }
+    button { cursor: pointer; border: 0; border-radius: 10px; padding: 11px 16px; font-weight: 700; background: #f3f5f7; color: #11151a; }
+    button.secondary { background: #2a3038; color: #eef2f6; }
+    button:disabled { cursor: wait; opacity: .6; }
+    code { color: #dce7f5; overflow-wrap: anywhere; }
+    ul { color: #d8dee7; }
+    #error { color: #ff9f9f; white-space: pre-wrap; }
+    #status { color: #a9d6ff; }
+    [hidden] { display: none !important; }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>Sasha Memory OS</h1>
+    <p>Sign in, review the requesting application, and approve access to your private Memory OS.</p>
+
+    <section id="login" hidden>
+      <div class="card">
+        <label for="email">Email</label>
+        <input id="email" type="email" autocomplete="email" placeholder="you@example.com" />
+      </div>
+      <button id="send-link">Send secure sign-in link</button>
+    </section>
+
+    <section id="consent" hidden>
+      <div class="card">
+        <div><strong>Application:</strong> <span id="client-name"></span></div>
+        <div><strong>Redirect:</strong> <code id="redirect-uri"></code></div>
+        <div><strong>Permissions:</strong> <ul id="scopes"></ul></div>
+      </div>
+      <div class="row">
+        <button id="approve">Approve access</button>
+        <button id="deny" class="secondary">Deny</button>
+        <button id="sign-out" class="secondary">Sign out</button>
+      </div>
+    </section>
+
+    <p id="status">Checking authorization request…</p>
+    <p id="error" hidden></p>
+  </main>
+
+  <script type="module">
+    import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+
+    const supabase = createClient(
+      "https://vpxblcxsvlylqyldiuwr.supabase.co",
+      "sb_publishable_UE-IdyF649XAJG7lxtx6Pw_IHw5m4iy",
+      { auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true, flowType: "pkce" } },
+    );
+    const storageKey = "sasha-memory-os-oauth-authorization-id";
+    const params = new URLSearchParams(location.search);
+    const incomingAuthorizationId = params.get("authorization_id");
+    if (incomingAuthorizationId) localStorage.setItem(storageKey, incomingAuthorizationId);
+    const authorizationId = incomingAuthorizationId || localStorage.getItem(storageKey);
+
+    const login = document.querySelector("#login");
+    const consent = document.querySelector("#consent");
+    const status = document.querySelector("#status");
+    const errorBox = document.querySelector("#error");
+    const showError = (message) => {
+      status.hidden = true;
+      errorBox.hidden = false;
+      errorBox.textContent = message;
+    };
+    const setBusy = (busy) => document.querySelectorAll("button").forEach((button) => button.disabled = busy);
+
+    async function load() {
+      if (!authorizationId) return showError("Missing authorization_id. Start the connection from ChatGPT.");
+
+      const { data: { user }, error: userError } = await supabase.auth.getUser();
+      if (userError || !user) {
+        status.hidden = true;
+        login.hidden = false;
+        return;
+      }
+
+      const { data, error } = await supabase.auth.oauth.getAuthorizationDetails(authorizationId);
+      if (error || !data) return showError(error?.message || "Authorization request is no longer valid.");
+      if (!("authorization_id" in data) && data.redirect_url) {
+        location.assign(data.redirect_url);
+        return;
+      }
+
+      document.querySelector("#client-name").textContent = data.client?.name || "ChatGPT";
+      document.querySelector("#redirect-uri").textContent = data.redirect_uri || "";
+      const scopeList = String(data.scope || "email").split(/\s+/).filter(Boolean);
+      document.querySelector("#scopes").replaceChildren(...scopeList.map((scope) => {
+        const item = document.createElement("li");
+        item.textContent = scope;
+        return item;
+      }));
+      status.hidden = true;
+      consent.hidden = false;
+    }
+
+    document.querySelector("#send-link").addEventListener("click", async () => {
+      const email = document.querySelector("#email").value.trim();
+      if (!email) return showError("Enter your email address.");
+      errorBox.hidden = true;
+      status.hidden = false;
+      status.textContent = "Sending secure sign-in link…";
+      setBusy(true);
+      const redirectTo = new URL(location.pathname, location.origin);
+      redirectTo.searchParams.set("authorization_id", authorizationId);
+      const { error } = await supabase.auth.signInWithOtp({
+        email,
+        options: { emailRedirectTo: redirectTo.toString(), shouldCreateUser: true },
+      });
+      setBusy(false);
+      if (error) return showError(error.message);
+      status.textContent = "Check your email and open the sign-in link in this browser.";
+    });
+
+    async function decide(decision) {
+      setBusy(true);
+      errorBox.hidden = true;
+      status.hidden = false;
+      status.textContent = decision === "approve" ? "Approving access…" : "Denying access…";
+      const action = decision === "approve"
+        ? supabase.auth.oauth.approveAuthorization(authorizationId)
+        : supabase.auth.oauth.denyAuthorization(authorizationId);
+      const { data, error } = await action;
+      if (error || !data?.redirect_url) {
+        setBusy(false);
+        return showError(error?.message || "Authorization could not be completed.");
+      }
+      localStorage.removeItem(storageKey);
+      location.assign(data.redirect_url);
+    }
+
+    document.querySelector("#approve").addEventListener("click", () => decide("approve"));
+    document.querySelector("#deny").addEventListener("click", () => decide("deny"));
+    document.querySelector("#sign-out").addEventListener("click", async () => {
+      await supabase.auth.signOut();
+      location.reload();
+    });
+
+    load().catch((error) => showError(error instanceof Error ? error.message : String(error)));
+  </script>
+</body>
+</html>

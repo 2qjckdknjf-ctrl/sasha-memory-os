@@ -7,6 +7,15 @@ const WORKSPACE = Deno.env.get("MEMORY_OS_DEFAULT_WORKSPACE_ID") ??
   "11111111-1111-4111-8111-111111111111";
 const PROJECT = Deno.env.get("MEMORY_OS_DEFAULT_PROJECT_ID") ??
   "44444444-4444-4444-8444-444444444401";
+const SUPABASE_URL = (Deno.env.get("SUPABASE_URL") ??
+  "https://vpxblcxsvlylqyldiuwr.supabase.co").replace(/\/$/, "");
+const FUNCTION_BASE = `${SUPABASE_URL}/functions/v1/memory-mcp`;
+const MCP_RESOURCE = `${FUNCTION_BASE}/mcp`;
+const RESOURCE_METADATA_URL =
+  `${FUNCTION_BASE}/.well-known/oauth-protected-resource`;
+const OAUTH_ISSUER = `${SUPABASE_URL}/auth/v1`;
+const OAUTH_SCOPES = ["openid", "email", "profile"];
+const OAUTH_SECURITY_SCHEMES = [{ type: "oauth2", scopes: OAUTH_SCOPES }];
 
 const INSTRUCTIONS = [
   "Sasha Memory OS ChatGPT pilot. Prefer memory.search (pack_context=true) then context.project before writing.",
@@ -20,7 +29,8 @@ const READ_ONLY = new Set(["memory.search", "memory.get", "context.project"]);
 const tools = [
   {
     name: "memory.search",
-    description: "Hybrid RRF search over allowed memories (optional temporal window + packed context)",
+    description:
+      "Hybrid RRF search over allowed memories (optional temporal window + packed context)",
     inputSchema: {
       type: "object",
       properties: {
@@ -125,6 +135,8 @@ const tools = [
   },
 ].map((tool) => ({
   ...tool,
+  securitySchemes: OAUTH_SECURITY_SCHEMES,
+  _meta: { securitySchemes: OAUTH_SECURITY_SCHEMES },
   annotations: {
     readOnlyHint: READ_ONLY.has(tool.name),
     destructiveHint: !READ_ONLY.has(tool.name),
@@ -161,6 +173,111 @@ function extractSecret(req: Request): string | null {
   return token || null;
 }
 
+function oauthChallenge(
+  error = "invalid_token",
+  description = "Sign in to Sasha Memory OS to continue",
+): string {
+  return `Bearer resource_metadata="${RESOURCE_METADATA_URL}", scope="${
+    OAUTH_SCOPES.join(" ")
+  }", error="${error}", error_description="${description}"`;
+}
+
+function unauthorized(description = "Authentication required"): Response {
+  return json({ error: "unauthorized", error_description: description }, 401, {
+    "www-authenticate": oauthChallenge("invalid_token", description),
+  });
+}
+
+function authRequiredResult(
+  id: RpcReq["id"],
+  description = "Authentication required",
+) {
+  return ok(id, {
+    content: [{ type: "text", text: description }],
+    isError: true,
+    _meta: {
+      "mcp/www_authenticate": [
+        oauthChallenge("insufficient_scope", description),
+      ],
+    },
+  });
+}
+
+async function validateLegacySecret(
+  client: SupabaseClient,
+  secret: string,
+): Promise<boolean> {
+  const exact = await client.rpc("api_validate_secret", { p_secret: secret });
+  if (!exact.error) return exact.data === true;
+
+  // Safe rollout fallback: the validator RPC is added immediately after the
+  // Edge Function. Until then the original probe still validates the secret.
+  return authorize(client, secret);
+}
+
+function claimString(claims: Record<string, unknown>, key: string): string {
+  return String(claims[key] ?? "").trim();
+}
+
+async function validateOAuthToken(token: string): Promise<boolean> {
+  const publishableKey = Deno.env.get("SUPABASE_ANON_KEY")?.trim();
+  const allowedEmail = Deno.env.get("MEMORY_OS_OAUTH_ALLOWED_EMAIL")?.trim()
+    .toLowerCase();
+  if (!publishableKey || !allowedEmail) return false;
+
+  const authClient = createClient(SUPABASE_URL, publishableKey, {
+    auth: { persistSession: false, autoRefreshToken: false },
+  });
+  const { data, error } = await authClient.auth.getClaims(token);
+  const claims = data?.claims as Record<string, unknown> | undefined;
+  if (error || !claims) return false;
+
+  const issuer = claimString(claims, "iss");
+  const email = claimString(claims, "email").toLowerCase();
+  const clientId = claimString(claims, "client_id");
+  const expiresAt = Number(claims.exp ?? 0);
+  const audience = Array.isArray(claims.aud)
+    ? claims.aud.map(String)
+    : [claimString(claims, "aud")];
+  if (
+    issuer !== OAUTH_ISSUER || email !== allowedEmail || !clientId ||
+    expiresAt <= Math.floor(Date.now() / 1000) ||
+    (!audience.includes("authenticated") && !audience.includes(MCP_RESOURCE))
+  ) return false;
+
+  // Confirm the session/user is still valid rather than trusting claims alone.
+  const { data: userData, error: userError } = await authClient.auth.getUser(
+    token,
+  );
+  return !userError &&
+    userData.user?.email?.trim().toLowerCase() === allowedEmail;
+}
+
+async function authenticate(
+  req: Request,
+  serviceClient: SupabaseClient,
+): Promise<{ rpcSecret: string; mode: "oauth2" | "api_secret" } | null> {
+  const credential = extractSecret(req);
+  if (!credential) return null;
+  if (await validateLegacySecret(serviceClient, credential)) {
+    return { rpcSecret: credential, mode: "api_secret" };
+  }
+  if (await validateOAuthToken(credential)) {
+    return { rpcSecret: "oauth2-service-role", mode: "oauth2" };
+  }
+  return null;
+}
+
+function resourceMetadata(): Record<string, unknown> {
+  return {
+    resource: MCP_RESOURCE,
+    authorization_servers: [OAUTH_ISSUER],
+    scopes_supported: OAUTH_SCOPES,
+    bearer_methods_supported: ["header"],
+    resource_documentation: `${FUNCTION_BASE}/health`,
+  };
+}
+
 function defaults(raw: Record<string, unknown>): Record<string, unknown> {
   return {
     ...raw,
@@ -180,7 +297,10 @@ async function rpc(
   return data;
 }
 
-async function authorize(client: SupabaseClient, secret: string): Promise<boolean> {
+async function authorize(
+  client: SupabaseClient,
+  secret: string,
+): Promise<boolean> {
   const { error } = await client.rpc("api_rls_probe", {
     p_secret: secret,
     p_subject_id: SUBJECT,
@@ -190,12 +310,19 @@ async function authorize(client: SupabaseClient, secret: string): Promise<boolea
   return !error;
 }
 
-function snakeOrCamel(row: Record<string, unknown>, snake: string, camel: string): unknown {
+function snakeOrCamel(
+  row: Record<string, unknown>,
+  snake: string,
+  camel: string,
+): unknown {
   return row[camel] ?? row[snake] ?? null;
 }
 
 function normalizeMemory(value: unknown): Record<string, unknown> {
-  const row = (value && typeof value === "object" ? value : {}) as Record<string, unknown>;
+  const row = (value && typeof value === "object" ? value : {}) as Record<
+    string,
+    unknown
+  >;
   return {
     ...row,
     id: row.id ?? null,
@@ -208,17 +335,25 @@ function normalizeMemory(value: unknown): Record<string, unknown> {
     observedAt: snakeOrCamel(row, "observed_at", "observedAt"),
     supersededBy: snakeOrCamel(row, "superseded_by", "supersededBy"),
     sourceEventId: snakeOrCamel(row, "source_event_id", "sourceEventId"),
-    createdBySubject: snakeOrCamel(row, "created_by_subject", "createdBySubject"),
+    createdBySubject: snakeOrCamel(
+      row,
+      "created_by_subject",
+      "createdBySubject",
+    ),
     schemaVersion: snakeOrCamel(row, "schema_version", "schemaVersion"),
   };
 }
 
 function asVector(value: unknown): number[] | null {
-  if (Array.isArray(value) && value.every((v) => typeof v === "number")) return value as number[];
+  if (Array.isArray(value) && value.every((v) => typeof v === "number")) {
+    return value as number[];
+  }
   if (typeof value === "string" && value.startsWith("[")) {
     try {
       const parsed = JSON.parse(value);
-      if (Array.isArray(parsed) && parsed.every((v) => typeof v === "number")) return parsed;
+      if (Array.isArray(parsed) && parsed.every((v) => typeof v === "number")) {
+        return parsed;
+      }
     } catch {
       return null;
     }
@@ -252,23 +387,37 @@ function hashEmbed(text: string, dimensions = 32): number[] {
   return vec.map((v) => Number((v / norm).toFixed(6)));
 }
 
-async function embedText(text: string): Promise<{ vector: number[]; engine: string }> {
+async function embedText(
+  text: string,
+): Promise<{ vector: number[]; engine: string }> {
   const apiKey = Deno.env.get("MEMORY_OS_OPENAI_API_KEY")?.trim() ??
     Deno.env.get("OPENAI_API_KEY")?.trim();
-  const requested = Number(Deno.env.get("MEMORY_OS_OPENAI_EMBED_DIMS") ?? "1536");
+  const requested = Number(
+    Deno.env.get("MEMORY_OS_OPENAI_EMBED_DIMS") ?? "1536",
+  );
   const dims = requested === 32 || requested === 1536 ? requested : 1536;
   if (!apiKey) return { vector: hashEmbed(text, 32), engine: "stub-hash" };
-  const model = Deno.env.get("MEMORY_OS_OPENAI_EMBED_MODEL") ?? "text-embedding-3-small";
+  const model = Deno.env.get("MEMORY_OS_OPENAI_EMBED_MODEL") ??
+    "text-embedding-3-small";
   try {
     const res = await fetch("https://api.openai.com/v1/embeddings", {
       method: "POST",
-      headers: { authorization: `Bearer ${apiKey}`, "content-type": "application/json" },
+      headers: {
+        authorization: `Bearer ${apiKey}`,
+        "content-type": "application/json",
+      },
       body: JSON.stringify({ model, input: [text], dimensions: dims }),
     });
-    if (!res.ok) return { vector: hashEmbed(text, 32), engine: "stub-hash-fallback" };
-    const payload = await res.json() as { data?: Array<{ embedding?: number[] }> };
+    if (!res.ok) {
+      return { vector: hashEmbed(text, 32), engine: "stub-hash-fallback" };
+    }
+    const payload = await res.json() as {
+      data?: Array<{ embedding?: number[] }>;
+    };
     const vector = payload.data?.[0]?.embedding ?? [];
-    return vector.length ? { vector, engine: "openai" } : { vector: hashEmbed(text, 32), engine: "stub-hash" };
+    return vector.length
+      ? { vector, engine: "openai" }
+      : { vector: hashEmbed(text, 32), engine: "stub-hash" };
   } catch {
     return { vector: hashEmbed(text, 32), engine: "stub-hash-fallback" };
   }
@@ -285,7 +434,10 @@ function rerankRrf(hits: Hit[], queryVector: number[]): Hit[] {
     const vec = asVector(mem.embedding_vector_hq ?? mem.embeddingVectorHq) ??
       asVector(mem.embedding_vector ?? mem.embeddingVector) ??
       asVector(mem.embedding);
-    similarity.set(String(mem.id ?? ""), vec ? Math.max(0, cosine(queryVector, vec)) : 0);
+    similarity.set(
+      String(mem.id ?? ""),
+      vec ? Math.max(0, cosine(queryVector, vec)) : 0,
+    );
   }
   const vector = [...hits].sort((a, b) =>
     (similarity.get(String(b.memory.id ?? "")) ?? 0) -
@@ -341,7 +493,12 @@ function packContext(hits: Hit[], maxChars = 4000): Record<string, unknown> {
     if (truncated) break;
   }
   if (citations.length < hits.length) truncated = true;
-  return { text: parts.join("\n\n"), citations, truncated, packedCount: citations.length };
+  return {
+    text: parts.join("\n\n"),
+    citations,
+    truncated,
+    packedCount: citations.length,
+  };
 }
 
 async function callTool(
@@ -350,7 +507,9 @@ async function callTool(
   name: string,
   raw: Record<string, unknown>,
 ): Promise<unknown> {
-  if (!tools.some((tool) => tool.name === name)) throw new Error(`Tool ${name} is not available on MCP profile 'chatgpt'`);
+  if (!tools.some((tool) => tool.name === name)) {
+    throw new Error(`Tool ${name} is not available on MCP profile 'chatgpt'`);
+  }
   const args = defaults(raw);
   const actor = String(args.actor_subject_id);
   const workspace = String(args.workspace_id);
@@ -368,8 +527,12 @@ async function callTool(
         p_project_id: project || null,
         p_include_history: Boolean(args.include_history),
         p_query_embedding: embedded.vector,
-        p_recorded_after: args.recorded_after ? String(args.recorded_after) : null,
-        p_recorded_before: args.recorded_before ? String(args.recorded_before) : null,
+        p_recorded_after: args.recorded_after
+          ? String(args.recorded_after)
+          : null,
+        p_recorded_before: args.recorded_before
+          ? String(args.recorded_before)
+          : null,
       });
       const hits = (Array.isArray(rawHits) ? rawHits : []).map((value) => {
         const row = value as Record<string, unknown>;
@@ -384,7 +547,12 @@ async function callTool(
         hits: ranked,
         ranking: "hybrid-rrf",
         ...(Boolean(args.pack_context)
-          ? { context: packContext(ranked, Number(args.max_context_chars ?? 4000)) }
+          ? {
+            context: packContext(
+              ranked,
+              Number(args.max_context_chars ?? 4000),
+            ),
+          }
           : {}),
       };
     }
@@ -398,7 +566,9 @@ async function callTool(
       const title = String(args.title ?? "").trim();
       const content = String(args.content ?? "").trim();
       const key = String(args.idempotency_key ?? "").trim();
-      if (!title || !content || !key) throw new Error("title, content and idempotency_key are required");
+      if (!title || !content || !key) {
+        throw new Error("title, content and idempotency_key are required");
+      }
       return rpc(client, "api_create_decision", {
         p_secret: secret,
         p_subject_id: actor,
@@ -417,21 +587,30 @@ async function callTool(
       const from = String(args.from_subject_id ?? "").trim();
       const key = String(args.idempotency_key ?? "").trim();
       const payload = args.payload;
-      if (!from || !key || !payload || typeof payload !== "object") throw new Error("from_subject_id, idempotency_key and payload are required");
+      if (!from || !key || !payload || typeof payload !== "object") {
+        throw new Error(
+          "from_subject_id, idempotency_key and payload are required",
+        );
+      }
       return rpc(client, "api_create_handoff", {
         p_secret: secret,
         p_subject_id: from,
         p_workspace_id: workspace,
         p_project_id: project,
         p_to_subject_id: args.to_subject_id ? String(args.to_subject_id) : null,
-        p_payload: { ...(payload as Record<string, unknown>), idempotency_key: key },
+        p_payload: {
+          ...(payload as Record<string, unknown>),
+          idempotency_key: key,
+        },
       });
     }
     case "capture.text": {
       const title = String(args.title ?? "").trim();
       const text = String(args.text ?? "").trim();
       const key = String(args.idempotency_key ?? "").trim();
-      if (!title || !text || !key) throw new Error("title, text and idempotency_key are required");
+      if (!title || !text || !key) {
+        throw new Error("title, text and idempotency_key are required");
+      }
       const result = await rpc(client, "api_capture_text", {
         p_secret: secret,
         p_subject_id: actor,
@@ -446,7 +625,10 @@ async function callTool(
         p_mime_type: "text/plain",
       }) as Record<string, unknown>;
       let embedding: unknown = null;
-      const process = (result.process && typeof result.process === "object" ? result.process : {}) as Record<string, unknown>;
+      const process =
+        (result.process && typeof result.process === "object"
+          ? result.process
+          : {}) as Record<string, unknown>;
       const memoryId = process.memoryId ?? process.memory_id;
       if (memoryId) {
         try {
@@ -468,7 +650,9 @@ async function callTool(
       const id = String(args.memory_id ?? "").trim();
       const status = String(args.status ?? "").trim();
       const reason = String(args.reason ?? "").trim();
-      if (!id || !status || !reason) throw new Error("memory_id, status and reason are required");
+      if (!id || !status || !reason) {
+        throw new Error("memory_id, status and reason are required");
+      }
       return rpc(client, "api_set_memory_status", {
         p_secret: secret,
         p_subject_id: actor,
@@ -509,7 +693,9 @@ function fail(id: RpcReq["id"], code: number, message: string) {
 
 function protocol(requested: unknown): string {
   const value = String(requested ?? "").trim();
-  return value === "2025-03-26" || value === "2024-11-05" ? value : "2024-11-05";
+  return value === "2025-03-26" || value === "2024-11-05"
+    ? value
+    : "2024-11-05";
 }
 
 async function handleRpc(
@@ -548,7 +734,11 @@ async function handleRpc(
           structuredContent: result,
         });
       } catch (err) {
-        return fail(msg.id, -32000, err instanceof Error ? err.message : String(err));
+        return fail(
+          msg.id,
+          -32000,
+          err instanceof Error ? err.message : String(err),
+        );
       }
     }
     default:
@@ -565,12 +755,16 @@ Deno.serve(async (req: Request) => {
       headers: {
         "access-control-allow-origin": "*",
         "access-control-allow-methods": "GET,POST,OPTIONS",
-        "access-control-allow-headers": "authorization,content-type,accept,x-memory-os-api-secret,mcp-protocol-version",
+        "access-control-allow-headers":
+          "authorization,content-type,accept,x-memory-os-api-secret,mcp-protocol-version",
       },
     });
   }
 
-  if (req.method === "GET" && (path === "/" || path === "/health" || path === "/mcp/health")) {
+  if (
+    req.method === "GET" &&
+    (path === "/" || path === "/health" || path === "/mcp/health")
+  ) {
     return json({
       ok: true,
       service: "memory-os-mcp",
@@ -581,25 +775,39 @@ Deno.serve(async (req: Request) => {
     });
   }
 
+  if (
+    req.method === "GET" &&
+    (path === "/.well-known/oauth-protected-resource" ||
+      path === "/mcp/.well-known/oauth-protected-resource")
+  ) {
+    return json(resourceMetadata());
+  }
+
+  if (req.method === "GET" && path === "/oauth/consent") {
+    const consentUrl = new URL(
+      "https://2qjckdknjf-ctrl.github.io/sasha-memory-os/",
+    );
+    consentUrl.search = new URL(req.url).search;
+    return new Response(null, {
+      status: 302,
+      headers: {
+        location: consentUrl.toString(),
+        "cache-control": "no-store",
+        "referrer-policy": "no-referrer",
+      },
+    });
+  }
+
   if (req.method === "GET" && path === "/mcp") {
-    return json({ error: "method not allowed" }, 405, { allow: "POST" });
+    return json({ error: "method not allowed" }, 405, {
+      allow: "POST",
+      "www-authenticate": oauthChallenge(),
+    });
   }
 
   if (req.method !== "POST" || path !== "/mcp") {
     return json({ error: "not found", path }, 404);
   }
-
-  const secret = extractSecret(req);
-  if (!secret) return json({ error: "unauthorized" }, 401);
-
-  const supabaseUrl = Deno.env.get("SUPABASE_URL");
-  const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? Deno.env.get("SUPABASE_ANON_KEY");
-  if (!supabaseUrl || !supabaseKey) return json({ error: "missing supabase env" }, 500);
-  const client = createClient(supabaseUrl, supabaseKey, {
-    auth: { persistSession: false, autoRefreshToken: false },
-  });
-
-  if (!(await authorize(client, secret))) return json({ error: "unauthorized" }, 401);
 
   let msg: RpcReq;
   try {
@@ -608,7 +816,44 @@ Deno.serve(async (req: Request) => {
     return json(fail(null, -32700, "Parse error"), 400);
   }
 
-  const result = await handleRpc(client, secret, msg);
+  // Discovery and tool metadata do not expose private memory data. Keeping
+  // them public lets ChatGPT scan the seven tools before the OAuth grant.
+  if (
+    [
+      "initialize",
+      "notifications/initialized",
+      "initialized",
+      "ping",
+      "tools/list",
+    ].includes(msg.method ?? "")
+  ) {
+    const result = await handleRpc({} as SupabaseClient, "", msg);
+    if (result === null) return new Response(null, { status: 202 });
+    return json(result);
+  }
+
+  const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")?.trim();
+  if (!serviceRoleKey) {
+    return json({ error: "missing supabase service role env" }, 500);
+  }
+  const client = createClient(SUPABASE_URL, serviceRoleKey, {
+    auth: { persistSession: false, autoRefreshToken: false },
+  });
+
+  const auth = await authenticate(req, client);
+  if (!auth) {
+    if (msg.method === "tools/call") {
+      return json(
+        authRequiredResult(
+          msg.id,
+          "Sign in to Sasha Memory OS to use this tool.",
+        ),
+      );
+    }
+    return unauthorized();
+  }
+
+  const result = await handleRpc(client, auth.rpcSecret, msg);
   if (result === null) return new Response(null, { status: 202 });
   return json(result);
 });
