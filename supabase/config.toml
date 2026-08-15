@@ -18,3 +18,9 @@ sql_paths = ["./seed.sql"]
 [studio]
 enabled = true
 port = 54323
+
+# ChatGPT sends the Memory OS API secret as Bearer/x-memory-os-api-secret.
+# Platform JWT verification is disabled because the function validates the
+# Memory OS secret against the existing SECURITY DEFINER RPC boundary.
+[functions.memory-mcp]
+verify_jwt = false
