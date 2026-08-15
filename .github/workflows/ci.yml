@@ -35,11 +35,13 @@ jobs:
       - name: Build hosted API image
         run: docker build -f apps/api/Dockerfile -t memory-os-api:ci .
 
-      - name: Start ChatGPT-profile API container
+      - name: Start production-like ChatGPT MCP container
         run: |
           docker run -d --name memory-os-m6 \
-            -e MEMORY_OS_ENV=test \
+            -e MEMORY_OS_ENV=staging \
             -e MEMORY_OS_MCP_PROFILE=chatgpt \
+            -e MEMORY_OS_REQUIRE_API_AUTH=1 \
+            -e MEMORY_OS_API_SECRET=ci-m6-test-secret \
             -p 8787:8787 \
             memory-os-api:ci
           for i in $(seq 1 30); do
@@ -52,9 +54,18 @@ jobs:
           docker logs memory-os-m6
           exit 1
 
+      - name: Verify MCP rejects unauthenticated requests
+        run: |
+          code=$(curl -sS -o /tmp/memory-os-mcp-unauth.json -w '%{http_code}' \
+            http://127.0.0.1:8787/mcp/health || true)
+          echo "status=$code"
+          cat /tmp/memory-os-mcp-unauth.json || true
+          test "$code" = "401"
+
       - name: Smoke ChatGPT MCP runtime
         env:
           MEMORY_OS_API_BASE_URL: http://127.0.0.1:8787
+          MEMORY_OS_API_SECRET: ci-m6-test-secret
         run: ./scripts/smoke-mcp-chatgpt.sh
 
       - name: Container logs
