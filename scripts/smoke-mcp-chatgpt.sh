@@ -54,7 +54,7 @@ node -e '
   const h = JSON.parse(fs.readFileSync("/tmp/memory-os-mcp-chatgpt-health.json", "utf8"));
   if (h.ok !== true) throw new Error("MCP health is not ok");
   if (h.profile !== "chatgpt") throw new Error(`Expected chatgpt profile, got ${h.profile}`);
-' 
+'
 
 echo "== GET $API/mcp (expect 405)"
 code=$(curl -sS -o /tmp/memory-os-mcp-chatgpt-get.json -w '%{http_code}' \
@@ -132,7 +132,7 @@ node -e '
   const fs = require("fs");
   const r = JSON.parse(fs.readFileSync("/tmp/memory-os-mcp-chatgpt-get-decision.json", "utf8"));
   const expected = process.argv[1];
-  const got = String(r.result?.structuredContent?.id ?? "");
+  const got = String(r.result?.structuredContent?.memory?.id ?? "");
   if (got !== expected) throw new Error(`memory.get mismatch: expected ${expected}, got ${got}`);
 ' "$DECISION_ID"
 
