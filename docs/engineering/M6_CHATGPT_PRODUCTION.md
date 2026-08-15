@@ -71,6 +71,25 @@ docker build -f apps/api/Dockerfile -t memory-os-api:m6 .
 
 CI must run the same build gate so workspace-packaging regressions are caught before deployment.
 
+### Repository-side evidence — 2026-08-15
+
+GitHub Actions CI run `31877937594` passed the complete repository-side M6 gate on the PR branch:
+
+- typecheck — PASS
+- full test suite + golden retrieval/security tests — PASS
+- critical dependency audit — PASS (`No known vulnerabilities found`)
+- hosted API Docker image build — PASS
+- production-like container starts with `MEMORY_OS_ENV=staging`, `MEMORY_OS_MCP_PROFILE=chatgpt`, `MEMORY_OS_REQUIRE_API_AUTH=1` — PASS
+- unauthenticated `POST /mcp` is rejected with HTTP `401` — PASS
+- authenticated MCP health / initialize — PASS
+- exact seven-tool ChatGPT allowlist — PASS
+- `memory.search` — PASS
+- `memory.store_decision` — PASS
+- `memory.get` of the stored decision — PASS
+- unique-marker read-after-write search — PASS
+
+This CI runtime deliberately uses the in-memory backend because repository CI has no production Supabase secrets. It proves packaging, profile isolation, auth enforcement, MCP protocol behavior, and the read/write loop, but it does **not** replace the required live Supabase/ChatGPT acceptance.
+
 ## Connection options
 
 ### Option 1 — durable HTTPS host (preferred)
@@ -105,7 +124,8 @@ Expected backend sequence:
 4. `tools/list` returns only the seven approved tools.
 5. `memory.search` succeeds with profile defaults.
 6. Direct MCP `memory.store_decision` succeeds at the backend level.
-7. The written decision is visible through Memory OS retrieval / Web review.
+7. `memory.get` returns the written decision.
+8. A search for the unique write marker returns the new decision (read-after-write).
 
 The direct backend write test proves that Memory OS itself supports the write path even if the active ChatGPT plan later blocks invoking write actions from ChatGPT UI.
 
@@ -149,19 +169,22 @@ M6 is complete only when all applicable items are true:
 
 - [ ] A private tunnel or durable HTTPS connection to the MCP service is working.
 - [ ] If durable hosting is selected, HTTPS endpoint is stable and documented without secrets.
-- [ ] Runtime uses `MEMORY_OS_MCP_PROFILE=chatgpt`.
-- [ ] Backend reports Supabase, not the in-memory store.
-- [ ] Authentication is required on `/mcp` outside local/test.
+- [ ] Live runtime uses `MEMORY_OS_MCP_PROFILE=chatgpt`.
+- [ ] Live backend reports Supabase, not the in-memory store.
+- [ ] Authentication is required on live `POST /mcp` outside local/test.
 - [x] CI typecheck passes.
 - [x] CI tests pass.
 - [x] CI critical dependency audit passes.
 - [x] CI hosted API Docker image build passes.
-- [ ] Backend MCP smoke passes against the chosen live connection.
+- [x] CI production-like MCP auth gate passes.
+- [x] CI exact ChatGPT seven-tool allowlist passes.
+- [x] CI MCP write/get/read-after-write loop passes.
+- [ ] Backend MCP smoke passes against the chosen live connection and Supabase backend.
 - [ ] ChatGPT discovers the expected restricted tool surface.
 - [ ] Normal-chat read test passes.
 - [ ] Capability is recorded as either **Mode A PASS** or **Mode B ACCEPTED**.
 - [ ] For Mode A: ChatGPT write + read-after-write passes.
-- [ ] For Mode B: backend write passes and Web/HTTP write fallback is verified.
+- [ ] For Mode B: live backend write passes and Web/HTTP write fallback is verified.
 - [ ] Exactly one final `Sasha Memory OS` registration remains.
 - [ ] README / backlog are updated with acceptance date, capability mode, connection method, and evidence.
 
