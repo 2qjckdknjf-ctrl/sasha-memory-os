@@ -1,12 +1,19 @@
-# M6 — ChatGPT production MCP closeout
+# M6 — ChatGPT MCP closeout
 
 ## Goal
 
-Expose one stable HTTPS MCP endpoint for ChatGPT, restricted to the `chatgpt` profile, backed by the dedicated Sasha Memory OS Supabase project. After end-to-end acceptance, keep one ChatGPT app registration named **Sasha Memory OS** and retire older pilot registrations.
+Connect ChatGPT to the canonical Sasha Memory OS through one final registration named **Sasha Memory OS**, with the restricted `chatgpt` MCP profile and the dedicated Supabase backend.
 
-## Hosted runtime contract
+M6 supports two capability modes:
 
-The hosted API process serves both the HTTP API and Streamable HTTP MCP endpoint:
+- **Mode A — MCP read + write** when the active ChatGPT account/workspace permits custom MCP write actions.
+- **Mode B — MCP read + Web/HTTP write fallback** when ChatGPT exposes only read/fetch actions. Mode B is an accepted M6 fallback; do not misclassify a ChatGPT product-plan restriction as a Memory OS backend failure.
+
+For private development/testing, ChatGPT may connect to either a reachable remote MCP endpoint or an OpenAI Secure MCP Tunnel when that feature is available to the account/workspace. A stable public HTTPS endpoint remains the preferred durable deployment and is required before treating the service as independently reachable without a tunnel.
+
+## Runtime contract
+
+The API process serves both the HTTP API and Streamable HTTP MCP endpoint:
 
 - `GET /health`
 - `GET /mcp/health`
@@ -36,7 +43,7 @@ Never commit real secret values.
 
 ## Allowed ChatGPT tools
 
-The ChatGPT profile must expose exactly:
+The `chatgpt` profile must expose exactly:
 
 1. `memory.search`
 2. `memory.get`
@@ -48,24 +55,41 @@ The ChatGPT profile must expose exactly:
 
 Owner/ops tools such as OAuth, connector administration, embeddings, consolidation, outbox operations, and extraction must not be exposed by this profile.
 
-## Deploy
+If ChatGPT itself restricts write actions, the server may still advertise the approved seven-tool profile; acceptance must record which actions the active ChatGPT account actually permits.
 
-The repository keeps Fly.io scaffolding in `fly.toml`. The image must build before any hosted rollout:
+## Pre-deploy validation
+
+The image must build before any hosted rollout:
 
 ```bash
 pnpm install --frozen-lockfile
 pnpm typecheck
 pnpm test
+pnpm audit --audit-level=critical
 docker build -f apps/api/Dockerfile -t memory-os-api:m6 .
 ```
 
-Set runtime secrets in the host secret store, then deploy using the selected host. Do not pass secret values through shell history or commit them to repository files.
+CI must run the same build gate so workspace-packaging regressions are caught before deployment.
 
-The current Fly configuration enables HTTPS and the ChatGPT MCP profile. `min_machines_running=0` is acceptable for alpha validation but may introduce a cold start. Before declaring production-grade availability, decide whether to keep one machine warm or move the endpoint to another durable host.
+## Connection options
 
-## Remote smoke
+### Option 1 — durable HTTPS host (preferred)
 
-After a public HTTPS URL is live:
+The repository keeps Fly.io scaffolding in `fly.toml`. The selected host must terminate HTTPS and run the API with the restricted ChatGPT profile.
+
+Set runtime secrets only in the host secret store. Do not pass secret values into repository files, PR comments, logs, or documentation.
+
+The current Fly alpha configuration uses `min_machines_running=0`; this may introduce cold starts. Before calling the endpoint production-grade, either keep capacity warm or explicitly accept the latency tradeoff.
+
+### Option 2 — Secure MCP Tunnel (private validation)
+
+When the ChatGPT workspace/account provides Secure MCP Tunnel, it can be used to validate a private/local MCP service without opening public ingress. Treat this as a development/private connectivity path, not as proof that an independently hosted public endpoint exists.
+
+Whichever option is used, the acceptance evidence must identify the exact connection method and endpoint/tunnel identity without recording secrets.
+
+## Remote/backend smoke
+
+For a directly reachable HTTPS host:
 
 ```bash
 MEMORY_OS_API_BASE_URL=https://HOST \
@@ -73,55 +97,72 @@ MEMORY_OS_API_SECRET='***' \
 ./scripts/smoke-mcp-chatgpt.sh
 ```
 
-Expected sequence:
+Expected backend sequence:
 
 1. `/mcp/health` returns `ok: true`, `profile: chatgpt`, backend `supabase`.
 2. `GET /mcp` returns `405`.
 3. `initialize` succeeds.
-4. `tools/list` returns only the seven allowed tools.
+4. `tools/list` returns only the seven approved tools.
 5. `memory.search` succeeds with profile defaults.
-6. `memory.store_decision` succeeds and returns a memory id.
+6. Direct MCP `memory.store_decision` succeeds at the backend level.
 7. The written decision is visible through Memory OS retrieval / Web review.
 
-## ChatGPT registration
+The direct backend write test proves that Memory OS itself supports the write path even if the active ChatGPT plan later blocks invoking write actions from ChatGPT UI.
 
-Create or update one Developer Mode app:
+## ChatGPT registration and capability probe
+
+Create or update one development registration:
 
 - Name: `Sasha Memory OS`
-- MCP URL: `https://HOST/mcp`
-- Authentication: Bearer token using `MEMORY_OS_API_SECRET`
+- Connection: direct MCP URL ending in `/mcp`, or Secure MCP Tunnel when used for private validation
+- Authentication: configured outside the repository; never store the bearer secret in docs
 
-Then validate from a normal ChatGPT conversation:
+Perform the first acceptance on **ChatGPT web**, because custom MCP/developer-mode feature availability is controlled by the ChatGPT account/workspace and can differ by surface.
 
-1. Search a known memory using `pack_context=true`.
-2. Fetch a returned memory with `memory.get`.
-3. Write a unique test decision.
-4. Search for the unique test decision and confirm it is returned.
-5. Capture a short test note with `capture.text` and confirm it enters the expected review/candidate flow.
+Then run this capability probe from a normal ChatGPT conversation:
+
+1. `memory.search` for a known memory with `pack_context=true`.
+2. `memory.get` for one returned memory.
+3. `context.project` for the pilot project.
+4. Attempt `memory.store_decision` with a unique idempotency key.
+5. If the ChatGPT UI permits the write, search for the unique decision and verify read-after-write (**Mode A PASS**).
+6. If the ChatGPT UI does not permit custom MCP write actions but the backend smoke write passed, record **Mode B ACCEPTED** and verify the corresponding write through the Web/HTTP fallback.
+7. Run `capture.text` only when the active ChatGPT capability permits write actions; otherwise validate capture through the accepted Web/HTTP path.
+
+Do not weaken server-side ACL/auth just to make a plan-limited ChatGPT write action work.
 
 ## Duplicate registration cleanup
 
-Do not remove old registrations until the final app passes the full read/write loop. After acceptance:
+Do not remove old registrations until the final `Sasha Memory OS` registration passes the applicable capability mode.
+
+After acceptance:
 
 - Keep: `Sasha Memory OS`
 - Remove: `Sasha Memory OS Pilot`
 - Remove: `Sasha MOS 27772`
 
+Record the final registration identity/technical ID if the ChatGPT UI exposes one. Never invent it in repository files.
+
 ## M6 exit criteria
 
-M6 is complete only when all of the following are true:
+M6 is complete only when all applicable items are true:
 
-- [ ] Stable public HTTPS endpoint exists.
-- [ ] Hosted process uses `MEMORY_OS_MCP_PROFILE=chatgpt`.
-- [ ] Hosted backend reports Supabase, not the in-memory store.
+- [ ] A private tunnel or durable HTTPS connection to the MCP service is working.
+- [ ] If durable hosting is selected, HTTPS endpoint is stable and documented without secrets.
+- [ ] Runtime uses `MEMORY_OS_MCP_PROFILE=chatgpt`.
+- [ ] Backend reports Supabase, not the in-memory store.
 - [ ] Authentication is required on `/mcp` outside local/test.
-- [ ] CI typecheck/tests pass.
-- [ ] CI Docker image build passes.
-- [ ] Remote `smoke-mcp-chatgpt.sh` passes.
-- [ ] ChatGPT discovers exactly the seven pilot tools.
+- [x] CI typecheck passes.
+- [x] CI tests pass.
+- [x] CI critical dependency audit passes.
+- [x] CI hosted API Docker image build passes.
+- [ ] Backend MCP smoke passes against the chosen live connection.
+- [ ] ChatGPT discovers the expected restricted tool surface.
 - [ ] Normal-chat read test passes.
-- [ ] Normal-chat write + read-after-write test passes.
-- [ ] One final `Sasha Memory OS` registration remains.
-- [ ] README / backlog are updated with acceptance date and evidence.
+- [ ] Capability is recorded as either **Mode A PASS** or **Mode B ACCEPTED**.
+- [ ] For Mode A: ChatGPT write + read-after-write passes.
+- [ ] For Mode B: backend write passes and Web/HTTP write fallback is verified.
+- [ ] Exactly one final `Sasha Memory OS` registration remains.
+- [ ] README / backlog are updated with acceptance date, capability mode, connection method, and evidence.
 
-Do not mark M6 complete solely because the code or app registration exists; remote read/write evidence is required.
+Do not mark M6 complete solely because code, a tunnel, a hosted URL, or a ChatGPT registration exists. Live retrieval evidence is mandatory; write evidence must be collected at the Memory OS backend and through ChatGPT itself whenever the active ChatGPT capability allows it.
