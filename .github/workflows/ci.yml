@@ -34,3 +34,33 @@ jobs:
 
       - name: Build hosted API image
         run: docker build -f apps/api/Dockerfile -t memory-os-api:ci .
+
+      - name: Start ChatGPT-profile API container
+        run: |
+          docker run -d --name memory-os-m6 \
+            -e MEMORY_OS_ENV=test \
+            -e MEMORY_OS_MCP_PROFILE=chatgpt \
+            -p 8787:8787 \
+            memory-os-api:ci
+          for i in $(seq 1 30); do
+            if curl -fsS http://127.0.0.1:8787/health >/tmp/memory-os-health.json; then
+              cat /tmp/memory-os-health.json
+              exit 0
+            fi
+            sleep 1
+          done
+          docker logs memory-os-m6
+          exit 1
+
+      - name: Smoke ChatGPT MCP runtime
+        env:
+          MEMORY_OS_API_BASE_URL: http://127.0.0.1:8787
+        run: ./scripts/smoke-mcp-chatgpt.sh
+
+      - name: Container logs
+        if: always()
+        run: docker logs memory-os-m6 || true
+
+      - name: Stop ChatGPT-profile API container
+        if: always()
+        run: docker rm -f memory-os-m6 || true
