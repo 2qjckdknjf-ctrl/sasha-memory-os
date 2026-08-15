@@ -15,11 +15,17 @@ KEY="smoke-chatgpt-$(date +%s)"
 rpc() {
   local id="$1"
   local method="$2"
-  local params="${3:-{}}"
+  local params="${3:-}"
+  local payload
+  if [[ -z "$params" ]]; then
+    params='{}'
+  fi
+  printf -v payload '{"jsonrpc":"2.0","id":%s,"method":"%s","params":%s}' \
+    "$id" "$method" "$params"
   curl -fsS "$API/mcp" \
     "${ACCEPT[@]}" \
     "${SECRET_HEADER[@]}" \
-    -d "{\"jsonrpc\":\"2.0\",\"id\":${id},\"method\":\"${method}\",\"params\":${params}}"
+    --data-binary "$payload"
 }
 
 echo "== GET $API/mcp/health"
