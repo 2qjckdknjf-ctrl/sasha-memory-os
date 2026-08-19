@@ -517,7 +517,62 @@ describe('memory api demo slice', () => {
     ).toEqual(['team/repo-a']);
   });
 
-  it('retains a recent webhook repo for one discover window and drops it on the next missing discover', async () => {
+  it('retains a webhook-added repo across discover under the SQL lock and drops it on a later missing discover', async () => {
+    let metadataState: Record<string, unknown> = {
+      collections: {
+        selection_mode: 'all',
+        excluded_ids: [],
+        discovered_at: '2026-08-19T18:00:00.000Z',
+        items: [
+          {
+            id: 'team/repo-a',
+            kind: 'repository',
+            name: 'repo-a',
+            title: 'team/repo-a',
+            url: 'https://github.com/team/repo-a',
+            default_branch: 'main',
+            metadata: {},
+          },
+        ],
+        project_bindings: {
+          'team/repo-a': '44444444-4444-4444-8444-444444444420',
+        },
+      },
+    };
+    const buildConnection = () => ({
+      id: 'conn-1',
+      workspaceId: workspaceId,
+      connectorId: 'github',
+      displayName: 'Fixture GitHub',
+      status: 'connected',
+      scopes: ['repositories.read'],
+      lastSyncAt: null,
+      lastError: null,
+      metadata: metadataState,
+    });
+    const repoA = {
+      id: 'team/repo-a',
+      kind: 'repository' as const,
+      name: 'repo-a',
+      title: 'team/repo-a',
+      url: 'https://github.com/team/repo-a',
+      default_branch: 'main',
+      metadata: {},
+    };
+    const repoB = {
+      id: 'team/repo-b',
+      kind: 'repository' as const,
+      name: 'repo-b',
+      title: 'team/repo-b',
+      url: 'https://github.com/team/repo-b',
+      default_branch: 'main',
+      metadata: {
+        added_via: 'webhook',
+        added_at: '2026-08-19T18:05:00.000Z',
+      },
+    };
+    let gateway: any;
+    let discoverCount = 0;
     const connectorRegistry = createConnectorRegistry([
       {
         manifest: {
@@ -541,18 +596,12 @@ describe('memory api demo slice', () => {
         },
         lifecycle: {
           async discover() {
+            discoverCount += 1;
+            if (discoverCount === 1) {
+              await gateway.upsertConnectionCollectionItem({ item: repoB });
+            }
             return {
-              collections: [
-                {
-                  id: 'team/repo-a',
-                  kind: 'repository' as const,
-                  name: 'repo-a',
-                  title: 'team/repo-a',
-                  url: 'https://github.com/team/repo-a',
-                  default_branch: 'main',
-                  metadata: {},
-                },
-              ],
+              collections: [repoA],
             };
           },
           async normalize() {
@@ -561,51 +610,6 @@ describe('memory api demo slice', () => {
         },
       },
     ]);
-
-    let metadataState: Record<string, unknown> = {
-      collections: {
-        selection_mode: 'all',
-        excluded_ids: [],
-        discovered_at: '2026-08-19T18:00:00.000Z',
-        items: [
-          {
-            id: 'team/repo-a',
-            kind: 'repository',
-            name: 'repo-a',
-            title: 'team/repo-a',
-            url: 'https://github.com/team/repo-a',
-            default_branch: 'main',
-            metadata: {},
-          },
-          {
-            id: 'team/repo-b',
-            kind: 'repository',
-            name: 'repo-b',
-            title: 'team/repo-b',
-            url: 'https://github.com/team/repo-b',
-            default_branch: 'main',
-            metadata: {
-              added_via: 'webhook',
-              added_at: '2026-08-19T18:05:00.000Z',
-            },
-          },
-        ],
-        project_bindings: {
-          'team/repo-a': '44444444-4444-4444-8444-444444444420',
-        },
-      },
-    };
-    const buildConnection = () => ({
-      id: 'conn-1',
-      workspaceId: workspaceId,
-      connectorId: 'github',
-      displayName: 'Fixture GitHub',
-      status: 'connected',
-      scopes: ['repositories.read'],
-      lastSyncAt: null,
-      lastError: null,
-      metadata: metadataState,
-    });
     const refreshConnectionCollections = vi.fn(async ({
       items,
       projectBindings,
@@ -616,13 +620,41 @@ describe('memory api demo slice', () => {
       discoveredAt?: string;
     }) => {
       const currentCollections = (metadataState.collections ?? {}) as Record<string, unknown>;
+      const currentItems = Array.isArray(currentCollections.items)
+        ? (currentCollections.items as Array<{
+            id?: string;
+            metadata?: Record<string, unknown>;
+          }>)
+        : [];
+      const providerItems = items as Array<{
+        id?: string;
+      }>;
+      const providerIds = new Set(
+        providerItems
+          .map((item) => item.id)
+          .filter((itemId): itemId is string => typeof itemId === 'string'),
+      );
+      const previousDiscoveredAt =
+        typeof currentCollections.discovered_at === 'string'
+          ? Date.parse(currentCollections.discovered_at)
+          : Number.NaN;
+      const retainedWebhookItems = currentItems.filter((item) => {
+        if (typeof item.id !== 'string' || providerIds.has(item.id)) return false;
+        if (item.metadata?.added_via !== 'webhook') return false;
+        const addedAt =
+          typeof item.metadata?.added_at === 'string'
+            ? Date.parse(item.metadata.added_at)
+            : Number.NaN;
+        if (!Number.isFinite(addedAt)) return false;
+        return !Number.isFinite(previousDiscoveredAt) || addedAt > previousDiscoveredAt;
+      });
       metadataState = {
         ...metadataState,
         collections: {
           selection_mode: 'all',
           excluded_ids: currentCollections.excluded_ids ?? [],
           discovered_at: discoveredAt ?? new Date().toISOString(),
-          items,
+          items: [...providerItems, ...retainedWebhookItems],
           project_bindings: {
             ...((currentCollections.project_bindings ?? {}) as Record<string, string>),
             ...(projectBindings ?? {}),
@@ -652,10 +684,30 @@ describe('memory api demo slice', () => {
       };
       return buildConnection();
     });
-    const gateway = {
+    gateway = {
       getConnection: vi.fn(async () => buildConnection()),
       refreshConnectionCollections,
       mergeConnectionProjectBindings,
+      upsertConnectionCollectionItem: vi.fn(async ({ item }: { item: Record<string, unknown> }) => {
+        const currentCollections = (metadataState.collections ?? {}) as Record<string, unknown>;
+        const currentItems = Array.isArray(currentCollections.items)
+          ? (currentCollections.items as Array<Record<string, unknown>>)
+          : [];
+        metadataState = {
+          ...metadataState,
+          collections: {
+            selection_mode: 'all',
+            excluded_ids: currentCollections.excluded_ids ?? [],
+            discovered_at: currentCollections.discovered_at,
+            items: [
+              ...currentItems.filter((existing) => existing.id !== item.id),
+              item,
+            ],
+            project_bindings: currentCollections.project_bindings ?? {},
+          },
+        };
+        return buildConnection();
+      }),
       upsertProjectFromConnector: vi.fn(async ({ collectionId }: { collectionId: string }) => ({
         projectId:
           collectionId === 'team/repo-a'
@@ -691,6 +743,11 @@ describe('memory api demo slice', () => {
       const firstBody = await first.json();
       expect(firstBody.collections.map((collection: { id: string }) => collection.id)).toEqual(
         expect.arrayContaining(['team/repo-a', 'team/repo-b']),
+      );
+      expect(refreshConnectionCollections).toHaveBeenCalledWith(
+        expect.objectContaining({
+          items: [repoA],
+        }),
       );
 
       vi.setSystemTime(new Date('2026-08-19T18:20:00.000Z'));

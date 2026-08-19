@@ -285,36 +285,6 @@ function resolveCollectionProjectId(
   return normalized.collections?.project_bindings?.[collectionId] ?? null;
 }
 
-function shouldRetainWebhookCollectionAcrossDiscover(
-  collection: ConnectorCollection,
-  previousDiscoveredAt: string | undefined,
-): boolean {
-  if (collection.metadata?.added_via !== 'webhook') return false;
-  const addedAt = collection.metadata?.added_at;
-  if (typeof addedAt !== 'string') return false;
-  const addedAtMs = Date.parse(addedAt);
-  if (!Number.isFinite(addedAtMs)) return false;
-  if (!previousDiscoveredAt) return true;
-  const previousDiscoveredAtMs = Date.parse(previousDiscoveredAt);
-  if (!Number.isFinite(previousDiscoveredAtMs)) return true;
-  return addedAtMs > previousDiscoveredAtMs;
-}
-
-function buildDiscoverReplacementCollections(
-  metadata: Record<string, unknown> | undefined,
-  discoveredCollections: ConnectorCollection[],
-): ConnectorCollection[] {
-  const normalized = normalizeConnectionMetadata(metadata);
-  const previousDiscoveredAt = normalized.collections?.discovered_at;
-  const discoveredIds = new Set(discoveredCollections.map((collection) => collection.id));
-  const retainedWebhookCollections = (normalized.collections?.items ?? []).filter(
-    (collection) =>
-      !discoveredIds.has(collection.id) &&
-      shouldRetainWebhookCollectionAcrossDiscover(collection, previousDiscoveredAt),
-  );
-  return [...discoveredCollections, ...retainedWebhookCollections];
-}
-
 async function discoverAndSeedConnectionProjects(
   gateway: SupabaseMemoryGateway,
   item: {
@@ -352,18 +322,13 @@ async function discoverAndSeedConnectionProjects(
 
   if (!discovered) return item;
 
-  const collectionsForReplace = buildDiscoverReplacementCollections(
-    item.metadata,
-    discovered.collections,
-  );
   const refreshed = await gateway.refreshConnectionCollections({
     subjectId,
     connectionId: item.id,
-    items: collectionsForReplace,
+    items: discovered.collections,
   });
-  const selected = selectedConnectionCollections(refreshed.metadata);
   const projectBindings: Record<string, string> = {};
-  for (const collection of selected) {
+  for (const collection of selectedConnectionCollections(refreshed.metadata)) {
     const project = await gateway.upsertProjectFromConnector({
       subjectId,
       workspaceId,
