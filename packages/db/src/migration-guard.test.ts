@@ -1,0 +1,25 @@
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+import { describe, expect, it } from 'vitest';
+
+const migrationPath = fileURLToPath(
+  new URL('../../../supabase/migrations/20260819161434_m8_slice_03_projects_chats_ingest.sql', import.meta.url),
+);
+
+describe('m8 slice 03 migration guards', () => {
+  const sql = readFileSync(migrationPath, 'utf8');
+
+  it('matches connector projects only by unique repository identity', () => {
+    expect(sql).toContain(`repo->>'url' = v_repo_url`);
+    expect(sql).toContain(`repo->>'external_id' = v_external_id`);
+    expect(sql).toContain(`repo->>'collection_id' = p_collection_id`);
+    expect(sql).not.toContain(`lower(p.slug) IN (v_owner_hint, v_repo_hint, v_name_hint)`);
+    expect(sql).not.toContain(`lower(p.name) IN (lower(v_display_name), lower(coalesce(p_collection_id, '')))`);
+    expect(sql).not.toContain(`FROM unnest(coalesce(p.aliases`);
+  });
+
+  it('does not grant wildcard project access through null ACL rows', () => {
+    expect(sql).not.toContain(`project_id, NULL`);
+    expect(sql).not.toContain(`a.project_id IS NULL`);
+  });
+});

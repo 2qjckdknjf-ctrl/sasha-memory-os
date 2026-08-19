@@ -81,7 +81,7 @@ export function getMcpProfile(name?: McpProfileName | string | null): McpProfile
       instructions: [
         'Sasha Memory OS ChatGPT pilot. Prefer memory.search (pack_context=true) then context.project before writing.',
         'Writes: capture.text for notes/facts; memory.store_decision for decisions; memory.set_status for review.',
-        'Defaults fill actor_subject_id / workspace_id when omitted; pass project_id only when the target project is known.',
+        'Defaults fill actor_subject_id / workspace_id / project_id when omitted.',
         'Do not invent owner/ops tools (oauth, outbox, consolidation, embed).',
       ].join(' '),
     };
@@ -133,6 +133,13 @@ export function applyProfileDefaults(
     String(next.workspace_id).trim() === ''
   ) {
     next.workspace_id = profile.defaults.workspaceId;
+  }
+  if (
+    next.project_id === undefined ||
+    next.project_id === null ||
+    String(next.project_id).trim() === ''
+  ) {
+    next.project_id = profile.defaults.projectId;
   }
   return next;
 }

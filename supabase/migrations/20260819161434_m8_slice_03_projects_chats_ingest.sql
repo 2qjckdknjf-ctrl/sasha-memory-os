@@ -415,31 +415,17 @@ BEGIN
   INTO v_project
   FROM projects p
   WHERE p.workspace_id = p_workspace_id
-    AND (
-      EXISTS (
-        SELECT 1
-        FROM jsonb_array_elements(coalesce(p.repositories, '[]'::jsonb)) repo
-        WHERE (v_repo_url IS NOT NULL AND repo->>'url' = v_repo_url)
-           OR (v_external_id IS NOT NULL AND repo->>'external_id' = v_external_id)
-           OR repo->>'collection_id' = p_collection_id
-      )
-      OR lower(p.slug) IN (v_owner_hint, v_repo_hint, v_name_hint)
-      OR lower(p.name) IN (lower(v_display_name), lower(coalesce(p_collection_id, '')))
-      OR EXISTS (
-        SELECT 1
-        FROM unnest(coalesce(p.aliases, '{}'::text[])) alias
-        WHERE lower(alias) IN (
-          lower(coalesce(p_collection_id, '')),
-          lower(v_display_name),
-          lower(v_owner_hint),
-          lower(v_repo_hint)
+    AND EXISTS (
+      SELECT 1
+      FROM jsonb_array_elements(coalesce(p.repositories, '[]'::jsonb)) repo
+      WHERE coalesce(repo->>'provider', '') = p_provider
+        AND (
+          (v_repo_url IS NOT NULL AND repo->>'url' = v_repo_url)
+          OR (v_external_id IS NOT NULL AND repo->>'external_id' = v_external_id)
+          OR repo->>'collection_id' = p_collection_id
         )
-      )
     )
-  ORDER BY CASE
-    WHEN p.id = '44444444-4444-4444-8444-444444444401' THEN 0
-    ELSE 1
-  END, p.updated_at DESC, p.created_at DESC
+  ORDER BY p.updated_at DESC, p.created_at DESC
   LIMIT 1;
 
   IF v_project.id IS NULL THEN
@@ -720,40 +706,6 @@ AS $$
     p_metadata
   );
 $$;
-
-INSERT INTO acl_entries (
-  workspace_id, subject_id, effect, resource_type, project_id, actions, sensitivity_max
-)
-SELECT p.workspace_id, s.id, 'allow', t.resource_type, NULL, t.actions, t.sensitivity_max
-FROM workspaces p
-JOIN subjects s ON s.workspace_id = p.id
-JOIN (
-  VALUES
-    ('chatgpt', 'memory', ARRAY['read', 'write']::text[], 'internal'),
-    ('chatgpt', 'project', ARRAY['read']::text[], 'internal'),
-    ('chatgpt', 'project_state', ARRAY['read', 'write']::text[], 'internal'),
-    ('chatgpt', 'handoff', ARRAY['read', 'write']::text[], 'internal'),
-    ('cursor', 'memory', ARRAY['read']::text[], 'internal'),
-    ('cursor', 'project', ARRAY['read']::text[], 'internal'),
-    ('cursor', 'project_state', ARRAY['read', 'write']::text[], 'internal'),
-    ('cursor', 'handoff', ARRAY['read', 'write']::text[], 'internal'),
-    ('roma', 'memory', ARRAY['read', 'write']::text[], 'internal'),
-    ('roma', 'project', ARRAY['read']::text[], 'internal'),
-    ('roma', 'project_state', ARRAY['read']::text[], 'internal'),
-    ('roma', 'handoff', ARRAY['read', 'write']::text[], 'internal')
-) AS t(actor_key, resource_type, actions, sensitivity_max)
-  ON s.external_key = t.actor_key
-WHERE NOT EXISTS (
-  SELECT 1
-  FROM acl_entries a
-  WHERE a.workspace_id = p.id
-    AND a.subject_id = s.id
-    AND a.effect = 'allow'
-    AND a.resource_type = t.resource_type
-    AND a.project_id IS NULL
-    AND a.actions = t.actions
-    AND coalesce(a.sensitivity_max, '') = coalesce(t.sensitivity_max, '')
-);
 
 GRANT EXECUTE ON FUNCTION app.slugify_project_value(text)
   TO anon, authenticated, service_role;

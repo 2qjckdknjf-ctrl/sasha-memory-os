@@ -189,6 +189,18 @@ function filterSelectedGithubEvents(
   });
 }
 
+function nextGithubPageUrl(linkHeader: string | null): string | null {
+  if (!linkHeader) return null;
+  const segments = linkHeader.split(',');
+  for (const segment of segments) {
+    const match = segment.match(/<([^>]+)>;\s*rel="([^"]+)"/);
+    if (match?.[2] === 'next') {
+      return match[1] ?? null;
+    }
+  }
+  return null;
+}
+
 async function resolveGithubCredentials(context: ConnectorSyncContext) {
   const processEnv = context.processEnv ?? process.env;
   const envName = context.processEnv?.MEMORY_OS_ENV ?? processEnv.MEMORY_OS_ENV ?? 'local';
@@ -446,29 +458,32 @@ async function discoverGithubRepositories(
     };
   }
 
-  const response = await (context.fetchImpl ?? fetch)(
-    `https://api.github.com/user/repos?sort=updated&per_page=${GITHUB_DISCOVER_PAGE_SIZE}`,
-    {
-      headers: {
-        Accept: 'application/vnd.github+json',
-        Authorization: `Bearer ${creds.accessToken}`,
-        'User-Agent': 'sasha-memory-os-connector',
-        'X-GitHub-Api-Version': '2022-11-28',
-      },
-    },
-  );
+  const headers = {
+    Accept: 'application/vnd.github+json',
+    Authorization: `Bearer ${creds.accessToken}`,
+    'User-Agent': 'sasha-memory-os-connector',
+    'X-GitHub-Api-Version': '2022-11-28',
+  };
+  const repositories: GithubRepo[] = [];
+  let pageUrl: string | null =
+    `https://api.github.com/user/repos?sort=updated&per_page=${GITHUB_DISCOVER_PAGE_SIZE}`;
 
-  if (!response.ok) {
-    throw new Error(`GitHub repositories API failed: HTTP ${response.status}`);
+  while (pageUrl) {
+    const response = await (context.fetchImpl ?? fetch)(pageUrl, { headers });
+    if (!response.ok) {
+      throw new Error(`GitHub repositories API failed: HTTP ${response.status}`);
+    }
+    repositories.push(...((await response.json()) as GithubRepo[]));
+    pageUrl = nextGithubPageUrl(response.headers.get('link'));
   }
 
-  const repositories = ((await response.json()) as GithubRepo[])
+  const collections = repositories
     .filter((repo) => Boolean(repo.full_name ?? repo.name))
     .map(toGithubCollection);
   return {
-    collections: repositories,
+    collections,
     note:
-      repositories.length > 0
+      collections.length > 0
         ? 'vault-backed GitHub repositories discovered'
         : 'vault-backed GitHub discover found no repositories',
   };

@@ -219,6 +219,76 @@ describe('githubConnector discover', () => {
       await rm(dir, { recursive: true, force: true });
     }
   });
+
+  it('follows pagination when GitHub returns more than one page', async () => {
+    const dir = await mkdtemp(path.join(os.tmpdir(), 'memory-os-gh-discover-pages-'));
+    try {
+      const processEnv = {
+        MEMORY_OS_ENV: 'local',
+        MEMORY_OS_CONNECTOR_PULL_MODE: 'auto',
+        MEMORY_OS_VAULT_DIR: dir,
+        MEMORY_OS_VAULT_KEY: 'test-vault-key',
+      };
+      const vault = createLocalVaultStore(processEnv);
+      const vaultRef =
+        'vault:local/connectors/github/88888888-8888-4888-8888-888888888801';
+      await vault.put({
+        vaultRef,
+        accessToken: 'gho_test',
+        provider: 'github',
+        storedAt: '2026-08-11T12:00:00.000Z',
+      });
+
+      const firstPage = Array.from({ length: 100 }, (_, index) => ({
+        id: index + 1,
+        name: `repo-${index + 1}`,
+        full_name: `team/repo-${index + 1}`,
+        html_url: `https://github.com/team/repo-${index + 1}`,
+        default_branch: 'main',
+      }));
+      const secondPage = [
+        {
+          id: 101,
+          name: 'repo-101',
+          full_name: 'team/repo-101',
+          html_url: 'https://github.com/team/repo-101',
+          default_branch: 'main',
+        },
+      ];
+      const fetchImpl = vi
+        .fn()
+        .mockResolvedValueOnce(
+          new Response(JSON.stringify(firstPage), {
+            headers: {
+              link: '<https://api.github.com/user/repos?page=2>; rel="next"',
+            },
+          }),
+        )
+        .mockResolvedValueOnce(Response.json(secondPage));
+
+      const discovered = await runConnectorDiscover({
+        connector: githubConnector,
+        context: {
+          account: {
+            connectionId: '88888888-8888-4888-8888-888888888801',
+            connectorId: 'github',
+            displayName: 'GitHub repos',
+            vaultRef,
+          },
+          workspaceId: '11111111-1111-4111-8111-111111111111',
+          processEnv,
+          vault,
+          fetchImpl: fetchImpl as unknown as typeof fetch,
+        },
+      });
+
+      expect(fetchImpl).toHaveBeenCalledTimes(2);
+      expect(discovered?.collections).toHaveLength(101);
+      expect(discovered?.collections.at(-1)?.id).toBe('team/repo-101');
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
 });
 
 describe('githubConnector certification', () => {

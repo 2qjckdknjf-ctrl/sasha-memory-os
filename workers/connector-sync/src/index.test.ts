@@ -280,9 +280,40 @@ describe('planConnectorSync', () => {
       },
     ]);
 
-    let metadataState: Record<string, unknown> = {};
+    let metadataState: Record<string, unknown> = {
+      collections: {
+        selection_mode: 'all',
+        excluded_ids: ['team/repo-b'],
+        items: [
+          {
+            id: 'team/repo-a',
+            kind: 'repository',
+            name: 'repo-a',
+            title: 'team/repo-a',
+            url: 'https://github.com/team/repo-a',
+            default_branch: 'main',
+            metadata: {},
+          },
+          {
+            id: 'team/repo-b',
+            kind: 'repository',
+            name: 'repo-b',
+            title: 'team/repo-b',
+            url: 'https://github.com/team/repo-b',
+            default_branch: 'main',
+            metadata: {},
+          },
+        ],
+        project_bindings: {},
+      },
+    };
+    const projectIds: Record<string, string> = {
+      'team/repo-a': '44444444-4444-4444-8444-444444444410',
+      'team/repo-b': '44444444-4444-4444-8444-444444444411',
+      'team/repo-c': '44444444-4444-4444-8444-444444444412',
+    };
     const upsertProjectFromConnector = vi.fn(async ({ collectionId }: { collectionId: string }) => ({
-      projectId: `project-for-${collectionId}`,
+      projectId: projectIds[collectionId] ?? '44444444-4444-4444-8444-444444444499',
       slug: collectionId.replace('/', '-'),
       name: collectionId,
       memoryId: `memory-for-${collectionId}`,
@@ -334,7 +365,7 @@ describe('planConnectorSync', () => {
       workspaceId: '11111111-1111-4111-8111-111111111111',
       connectorRegistry,
     });
-    expect(upsertProjectFromConnector).toHaveBeenCalledTimes(2);
+    expect(upsertProjectFromConnector).toHaveBeenCalledTimes(1);
 
     await planConnectorSync({
       gateway: gateway as any,
@@ -343,9 +374,10 @@ describe('planConnectorSync', () => {
       connectorRegistry,
     });
 
-    expect(upsertProjectFromConnector).toHaveBeenCalledTimes(5);
-    expect(upsertProjectFromConnector.mock.calls.map(([input]) => input.collectionId)).toContain(
-      'team/repo-c',
+    const syncedCollections = upsertProjectFromConnector.mock.calls.map(
+      ([input]) => input.collectionId,
     );
+    expect(syncedCollections).toContain('team/repo-c');
+    expect(syncedCollections).not.toContain('team/repo-b');
   });
 });

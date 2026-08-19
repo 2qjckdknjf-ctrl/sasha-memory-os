@@ -227,102 +227,6 @@ function seedAuthz(subjectId: string): AuthzContext {
         actions: ['read', 'write'],
         sensitivityMax: 'internal',
       },
-      {
-        subjectId: chatgpt,
-        effect: 'allow',
-        resourceType: 'memory',
-        projectId: null,
-        actions: ['read', 'write'],
-        sensitivityMax: 'internal',
-      },
-      {
-        subjectId: chatgpt,
-        effect: 'allow',
-        resourceType: 'project',
-        projectId: null,
-        actions: ['read'],
-        sensitivityMax: 'internal',
-      },
-      {
-        subjectId: chatgpt,
-        effect: 'allow',
-        resourceType: 'project_state',
-        projectId: null,
-        actions: ['read', 'write'],
-        sensitivityMax: 'internal',
-      },
-      {
-        subjectId: chatgpt,
-        effect: 'allow',
-        resourceType: 'handoff',
-        projectId: null,
-        actions: ['read', 'write'],
-        sensitivityMax: 'internal',
-      },
-      {
-        subjectId: cursor,
-        effect: 'allow',
-        resourceType: 'memory',
-        projectId: null,
-        actions: ['read'],
-        sensitivityMax: 'internal',
-      },
-      {
-        subjectId: cursor,
-        effect: 'allow',
-        resourceType: 'project',
-        projectId: null,
-        actions: ['read'],
-        sensitivityMax: 'internal',
-      },
-      {
-        subjectId: cursor,
-        effect: 'allow',
-        resourceType: 'project_state',
-        projectId: null,
-        actions: ['read', 'write'],
-        sensitivityMax: 'internal',
-      },
-      {
-        subjectId: cursor,
-        effect: 'allow',
-        resourceType: 'handoff',
-        projectId: null,
-        actions: ['read', 'write'],
-        sensitivityMax: 'internal',
-      },
-      {
-        subjectId: roma,
-        effect: 'allow',
-        resourceType: 'memory',
-        projectId: null,
-        actions: ['read', 'write'],
-        sensitivityMax: 'internal',
-      },
-      {
-        subjectId: roma,
-        effect: 'allow',
-        resourceType: 'project',
-        projectId: null,
-        actions: ['read'],
-        sensitivityMax: 'internal',
-      },
-      {
-        subjectId: roma,
-        effect: 'allow',
-        resourceType: 'project_state',
-        projectId: null,
-        actions: ['read'],
-        sensitivityMax: 'internal',
-      },
-      {
-        subjectId: roma,
-        effect: 'allow',
-        resourceType: 'handoff',
-        projectId: null,
-        actions: ['read', 'write'],
-        sensitivityMax: 'internal',
-      },
     ],
   };
 }
@@ -546,17 +450,20 @@ async function discoverAndSeedConnectionProjects(
     return item;
   }
 
+  const baseConnection =
+    item.metadata === undefined ? await gateway.getConnection(subjectId, item.id) : item;
+
   const vault = createConfiguredVaultStore({ gateway });
   const discovered = await runConnectorDiscover({
     connector,
     context: {
       account: {
-        connectionId: item.id,
-        connectorId: item.connectorId,
-        displayName: item.displayName ?? item.connectorId,
-        vaultRef: item.vaultRef ?? undefined,
-        scopes: item.scopes ?? [],
-        metadata: item.metadata,
+        connectionId: baseConnection.id,
+        connectorId: baseConnection.connectorId,
+        displayName: baseConnection.displayName ?? baseConnection.connectorId,
+        vaultRef: baseConnection.vaultRef ?? undefined,
+        scopes: baseConnection.scopes ?? [],
+        metadata: baseConnection.metadata,
       },
       workspaceId,
       vault,
@@ -565,14 +472,14 @@ async function discoverAndSeedConnectionProjects(
 
   if (!discovered) return item;
 
-  let metadata = withDiscoveredCollections(item.metadata, discovered.collections);
+  let metadata = withDiscoveredCollections(baseConnection.metadata, discovered.collections);
   const selected = selectedConnectionCollections(metadata);
   for (const collection of selected) {
     const project = await gateway.upsertProjectFromConnector({
       subjectId,
       workspaceId,
-      provider: item.connectorId,
-      connectionId: item.id,
+      provider: baseConnection.connectorId,
+      connectionId: baseConnection.id,
       collectionId: collection.id,
       externalId: collection.external_id ?? null,
       name: collectionDisplayName(collection),
@@ -592,10 +499,10 @@ async function discoverAndSeedConnectionProjects(
 
   const updated = await gateway.setConnectionMetadata({
     subjectId,
-    connectionId: item.id,
+    connectionId: baseConnection.id,
     metadata,
   });
-  return { ...item, metadata: updated.metadata };
+  return { ...baseConnection, metadata: updated.metadata };
 }
 
 function toSyncCursor(
