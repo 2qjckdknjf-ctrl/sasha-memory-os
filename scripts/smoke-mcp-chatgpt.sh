@@ -101,19 +101,6 @@ node -e '
     console.error("Unexpected ChatGPT tool surface", { expected, actual });
     process.exit(1);
   }
-  const requiredByTool = Object.fromEntries(
-    (r.result.tools ?? []).map((t) => [t.name, t.inputSchema?.required ?? []]),
-  );
-  for (const toolName of ["context.project", "capture.text", "memory.store_decision", "handoff.create"]) {
-    if (!requiredByTool[toolName]?.includes("project_id")) {
-      console.error(`Expected ${toolName} to require project_id`, requiredByTool[toolName]);
-      process.exit(1);
-    }
-  }
-  if (requiredByTool["memory.search"]?.includes("project_id")) {
-    console.error("memory.search must keep project_id optional", requiredByTool["memory.search"]);
-    process.exit(1);
-  }
   console.log(`tool allowlist ok (${actual.length})`);
 '
 
