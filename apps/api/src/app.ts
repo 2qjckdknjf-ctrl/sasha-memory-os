@@ -12,10 +12,11 @@ import {
   type MemoryStore,
 } from '@memory-os/domain';
 import { githubConnector } from '@memory-os/connector-github';
-import { pullGmailDelta } from '@memory-os/connector-gmail';
-import { pullGoogleCalendarDelta } from '@memory-os/connector-google-calendar';
-import { pullGoogleDriveDelta } from '@memory-os/connector-google-drive';
+import { gmailConnector } from '@memory-os/connector-gmail';
+import { googleCalendarConnector } from '@memory-os/connector-google-calendar';
+import { googleDriveConnector } from '@memory-os/connector-google-drive';
 import {
+  ConnectorRegistry,
   createConnectorRegistry,
   exchangeAuthorizationCode,
   fingerprintAuthorizationCode,
@@ -376,64 +377,31 @@ async function maybeEmbedCapturedMemory(
   }
 }
 
-const sdkConnectorRegistry = createConnectorRegistry([githubConnector]);
+const defaultSdkConnectorRegistry = createConnectorRegistry([
+  githubConnector,
+  gmailConnector,
+  googleDriveConnector,
+  googleCalendarConnector,
+]);
 
-const legacyConnectorCatalog = [
-  {
-    id: githubConnector.manifest.id,
-    version: githubConnector.manifest.version,
-    displayName: 'GitHub',
-    authType: githubConnector.manifest.auth,
-    capabilities: githubConnector.manifest.capabilities,
-    supports: githubConnector.manifest.supports,
-    storageModes: githubConnector.manifest.storage_modes,
-  },
-  {
-    id: 'gmail',
-    version: '1.0.0',
-    displayName: 'Gmail',
-    authType: 'oauth2',
-    capabilities: ['messages.metadata', 'labels.read'],
-    supports: {
-      initial_sync: true,
-      incremental_sync: true,
-      live_fetch: false,
-      webhooks: false,
-      write: false,
-    },
-    storageModes: ['reference', 'indexed'],
-  },
-  {
-    id: 'google-drive',
-    version: '1.0.0',
-    displayName: 'Google Drive',
-    authType: 'oauth2',
-    capabilities: ['files.read', 'changes.list'],
-    supports: {
-      initial_sync: true,
-      incremental_sync: true,
-      live_fetch: false,
-      webhooks: false,
-      write: false,
-    },
-    storageModes: ['reference', 'indexed'],
-  },
-  {
-    id: 'google-calendar',
-    version: '1.0.0',
-    displayName: 'Google Calendar',
-    authType: 'oauth2',
-    capabilities: ['events.read'],
-    supports: {
-      initial_sync: true,
-      incremental_sync: true,
-      live_fetch: false,
-      webhooks: false,
-      write: false,
-    },
-    storageModes: ['reference', 'indexed'],
-  },
-];
+const connectorDisplayNames: Record<string, string> = {
+  github: 'GitHub',
+  gmail: 'Gmail (stub)',
+  'google-drive': 'Google Drive',
+  'google-calendar': 'Google Calendar',
+};
+
+function buildLocalConnectorCatalog(connectorRegistry: ConnectorRegistry) {
+  return connectorRegistry.list().map((manifest) => ({
+    id: manifest.id,
+    version: manifest.version,
+    displayName: connectorDisplayNames[manifest.id] ?? manifest.id,
+    authType: manifest.auth,
+    capabilities: manifest.capabilities,
+    supports: manifest.supports,
+    storageModes: manifest.storage_modes,
+  }));
+}
 
 type ConnectionLike = {
   id: string;
@@ -537,6 +505,7 @@ async function buildConnectionHealth(
   gateway: SupabaseMemoryGateway | null,
   subjectId: string,
   connection: ConnectionLike,
+  connectorRegistry: ConnectorRegistry,
 ) {
   const derived = describeDerivedHealth(connection);
   if (!gateway) {
@@ -561,7 +530,7 @@ async function buildConnectionHealth(
       checks: derived.checks,
     };
   }
-  const connector = sdkConnectorRegistry.get(connection.connectorId);
+  const connector = connectorRegistry.get(connection.connectorId);
   if (!connector) {
     return {
       connectionId: connection.id,
@@ -669,33 +638,6 @@ async function ingestSdkConnectorDelta(
   };
 }
 
-async function pullLegacyConnectorDelta(
-  item: {
-    connectorId: string;
-    connectionId: string;
-    displayName?: string;
-    vaultRef?: string | null;
-  },
-  vault: ReturnType<typeof createConfiguredVaultStore>,
-) {
-  const common = {
-    connectionId: item.connectionId,
-    displayName: item.displayName ?? item.connectorId,
-    vaultRef: item.vaultRef ?? undefined,
-    vault,
-  };
-  switch (item.connectorId) {
-    case 'google-drive':
-      return pullGoogleDriveDelta(common);
-    case 'gmail':
-      return pullGmailDelta(common);
-    case 'google-calendar':
-      return pullGoogleCalendarDelta(common);
-    default:
-      return null;
-  }
-}
-
 function resolveCorsOrigins(
   env: NodeJS.ProcessEnv = process.env,
 ): string[] {
@@ -709,13 +651,16 @@ function resolveCorsOrigins(
 export function createApp(options?: {
   store?: MemoryStore;
   gateway?: SupabaseMemoryGateway | null;
+  connectorRegistry?: ConnectorRegistry;
 }) {
   const store = options?.store ?? createSeededStore();
   const gateway = options?.gateway ?? null;
+  const connectorRegistry = options?.connectorRegistry ?? defaultSdkConnectorRegistry;
   const mcp = createMcpHandlers({
     store,
     gateway,
     profile: process.env.MEMORY_OS_MCP_PROFILE,
+    connectorRegistry,
   });
   const app = new Hono<{ Variables: ApiVariables }>();
 
@@ -953,7 +898,10 @@ export function createApp(options?: {
     const authz = c.get('authz');
     const gw = c.get('gateway');
     if (!gw) {
-      return c.json({ connectors: legacyConnectorCatalog, backend: 'memory-store' });
+      return c.json({
+        connectors: buildLocalConnectorCatalog(connectorRegistry),
+        backend: 'memory-store',
+      });
     }
     try {
       const connectors = await gw.listConnectors(authz.subjectId);
@@ -1013,7 +961,12 @@ export function createApp(options?: {
     }
     try {
       const connection = await gw.getConnection(authz.subjectId, connectionId);
-      const health = await buildConnectionHealth(gw, authz.subjectId, connection);
+      const health = await buildConnectionHealth(
+        gw,
+        authz.subjectId,
+        connection,
+        connectorRegistry,
+      );
       return c.json(health);
     } catch (err) {
       if (isForbiddenError(err)) return c.json({ error: 'forbidden' }, 403);
@@ -1064,13 +1017,12 @@ export function createApp(options?: {
       const completed: Array<Record<string, unknown>> = [];
       let captured = 0;
       if (body.complete_now !== false) {
-        const vault = createConfiguredVaultStore({ gateway: gw });
         for (const item of result.enqueued ?? []) {
           if (!item.jobId) continue;
           try {
-            const sdkConnector = sdkConnectorRegistry.get(item.connectorId);
+            const sdkConnector = connectorRegistry.get(item.connectorId);
             let pullMode = 'none';
-            let note: string | undefined;
+            let note = 'unsupported connector';
             if (sdkConnector) {
               const ingested = await ingestSdkConnectorDelta(
                 gw,
@@ -1088,40 +1040,6 @@ export function createApp(options?: {
               captured += ingested.captured;
               pullMode = ingested.pullMode;
               note = ingested.note;
-            } else {
-              const delta = await pullLegacyConnectorDelta(item, vault);
-              if (delta) {
-                for (const event of delta.items) {
-                  const captureResult = await gw.captureText({
-                    subjectId: actorSubjectId,
-                    workspaceId,
-                    projectId: seedProject,
-                    title: event.title,
-                    text: event.text,
-                    idempotencyKey: `connector-sync/${item.connectionId}/${event.externalId}`,
-                    processNow: true,
-                    filename: `${item.connectorId}://${event.externalId}`,
-                    mimeType: 'text/plain',
-                  });
-                  await maybeEmbedCapturedMemory(gw, {
-                    subjectId: actorSubjectId,
-                    title: event.title,
-                    text: event.text,
-                    captureResult,
-                  });
-                  captured += 1;
-                }
-              }
-              pullMode =
-                delta && 'mode' in delta && typeof delta.mode === 'string'
-                  ? delta.mode
-                  : 'none';
-              note =
-                delta && 'note' in delta && typeof delta.note === 'string'
-                  ? delta.note
-                  : delta
-                    ? undefined
-                    : 'unsupported connector';
             }
             const outcome = resolveConnectorSyncOutcome({ pullMode, note });
             completed.push({
@@ -1187,7 +1105,7 @@ export function createApp(options?: {
     }
     try {
       const connection = await gw.getConnection(body.actor_subject_id, connectionId);
-      const connector = sdkConnectorRegistry.get(connection.connectorId);
+      const connector = connectorRegistry.get(connection.connectorId);
       const vault = createConfiguredVaultStore({ gateway: gw });
       if (connector) {
         await connector.lifecycle.revoke?.({

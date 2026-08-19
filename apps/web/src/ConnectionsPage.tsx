@@ -26,21 +26,40 @@ type Props = {
   onRevokeConnection: (id: string) => void | Promise<void>;
 };
 
+const connectorLabels: Record<string, string> = {
+  github: 'GitHub',
+  gmail: 'Gmail (stub)',
+  'google-drive': 'Google Drive',
+  'google-calendar': 'Google Calendar',
+};
+
+const connectorOauthConfig: Record<
+  string,
+  { connectLabel: string; reconnectLabel: string; defaultDisplayName: string; scopes: string[] }
+> = {
+  github: {
+    connectLabel: 'Подключить GitHub',
+    reconnectLabel: 'Переподключить GitHub',
+    defaultDisplayName: 'AISTROYKA repos',
+    scopes: ['repositories.read'],
+  },
+  'google-drive': {
+    connectLabel: 'Подключить Google Drive',
+    reconnectLabel: 'Переподключить Google Drive',
+    defaultDisplayName: 'AISTROYKA Drive',
+    scopes: ['drive.file'],
+  },
+  'google-calendar': {
+    connectLabel: 'Подключить Google Calendar',
+    reconnectLabel: 'Переподключить Google Calendar',
+    defaultDisplayName: 'AISTROYKA Calendar',
+    scopes: ['events.read'],
+  },
+};
+
 function describeConnector(connectorId?: string): string {
-  switch (connectorId) {
-    case 'github':
-      return 'GitHub';
-    case 'gmail':
-      return 'Gmail';
-    case 'google-drive':
-      return 'Google Drive';
-    case 'google-calendar':
-      return 'Google Calendar';
-    case undefined:
-      return 'Коннектор';
-    default:
-      return connectorId;
-  }
+  if (connectorId === undefined) return 'Коннектор';
+  return connectorLabels[connectorId] ?? connectorId;
 }
 
 function describeConnectionMessage(connection: ConnectionRecord): string {
@@ -120,8 +139,12 @@ export function ConnectionsPage({
         ) : (
           <ul className="timeline" aria-label="Каталог коннекторов">
             {connectors.map((connector) => {
-              const connectorLabel = connector.displayName ?? describeConnector(connector.id);
-              const supportsOauth = connector.id === 'github';
+              const connectorLabel =
+                connector.id === 'gmail'
+                  ? describeConnector(connector.id)
+                  : (connector.displayName ?? describeConnector(connector.id));
+              const oauthConfig = connectorOauthConfig[connector.id];
+              const supportsOauth = Boolean(oauthConfig);
               const isGmailStub = connector.id === 'gmail';
               const isConnected = connections.some((connection) => connection.connectorId === connector.id);
               return (
@@ -152,12 +175,16 @@ export function ConnectionsPage({
                         onClick={() => {
                           void onStartOAuth({
                             connectorId: connector.id,
-                            displayName: isConnected ? connectorLabel : 'AISTROYKA repos',
-                            scopes: ['repositories.read'],
+                            displayName: isConnected
+                              ? connectorLabel
+                              : (oauthConfig?.defaultDisplayName ?? connectorLabel),
+                            scopes: oauthConfig?.scopes ?? [],
                           });
                         }}
                       >
-                        {isConnected ? 'Переподключить GitHub' : 'Подключить GitHub'}
+                        {isConnected
+                          ? (oauthConfig?.reconnectLabel ?? 'Переподключить')
+                          : (oauthConfig?.connectLabel ?? 'Подключить')}
                       </button>
                     ) : null}
                     {isGmailStub && !hasGmail ? (
@@ -208,7 +235,7 @@ export function ConnectionsPage({
         <p className="hint">
           {actionsDisabled
             ? 'В локальном preview список может быть синтетическим, а sync/OAuth потребуют живой API backend.'
-            : 'GitHub OAuth и sync используют уже существующие endpoint-ы продукта. Gmail в текущем билде может оставаться заглушкой.'}
+            : 'GitHub, Drive и Calendar идут через общий OAuth broker и SDK sync. Gmail в текущем билде остаётся явной заглушкой.'}
         </p>
       </section>
 
@@ -217,20 +244,23 @@ export function ConnectionsPage({
         {connections.length === 0 ? (
           <div className="surface-stack">
             <p className="hint">
-              Подключений пока нет. Начните с GitHub OAuth или используйте Gmail stub, если он нужен
-              для текущего демо-среза.
+              Подключений пока нет. Начните с GitHub/Drive/Calendar OAuth или используйте Gmail
+              stub, если он нужен для текущего демо-среза.
             </p>
           </div>
         ) : (
           <ul className="timeline" aria-label="Список подключений">
             {connections.map((connection, index) => {
               const connectorLabel = describeConnector(connection.connectorId);
-              const supportsOAuth = connection.connectorId === 'github';
+              const oauthConfig = connection.connectorId
+                ? connectorOauthConfig[connection.connectorId]
+                : undefined;
+              const supportsOAuth = Boolean(oauthConfig);
               const health = connection.id ? connectionHealth[connection.id] : undefined;
               const actionLabel =
                 connection.status === 'reauth_required' || connection.status === 'revoked'
-                  ? 'Авторизовать заново'
-                  : 'Переподключить';
+                  ? oauthConfig?.connectLabel ?? 'Авторизовать заново'
+                  : oauthConfig?.reconnectLabel ?? 'Переподключить';
               return (
                 <li
                   className="item"
@@ -281,7 +311,7 @@ export function ConnectionsPage({
                             scopes:
                               connection.scopes && connection.scopes.length > 0
                                 ? connection.scopes
-                                : ['repositories.read'],
+                                : (oauthConfig?.scopes ?? ['repositories.read']),
                           });
                         }}
                       >
