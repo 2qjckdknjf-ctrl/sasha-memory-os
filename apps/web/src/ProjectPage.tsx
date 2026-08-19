@@ -148,17 +148,21 @@ export function ProjectPage({
             Открыть страницу конфликтов
           </Link>
         </div>
-        {reviewQueueLoading ? <p className="hint">Загружаю очередь…</p> : null}
-        {!reviewQueueLoading ? (
-          <ReviewQueueList
-            actor={actor}
-            items={reviewQueue}
-            source="review"
-            projectId={projectId}
-            emptyMessage="Сейчас нет кандидатов или спорных записей."
-            onSetStatus={onSetReviewStatus}
-          />
+        {reviewQueueLoading && reviewQueue.length > 0 ? (
+          <p className="hint">Обновляю очередь…</p>
         ) : null}
+        <ReviewQueueList
+          actor={actor}
+          items={reviewQueue}
+          source="review"
+          projectId={projectId}
+          emptyMessage={
+            reviewQueueLoading
+              ? 'Загружаю очередь…'
+              : 'Сейчас нет кандидатов или спорных записей.'
+          }
+          onSetStatus={onSetReviewStatus}
+        />
       </section>
     </section>
   );

@@ -26,6 +26,7 @@
 - Connector-sync / consolidation CLI ticks; optional `MEMORY_OS_WORKER_INTERVAL_MS` loop
 - Golden retrieval harness: 200 hybrid ACL cases
 - Web timeline / review / OAuth / consolidation controls: `apps/web`
+- **M7 started:** hardening Control Center web UX after merged Slices 01–03 (review queue, conflicts, inspector tails)
 - **M6 ChatGPT Mode A PASS (2026-08-15):** final `Sasha Memory OS` custom MCP app connected through Supabase OAuth 2.1; exact seven-tool scan, normal-chat read, `memory.store_decision`, and read-after-write all passed. The stale `Sasha Mamory OS` registration was removed; exactly one personal Sasha registration remains.
 
 ## Репозиторий
