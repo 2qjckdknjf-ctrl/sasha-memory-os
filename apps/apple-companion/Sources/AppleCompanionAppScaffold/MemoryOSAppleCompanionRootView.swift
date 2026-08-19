@@ -36,9 +36,11 @@ public final class AppleCompanionPreviewModel: ObservableObject {
             observedAt: "2026-08-19T23:15:00.000Z",
             storageMode: .indexed,
             sensitivity: .internalData,
+            memoryType: .idea,
             idempotencyKey: "apple-share/preview-mac/whiteboard-1",
             deleteLocalAfterAck: true,
             processNow: false,
+            needsCompanionProcessing: true,
             source: .shareExtension,
             identifiers: AppleCompanionIdentifiers(
                 localIdentifier: "APPLE-LOCAL-1",
@@ -62,32 +64,35 @@ public final class AppleCompanionPreviewModel: ObservableObject {
                 shareExtension: .full
             ),
             queue: queue,
-            connectionStatusNote: "Slice 02 placeholder: limited-library permission, selection, and queue contract only."
+            connectionStatusNote: "Slice 04 placeholder: share-contract intake, limited-library permissions, Files bookmarks, and durable queue status only."
         )
     }
 
     public func enqueueTextStub() {
-        let request = AppleCompanionIngestRequest(
-            workspaceID: session.subjectID != nil
-                ? "11111111-1111-4111-8111-111111111111"
-                : "11111111-1111-4111-8111-111111111111",
+        let itemID = UUID().uuidString.lowercased()
+        let payload = AppleCompanionSharePayload(
+            workspaceID: "11111111-1111-4111-8111-111111111111",
             projectID: "sasha-memory-os",
             actorSubjectID: session.subjectID ?? "33333333-3333-4333-8333-333333333301",
             deviceID: "preview-mac",
-            itemID: UUID().uuidString.lowercased(),
+            itemID: itemID,
             kind: .text,
-            title: "Shared text stub",
             text: "Companion app queued a text stub for later upload.",
-            mimeType: "text/plain",
             observedAt: AppleCompanionClock.iso8601String(),
             storageMode: .indexed,
             sensitivity: .internalData,
-            idempotencyKey: "apple-share/preview-mac/\(UUID().uuidString.lowercased())",
+            memoryType: .idea,
+            idempotencyKey: "apple-share/preview-mac/\(itemID)",
             deleteLocalAfterAck: true,
-            processNow: false,
-            source: .companionApp
+            metadata: [
+                "shared_from": .string("Preview")
+            ]
         )
-        queue = AppleCompanionQueueReducer.enqueue(queue, payload: request)
+
+        guard let mapped = try? AppleCompanionSharePayloadMapper.map(payload) else {
+            return
+        }
+        queue = AppleCompanionQueueReducer.enqueue(queue, payload: mapped.request)
     }
 
     public func markFirstItemUploading() {
@@ -153,12 +158,17 @@ public struct MemoryOSAppleCompanionRootView: View {
                     VStack(alignment: .leading, spacing: 6) {
                         Text(item.payload.title)
                             .font(.headline)
-                        Text("\(item.payload.kind.rawValue) • \(item.state.rawValue)")
+                        Text("\(item.payload.kind.rawValue) • \(item.statusLabel.rawValue)")
                             .font(.subheadline)
                             .foregroundStyle(.secondary)
                         Text("Project: \(item.payload.projectID)")
                             .font(.caption)
                             .foregroundStyle(.secondary)
+                        if let memoryType = item.payload.memoryType {
+                            Text("Memory type: \(memoryType.rawValue)")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
                         if let lastError = item.lastError {
                             Text(lastError)
                                 .font(.caption)
@@ -188,10 +198,10 @@ public struct MemoryOSAppleCompanionRootView: View {
             NavigationStack {
                 Form {
                     Section("Share item intake stub") {
-                        Text("Slice 02 keeps the contract testable in CI. Live PhotoKit enumeration, bookmark resolution, and the runtime Share Extension target land in later slices.")
+                        Text("Slice 04 keeps the Share Extension contract testable in CI. Live PhotoKit enumeration, bookmark resolution, signed appex wiring, and the runtime Share Extension target land in later slices.")
                             .font(.footnote)
                             .foregroundStyle(.secondary)
-                        Button("Queue shared text stub") {
+                        Button("Queue shared text contract") {
                             model.enqueueTextStub()
                         }
                     }

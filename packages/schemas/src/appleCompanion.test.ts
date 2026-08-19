@@ -5,9 +5,12 @@ import {
   appleCompanionIngestRequestSchema,
   appleCompanionPhotoLibraryCheckpointSchema,
   appleCompanionQueueSchema,
+  appleCompanionQueueSnapshotSchema,
   canIngestAppleCompanionFile,
   canIngestApplePhotoLibraryAsset,
   createAppleCompanionQueueItem,
+  drainAppleCompanionQueue,
+  mapAppleCompanionSharePayload,
   markAppleCompanionQueueItemReselectRequired,
   matchesAppleCompanionSelectedAsset,
   markAppleCompanionQueueItemDone,
@@ -44,11 +47,143 @@ const basePayload = {
   },
 };
 
+const baseSharePayload = {
+  workspace_id: '11111111-1111-4111-8111-111111111111',
+  project_id: 'sasha-memory-os',
+  actor_subject_id: '33333333-3333-4333-8333-333333333301',
+  device_id: 'iphone-15-pro',
+  connection_id: '88888888-8888-4888-8888-888888888810',
+  item_id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+  sensitivity: 'internal' as const,
+  storage_mode: 'indexed' as const,
+  memory_type: 'idea' as const,
+  idempotency_key: 'apple-share/iphone-15-pro/share-1',
+  delete_local_after_ack: true,
+  identifiers: {
+    local_identifier: '8F9CF9E5-LOCAL',
+  },
+  metadata: {
+    shared_from: 'Notes',
+  },
+};
+
 describe('appleCompanionIngestRequestSchema', () => {
   it('accepts a companion upload that targets a project slug', () => {
     const parsed = appleCompanionIngestRequestSchema.parse(basePayload);
     expect(parsed.project_id).toBe('sasha-memory-os');
     expect(parsed.identifiers.cloud_identifier).toBe('A1B2C3D4-CLOUD');
+  });
+});
+
+describe('mapAppleCompanionSharePayload', () => {
+  it.each([
+    [
+      'text',
+      {
+        ...baseSharePayload,
+        item_id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa1',
+        idempotency_key: 'apple-share/iphone-15-pro/text-1',
+        kind: 'text' as const,
+        text: 'Shared notes from a meeting.',
+      },
+    ],
+    [
+      'url',
+      {
+        ...baseSharePayload,
+        item_id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa2',
+        idempotency_key: 'apple-share/iphone-15-pro/url-1',
+        kind: 'url' as const,
+        url: 'https://example.com/share',
+      },
+    ],
+    [
+      'photo',
+      {
+        ...baseSharePayload,
+        item_id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa3',
+        idempotency_key: 'apple-share/iphone-15-pro/photo-1',
+        kind: 'photo' as const,
+        filename: 'whiteboard.jpeg',
+        mime_type: 'image/jpeg',
+      },
+    ],
+    [
+      'video',
+      {
+        ...baseSharePayload,
+        item_id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa4',
+        idempotency_key: 'apple-share/iphone-15-pro/video-1',
+        kind: 'video' as const,
+        filename: 'demo.mov',
+        mime_type: 'video/quicktime',
+      },
+    ],
+    [
+      'file',
+      {
+        ...baseSharePayload,
+        item_id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa5',
+        idempotency_key: 'apple-share/iphone-15-pro/file-1',
+        kind: 'file' as const,
+        filename: 'roadmap.md',
+        mime_type: 'text/markdown',
+      },
+    ],
+  ])('maps %s shares into a durable ingest request and queue item', (_kind, share) => {
+    const mapped = mapAppleCompanionSharePayload({
+      share,
+      queuedAt: '2026-08-19T23:16:00.000Z',
+    });
+
+    expect(mapped.request.kind).toBe(share.kind);
+    expect(mapped.request.project_id).toBe('sasha-memory-os');
+    expect(mapped.request.storage_mode).toBe('indexed');
+    expect(mapped.request.sensitivity).toBe('internal');
+    expect(mapped.request.memory_type).toBe('idea');
+    expect(mapped.request.source).toBe('share_extension');
+    expect(mapped.request.process_now).toBe(false);
+    expect(mapped.request.needs_companion_processing).toBe(true);
+    expect(mapped.queueItem.id).toBe(share.item_id);
+    expect(mapped.queueItem.state).toBe('pending');
+    expect(mapped.queueItem.status_label).toBe('pending');
+    expect(mapped.queueItem.payload.idempotency_key).toBe(share.idempotency_key);
+  });
+
+  it('rejects shares without project_id before enqueue', () => {
+    expect(() =>
+      mapAppleCompanionSharePayload({
+        share: {
+          ...baseSharePayload,
+          item_id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa6',
+          idempotency_key: 'apple-share/iphone-15-pro/no-project-1',
+          kind: 'text',
+          text: 'Projectless shares must fail.',
+          project_id: '',
+        },
+      }),
+    ).toThrow(/project_id/i);
+  });
+
+  it('keeps extension intake queue-only and defers heavy processing to the companion', () => {
+    const mapped = mapAppleCompanionSharePayload({
+      share: {
+        ...baseSharePayload,
+        item_id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa7',
+        idempotency_key: 'apple-share/iphone-15-pro/text-queue-only',
+        kind: 'text',
+        text: 'Queue only share.',
+      },
+    });
+
+    expect(mapped.request.process_now).toBe(false);
+    expect(mapped.request.needs_companion_processing).toBe(true);
+    expect(mapped.request.metadata).toEqual({
+      shared_from: 'Notes',
+    });
+    expect(mapped.request).not.toHaveProperty('normalized');
+    expect(mapped.request).not.toHaveProperty('ocr_text');
+    expect(mapped.request).not.toHaveProperty('llm_summary');
   });
 });
 
@@ -330,6 +465,145 @@ describe('appleCompanionQueueSchema', () => {
     expect(failed[0]?.last_error).toBe('reselect_required');
     expect(failed[0]?.last_error_code).toBe('reselect_required');
     expect(failed[0]?.next_retry_at).toBeNull();
+  });
+});
+
+describe('drainAppleCompanionQueue', () => {
+  it('persists an offline share across a process restart and marks it done after network recovery', async () => {
+    const mapped = mapAppleCompanionSharePayload({
+      share: {
+        ...baseSharePayload,
+        item_id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa8',
+        idempotency_key: 'apple-share/iphone-15-pro/offline-1',
+        kind: 'url',
+        url: 'https://example.com/offline-share',
+      },
+      queuedAt: '2026-08-19T23:16:00.000Z',
+    });
+    const snapshot = appleCompanionQueueSnapshotSchema.parse({
+      items: [mapped.queueItem],
+      cursor: {},
+    });
+    const restarted = appleCompanionQueueSnapshotSchema.parse(JSON.parse(JSON.stringify(snapshot)));
+
+    expect(restarted.items).toHaveLength(1);
+    expect(restarted.items[0]?.state).toBe('pending');
+    expect(restarted.items[0]?.status_label).toBe('pending');
+
+    const drained = await drainAppleCompanionQueue({
+      queue: restarted.items,
+      now: '2026-08-19T23:20:00.000Z',
+      transport: () => ({
+        status: 'acknowledged',
+        delete_local_after_ack: true,
+      }),
+    });
+
+    expect(drained[0]?.state).toBe('done');
+    expect(drained[0]?.status_label).toBe('done');
+    expect(drained[0]?.delete_local_after_ack).toBe(true);
+    expect(drained[0]?.completed_at).toBe('2026-08-19T23:20:00.000Z');
+  });
+
+  it('keeps a missing-project 400 as failed without a retry timer', async () => {
+    const mapped = mapAppleCompanionSharePayload({
+      share: {
+        ...baseSharePayload,
+        item_id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa9',
+        idempotency_key: 'apple-share/iphone-15-pro/missing-project-400',
+        kind: 'text',
+        text: 'Bad share payload already reached drain.',
+      },
+    });
+
+    const drained = await drainAppleCompanionQueue({
+      queue: [mapped.queueItem],
+      now: '2026-08-19T23:21:00.000Z',
+      transport: () => ({
+        status: 'validation_error',
+        error: 'project_id is required for this write',
+        http_status: 400,
+      }),
+    });
+
+    expect(drained[0]?.state).toBe('failed');
+    expect(drained[0]?.status_label).toBe('failed');
+    expect(drained[0]?.last_error).toBe('project_id is required for this write');
+    expect(drained[0]?.next_retry_at).toBeNull();
+  });
+
+  it('does not schedule a retry when the companion requires bookmark reselection', async () => {
+    const mapped = mapAppleCompanionSharePayload({
+      share: {
+        ...baseSharePayload,
+        item_id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaa10',
+        idempotency_key: 'apple-share/iphone-15-pro/reselect-1',
+        kind: 'file',
+        filename: 'roadmap.md',
+        mime_type: 'text/markdown',
+      },
+    });
+
+    const drained = await drainAppleCompanionQueue({
+      queue: [mapped.queueItem],
+      now: '2026-08-19T23:22:00.000Z',
+      transport: () => ({
+        status: 'reselect_required',
+        error: 'stale bookmark',
+      }),
+    });
+
+    expect(drained[0]?.state).toBe('failed');
+    expect(drained[0]?.status_label).toBe('reselect_required');
+    expect(drained[0]?.last_error_code).toBe('reselect_required');
+    expect(drained[0]?.next_retry_at).toBeNull();
+  });
+
+  it('retries the same large-file queue row with the same idempotency key after a network failure', async () => {
+    const mapped = mapAppleCompanionSharePayload({
+      share: {
+        ...baseSharePayload,
+        item_id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaa11',
+        idempotency_key: 'apple-share/iphone-15-pro/large-file-1',
+        kind: 'video',
+        filename: 'large-demo.mov',
+        mime_type: 'video/quicktime',
+      },
+      queuedAt: '2026-08-19T23:16:00.000Z',
+    });
+
+    const firstAttempt = await drainAppleCompanionQueue({
+      queue: [mapped.queueItem],
+      now: '2026-08-19T23:23:00.000Z',
+      transport: () => ({
+        status: 'network_error',
+        error: 'network timeout',
+        retry_delay_ms: 120_000,
+      }),
+    });
+
+    expect(firstAttempt).toHaveLength(1);
+    expect(firstAttempt[0]?.state).toBe('failed');
+    expect(firstAttempt[0]?.status_label).toBe('failed');
+    expect(firstAttempt[0]?.attempt_count).toBe(1);
+    expect(firstAttempt[0]?.payload.idempotency_key).toBe('apple-share/iphone-15-pro/large-file-1');
+    expect(firstAttempt[0]?.next_retry_at).toBe('2026-08-19T23:25:00.000Z');
+
+    const secondAttempt = await drainAppleCompanionQueue({
+      queue: firstAttempt,
+      now: '2026-08-19T23:25:30.000Z',
+      transport: (item) => {
+        expect(item.payload.idempotency_key).toBe('apple-share/iphone-15-pro/large-file-1');
+        return {
+          status: 'acknowledged',
+        };
+      },
+    });
+
+    expect(secondAttempt).toHaveLength(1);
+    expect(secondAttempt[0]?.state).toBe('done');
+    expect(secondAttempt[0]?.status_label).toBe('done');
+    expect(secondAttempt[0]?.payload.idempotency_key).toBe('apple-share/iphone-15-pro/large-file-1');
   });
 });
 

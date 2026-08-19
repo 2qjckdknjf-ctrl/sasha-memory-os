@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { sensitivitySchema, storageModeSchema } from './ingestion.js';
+import { memoryTypeSchema } from './memory.js';
 
 export const applePermissionStateSchema = z.enum([
   'not_determined',
@@ -22,7 +23,9 @@ export const appleCompanionSourceSchema = z.enum([
   'manual',
 ]);
 
-export const appleCompanionItemKindSchema = z.enum(['text', 'file', 'photo', 'url']);
+export const appleCompanionShareKindSchema = z.enum(['text', 'file', 'photo', 'video', 'url']);
+
+export const appleCompanionItemKindSchema = appleCompanionShareKindSchema;
 
 export const appleCompanionIdentifierSchema = z.object({
   local_identifier: z.string().min(1).optional(),
@@ -102,6 +105,117 @@ export const appleCompanionFileBookmarkResolutionSchema = z.discriminatedUnion('
 
 export const appleCompanionProjectRefSchema = z.string().min(1);
 
+export const appleCompanionSharePayloadSchema = z
+  .discriminatedUnion('kind', [
+    z.object({
+      workspace_id: z.string().uuid(),
+      project_id: appleCompanionProjectRefSchema,
+      actor_subject_id: z.string().uuid(),
+      device_id: z.string().min(1),
+      connection_id: z.string().uuid().optional(),
+      item_id: z.string().uuid(),
+      kind: z.literal('text'),
+      title: z.string().min(1).optional(),
+      text: z.string().min(1),
+      observed_at: z.string().datetime().optional(),
+      storage_mode: storageModeSchema,
+      sensitivity: sensitivitySchema,
+      memory_type: memoryTypeSchema.optional(),
+      idempotency_key: z.string().min(1),
+      delete_local_after_ack: z.boolean().default(false),
+      identifiers: appleCompanionIdentifierSchema.default({}),
+      metadata: z.record(z.string(), z.unknown()).default({}),
+    }),
+    z.object({
+      workspace_id: z.string().uuid(),
+      project_id: appleCompanionProjectRefSchema,
+      actor_subject_id: z.string().uuid(),
+      device_id: z.string().min(1),
+      connection_id: z.string().uuid().optional(),
+      item_id: z.string().uuid(),
+      kind: z.literal('url'),
+      title: z.string().min(1).optional(),
+      url: z.string().url(),
+      observed_at: z.string().datetime().optional(),
+      storage_mode: storageModeSchema,
+      sensitivity: sensitivitySchema,
+      memory_type: memoryTypeSchema.optional(),
+      idempotency_key: z.string().min(1),
+      delete_local_after_ack: z.boolean().default(false),
+      identifiers: appleCompanionIdentifierSchema.default({}),
+      metadata: z.record(z.string(), z.unknown()).default({}),
+    }),
+    z.object({
+      workspace_id: z.string().uuid(),
+      project_id: appleCompanionProjectRefSchema,
+      actor_subject_id: z.string().uuid(),
+      device_id: z.string().min(1),
+      connection_id: z.string().uuid().optional(),
+      item_id: z.string().uuid(),
+      kind: z.literal('photo'),
+      title: z.string().min(1).optional(),
+      filename: z.string().min(1),
+      mime_type: z.string().min(1).optional(),
+      observed_at: z.string().datetime().optional(),
+      storage_mode: storageModeSchema,
+      sensitivity: sensitivitySchema,
+      memory_type: memoryTypeSchema.optional(),
+      idempotency_key: z.string().min(1),
+      delete_local_after_ack: z.boolean().default(false),
+      identifiers: appleCompanionIdentifierSchema.default({}),
+      metadata: z.record(z.string(), z.unknown()).default({}),
+    }),
+    z.object({
+      workspace_id: z.string().uuid(),
+      project_id: appleCompanionProjectRefSchema,
+      actor_subject_id: z.string().uuid(),
+      device_id: z.string().min(1),
+      connection_id: z.string().uuid().optional(),
+      item_id: z.string().uuid(),
+      kind: z.literal('video'),
+      title: z.string().min(1).optional(),
+      filename: z.string().min(1),
+      mime_type: z.string().min(1).optional(),
+      observed_at: z.string().datetime().optional(),
+      storage_mode: storageModeSchema,
+      sensitivity: sensitivitySchema,
+      memory_type: memoryTypeSchema.optional(),
+      idempotency_key: z.string().min(1),
+      delete_local_after_ack: z.boolean().default(false),
+      identifiers: appleCompanionIdentifierSchema.default({}),
+      metadata: z.record(z.string(), z.unknown()).default({}),
+    }),
+    z.object({
+      workspace_id: z.string().uuid(),
+      project_id: appleCompanionProjectRefSchema,
+      actor_subject_id: z.string().uuid(),
+      device_id: z.string().min(1),
+      connection_id: z.string().uuid().optional(),
+      item_id: z.string().uuid(),
+      kind: z.literal('file'),
+      title: z.string().min(1).optional(),
+      filename: z.string().min(1),
+      mime_type: z.string().min(1).optional(),
+      observed_at: z.string().datetime().optional(),
+      storage_mode: storageModeSchema,
+      sensitivity: sensitivitySchema,
+      memory_type: memoryTypeSchema.optional(),
+      idempotency_key: z.string().min(1),
+      delete_local_after_ack: z.boolean().default(false),
+      identifiers: appleCompanionIdentifierSchema.default({}),
+      metadata: z.record(z.string(), z.unknown()).default({}),
+    }),
+  ])
+  .superRefine((value, ctx) => {
+    if (!value.project_id.trim()) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['project_id'],
+        message: 'project_id is required for this write',
+      });
+    }
+  });
+
 export const appleCompanionIngestRequestSchema = z
   .object({
     workspace_id: z.string().uuid(),
@@ -120,9 +234,11 @@ export const appleCompanionIngestRequestSchema = z
     external_version: z.string().min(1).optional(),
     storage_mode: storageModeSchema.default('reference'),
     sensitivity: sensitivitySchema.default('internal'),
+    memory_type: memoryTypeSchema.optional(),
     idempotency_key: z.string().min(1),
     delete_local_after_ack: z.boolean().default(false),
     process_now: z.boolean().default(false),
+    needs_companion_processing: z.boolean().default(false),
     source: appleCompanionSourceSchema.default('companion_app'),
     identifiers: appleCompanionIdentifierSchema.default({}),
     metadata: z.record(z.string(), z.unknown()).default({}),
@@ -142,11 +258,11 @@ export const appleCompanionIngestRequestSchema = z
         message: 'url is required for url items',
       });
     }
-    if ((value.kind === 'file' || value.kind === 'photo') && !value.filename) {
+    if ((value.kind === 'file' || value.kind === 'photo' || value.kind === 'video') && !value.filename) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         path: ['filename'],
-        message: 'filename is required for file and photo items',
+        message: 'filename is required for file, photo, and video items',
       });
     }
   });
@@ -158,22 +274,70 @@ export const appleCompanionQueueStateSchema = z.enum([
   'done',
 ]);
 
+export const appleCompanionVisibleQueueStateSchema = z.enum([
+  'pending',
+  'uploading',
+  'failed',
+  'done',
+  'reselect_required',
+]);
+
 export const appleCompanionQueueErrorCodeSchema = z.enum(['reselect_required']);
 
-export const appleCompanionQueueItemSchema = z.object({
-  id: z.string().uuid(),
-  state: appleCompanionQueueStateSchema.default('pending'),
-  attempt_count: z.number().int().nonnegative().default(0),
-  payload: appleCompanionIngestRequestSchema,
-  delete_local_after_ack: z.boolean().default(false),
-  last_error: z.string().nullable().default(null),
-  last_error_code: appleCompanionQueueErrorCodeSchema.nullable().default(null),
-  queued_at: z.string().datetime(),
-  updated_at: z.string().datetime(),
-  last_attempt_at: z.string().datetime().nullable().default(null),
-  next_retry_at: z.string().datetime().nullable().default(null),
-  completed_at: z.string().datetime().nullable().default(null),
-});
+function resolveAppleCompanionQueueStatusLabel(input: {
+  state: AppleCompanionQueueState;
+  last_error_code: AppleCompanionQueueErrorCode | null;
+}): AppleCompanionVisibleQueueState {
+  if (input.last_error_code === 'reselect_required') {
+    return 'reselect_required';
+  }
+  return input.state;
+}
+
+export const appleCompanionQueueItemSchema = z
+  .object({
+    id: z.string().uuid(),
+    state: appleCompanionQueueStateSchema.default('pending'),
+    status_label: appleCompanionVisibleQueueStateSchema.optional(),
+    attempt_count: z.number().int().nonnegative().default(0),
+    payload: appleCompanionIngestRequestSchema,
+    delete_local_after_ack: z.boolean().default(false),
+    last_error: z.string().nullable().default(null),
+    last_error_code: appleCompanionQueueErrorCodeSchema.nullable().default(null),
+    queued_at: z.string().datetime(),
+    updated_at: z.string().datetime(),
+    last_attempt_at: z.string().datetime().nullable().default(null),
+    next_retry_at: z.string().datetime().nullable().default(null),
+    completed_at: z.string().datetime().nullable().default(null),
+  })
+  .transform((item) => ({
+    ...item,
+    status_label: resolveAppleCompanionQueueStatusLabel({
+      state: item.state,
+      last_error_code: item.last_error_code,
+    }),
+  }));
+
+export const appleCompanionQueueDrainResultSchema = z.discriminatedUnion('status', [
+  z.object({
+    status: z.literal('acknowledged'),
+    delete_local_after_ack: z.boolean().optional(),
+  }),
+  z.object({
+    status: z.literal('network_error'),
+    error: z.string().min(1),
+    retry_delay_ms: z.number().int().nonnegative().default(60_000),
+  }),
+  z.object({
+    status: z.literal('validation_error'),
+    error: z.string().min(1),
+    http_status: z.number().int().default(400),
+  }),
+  z.object({
+    status: z.literal('reselect_required'),
+    error: z.string().min(1).default('reselect_required'),
+  }),
+]);
 
 export const appleCompanionQueueSchema = z.array(appleCompanionQueueItemSchema);
 
@@ -192,6 +356,7 @@ export type AppleCompanionPermissionSnapshot = z.infer<
   typeof appleCompanionPermissionSnapshotSchema
 >;
 export type AppleCompanionSource = z.infer<typeof appleCompanionSourceSchema>;
+export type AppleCompanionShareKind = z.infer<typeof appleCompanionShareKindSchema>;
 export type AppleCompanionItemKind = z.infer<typeof appleCompanionItemKindSchema>;
 export type AppleCompanionIdentifier = z.infer<typeof appleCompanionIdentifierSchema>;
 export type AppleCompanionSelectedAsset = z.infer<typeof appleCompanionSelectedAssetSchema>;
@@ -212,10 +377,15 @@ export type AppleCompanionFilesCheckpoint = z.infer<typeof appleCompanionFilesCh
 export type AppleCompanionFileBookmarkResolution = z.infer<
   typeof appleCompanionFileBookmarkResolutionSchema
 >;
+export type AppleCompanionSharePayload = z.infer<typeof appleCompanionSharePayloadSchema>;
 export type AppleCompanionIngestRequest = z.infer<typeof appleCompanionIngestRequestSchema>;
 export type AppleCompanionQueueState = z.infer<typeof appleCompanionQueueStateSchema>;
+export type AppleCompanionVisibleQueueState = z.infer<
+  typeof appleCompanionVisibleQueueStateSchema
+>;
 export type AppleCompanionQueueErrorCode = z.infer<typeof appleCompanionQueueErrorCodeSchema>;
 export type AppleCompanionQueueItem = z.infer<typeof appleCompanionQueueItemSchema>;
+export type AppleCompanionQueueDrainResult = z.infer<typeof appleCompanionQueueDrainResultSchema>;
 export type AppleCompanionDeviceQueueCursor = z.infer<
   typeof appleCompanionDeviceQueueCursorSchema
 >;
@@ -230,6 +400,15 @@ export type AppleCompanionSecurityScopedLeaseStarter = (
   bookmark: AppleCompanionFileBookmark,
 ) => AppleCompanionSecurityScopedLease;
 
+export type AppleCompanionShareMapping = {
+  request: AppleCompanionIngestRequest;
+  queueItem: AppleCompanionQueueItem;
+};
+
+export type AppleCompanionQueueDrainTransport = (
+  item: AppleCompanionQueueItem,
+) => Promise<AppleCompanionQueueDrainResult> | AppleCompanionQueueDrainResult;
+
 function uniqueNonEmptyStrings(values: Array<string | undefined>): string[] {
   return [...new Set(values.filter((value): value is string => Boolean(value && value.trim())))];
 }
@@ -237,6 +416,43 @@ function uniqueNonEmptyStrings(values: Array<string | undefined>): string[] {
 function normalizeAppleCompanionProviderItemIdentifier(value: string): string {
   if (value === '/') return value;
   return value.replace(/\/+$/, '');
+}
+
+function resolveAppleCompanionShareTitle(share: AppleCompanionSharePayload): string {
+  if (share.title?.trim()) {
+    return share.title.trim();
+  }
+  const kind = share.kind;
+  switch (kind) {
+    case 'text':
+      return share.text.trim().slice(0, 120) || 'Shared text';
+    case 'url':
+      return share.url;
+    case 'photo':
+    case 'video':
+    case 'file':
+      return share.filename;
+    default: {
+      const _exhaustive: never = kind;
+      return _exhaustive;
+    }
+  }
+}
+
+function isAppleCompanionQueueItemRetryReady(
+  item: AppleCompanionQueueItem,
+  nowIso: string,
+): boolean {
+  if (item.state !== 'failed') {
+    return false;
+  }
+  if (item.last_error_code === 'reselect_required') {
+    return false;
+  }
+  if (!item.next_retry_at) {
+    return false;
+  }
+  return Date.parse(item.next_retry_at) <= Date.parse(nowIso);
 }
 
 export function listAppleCompanionIdentifierCandidates(
@@ -365,6 +581,27 @@ export function canIngestApplePhotoLibraryAsset(input: {
   }
 }
 
+export function mapAppleCompanionSharePayload(input: {
+  share: AppleCompanionSharePayload;
+  queuedAt?: string;
+}): AppleCompanionShareMapping {
+  const share = appleCompanionSharePayloadSchema.parse(input.share);
+  const request = appleCompanionIngestRequestSchema.parse({
+    ...share,
+    title: resolveAppleCompanionShareTitle(share),
+    process_now: false,
+    needs_companion_processing: true,
+    source: 'share_extension',
+  });
+  return {
+    request,
+    queueItem: createAppleCompanionQueueItem({
+      payload: request,
+      queuedAt: input.queuedAt,
+    }),
+  };
+}
+
 export function createAppleCompanionQueueItem(input: {
   payload: AppleCompanionIngestRequest;
   queuedAt?: string;
@@ -407,12 +644,29 @@ export function markAppleCompanionQueueItemUploading(
   );
 }
 
+function setAppleCompanionQueueItemDeleteLocalAfterAck(
+  queue: AppleCompanionQueueItem[],
+  itemId: string,
+  deleteLocalAfterAck: boolean,
+): AppleCompanionQueueItem[] {
+  return appleCompanionQueueSchema.parse(
+    queue.map((item) =>
+      item.id === itemId
+        ? {
+            ...item,
+            delete_local_after_ack: deleteLocalAfterAck,
+          }
+        : item,
+    ),
+  );
+}
+
 export function markAppleCompanionQueueItemFailed(
   queue: AppleCompanionQueueItem[],
   itemId: string,
   errorMessage: string,
   failedAt = new Date().toISOString(),
-  retryDelayMs = 60_000,
+  retryDelayMs: number | null = 60_000,
   errorCode: AppleCompanionQueueErrorCode | null = null,
 ): AppleCompanionQueueItem[] {
   return appleCompanionQueueSchema.parse(
@@ -426,7 +680,8 @@ export function markAppleCompanionQueueItemFailed(
             last_attempt_at: failedAt,
             last_error: errorMessage,
             last_error_code: errorCode,
-            next_retry_at: new Date(Date.parse(failedAt) + retryDelayMs).toISOString(),
+            next_retry_at:
+              retryDelayMs === null ? null : new Date(Date.parse(failedAt) + retryDelayMs).toISOString(),
           }
         : item,
     ),
@@ -483,6 +738,71 @@ export function acknowledgeAppleCompanionQueueItem(
   itemId: string,
 ): AppleCompanionQueueItem[] {
   return appleCompanionQueueSchema.parse(queue.filter((item) => item.id !== itemId));
+}
+
+export async function drainAppleCompanionQueue(input: {
+  queue: AppleCompanionQueueItem[];
+  transport: AppleCompanionQueueDrainTransport;
+  now?: string;
+  limit?: number;
+}): Promise<AppleCompanionQueueItem[]> {
+  const now = input.now ?? new Date().toISOString();
+  let nextQueue = appleCompanionQueueSchema.parse(input.queue);
+  let processed = 0;
+
+  for (const item of nextQueue) {
+    if (input.limit !== undefined && processed >= input.limit) {
+      break;
+    }
+    const shouldDrain =
+      item.state === 'pending' || isAppleCompanionQueueItemRetryReady(item, now);
+    if (!shouldDrain) {
+      continue;
+    }
+
+    processed += 1;
+    nextQueue = markAppleCompanionQueueItemUploading(nextQueue, item.id, now);
+    const uploadingItem = nextQueue.find((queuedItem) => queuedItem.id === item.id);
+    if (!uploadingItem) {
+      continue;
+    }
+
+    const result = appleCompanionQueueDrainResultSchema.parse(await input.transport(uploadingItem));
+    switch (result.status) {
+      case 'acknowledged': {
+        if (result.delete_local_after_ack !== undefined) {
+          nextQueue = setAppleCompanionQueueItemDeleteLocalAfterAck(
+            nextQueue,
+            item.id,
+            result.delete_local_after_ack,
+          );
+        }
+        nextQueue = markAppleCompanionQueueItemDone(nextQueue, item.id, now);
+        break;
+      }
+      case 'network_error':
+        nextQueue = markAppleCompanionQueueItemFailed(
+          nextQueue,
+          item.id,
+          result.error,
+          now,
+          result.retry_delay_ms,
+        );
+        break;
+      case 'validation_error':
+        nextQueue = markAppleCompanionQueueItemFailed(nextQueue, item.id, result.error, now, null);
+        break;
+      case 'reselect_required':
+        nextQueue = markAppleCompanionQueueItemReselectRequired(nextQueue, item.id, now);
+        break;
+      default: {
+        const _exhaustive: never = result;
+        return _exhaustive;
+      }
+    }
+  }
+
+  return nextQueue;
 }
 
 export async function withAppleCompanionSecurityScopedLease<T>(input: {
