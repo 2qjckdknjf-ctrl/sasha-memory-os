@@ -118,6 +118,8 @@ type LocalProjectCandidate = ProjectCandidate & {
   aliases?: string[];
 };
 
+const MIN_INFERRED_PROJECT_TOKEN_LENGTH = 4;
+
 const LOCAL_PROJECT_CATALOG: LocalProjectCandidate[] = [
   {
     id: DEFAULT_PROJECT_ID,
@@ -130,6 +132,18 @@ const LOCAL_PROJECT_CATALOG: LocalProjectCandidate[] = [
 
 function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function hasBoundedProjectToken(text: string, token: string): boolean {
+  const normalizedToken = token.trim().toLowerCase();
+  if (normalizedToken.length < MIN_INFERRED_PROJECT_TOKEN_LENGTH) {
+    return false;
+  }
+  const pattern = new RegExp(
+    `(^|[^a-z0-9_-])${escapeRegExp(normalizedToken)}([^a-z0-9_-]|$)`,
+    'i',
+  );
+  return pattern.test(text);
 }
 
 function localResolveProjectRef(projectRef: string | null | undefined): ProjectResolution {
@@ -204,12 +218,11 @@ function extractProjectRefsFromArgs(
 
   const lowered = textBits.toLowerCase();
   for (const project of projectHints) {
-    const slugPattern = new RegExp(`(^|[^a-z0-9_-])${escapeRegExp(project.slug.toLowerCase())}([^a-z0-9_-]|$)`, 'i');
-    if (slugPattern.test(lowered)) {
+    if (hasBoundedProjectToken(lowered, project.slug)) {
       refs.add(project.slug);
     }
     const projectName = project.name.trim().toLowerCase();
-    if (projectName && lowered.includes(projectName)) {
+    if (projectName && hasBoundedProjectToken(lowered, projectName)) {
       refs.add(project.name);
     }
   }

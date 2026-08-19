@@ -5,6 +5,8 @@ const projectId = '44444444-4444-4444-8444-444444444401';
 const workspaceId = '11111111-1111-4111-8111-111111111111';
 const cursor = '33333333-3333-4333-8333-333333333303';
 const otherProjectId = '44444444-4444-4444-8444-444444444430';
+const coreProjectId = '44444444-4444-4444-8444-444444444431';
+const osProjectId = '44444444-4444-4444-8444-444444444432';
 
 function createTwoProjectGateway() {
   return {
@@ -68,6 +70,81 @@ function createTwoProjectGateway() {
     createDecision: vi.fn(async () => ({ id: 'decision-1' })),
     createHandoff: vi.fn(async () => ({ id: 'handoff-1' })),
     search: vi.fn(async () => []),
+  };
+}
+
+function createShortTokenGateway() {
+  return {
+    listProjectHints: vi.fn(async () => [
+      {
+        id: coreProjectId,
+        slug: 'core',
+        name: 'core',
+        status: 'active',
+        url: 'https://github.com/team/core',
+      },
+      {
+        id: osProjectId,
+        slug: 'os',
+        name: 'os',
+        status: 'active',
+        url: 'https://github.com/team/os',
+      },
+      {
+        id: projectId,
+        slug: 'aistroyka',
+        name: 'AISTROYKA',
+        status: 'active',
+        url: 'https://github.com/aistroyka/core',
+      },
+    ]),
+    resolveProjectRef: vi.fn(async ({ projectRef }: { projectRef?: string | null }) => {
+      if (projectRef === coreProjectId || projectRef === 'core') {
+        return {
+          projectId: coreProjectId,
+          matchCount: 1,
+          candidates: [
+            {
+              id: coreProjectId,
+              slug: 'core',
+              name: 'core',
+              url: 'https://github.com/team/core',
+            },
+          ],
+        };
+      }
+      if (projectRef === osProjectId || projectRef === 'os') {
+        return {
+          projectId: osProjectId,
+          matchCount: 1,
+          candidates: [
+            {
+              id: osProjectId,
+              slug: 'os',
+              name: 'os',
+              url: 'https://github.com/team/os',
+            },
+          ],
+        };
+      }
+      if (projectRef === projectId || projectRef === 'aistroyka' || projectRef === 'AISTROYKA') {
+        return {
+          projectId,
+          matchCount: 1,
+          candidates: [
+            {
+              id: projectId,
+              slug: 'aistroyka',
+              name: 'AISTROYKA',
+              url: 'https://github.com/aistroyka/core',
+            },
+          ],
+        };
+      }
+      return { projectId: null, matchCount: 0, candidates: [] };
+    }),
+    createDecision: vi.fn(async () => ({ id: 'decision-short-token' })),
+    captureText: vi.fn(async () => ({ process: null })),
   };
 }
 
@@ -458,6 +535,43 @@ describe('mcp gateway alpha', () => {
       title: 'repo-b decision',
       content: 'Choose repo-b rollout order.',
       idempotency_key: 'mcp-decision-repo-b-1',
+      importance: 0.7,
+      confidence: 0.9,
+      sensitivity: 'internal',
+    });
+    expect(gateway.createDecision).toHaveBeenCalledWith(
+      expect.objectContaining({ projectId: otherProjectId }),
+    );
+  });
+
+  it('does not infer short/common project tokens from ordinary prose', async () => {
+    const gateway = createShortTokenGateway();
+    const mcp = createMcpHandlers({ gateway: gateway as any });
+    await expect(
+      mcp.call('memory.store_decision', {
+        workspace_id: workspaceId,
+        actor_subject_id: cursor,
+        title: 'General note',
+        content: 'the core idea of Memory OS',
+        idempotency_key: 'mcp-decision-short-token-1',
+        importance: 0.7,
+        confidence: 0.9,
+        sensitivity: 'internal',
+      }),
+    ).rejects.toThrow(/project reference is required/i);
+    expect(gateway.createDecision).not.toHaveBeenCalled();
+  });
+
+  it('still resolves an explicit project UUID without any text hint', async () => {
+    const gateway = createTwoProjectGateway();
+    const mcp = createMcpHandlers({ gateway: gateway as any });
+    await mcp.call('memory.store_decision', {
+      workspace_id: workspaceId,
+      actor_subject_id: cursor,
+      project_id: otherProjectId,
+      title: 'General note',
+      content: 'No textual project reference is needed here.',
+      idempotency_key: 'mcp-decision-explicit-uuid-1',
       importance: 0.7,
       confidence: 0.9,
       sensitivity: 'internal',
