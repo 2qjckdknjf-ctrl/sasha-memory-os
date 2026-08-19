@@ -5,12 +5,14 @@ import { apiGet, apiHealth, apiPatch, apiPost, setBoundAuthUserId } from './api'
 import { AgentScopesPage } from './AgentScopesPage';
 import { AppShell } from './AppShell';
 import { AuthPanel } from './AuthPanel';
+import { AuditPage } from './AuditPage';
 import { ConflictsPage } from './ConflictsPage';
 import { ConnectionsPage } from './ConnectionsPage';
 import { HandoffsPage } from './HandoffsPage';
 import { HomePage } from './HomePage';
 import { MemoryInspectorPage } from './MemoryInspectorPage';
 import { OpsPage } from './OpsPage';
+import { PrivacyPage } from './PrivacyPage';
 import { storePendingOAuthSession } from './oauthSession';
 import { ProjectPage } from './ProjectPage';
 import { SearchPage } from './SearchPage';
@@ -1294,6 +1296,17 @@ export function App() {
         <Route
           path="/agents"
           element={<AgentScopesPage backend={backend} me={me} />}
+        />
+        <Route path="/audit" element={<AuditPage backend={backend} />} />
+        <Route
+          path="/privacy"
+          element={
+            <PrivacyPage
+              actor={actor}
+              backend={backend}
+              onExportMemories={onExportMemories}
+            />
+          }
         />
         <Route path="/tasks" element={<TasksPage taskSurface={taskSurface} />} />
         <Route
