@@ -16,6 +16,7 @@
   },
   "dependencies": {
     "@hono/node-server": "^2.1.0",
+    "@memory-os/connector-apple-bridge": "workspace:*",
     "@memory-os/authz": "workspace:^",
     "@memory-os/connector-github": "workspace:*",
     "@memory-os/connector-gmail": "workspace:*",

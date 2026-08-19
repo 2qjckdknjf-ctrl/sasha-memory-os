@@ -976,6 +976,62 @@ export class SupabaseMemoryGateway {
     };
   }
 
+  async captureConnectorRecord(input: {
+    subjectId: string;
+    workspaceId: string;
+    projectId: string;
+    provider: string;
+    accountId?: string | null;
+    externalId: string;
+    externalVersion?: string | null;
+    eventType: string;
+    title: string;
+    text: string;
+    idempotencyKey: string;
+    sensitivity?: string;
+    storageMode?: string;
+    observedAt?: string;
+    filename?: string;
+    mimeType?: string;
+    canonicalReference?: string | null;
+    provenance?: Record<string, unknown>;
+    metadata?: Record<string, unknown>;
+    processNow?: boolean;
+  }) {
+    const { data, error } = await this.client.rpc('api_capture_connector_record', {
+      p_secret: this.apiSecret,
+      p_subject_id: input.subjectId,
+      p_workspace_id: input.workspaceId,
+      p_project_id: input.projectId,
+      p_provider: input.provider,
+      p_account_id: input.accountId ?? null,
+      p_external_id: input.externalId,
+      p_external_version: input.externalVersion ?? null,
+      p_event_type: input.eventType,
+      p_title: input.title,
+      p_text: input.text,
+      p_idempotency_key: input.idempotencyKey,
+      p_sensitivity: input.sensitivity ?? 'internal',
+      p_storage_mode: input.storageMode ?? 'reference',
+      p_observed_at: input.observedAt ?? new Date().toISOString(),
+      p_filename: input.filename ?? null,
+      p_mime_type: input.mimeType ?? 'text/plain',
+      p_canonical_reference: input.canonicalReference ?? null,
+      p_provenance: input.provenance ?? {},
+      p_metadata: input.metadata ?? {},
+      p_process_now: input.processNow ?? true,
+    });
+    if (error) throw error;
+    return data as {
+      eventId?: string;
+      artifactId?: string;
+      jobId?: string;
+      checksum?: string;
+      process?: { memoryId?: string | null } | null;
+      [key: string]: unknown;
+    };
+  }
+
   async setMemoryEmbedding(input: {
     subjectId: string;
     memoryId: string;

@@ -1,3 +1,4 @@
+import { appleBridgeConnector } from '@memory-os/connector-apple-bridge';
 import { githubConnector } from '@memory-os/connector-github';
 import { gmailConnector } from '@memory-os/connector-gmail';
 import { googleCalendarConnector } from '@memory-os/connector-google-calendar';
@@ -41,6 +42,7 @@ const OWNER_ID =
   '33333333-3333-4333-8333-333333333301';
 
 const defaultSdkConnectorRegistry = createConnectorRegistry([
+  appleBridgeConnector,
   githubConnector,
   gmailConnector,
   googleDriveConnector,

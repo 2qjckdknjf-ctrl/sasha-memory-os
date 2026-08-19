@@ -174,6 +174,7 @@ describe('memory api demo slice', () => {
     const body = await res.json();
     expect(body.connectors).toEqual(
       expect.arrayContaining([
+        expect.objectContaining({ id: 'apple', authType: 'device' }),
         expect.objectContaining({ id: 'github', authType: 'oauth2' }),
         expect.objectContaining({ id: 'gmail' }),
         expect.objectContaining({ id: 'google-drive' }),
@@ -2566,5 +2567,78 @@ describe('memory api demo slice', () => {
     expect(a.status).toBe(201);
     expect(b.status).toBe(201);
     expect((await a.json()).id).toBe((await b.json()).id);
+  });
+
+  it('rejects Apple companion ingest when project_id is omitted', async () => {
+    const app = createApp({});
+    const res = await app.request('/v1/ingestion/apple-items', {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'x-subject-id': owner,
+      },
+      body: JSON.stringify({
+        workspace_id: workspaceId,
+        actor_subject_id: owner,
+        device_id: 'iphone-15-pro',
+        item_id: 'cccccccc-cccc-4ccc-8ccc-cccccccccccc',
+        kind: 'text',
+        title: 'Missing project',
+        text: 'Should fail instead of defaulting to AISTROYKA.',
+        storage_mode: 'indexed',
+        sensitivity: 'internal',
+        idempotency_key: 'apple-share/missing-project',
+        source: 'share_extension',
+      }),
+    });
+
+    expect(res.status).toBe(400);
+    expect(await res.json()).toEqual({
+      error: 'project_id is required for this write',
+    });
+  });
+
+  it('accepts Apple companion ingest with a project slug and preserves provenance identifiers', async () => {
+    const app = createApp({});
+    const res = await app.request('/v1/ingestion/apple-items', {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'x-subject-id': owner,
+      },
+      body: JSON.stringify({
+        workspace_id: workspaceId,
+        project_id: 'aistroyka',
+        actor_subject_id: owner,
+        device_id: 'iphone-15-pro',
+        item_id: 'dddddddd-dddd-4ddd-8ddd-dddddddddddd',
+        kind: 'photo',
+        title: 'Shared whiteboard',
+        filename: 'whiteboard.jpeg',
+        mime_type: 'image/jpeg',
+        storage_mode: 'reference',
+        sensitivity: 'internal',
+        idempotency_key: 'apple-share/iphone-15-pro/whiteboard-1',
+        delete_local_after_ack: true,
+        process_now: false,
+        source: 'share_extension',
+        identifiers: {
+          local_identifier: 'APPLE-LOCAL-1',
+          cloud_identifier: 'APPLE-CLOUD-1',
+        },
+        metadata: {
+          album: 'Sprint Review',
+        },
+      }),
+    });
+
+    expect(res.status).toBe(201);
+    const body = await res.json();
+    expect(body.backend).toBe('memory-store');
+    expect(body.projectId).toBe(projectId);
+    expect(body.normalized.envelope.scope.project_id).toBe(projectId);
+    expect(body.normalized.envelope.scope.storage_mode).toBe('reference');
+    expect(body.normalized.envelope.provenance.local_identifier).toBe('APPLE-LOCAL-1');
+    expect(body.normalized.envelope.provenance.cloud_identifier).toBe('APPLE-CLOUD-1');
   });
 });
