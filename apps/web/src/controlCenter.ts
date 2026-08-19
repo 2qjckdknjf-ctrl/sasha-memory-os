@@ -32,6 +32,7 @@ export type TimelineEntry =
 
 export type RemoteContext = {
   decisions?: Array<Record<string, unknown>>;
+  tasks?: Array<Record<string, unknown>>;
   state?: Record<string, unknown> | null;
   latestHandoff?: Record<string, unknown> | null;
 };
