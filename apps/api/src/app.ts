@@ -1204,13 +1204,17 @@ export function createApp(options?: {
             taggedCollection,
           );
           projectId = resolveCollectionProjectId(updatedConnection.metadata, taggedCollection.id);
-          const sync = await gw.enqueueConnectorSync({
-            subjectId,
-            workspaceId: connection.workspaceId,
-            connectionId: connection.id,
-          });
-          enqueued = sync.count ?? 0;
-          note = 'repository project upserted and connector sync enqueued';
+          if (projectId) {
+            const sync = await gw.enqueueConnectorSync({
+              subjectId,
+              workspaceId: connection.workspaceId,
+              connectionId: connection.id,
+            });
+            enqueued = sync.count ?? 0;
+            note = 'repository project upserted and connector sync enqueued';
+          } else {
+            note = 'repository recorded but excluded from project seeding and sync enqueue';
+          }
           break;
         }
         default:
@@ -1268,7 +1272,16 @@ export function createApp(options?: {
       );
     } catch (err) {
       if (isForbiddenError(err)) return c.json({ error: 'forbidden' }, 403);
-      return c.json({ error: (err as Error).message }, 500);
+      console.error(
+        JSON.stringify({
+          event: 'connector_webhook_failed',
+          connectorId,
+          connectionId,
+          deliveryId,
+          error: err instanceof Error ? err.message : String(err),
+        }),
+      );
+      return c.json({ error: 'internal_error' }, 500);
     }
   });
 

@@ -195,6 +195,8 @@ describe('githubWebhook signature', () => {
     });
     expect(result).toEqual({ ok: true, mode: 'unsigned_local' });
     expect(isGitHubWebhookSignatureRequired({ MEMORY_OS_ENV: 'local' })).toBe(false);
+    expect(isGitHubWebhookSignatureRequired({ MEMORY_OS_ENV: 'test' })).toBe(false);
+    expect(isGitHubWebhookSignatureRequired({})).toBe(true);
     expect(isGitHubWebhookSignatureRequired({ MEMORY_OS_ENV: 'production' })).toBe(true);
   });
 
@@ -204,6 +206,21 @@ describe('githubWebhook signature', () => {
       env: { MEMORY_OS_ENV: 'production' },
     });
     expect(result).toEqual({ ok: false, error: 'secret_missing' });
+  });
+
+  it('treats missing or blank MEMORY_OS_ENV like production for unsigned requests', () => {
+    expect(
+      verifyGitHubWebhookSignature({
+        rawBody: '{}',
+        env: {},
+      }),
+    ).toEqual({ ok: false, error: 'secret_missing' });
+    expect(
+      verifyGitHubWebhookSignature({
+        rawBody: '{}',
+        env: { MEMORY_OS_ENV: '   ' },
+      }),
+    ).toEqual({ ok: false, error: 'secret_missing' });
   });
 });
 
@@ -326,6 +343,9 @@ describe('github webhook api', () => {
         });
         expect(res.status).toBe(202);
         expect(state.gateway.upsertProjectFromConnector).not.toHaveBeenCalled();
+        expect(state.gateway.enqueueConnectorSync).not.toHaveBeenCalled();
+        const body = await res.json();
+        expect(String(body.note)).not.toContain('project upserted');
         expect(
           ((state.metadataState.collections as Record<string, unknown>).excluded_ids as string[]),
         ).toContain('team/repo-new');
@@ -341,6 +361,48 @@ describe('github webhook api', () => {
           }>
         ).find((collection) => collection.id === 'team/repo-new');
         expect(newRepo?.metadata?.added_via).toBe('webhook');
+      },
+    );
+  });
+
+  it('returns a generic 500 body without leaking the internal error message', async () => {
+    await withEnv(
+      {
+        MEMORY_OS_ENV: 'production',
+        MEMORY_OS_GITHUB_WEBHOOK_SECRET: 'webhook-secret',
+        MEMORY_OS_OWNER_SUBJECT_ID: ownerId,
+      },
+      async () => {
+        const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+        try {
+          const app = createApp({
+            gateway: {
+              getConnection: vi.fn(async () => {
+                throw new Error('sensitive webhook failure');
+              }),
+            } as any,
+          });
+          const { rawBody, signature } = signGitHubWebhook(
+            repositoryCreatedFixture,
+            'webhook-secret',
+          );
+          const res = await app.request(`/v1/webhooks/github?connection_id=${connectionId}`, {
+            method: 'POST',
+            headers: {
+              'content-type': 'application/json',
+              'x-github-event': 'repository',
+              'x-github-delivery': 'delivery-created-error',
+              'x-hub-signature-256': signature,
+            },
+            body: rawBody,
+          });
+          expect(res.status).toBe(500);
+          const body = await res.json();
+          expect(body.error).toBe('internal_error');
+          expect(JSON.stringify(body)).not.toContain('sensitive webhook failure');
+        } finally {
+          errorSpy.mockRestore();
+        }
       },
     );
   });

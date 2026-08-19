@@ -27,7 +27,7 @@ export type GitHubWebhookVerificationResult =
 function isLocalOrTestEnv(
   env: NodeJS.ProcessEnv = process.env,
 ): boolean {
-  const name = (env.MEMORY_OS_ENV ?? 'local').trim().toLowerCase();
+  const name = (env.MEMORY_OS_ENV ?? '').trim().toLowerCase();
   return name === 'local' || name === 'test';
 }
 
