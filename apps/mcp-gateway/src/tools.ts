@@ -146,6 +146,29 @@ function hasBoundedProjectToken(text: string, token: string): boolean {
   return pattern.test(text);
 }
 
+function extractOwnerRepoFromUrl(url: string | null | undefined): string | null {
+  if (!url) return null;
+  try {
+    const pathname = new URL(url).pathname.replace(/^\/+|\/+$/g, '');
+    return pathname || null;
+  } catch {
+    return null;
+  }
+}
+
+function isKnownOwnerRepoRef(projectRef: string, projectHints: ProjectCandidate[]): boolean {
+  const normalizedRef = projectRef.trim().toLowerCase();
+  return projectHints.some((project) => {
+    const ownerRepo = extractOwnerRepoFromUrl(project.url)?.toLowerCase();
+    return (
+      ownerRepo === normalizedRef ||
+      project.slug.trim().toLowerCase() === normalizedRef ||
+      project.name.trim().toLowerCase() === normalizedRef ||
+      project.id.trim().toLowerCase() === normalizedRef
+    );
+  });
+}
+
 function localResolveProjectRef(projectRef: string | null | undefined): ProjectResolution {
   const normalizedRef = String(projectRef ?? '').trim().toLowerCase();
   if (!normalizedRef) {
@@ -193,7 +216,10 @@ function extractProjectRefsFromArgs(
 ): string[] {
   const refs = new Set<string>();
   const explicitRef = typeof args.project_id === 'string' ? args.project_id.trim() : '';
-  if (explicitRef) refs.add(explicitRef);
+  if (explicitRef) {
+    refs.add(explicitRef);
+    return [...refs];
+  }
 
   const textBits = [
     typeof args.title === 'string' ? args.title : null,
@@ -213,7 +239,9 @@ function extractProjectRefsFromArgs(
     refs.add(match[0]);
   }
   for (const match of textBits.matchAll(/\b[\w.-]+\/[\w.-]+\b/g)) {
-    refs.add(match[0]);
+    if (isKnownOwnerRepoRef(match[0], projectHints)) {
+      refs.add(match[0]);
+    }
   }
 
   const lowered = textBits.toLowerCase();

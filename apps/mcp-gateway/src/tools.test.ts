@@ -544,6 +544,44 @@ describe('mcp gateway alpha', () => {
     );
   });
 
+  it('prefers an explicit project_id even when the body mentions another catalog project', async () => {
+    const gateway = createTwoProjectGateway();
+    const mcp = createMcpHandlers({ gateway: gateway as any });
+    await mcp.call('memory.store_decision', {
+      workspace_id: workspaceId,
+      actor_subject_id: cursor,
+      project_id: projectId,
+      title: 'AISTROYKA decision',
+      content: 'AISTROYKA owns this, but gmail-style repo-b is mentioned in the note.',
+      idempotency_key: 'mcp-decision-explicit-wins-1',
+      importance: 0.7,
+      confidence: 0.9,
+      sensitivity: 'internal',
+    });
+    expect(gateway.createDecision).toHaveBeenCalledWith(
+      expect.objectContaining({ projectId }),
+    );
+  });
+
+  it('rejects an explicit UUID when that project does not exist', async () => {
+    const gateway = createTwoProjectGateway();
+    const mcp = createMcpHandlers({ gateway: gateway as any });
+    await expect(
+      mcp.call('memory.store_decision', {
+        workspace_id: workspaceId,
+        actor_subject_id: cursor,
+        project_id: '44444444-4444-4444-8444-444444444499',
+        title: 'Unknown project',
+        content: 'No textual fallback should override this explicit id.',
+        idempotency_key: 'mcp-decision-explicit-missing-1',
+        importance: 0.7,
+        confidence: 0.9,
+        sensitivity: 'internal',
+      }),
+    ).rejects.toThrow(/project not found/i);
+    expect(gateway.createDecision).not.toHaveBeenCalled();
+  });
+
   it('does not infer short/common project tokens from ordinary prose', async () => {
     const gateway = createShortTokenGateway();
     const mcp = createMcpHandlers({ gateway: gateway as any });
@@ -680,6 +718,36 @@ describe('mcp gateway alpha', () => {
     expect(gateway.captureText).toHaveBeenCalledWith(
       expect.objectContaining({ projectId: otherProjectId }),
     );
+  });
+
+  it('routes capture.text to an ingested project by owner/repo hint', async () => {
+    const gateway = createTwoProjectGateway();
+    const mcp = createMcpHandlers({ gateway: gateway as any });
+    await mcp.call('capture.text', {
+      workspace_id: workspaceId,
+      actor_subject_id: cursor,
+      title: 'Repo token note',
+      text: 'Owner/repo hint: team/repo-b',
+      idempotency_key: 'mcp-cursor-owner-repo-1',
+    });
+    expect(gateway.captureText).toHaveBeenCalledWith(
+      expect.objectContaining({ projectId: otherProjectId }),
+    );
+  });
+
+  it('does not treat arbitrary path-like slash tokens as project refs', async () => {
+    const gateway = createTwoProjectGateway();
+    const mcp = createMcpHandlers({ gateway: gateway as any });
+    await expect(
+      mcp.call('capture.text', {
+        workspace_id: workspaceId,
+        actor_subject_id: cursor,
+        title: 'Path token note',
+        text: 'Touched apps/web and src/index today.',
+        idempotency_key: 'mcp-cursor-path-token-1',
+      }),
+    ).rejects.toThrow(/project reference is required/i);
+    expect(gateway.captureText).not.toHaveBeenCalled();
   });
 
   it('keeps memory.search workspace-wide when there is no project hint', async () => {
