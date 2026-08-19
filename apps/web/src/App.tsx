@@ -268,20 +268,21 @@ export function App() {
   }
 
   async function refreshProjectContext(mode: BackendMode = backend) {
-    if (!shouldLoadProjectScopedContext(readProjectId)) {
+    if (!shouldLoadProjectScopedContext(readProjectId) || !readProjectId) {
       setProjectContext(null);
       setProjectStates([]);
       return;
     }
+    const scopedProjectId = readProjectId;
 
     if (mode === 'local') {
       const localProjectStates = (() => {
-        const state = localStore.getProjectState(readProjectId);
+        const state = localStore.getProjectState(scopedProjectId);
         return state ? [{ ...state } as Record<string, unknown>] : [];
       })();
       setProjectStates(localProjectStates);
-      const localMemories = localStore.listCurrentMemories(WORKSPACE_ID, readProjectId);
-      const localLatestHandoff = localStore.latestHandoff(readProjectId);
+      const localMemories = localStore.listCurrentMemories(WORKSPACE_ID, scopedProjectId);
+      const localLatestHandoff = localStore.latestHandoff(scopedProjectId);
       setProjectContext({
         decisions: localMemories
           .filter((memory) => memory.memoryType === 'decision')
@@ -302,7 +303,7 @@ export function App() {
 
     try {
       const ctx = await apiGet<RemoteContext>(
-        `/v1/projects/${readProjectId}/context`,
+        `/v1/projects/${scopedProjectId}/context`,
         subjectId,
         actor,
       );
