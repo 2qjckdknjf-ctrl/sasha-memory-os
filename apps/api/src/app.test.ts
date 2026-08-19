@@ -690,6 +690,7 @@ describe('memory api demo slice', () => {
       mergeConnectionProjectBindings,
       upsertConnectionCollectionItem: vi.fn(async ({ item }: { item: Record<string, unknown> }) => {
         const currentCollections = (metadataState.collections ?? {}) as Record<string, unknown>;
+        expect(currentCollections.discovered_at).toBe('2026-08-19T18:00:00.000Z');
         const currentItems = Array.isArray(currentCollections.items)
           ? (currentCollections.items as Array<Record<string, unknown>>)
           : [];
@@ -744,6 +745,9 @@ describe('memory api demo slice', () => {
       expect(firstBody.collections.map((collection: { id: string }) => collection.id)).toEqual(
         expect.arrayContaining(['team/repo-a', 'team/repo-b']),
       );
+      expect(
+        (metadataState.collections as Record<string, unknown>).discovered_at,
+      ).toBe('2026-08-19T18:10:00.000Z');
       expect(refreshConnectionCollections).toHaveBeenCalledWith(
         expect.objectContaining({
           items: [repoA],

@@ -825,7 +825,7 @@ export class SupabaseMemoryGateway {
       p_connection_id: input.connectionId,
       p_item: input.item,
       p_project_bindings: input.projectBindings ?? {},
-      p_discovered_at: input.discoveredAt ?? new Date().toISOString(),
+      p_discovered_at: input.discoveredAt ?? null,
     });
     if (error) throw error;
     return data as {
