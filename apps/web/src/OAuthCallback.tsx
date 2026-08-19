@@ -1,14 +1,19 @@
 import { useEffect, useState } from 'react';
 import { apiPost } from './api';
+import {
+  clearPendingOAuthSession,
+  readPendingOAuthSession,
+} from './oauthSession';
 
 const OWNER = '33333333-3333-4333-8333-333333333301';
+const OWNER_ACTOR = 'owner';
 
 /**
  * Handles provider redirect: /oauth/callback?code=&state=
  * Completes Memory OS OAuth broker without putting tokens in the URL history longer than needed.
  */
 export function OAuthCallback() {
-  const [status, setStatus] = useState('Completing OAuth…');
+  const [status, setStatus] = useState('Завершаю OAuth…');
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -16,14 +21,19 @@ export function OAuthCallback() {
     const code = params.get('code') ?? '';
     const state = params.get('state') ?? '';
     const oauthError = params.get('error');
+    const pendingSession = readPendingOAuthSession();
+    const subjectId = pendingSession?.subjectId ?? OWNER;
+    const actorKey = pendingSession?.actorKey ?? OWNER_ACTOR;
     if (oauthError) {
       setError(oauthError);
-      setStatus('OAuth provider returned an error');
+      setStatus('Провайдер OAuth вернул ошибку');
+      clearPendingOAuthSession();
       return;
     }
     if (!state) {
       setError('missing state');
-      setStatus('Invalid OAuth callback');
+      setStatus('Некорректный OAuth callback');
+      clearPendingOAuthSession();
       return;
     }
     void (async () => {
@@ -32,18 +42,19 @@ export function OAuthCallback() {
           exchangeMode?: string;
           vaultRef?: string;
           status?: string;
-        }>('/v1/oauth/callback', OWNER, {
+        }>('/v1/oauth/callback', subjectId, {
           state,
           code,
-          actor_subject_id: OWNER,
-        }, 'owner');
+          actor_subject_id: subjectId,
+        }, actorKey);
         setStatus(
-          `Connected (${done.exchangeMode ?? done.status ?? 'ok'}). You can close this tab.`,
+          `Подключение завершено (${done.exchangeMode ?? done.status ?? 'ok'}). Вкладку можно закрыть.`,
         );
         window.history.replaceState({}, '', '/oauth/callback');
+        clearPendingOAuthSession();
       } catch (err) {
         setError(err instanceof Error ? err.message : String(err));
-        setStatus('OAuth callback failed');
+        setStatus('Не удалось завершить OAuth callback');
       }
     })();
   }, []);
@@ -54,7 +65,7 @@ export function OAuthCallback() {
       <p>{status}</p>
       {error ? <p className="error">{error}</p> : null}
       <p>
-        <a href="/">Back to control surface</a>
+        <a href="/">Вернуться в Control Center</a>
       </p>
     </main>
   );

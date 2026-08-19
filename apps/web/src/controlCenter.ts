@@ -92,9 +92,24 @@ export type ConnectionRecord = {
   connectorId?: string;
   displayName?: string;
   status?: string;
+  scopes?: string[];
   lastSyncAt?: string | null;
   lastError?: string | null;
   vaultRef?: string | null;
+};
+
+export type ActorMeta = {
+  id: string;
+  externalKey?: string;
+  displayName?: string;
+  kind?: string;
+};
+
+export type MeResponse = {
+  subjectId: string;
+  workspaceId: string;
+  isOwner: boolean;
+  actor: ActorMeta;
 };
 
 export type ReviewQueueItem = {
@@ -164,4 +179,23 @@ export function describeMemoryStatus(status: string): string {
 
 export function formatTimestamp(value: string): string {
   return new Date(value).toLocaleString();
+}
+
+export function describeConnectionStatus(status?: string): string {
+  switch (status) {
+    case 'connected':
+      return 'Подключено';
+    case 'degraded':
+      return 'С ошибками';
+    case 'reauth_required':
+      return 'Нужна повторная авторизация';
+    case 'revoked':
+      return 'Доступ отозван';
+    case 'disabled':
+      return 'Отключено';
+    case undefined:
+      return 'Статус неизвестен';
+    default:
+      return status;
+  }
 }
