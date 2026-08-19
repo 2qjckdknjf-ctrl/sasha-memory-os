@@ -1,6 +1,6 @@
 import Foundation
 
-// Mirrors packages/schemas/src/appleCompanion.ts for Slice 03.
+// Mirrors packages/schemas/src/appleCompanion.ts for Slice 04.
 public enum ApplePermissionState: String, Codable, CaseIterable, Sendable {
     case notDetermined = "not_determined"
     case limited
@@ -20,6 +20,15 @@ public enum AppleCompanionItemKind: String, Codable, CaseIterable, Sendable {
     case text
     case file
     case photo
+    case video
+    case url
+}
+
+public enum AppleCompanionShareKind: String, Codable, CaseIterable, Sendable {
+    case text
+    case file
+    case photo
+    case video
     case url
 }
 
@@ -37,11 +46,30 @@ public enum AppleSensitivity: String, Codable, CaseIterable, Sendable {
     case restricted
 }
 
+public enum AppleMemoryType: String, Codable, CaseIterable, Sendable {
+    case fact
+    case preference
+    case idea
+    case decision
+    case task
+    case event
+    case state
+    case handoff
+}
+
 public enum AppleCompanionQueueState: String, Codable, CaseIterable, Sendable {
     case pending
     case uploading
     case failed
     case done
+}
+
+public enum AppleCompanionVisibleQueueState: String, Codable, CaseIterable, Sendable {
+    case pending
+    case uploading
+    case failed
+    case done
+    case reselectRequired = "reselect_required"
 }
 
 public enum AppleCompanionSelectionErrorCode: String, Codable, CaseIterable, Sendable {
@@ -323,6 +351,96 @@ public struct AppleCompanionFileBookmarkResolution: Codable, Hashable, Sendable 
     }
 }
 
+public struct AppleCompanionSharePayload: Codable, Hashable, Sendable {
+    public var workspaceID: String
+    public var projectID: String
+    public var actorSubjectID: String
+    public var deviceID: String
+    public var connectionID: String?
+    public var itemID: String
+    public var kind: AppleCompanionShareKind
+    public var title: String?
+    public var text: String?
+    public var url: String?
+    public var filename: String?
+    public var mimeType: String?
+    public var observedAt: String?
+    public var storageMode: AppleStorageMode
+    public var sensitivity: AppleSensitivity
+    public var memoryType: AppleMemoryType?
+    public var idempotencyKey: String
+    public var deleteLocalAfterAck: Bool
+    public var identifiers: AppleCompanionIdentifiers
+    public var metadata: [String: JSONValue]
+
+    public init(
+        workspaceID: String,
+        projectID: String,
+        actorSubjectID: String,
+        deviceID: String,
+        connectionID: String? = nil,
+        itemID: String,
+        kind: AppleCompanionShareKind,
+        title: String? = nil,
+        text: String? = nil,
+        url: String? = nil,
+        filename: String? = nil,
+        mimeType: String? = nil,
+        observedAt: String? = nil,
+        storageMode: AppleStorageMode,
+        sensitivity: AppleSensitivity,
+        memoryType: AppleMemoryType? = nil,
+        idempotencyKey: String,
+        deleteLocalAfterAck: Bool = false,
+        identifiers: AppleCompanionIdentifiers = .init(),
+        metadata: [String: JSONValue] = [:]
+    ) {
+        self.workspaceID = workspaceID
+        self.projectID = projectID
+        self.actorSubjectID = actorSubjectID
+        self.deviceID = deviceID
+        self.connectionID = connectionID
+        self.itemID = itemID
+        self.kind = kind
+        self.title = title
+        self.text = text
+        self.url = url
+        self.filename = filename
+        self.mimeType = mimeType
+        self.observedAt = observedAt
+        self.storageMode = storageMode
+        self.sensitivity = sensitivity
+        self.memoryType = memoryType
+        self.idempotencyKey = idempotencyKey
+        self.deleteLocalAfterAck = deleteLocalAfterAck
+        self.identifiers = identifiers
+        self.metadata = metadata
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case workspaceID = "workspace_id"
+        case projectID = "project_id"
+        case actorSubjectID = "actor_subject_id"
+        case deviceID = "device_id"
+        case connectionID = "connection_id"
+        case itemID = "item_id"
+        case kind
+        case title
+        case text
+        case url
+        case filename
+        case mimeType = "mime_type"
+        case observedAt = "observed_at"
+        case storageMode = "storage_mode"
+        case sensitivity
+        case memoryType = "memory_type"
+        case idempotencyKey = "idempotency_key"
+        case deleteLocalAfterAck = "delete_local_after_ack"
+        case identifiers
+        case metadata
+    }
+}
+
 public struct AppleCompanionIngestRequest: Codable, Hashable, Identifiable, Sendable {
     public var workspaceID: String
     public var projectID: String
@@ -340,9 +458,11 @@ public struct AppleCompanionIngestRequest: Codable, Hashable, Identifiable, Send
     public var externalVersion: String?
     public var storageMode: AppleStorageMode
     public var sensitivity: AppleSensitivity
+    public var memoryType: AppleMemoryType?
     public var idempotencyKey: String
     public var deleteLocalAfterAck: Bool
     public var processNow: Bool
+    public var needsCompanionProcessing: Bool
     public var source: AppleCompanionSource
     public var identifiers: AppleCompanionIdentifiers
     public var metadata: [String: JSONValue]
@@ -366,9 +486,11 @@ public struct AppleCompanionIngestRequest: Codable, Hashable, Identifiable, Send
         externalVersion: String? = nil,
         storageMode: AppleStorageMode = .reference,
         sensitivity: AppleSensitivity = .internalData,
+        memoryType: AppleMemoryType? = nil,
         idempotencyKey: String,
         deleteLocalAfterAck: Bool = false,
         processNow: Bool = false,
+        needsCompanionProcessing: Bool = false,
         source: AppleCompanionSource = .companionApp,
         identifiers: AppleCompanionIdentifiers = .init(),
         metadata: [String: JSONValue] = [:]
@@ -389,9 +511,11 @@ public struct AppleCompanionIngestRequest: Codable, Hashable, Identifiable, Send
         self.externalVersion = externalVersion
         self.storageMode = storageMode
         self.sensitivity = sensitivity
+        self.memoryType = memoryType
         self.idempotencyKey = idempotencyKey
         self.deleteLocalAfterAck = deleteLocalAfterAck
         self.processNow = processNow
+        self.needsCompanionProcessing = needsCompanionProcessing
         self.source = source
         self.identifiers = identifiers
         self.metadata = metadata
@@ -414,9 +538,11 @@ public struct AppleCompanionIngestRequest: Codable, Hashable, Identifiable, Send
         case externalVersion = "external_version"
         case storageMode = "storage_mode"
         case sensitivity
+        case memoryType = "memory_type"
         case idempotencyKey = "idempotency_key"
         case deleteLocalAfterAck = "delete_local_after_ack"
         case processNow = "process_now"
+        case needsCompanionProcessing = "needs_companion_processing"
         case source
         case identifiers
         case metadata
@@ -426,6 +552,7 @@ public struct AppleCompanionIngestRequest: Codable, Hashable, Identifiable, Send
 public struct AppleCompanionQueueItem: Codable, Hashable, Identifiable, Sendable {
     public var id: String
     public var state: AppleCompanionQueueState
+    public var statusLabel: AppleCompanionVisibleQueueState
     public var attemptCount: Int
     public var payload: AppleCompanionIngestRequest
     public var deleteLocalAfterAck: Bool
@@ -440,6 +567,7 @@ public struct AppleCompanionQueueItem: Codable, Hashable, Identifiable, Sendable
     public init(
         id: String,
         state: AppleCompanionQueueState = .pending,
+        statusLabel: AppleCompanionVisibleQueueState = .pending,
         attemptCount: Int = 0,
         payload: AppleCompanionIngestRequest,
         deleteLocalAfterAck: Bool,
@@ -453,6 +581,7 @@ public struct AppleCompanionQueueItem: Codable, Hashable, Identifiable, Sendable
     ) {
         self.id = id
         self.state = state
+        self.statusLabel = statusLabel
         self.attemptCount = attemptCount
         self.payload = payload
         self.deleteLocalAfterAck = deleteLocalAfterAck
@@ -468,6 +597,7 @@ public struct AppleCompanionQueueItem: Codable, Hashable, Identifiable, Sendable
     enum CodingKeys: String, CodingKey {
         case id
         case state
+        case statusLabel = "status_label"
         case attemptCount = "attempt_count"
         case payload
         case deleteLocalAfterAck = "delete_local_after_ack"

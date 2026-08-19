@@ -30,7 +30,11 @@ const APPLE_FILES_DELTA_REASON_KEY = 'filesSelectionDeltaReason' as const;
 
 type AppleBridgeScenario = 'default' | 'rate_limit';
 
-export type AppleBridgeRawObject = AppleCompanionIngestRequest & {
+export type AppleBridgeRawObject = Omit<
+  AppleCompanionIngestRequest,
+  'needs_companion_processing'
+> & {
+  needs_companion_processing?: boolean;
   deleted?: boolean;
   permissions?: Record<string, unknown>;
   poison?: boolean;
@@ -526,6 +530,8 @@ function resolveMimeType(rawObject: AppleBridgeRawObject): string {
       return 'text/uri-list';
     case 'photo':
       return 'image/jpeg';
+    case 'video':
+      return 'video/mp4';
     case 'file':
       return 'application/octet-stream';
     default:
@@ -619,6 +625,8 @@ export function buildAppleBridgeRecord(input: {
         source: input.rawObject.source,
         deviceId: input.rawObject.device_id,
         connectionId: input.rawObject.connection_id ?? null,
+        memoryType: input.rawObject.memory_type ?? null,
+        needsCompanionProcessing: input.rawObject.needs_companion_processing ?? false,
         identifiers: input.rawObject.identifiers,
         itemId: input.rawObject.item_id,
         deleteLocalAfterAck: input.rawObject.delete_local_after_ack,

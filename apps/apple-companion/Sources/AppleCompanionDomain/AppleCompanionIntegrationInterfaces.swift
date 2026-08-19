@@ -36,8 +36,8 @@ public protocol AppleCompanionAuthenticating: Sendable {
     var currentSession: AppleCompanionAuthSession? { get }
 }
 
-// Slice 03 keeps the native Apple surface contract-only: PhotoKit limited selection plus Files bookmarks,
-// security-scoped leases, and explicit stale-bookmark reselect flows.
+// Slice 04 keeps the native Apple surface contract-only: PhotoKit limited selection, Files bookmarks,
+// queue-only Share Extension intake, security-scoped leases, and explicit stale-bookmark reselect flows.
 public protocol ApplePhotoLibraryInspecting: Sendable {
     func currentPhotoLibraryCheckpoint() async -> AppleCompanionPhotoLibraryCheckpoint
     func currentPhotoLibrarySelectionDelta(
