@@ -1,6 +1,10 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Navigate, Route, Routes } from 'react-router-dom';
+import { matchPath, Navigate, Route, Routes, useLocation } from 'react-router-dom';
 import { createSeededStore } from '@memory-os/domain';
+import {
+  packSearchContext as packSearchContextLocal,
+  searchMemoriesHybrid as searchMemoriesHybridLocal,
+} from '@memory-os/retrieval';
 import { apiGet, apiHealth, apiPatch, apiPost, setBoundAuthUserId } from './api';
 import { AgentScopesPage } from './AgentScopesPage';
 import { AppShell } from './AppShell';
@@ -13,9 +17,22 @@ import { HomePage } from './HomePage';
 import { MemoryInspectorPage } from './MemoryInspectorPage';
 import { OpsPage } from './OpsPage';
 import { PrivacyPage } from './PrivacyPage';
+import { ProjectScopePanel } from './ProjectScopePanel';
 import { ProjectsPage } from './ProjectsPage';
 import { storePendingOAuthSession } from './oauthSession';
 import { ProjectPage } from './ProjectPage';
+import {
+  buildHandoffsPath,
+  buildMemoriesPath,
+  buildSearchRequest,
+  describeProjectScope,
+  findProjectById,
+  persistProjectFilter,
+  readStoredProjectFilter,
+  requireExplicitProjectId,
+  resolveReadProjectId,
+  resolveWriteProjectId,
+} from './projectScope';
 import { SearchPage } from './SearchPage';
 import { TasksPage } from './TasksPage';
 import {
@@ -56,7 +73,6 @@ export function App() {
   const [actor, setActor] = useState<Actor>('owner');
   const [backend, setBackend] = useState<BackendMode>('local');
   const [backendResolved, setBackendResolved] = useState(false);
-  const [remote, setRemote] = useState<RemoteContext | null>(null);
   const [search, setSearch] = useState('Slice');
   const [packContext, setPackContext] = useState(false);
   const [searchContext, setSearchContext] = useState<SearchContext | null>(null);
@@ -86,7 +102,7 @@ export function App() {
   const [reviewQueue, setReviewQueue] = useState<ReviewQueueItem[]>([]);
   const [reviewQueueLoading, setReviewQueueLoading] = useState(false);
   const [outboxPending, setOutboxPending] = useState<OutboxPendingItem[]>([]);
-  const [taskMemories, setTaskMemories] = useState<Array<Record<string, unknown>>>([]);
+  const [scopedMemories, setScopedMemories] = useState<Array<Record<string, unknown>>>([]);
   const [jobLookupId, setJobLookupId] = useState('');
   const [jobLookup, setJobLookup] = useState<Record<string, unknown> | null>(null);
   const [extractionPreview, setExtractionPreview] = useState<string | null>(null);
@@ -98,12 +114,36 @@ export function App() {
   );
   const [sessionHandoffs, setSessionHandoffs] = useState<HandoffLike[]>([]);
   const [persistedHandoffs, setPersistedHandoffs] = useState<HandoffLike[]>(() =>
-    localStore.listHandoffs(PROJECT_ID),
+    localStore.listHandoffs(),
   );
   const [handoffHistoryAvailable, setHandoffHistoryAvailable] = useState(true);
   const [me, setMe] = useState<MeResponse | null>(null);
+  const [selectedProjectId, setSelectedProjectId] = useState<string | null>(() =>
+    readStoredProjectFilter(),
+  );
+  const [projectContext, setProjectContext] = useState<RemoteContext | null>(null);
+  const [projectStates, setProjectStates] = useState<Array<Record<string, unknown>>>([]);
 
   const subjectId = ACTOR_IDS[actor];
+  const location = useLocation();
+  const routeProjectId = matchPath('/projects/:id', location.pathname)?.params.id ?? null;
+  const readProjectId = resolveReadProjectId({
+    routeProjectId,
+    selectedProjectId,
+  });
+  const writeProjectId = resolveWriteProjectId({
+    routeProjectId,
+    selectedProjectId,
+  });
+  const selectedProject = useMemo(
+    () => findProjectById(projects, selectedProjectId),
+    [projects, selectedProjectId],
+  );
+  const routeProject = useMemo(() => findProjectById(projects, routeProjectId), [projects, routeProjectId]);
+  const scopedProject = routeProjectId ? routeProject : selectedProject;
+  const scopeLabel = routeProjectId
+    ? routeProject?.name ?? routeProjectId
+    : describeProjectScope(selectedProject);
 
   function buildLocalMe(nextActor: Actor): MeResponse {
     return {
@@ -170,6 +210,21 @@ export function App() {
     setBoundSubjectId(null);
   }, []);
 
+  useEffect(() => {
+    persistProjectFilter(selectedProjectId);
+  }, [selectedProjectId]);
+
+  useEffect(() => {
+    if (!selectedProjectId) return;
+    if (projects.length === 0) return;
+    if (projects.some((project) => project.id === selectedProjectId)) return;
+    setSelectedProjectId(null);
+  }, [projects, selectedProjectId]);
+
+  const onSelectProject = useCallback((projectId: string | null) => {
+    setSelectedProjectId(projectId);
+  }, []);
+
   async function refreshOutboxPending(mode: BackendMode = backend) {
     if (mode === 'local') {
       setOutboxPending([]);
@@ -189,13 +244,17 @@ export function App() {
 
   async function refreshHandoffs(mode: BackendMode = backend) {
     if (mode === 'local') {
-      setPersistedHandoffs(localStore.listHandoffs(PROJECT_ID));
+      setPersistedHandoffs(localStore.listHandoffs(readProjectId));
       setHandoffHistoryAvailable(true);
       return;
     }
     try {
       const result = await apiGet<{ handoffs?: HandoffLike[] }>(
-        `/v1/handoffs?workspace_id=${WORKSPACE_ID}&project_id=${PROJECT_ID}&limit=50`,
+        buildHandoffsPath({
+          workspaceId: WORKSPACE_ID,
+          projectId: readProjectId,
+          limit: 50,
+        }),
         subjectId,
         actor,
       );
@@ -207,13 +266,91 @@ export function App() {
     }
   }
 
+  async function refreshProjectContext(mode: BackendMode = backend) {
+    if (mode === 'local') {
+      const localProjectStates = readProjectId
+        ? [localStore.getProjectState(readProjectId)].filter(
+            (state): state is Record<string, unknown> => state !== null,
+          )
+        : [...localStore.projectStates.values()]
+            .map((versions) => versions[versions.length - 1] ?? null)
+            .filter((state): state is Record<string, unknown> => state !== null);
+      setProjectStates(localProjectStates);
+      if (!readProjectId) {
+        setProjectContext(null);
+        return;
+      }
+      const localMemories = localStore.listCurrentMemories(WORKSPACE_ID, readProjectId);
+      setProjectContext({
+        decisions: localMemories
+          .filter((memory) => memory.memoryType === 'decision')
+          .map((memory) => ({ ...memory })),
+        tasks: localMemories
+          .filter(
+            (memory) =>
+              memory.memoryType === 'task' && isVisibleTaskStatus(memory.status),
+          )
+          .map((memory) => ({ ...memory })),
+        state: localProjectStates[0] ?? null,
+        latestHandoff: localStore.latestHandoff(readProjectId),
+      });
+      return;
+    }
+
+    if (readProjectId) {
+      try {
+        const ctx = await apiGet<RemoteContext>(
+          `/v1/projects/${readProjectId}/context`,
+          subjectId,
+          actor,
+        );
+        setProjectContext(ctx);
+        setProjectStates(
+          ctx.state && typeof ctx.state === 'object' ? [ctx.state as Record<string, unknown>] : [],
+        );
+      } catch {
+        setProjectContext(null);
+        setProjectStates([]);
+      }
+      return;
+    }
+
+    setProjectContext(null);
+    if (projects.length === 0) {
+      setProjectStates([]);
+      return;
+    }
+    const states = await Promise.all(
+      projects.map(async (project) => {
+        try {
+          const state = await apiGet<Record<string, unknown> | null>(
+            `/v1/projects/${project.id}/state`,
+            subjectId,
+            actor,
+          );
+          if (!state || typeof state !== 'object') return null;
+          return {
+            ...state,
+            projectId:
+              typeof state.projectId === 'string'
+                ? state.projectId
+                : typeof state.project_id === 'string'
+                  ? state.project_id
+                  : project.id,
+          };
+        } catch {
+          return null;
+        }
+      }),
+    );
+    setProjectStates(states.filter((state): state is Record<string, unknown> => state !== null));
+  }
+
   async function refreshRemote() {
     try {
       const health = await apiHealth();
       if (!health) {
         setBackend('local');
-        setRemote(null);
-        setMe(buildLocalMe(actor));
         setConnections([
           {
             connectorId: 'github',
@@ -232,8 +369,7 @@ export function App() {
             url: 'https://github.com/aistroyka/core',
           },
         ]);
-        setPersistedHandoffs(localStore.listHandoffs(PROJECT_ID));
-        setHandoffHistoryAvailable(true);
+        setMe(buildLocalMe(actor));
         setOutboxPending([]);
         return;
       }
@@ -241,9 +377,6 @@ export function App() {
       const nextBackend = (health.backend as 'supabase' | 'memory-store') ?? 'memory-store';
       setBackend(nextBackend);
       setMe(buildLocalMe(actor));
-
-      const ctx = await apiGet<RemoteContext>(`/v1/projects/${PROJECT_ID}/context`, subjectId);
-      setRemote(ctx);
 
       const conn = await apiGet<{ connections: ConnectionRecord[] }>(
         `/v1/connections?workspace_id=${WORKSPACE_ID}`,
@@ -290,7 +423,6 @@ export function App() {
       } catch {
         setMe(buildLocalMe(actor));
       }
-      await refreshHandoffs(nextBackend);
       await refreshOutboxPending(nextBackend);
     } finally {
       setBackendResolved(true);
@@ -302,13 +434,15 @@ export function App() {
     try {
       if (backend === 'local') {
         setReviewQueue(
-          [...localStore.memories.values()]
+          localStore
+            .listCurrentMemories(WORKSPACE_ID, readProjectId ?? undefined)
             .filter((memory) => memory.status === 'candidate' || memory.status === 'disputed')
             .map((memory) => ({
               id: memory.id,
               title: memory.title,
               content: memory.content.slice(0, 500),
               status: memory.status,
+              projectId: memory.projectId ?? null,
             })),
         );
         return;
@@ -316,12 +450,22 @@ export function App() {
 
       const [candidates, disputed] = await Promise.all([
         apiGet<{ memories: ReviewQueueItem[] }>(
-          `/v1/memories?workspace_id=${WORKSPACE_ID}&project_id=${PROJECT_ID}&status=candidate&limit=50`,
+          buildMemoriesPath({
+            workspaceId: WORKSPACE_ID,
+            projectId: readProjectId,
+            status: 'candidate',
+            limit: 50,
+          }),
           subjectId,
           actor,
         ),
         apiGet<{ memories: ReviewQueueItem[] }>(
-          `/v1/memories?workspace_id=${WORKSPACE_ID}&project_id=${PROJECT_ID}&status=disputed&limit=50`,
+          buildMemoriesPath({
+            workspaceId: WORKSPACE_ID,
+            projectId: readProjectId,
+            status: 'disputed',
+            limit: 50,
+          }),
           subjectId,
           actor,
         ),
@@ -343,14 +487,9 @@ export function App() {
 
   async function refreshTaskMemories() {
     if (backend === 'local') {
-      setTaskMemories(
-        [...localStore.memories.values()]
-          .filter(
-            (memory) =>
-              memory.projectId === PROJECT_ID &&
-              memory.memoryType === 'task' &&
-              isVisibleTaskStatus(memory.status),
-          )
+      setScopedMemories(
+        localStore
+          .listCurrentMemories(WORKSPACE_ID, readProjectId ?? undefined)
           .map((memory) => ({ ...memory })),
       );
       return;
@@ -358,18 +497,17 @@ export function App() {
 
     try {
       const result = await apiGet<{ memories?: Array<Record<string, unknown>> }>(
-        `/v1/memories?workspace_id=${WORKSPACE_ID}&project_id=${PROJECT_ID}&limit=100`,
+        buildMemoriesPath({
+          workspaceId: WORKSPACE_ID,
+          projectId: readProjectId,
+          limit: 100,
+        }),
         subjectId,
         actor,
       );
-      setTaskMemories(
-        (result.memories ?? []).filter((memory) => {
-          const memoryType = String(memory.memoryType ?? memory.type ?? '');
-          return memoryType === 'task' && isVisibleTaskStatus(memory.status);
-        }),
-      );
+      setScopedMemories(result.memories ?? []);
     } catch {
-      setTaskMemories([]);
+      setScopedMemories([]);
     }
   }
 
@@ -379,16 +517,38 @@ export function App() {
 
   useEffect(() => {
     void refreshReviewQueue().catch((err: Error) => setError(err.message));
-  }, [actor, backend, tick]);
+  }, [actor, backend, readProjectId, tick]);
 
   useEffect(() => {
     void refreshTaskMemories().catch((err: Error) => setError(err.message));
-  }, [actor, backend, tick]);
+  }, [actor, backend, readProjectId, tick]);
+
+  useEffect(() => {
+    void refreshHandoffs().catch((err: Error) => setError(err.message));
+  }, [actor, backend, readProjectId, tick]);
+
+  useEffect(() => {
+    void refreshProjectContext().catch((err: Error) => setError(err.message));
+  }, [actor, backend, projects, readProjectId, tick]);
+
+  useEffect(() => {
+    setHits([]);
+    setSearchContext(null);
+  }, [readProjectId]);
+
+  const taskMemories = useMemo(
+    () =>
+      scopedMemories.filter((memory) => {
+        const memoryType = String(memory.memoryType ?? memory.type ?? '');
+        return memoryType === 'task' && isVisibleTaskStatus(memory.status);
+      }),
+    [scopedMemories],
+  );
 
   const timeline = useMemo(() => {
-    if (remote) {
+    if (projectContext) {
       const entries: TimelineEntry[] = [];
-      for (const decision of remote.decisions ?? []) {
+      for (const decision of projectContext.decisions ?? []) {
         entries.push({
           kind: 'decision',
           memoryId:
@@ -401,25 +561,35 @@ export function App() {
           title: String(decision.title ?? 'decision'),
           content: String(decision.content ?? ''),
           status: String(decision.status ?? 'verified'),
+          projectId:
+            typeof decision.projectId === 'string'
+              ? decision.projectId
+              : typeof decision.project_id === 'string'
+                ? decision.project_id
+                : readProjectId,
         });
       }
-      if (remote.state) {
-        const state = remote.state.state as { next?: string[] } | undefined;
+      if (projectContext.state && typeof projectContext.state === 'object') {
+        const stateRecord = projectContext.state as Record<string, unknown>;
+        const state = stateRecord.state as { next?: string[] } | undefined;
         entries.push({
           kind: 'state',
-          at: String(remote.state.created_at ?? new Date().toISOString()),
-          summary: String(remote.state.summary ?? 'project state'),
-          version: Number(remote.state.version ?? 0),
+          at: String(stateRecord.created_at ?? stateRecord.createdAt ?? new Date().toISOString()),
+          summary: String(stateRecord.summary ?? 'project state'),
+          version: Number(stateRecord.version ?? 0),
           next: (state?.next ?? []).join(', ') || '—',
+          projectId: readProjectId,
         });
       }
-      const latestHandoff = persistedHandoffs[0] ?? remote.latestHandoff;
+      const latestHandoff = persistedHandoffs[0] ?? projectContext.latestHandoff;
       if (latestHandoff) {
         const latestHandoffRecord = latestHandoff as Record<string, unknown>;
-        const payload = latestHandoff.payload as {
-          recommended_next?: string[];
-          completed?: string[];
-        };
+        const payload = latestHandoffRecord.payload as
+          | {
+              recommended_next?: string[];
+              completed?: string[];
+            }
+          | undefined;
         entries.push({
           kind: 'handoff',
           at: String(
@@ -431,93 +601,132 @@ export function App() {
             payload?.recommended_next?.join(', ') ||
             payload?.completed?.join(', ') ||
             'handoff',
+          projectId:
+            typeof latestHandoffRecord.projectId === 'string'
+              ? latestHandoffRecord.projectId
+              : typeof latestHandoffRecord.project_id === 'string'
+                ? latestHandoffRecord.project_id
+                : readProjectId,
         });
       }
       return entries.sort((left, right) => right.at.localeCompare(left.at));
     }
 
     const entries: TimelineEntry[] = [];
-    for (const memory of localStore.listCurrentMemories(WORKSPACE_ID, PROJECT_ID)) {
-      if (memory.memoryType === 'decision') {
-        entries.push({
-          kind: 'decision',
-          memoryId: memory.id,
-          at: memory.recordedAt,
-          title: memory.title,
-          content: memory.content,
-          status: memory.status,
-        });
+    for (const memory of scopedMemories) {
+      const memoryType = String(memory.memoryType ?? memory.type ?? '');
+      if (memoryType !== 'decision') {
+        continue;
       }
-    }
-    const state = localStore.getProjectState(PROJECT_ID);
-    if (state) {
       entries.push({
-        kind: 'state',
-        at: state.createdAt,
-        summary: state.summary ?? state.state.stage,
-        version: state.version,
-        next: state.state.next.join(', ') || '—',
+        kind: 'decision',
+        memoryId: typeof memory.id === 'string' ? memory.id : undefined,
+        at: String(memory.recordedAt ?? memory.recorded_at ?? new Date().toISOString()),
+        title: String(memory.title ?? 'decision'),
+        content: String(memory.content ?? ''),
+        status: String(memory.status ?? 'verified'),
+        projectId:
+          typeof memory.projectId === 'string'
+            ? memory.projectId
+            : typeof memory.project_id === 'string'
+              ? memory.project_id
+              : null,
       });
     }
-    for (const handoff of localStore.handoffs.get(PROJECT_ID) ?? []) {
+    for (const stateRecord of projectStates) {
+      const nestedState =
+        typeof stateRecord.state === 'object' && stateRecord.state !== null
+          ? (stateRecord.state as { next?: string[] })
+          : undefined;
+      entries.push({
+        kind: 'state',
+        at: String(stateRecord.created_at ?? stateRecord.createdAt ?? new Date().toISOString()),
+        summary: String(stateRecord.summary ?? 'project state'),
+        version: Number(stateRecord.version ?? 0),
+        next: (nestedState?.next ?? []).join(', ') || '—',
+        projectId:
+          typeof stateRecord.projectId === 'string'
+            ? stateRecord.projectId
+            : typeof stateRecord.project_id === 'string'
+              ? stateRecord.project_id
+              : null,
+      });
+    }
+    for (const handoff of persistedHandoffs) {
+      const handoffRecord = handoff as Record<string, unknown>;
+      const payload = handoffRecord.payload as
+        | {
+            recommended_next?: string[];
+            completed?: string[];
+          }
+        | undefined;
       entries.push({
         kind: 'handoff',
-        at: handoff.createdAt,
+        at: String(handoffRecord.created_at ?? handoffRecord.createdAt ?? new Date().toISOString()),
         summary:
-          handoff.payload.recommended_next.join(', ') ||
-          handoff.payload.completed.join(', '),
+          payload?.recommended_next?.join(', ') ||
+          payload?.completed?.join(', ') ||
+          'handoff',
+        projectId:
+          typeof handoffRecord.projectId === 'string'
+            ? handoffRecord.projectId
+            : typeof handoffRecord.project_id === 'string'
+              ? handoffRecord.project_id
+              : null,
       });
     }
     return entries.sort((left, right) => right.at.localeCompare(left.at));
-  }, [localStore, persistedHandoffs, remote, tick]);
+  }, [persistedHandoffs, projectContext, projectStates, readProjectId, scopedMemories]);
 
   const stateSummary = useMemo<StateSummary | null>(() => {
-    if (remote?.state) {
-      const state = remote.state.state as {
-        stage?: string;
-        completed?: string[];
-        next?: string[];
-        active_decisions?: string[];
-      };
-      return {
-        stage: state.stage ?? '—',
-        completed: (state.completed ?? []).join(', ') || '—',
-        next: (state.next ?? []).join(', ') || '—',
-        active: state.active_decisions?.length ?? 0,
-      };
-    }
-
-    const localState = localStore.getProjectState(PROJECT_ID);
-    if (!localState) {
+    if (!readProjectId) {
       return null;
     }
-
+    const stateRecord = projectContext?.state ?? projectStates[0] ?? null;
+    if (!stateRecord || typeof stateRecord !== 'object') {
+      return null;
+    }
+    const nestedState =
+      typeof (stateRecord as { state?: unknown }).state === 'object' &&
+      (stateRecord as { state?: unknown }).state !== null
+        ? ((stateRecord as { state: Record<string, unknown> }).state as {
+            stage?: string;
+            completed?: string[];
+            next?: string[];
+            active_decisions?: string[];
+          })
+        : (stateRecord as {
+            stage?: string;
+            completed?: string[];
+            next?: string[];
+            active_decisions?: string[];
+          });
     return {
-      stage: localState.state.stage,
-      completed: localState.state.completed.join(', ') || '—',
-      next: localState.state.next.join(', ') || '—',
-      active: localState.state.active_decisions.length,
+      stage: nestedState.stage ?? '—',
+      completed: (nestedState.completed ?? []).join(', ') || '—',
+      next: (nestedState.next ?? []).join(', ') || '—',
+      active: nestedState.active_decisions?.length ?? 0,
     };
-  }, [localStore, remote, tick]);
+  }, [projectContext, projectStates, readProjectId]);
 
   const taskSurface = useMemo(
     () =>
       deriveTaskSurface({
-        taskMemories: [...taskMemories, ...(remote?.tasks ?? [])],
-        projectState: remote?.state ?? localStore.getProjectState(PROJECT_ID),
+        taskMemories: [...taskMemories, ...(projectContext?.tasks ?? [])],
+        projectState: readProjectId ? (projectContext?.state ?? projectStates[0] ?? null) : projectStates,
       }),
-    [localStore, remote, taskMemories, tick],
+    [projectContext, projectStates, readProjectId, taskMemories],
   );
 
   const handoffSurface = useMemo(
     () =>
       deriveHandoffSurface({
-        latestHandoff: persistedHandoffs[0] ?? remote?.latestHandoff ?? null,
+        latestHandoff: persistedHandoffs[0] ?? projectContext?.latestHandoff ?? null,
         persistedHandoffs,
         sessionHandoffs,
         historyAvailable: handoffHistoryAvailable,
       }),
-    [handoffHistoryAvailable, persistedHandoffs, remote, sessionHandoffs],
+    [handoffHistoryAvailable, persistedHandoffs, projectContext, sessionHandoffs],
   );
 
   const connectionWarnings = useMemo(
@@ -529,13 +738,18 @@ export function App() {
     [connections],
   );
 
+  function resolveExplicitWriteProjectId(): string {
+    return requireExplicitProjectId(writeProjectId);
+  }
+
   async function onStoreDecision() {
     setError(null);
     try {
+      const targetProjectId = resolveExplicitWriteProjectId();
       if (backend !== 'local') {
         await apiPost('/v1/memories', subjectId, {
           workspace_id: WORKSPACE_ID,
-          project_id: PROJECT_ID,
+          project_id: targetProjectId,
           title,
           content,
           actor_subject_id: subjectId,
@@ -547,7 +761,7 @@ export function App() {
       } else {
         localStore.createDecision({
           workspaceId: WORKSPACE_ID,
-          projectId: PROJECT_ID,
+          projectId: targetProjectId,
           title,
           content,
           actorSubjectId: subjectId,
@@ -567,6 +781,7 @@ export function App() {
   ) {
     setError(null);
     try {
+      const targetProjectId = resolveExplicitWriteProjectId();
       const handoffPayload = {
         completed: payload.completed,
         artifacts: payload.artifacts,
@@ -580,7 +795,7 @@ export function App() {
       if (backend !== 'local') {
         handoff = await apiPost<Record<string, unknown>>('/v1/handoffs', subjectId, {
           workspace_id: WORKSPACE_ID,
-          project_id: PROJECT_ID,
+          project_id: targetProjectId,
           from_subject_id: CURSOR,
           to_subject_id: ACTOR_IDS[targetActor],
           idempotency_key: `web-handoff-${Date.now()}`,
@@ -589,7 +804,7 @@ export function App() {
       } else {
         handoff = localStore.createHandoff({
           workspaceId: WORKSPACE_ID,
-          projectId: PROJECT_ID,
+          projectId: targetProjectId,
           fromSubjectId: CURSOR,
           toSubjectId: ACTOR_IDS[targetActor],
           payload: handoffPayload,
@@ -619,24 +834,21 @@ export function App() {
         }>(
           '/v1/search',
           subjectId,
-          {
+          buildSearchRequest({
             query: search,
-            project_id: PROJECT_ID,
-            pack_context: packContext,
-            max_context_chars: 3_000,
-          },
+            projectId: readProjectId,
+            packContext,
+            maxContextChars: 3_000,
+          }),
           actor,
         );
         setHits(result.hits ?? []);
         setSearchContext(packContext ? (result.context ?? null) : null);
       } else {
-        const { packSearchContext, searchMemoriesHybrid } = await import(
-          '@memory-os/retrieval'
-        );
-        const localHits = await searchMemoriesHybrid(
-          [...localStore.memories.values()],
+        const localHits = await searchMemoriesHybridLocal(
+          localStore.listCurrentMemories(WORKSPACE_ID, readProjectId ?? undefined),
           search,
-          { projectId: PROJECT_ID },
+          { projectId: readProjectId ?? undefined },
         );
         setHits(
           localHits.map((hit) => ({
@@ -646,7 +858,7 @@ export function App() {
           })),
         );
         setSearchContext(
-          packContext ? packSearchContext(localHits, { maxChars: 3_000 }) : null,
+          packContext ? packSearchContextLocal(localHits, { maxChars: 3_000 }) : null,
         );
       }
     } catch (err) {
@@ -810,6 +1022,7 @@ export function App() {
   async function onCaptureText() {
     setError(null);
     try {
+      const targetProjectId = resolveExplicitWriteProjectId();
       if (backend !== 'local') {
         const result = await apiPost<{
           jobId?: string;
@@ -820,7 +1033,7 @@ export function App() {
           subjectId,
           {
             workspace_id: WORKSPACE_ID,
-            project_id: PROJECT_ID,
+            project_id: targetProjectId,
             title: captureTitle,
             text: captureText,
             actor_subject_id: subjectId,
@@ -841,7 +1054,7 @@ export function App() {
       } else {
         const result = localStore.captureText({
           workspaceId: WORKSPACE_ID,
-          projectId: PROJECT_ID,
+          projectId: targetProjectId,
           title: captureTitle,
           text: captureText,
           actorSubjectId: subjectId,
@@ -902,6 +1115,7 @@ export function App() {
   async function onApplyExtraction() {
     setError(null);
     try {
+      const targetProjectId = resolveExplicitWriteProjectId();
       if (backend === 'local') {
         setError('Extraction apply requires API backend');
         return;
@@ -921,7 +1135,7 @@ export function App() {
         subjectId,
         {
           workspace_id: WORKSPACE_ID,
-          project_id: PROJECT_ID,
+          project_id: targetProjectId,
           actor_subject_id: subjectId,
           idempotency_prefix: `web-extract-${Date.now()}`,
           candidates: selected,
@@ -944,6 +1158,7 @@ export function App() {
     }
 
     try {
+      const targetProjectId = resolveExplicitWriteProjectId();
       const contentBase64 = await new Promise<string>((resolve, reject) => {
         const reader = new FileReader();
         reader.onerror = () => reject(new Error('failed to read file'));
@@ -971,7 +1186,7 @@ export function App() {
         subjectId,
         {
           workspace_id: WORKSPACE_ID,
-          project_id: PROJECT_ID,
+          project_id: targetProjectId,
           title: docTitle,
           filename: docFile.name,
           mime_type: docFile.type || undefined,
@@ -997,6 +1212,7 @@ export function App() {
   async function onCaptureLink() {
     setError(null);
     try {
+      const targetProjectId = resolveExplicitWriteProjectId();
       if (backend === 'local') {
         setError('Link capture requires API backend');
         return;
@@ -1011,7 +1227,7 @@ export function App() {
         subjectId,
         {
           workspace_id: WORKSPACE_ID,
-          project_id: PROJECT_ID,
+          project_id: targetProjectId,
           url: linkUrl,
           title: linkTitle,
           actor_subject_id: subjectId,
@@ -1090,9 +1306,14 @@ export function App() {
 
   async function onBumpState() {
     setError(null);
-    const expectedVersion = Number(remote?.state?.version ?? 1);
+    const targetProjectId = resolveExplicitWriteProjectId();
+    const stateRecord =
+      projectContext?.state && typeof projectContext.state === 'object'
+        ? (projectContext.state as Record<string, unknown>)
+        : null;
+    const expectedVersion = Number(stateRecord?.version ?? 1);
     const current =
-      (remote?.state?.state as {
+      ((stateRecord?.state as {
         stage?: string;
         completed?: string[];
         in_progress?: string[];
@@ -1100,12 +1321,13 @@ export function App() {
         next?: string[];
         risks?: string[];
         active_decisions?: string[];
-      }) ?? {};
+      }) ??
+        {});
     try {
       if (backend !== 'local') {
-        await apiPatch(`/v1/projects/${PROJECT_ID}/state`, subjectId, {
+        await apiPatch(`/v1/projects/${targetProjectId}/state`, subjectId, {
           workspace_id: WORKSPACE_ID,
-          project_id: PROJECT_ID,
+          project_id: targetProjectId,
           expected_version: expectedVersion,
           actor_subject_id: subjectId,
           idempotency_key: `web-bump-${Date.now()}`,
@@ -1123,8 +1345,8 @@ export function App() {
       } else {
         localStore.upsertProjectState({
           workspaceId: WORKSPACE_ID,
-          projectId: PROJECT_ID,
-          expectedVersion: localStore.getProjectState(PROJECT_ID)?.version ?? 0,
+          projectId: targetProjectId,
+          expectedVersion: localStore.getProjectState(targetProjectId)?.version ?? 0,
           actorSubjectId: subjectId,
           summary: `State bumped by ${actor}`,
           state: {
@@ -1512,6 +1734,14 @@ export function App() {
   }
 
   const authPanel = <AuthPanel onBound={onAuthBound} onUnbound={onAuthUnbound} />;
+  const globalScopePanel = (
+    <ProjectScopePanel
+      projects={projects}
+      selectedProjectId={selectedProjectId}
+      onSelectProject={onSelectProject}
+    />
+  );
+  const projectPageName = routeProject?.name ?? routeProjectId ?? 'Проект';
 
   return (
     <AppShell
@@ -1526,6 +1756,8 @@ export function App() {
           path="/"
           element={
             <HomePage
+              scopeLabel={scopeLabel}
+              scopePanel={globalScopePanel}
               stateSummary={stateSummary}
               timeline={timeline}
               reviewQueueCount={reviewQueue.length}
@@ -1589,11 +1821,26 @@ export function App() {
             />
           }
         />
-        <Route path="/tasks" element={<TasksPage taskSurface={taskSurface} />} />
+        <Route
+          path="/tasks"
+          element={
+            <TasksPage
+              scopeLabel={scopeLabel}
+              scopePanel={globalScopePanel}
+              taskSurface={taskSurface}
+            />
+          }
+        />
         <Route
           path="/handoffs"
           element={
-            <HandoffsPage handoffSurface={handoffSurface} onCreateHandoff={createHandoff} />
+            <HandoffsPage
+              scopeLabel={scopeLabel}
+              scopePanel={globalScopePanel}
+              handoffSurface={handoffSurface}
+              writeProjectName={scopedProject?.name ?? null}
+              onCreateHandoff={createHandoff}
+            />
           }
         />
         <Route
@@ -1602,6 +1849,8 @@ export function App() {
             <ConflictsPage
               actor={actor}
               backend={backend}
+              scopeLabel={scopeLabel}
+              scopePanel={globalScopePanel}
               reviewQueue={reviewQueue}
               reviewQueueLoading={reviewQueueLoading}
               onSetReviewStatus={onSetHitStatus}
@@ -1613,6 +1862,8 @@ export function App() {
           path="/search"
           element={
             <SearchPage
+              scopeLabel={scopeLabel}
+              scopePanel={globalScopePanel}
               search={search}
               packContext={packContext}
               searchContext={searchContext}
@@ -1623,7 +1874,17 @@ export function App() {
             />
           }
         />
-        <Route path="/projects" element={<ProjectsPage projects={projects} />} />
+        <Route
+          path="/projects"
+          element={
+            <ProjectsPage
+              projects={projects}
+              selectedProjectId={selectedProjectId}
+              scopePanel={globalScopePanel}
+              onSelectProject={onSelectProject}
+            />
+          }
+        />
         <Route
           path="/memories/:id"
           element={
@@ -1643,6 +1904,7 @@ export function App() {
           element={
             <ProjectPage
               actor={actor}
+              projectName={projectPageName}
               stateSummary={stateSummary}
               timeline={timeline}
               title={title}
@@ -1663,6 +1925,8 @@ export function App() {
             <OpsPage
               actor={actor}
               backend={backend}
+              scopePanel={globalScopePanel}
+              writeProjectName={scopedProject?.name ?? null}
               search={search}
               packContext={packContext}
               searchContext={searchContext}

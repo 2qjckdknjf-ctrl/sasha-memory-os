@@ -30,9 +30,10 @@ export type TimelineEntry =
       content: string;
       status: string;
       memoryId?: string;
+      projectId?: string | null;
     }
-  | { kind: 'state'; at: string; summary: string; version: number; next: string }
-  | { kind: 'handoff'; at: string; summary: string };
+  | { kind: 'state'; at: string; summary: string; version: number; next: string; projectId?: string | null }
+  | { kind: 'handoff'; at: string; summary: string; projectId?: string | null };
 
 export type RemoteContext = {
   decisions?: Array<Record<string, unknown>>;
@@ -242,6 +243,7 @@ export type ReviewQueueItem = {
   title: string;
   content: string;
   status: string;
+  projectId?: string | null;
 };
 
 export type ProjectRecord = {

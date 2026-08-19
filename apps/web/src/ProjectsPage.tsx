@@ -1,11 +1,20 @@
+import type { ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import type { ProjectRecord } from './controlCenter';
 
 type Props = {
   projects: ProjectRecord[];
+  selectedProjectId: string | null;
+  scopePanel: ReactNode;
+  onSelectProject: (projectId: string | null) => void;
 };
 
-export function ProjectsPage({ projects }: Props) {
+export function ProjectsPage({
+  projects,
+  selectedProjectId,
+  scopePanel,
+  onSelectProject,
+}: Props) {
   return (
     <section className="page">
       <header className="page-header">
@@ -16,6 +25,8 @@ export function ProjectsPage({ projects }: Props) {
           GitHub discover/sync.
         </p>
       </header>
+
+      {scopePanel}
 
       <section className="panel">
         <h2>Проекты рабочей области</h2>
@@ -35,6 +46,16 @@ export function ProjectsPage({ projects }: Props) {
                   <Link to={`/projects/${project.id}`} className="button-link button-link--secondary">
                     Открыть проект
                   </Link>
+                  <button
+                    type="button"
+                    className="button-secondary"
+                    disabled={selectedProjectId === project.id}
+                    onClick={() => onSelectProject(project.id)}
+                  >
+                    {selectedProjectId === project.id
+                      ? 'Текущий фильтр'
+                      : 'Сделать фильтром глобальных страниц'}
+                  </button>
                 </div>
               </li>
             ))}

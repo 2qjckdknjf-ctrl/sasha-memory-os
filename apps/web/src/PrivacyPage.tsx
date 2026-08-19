@@ -3,7 +3,6 @@ import { Link } from 'react-router-dom';
 import { apiGet, apiPost } from './api';
 import {
   ACTOR_LABELS,
-  PROJECT_ID,
   WORKSPACE_ID,
   formatTimestamp,
   type Actor,
@@ -119,7 +118,6 @@ export function PrivacyPage({
         subjectId,
         {
           workspace_id: WORKSPACE_ID,
-          project_id: PROJECT_ID,
           actor_subject_id: subjectId,
           request_type: requestType,
           target_memory_id: targetMemoryId.trim() || undefined,

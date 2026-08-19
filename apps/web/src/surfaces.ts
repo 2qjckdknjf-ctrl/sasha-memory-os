@@ -10,6 +10,7 @@ export type TaskSurfaceItem = {
   lane: TaskSurfaceLane;
   source: 'memory' | 'state';
   memoryId?: string;
+  projectId?: string | null;
   recordedAt?: string;
   status?: string;
 };
@@ -51,6 +52,7 @@ export type HandoffSurfaceSource = 'history' | 'latest' | 'session';
 export type HandoffSurfaceItem = {
   id: string;
   createdAt: string;
+  projectId: string | null;
   fromSubjectId: string | null;
   toSubjectId: string | null;
   payload: HandoffPayloadInput;
@@ -68,6 +70,7 @@ export type TaskMemoryLike = MemoryRecord | Record<string, unknown>;
 export type HandoffLike = Handoff | Record<string, unknown>;
 
 type ProjectStateSnapshot = {
+  projectId: string | null;
   completed: string[];
   inProgress: string[];
   blocked: string[];
@@ -104,6 +107,10 @@ function normalizeTaskKey(title: string): string {
   return title.trim().toLowerCase();
 }
 
+function taskIdentityKey(item: TaskSurfaceItem): string {
+  return `${item.projectId ?? 'workspace'}:${normalizeTaskKey(item.title)}`;
+}
+
 function normalizeTaskMemory(task: TaskMemoryLike): TaskSurfaceItem | null {
   const raw = task as Record<string, unknown>;
   const memoryType = readString(raw, 'memoryType', 'memory_type');
@@ -121,6 +128,7 @@ function normalizeTaskMemory(task: TaskMemoryLike): TaskSurfaceItem | null {
     lane: 'memory',
     source: 'memory',
     memoryId,
+    projectId: readString(raw, 'projectId', 'project_id'),
     recordedAt: readString(raw, 'recordedAt', 'recorded_at') ?? undefined,
     status: readString(raw, 'status') ?? undefined,
   };
@@ -130,7 +138,7 @@ function normalizeProjectState(
   stateRecord: ProjectStateVersion | Record<string, unknown> | null | undefined,
 ): ProjectStateSnapshot {
   if (!stateRecord) {
-    return { completed: [], inProgress: [], blocked: [], next: [] };
+    return { projectId: null, completed: [], inProgress: [], blocked: [], next: [] };
   }
 
   const raw = stateRecord as Record<string, unknown>;
@@ -138,6 +146,7 @@ function normalizeProjectState(
   const state = isRecord(maybeNested) ? maybeNested : raw;
 
   return {
+    projectId: readString(raw, 'projectId', 'project_id'),
     completed: readStringArray(readField(state, ['completed'])),
     inProgress: readStringArray(readField(state, ['in_progress', 'inProgress'])),
     blocked: readStringArray(readField(state, ['blocked'])),
@@ -145,9 +154,13 @@ function normalizeProjectState(
   };
 }
 
-function buildStateTaskItems(values: string[], lane: TaskSurfaceLane): TaskSurfaceItem[] {
+function buildStateTaskItems(
+  values: string[],
+  lane: TaskSurfaceLane,
+  projectId: string | null,
+): TaskSurfaceItem[] {
   return values.map((value) => ({
-    id: `state:${lane}:${normalizeTaskKey(value)}`,
+    id: `state:${projectId ?? 'workspace'}:${lane}:${normalizeTaskKey(value)}`,
     title: value,
     detail:
       lane === 'completed'
@@ -155,13 +168,14 @@ function buildStateTaskItems(values: string[], lane: TaskSurfaceLane): TaskSurfa
         : 'Выведено из текущего состояния проекта.',
     lane,
     source: 'state',
+    projectId,
   }));
 }
 
 function dedupeTaskItems(items: TaskSurfaceItem[]): TaskSurfaceItem[] {
   const seen = new Set<string>();
   return items.filter((item) => {
-    const key = normalizeTaskKey(item.title);
+    const key = taskIdentityKey(item);
     if (seen.has(key)) return false;
     seen.add(key);
     return true;
@@ -207,6 +221,7 @@ function normalizeHandoff(handoff: HandoffLike, source: HandoffSurfaceSource): H
   return {
     id,
     createdAt,
+    projectId: readString(raw, 'projectId', 'project_id'),
     fromSubjectId: readString(raw, 'fromSubjectId', 'from_subject_id'),
     toSubjectId: readString(raw, 'toSubjectId', 'to_subject_id'),
     payload,
@@ -217,16 +232,31 @@ function normalizeHandoff(handoff: HandoffLike, source: HandoffSurfaceSource): H
 
 export function deriveTaskSurface(input: {
   taskMemories: TaskMemoryLike[];
-  projectState: ProjectStateVersion | Record<string, unknown> | null | undefined;
+  projectState:
+    | Array<ProjectStateVersion | Record<string, unknown>>
+    | ProjectStateVersion
+    | Record<string, unknown>
+    | null
+    | undefined;
 }): TaskSurfaceData {
   const taskMemories = dedupeTaskItems(
-    input.taskMemories.map((task) => normalizeTaskMemory(task)).filter((task): task is TaskSurfaceItem => task !== null),
+    input.taskMemories
+      .map((task) => normalizeTaskMemory(task))
+      .filter((task): task is TaskSurfaceItem => task !== null),
   );
-  const state = normalizeProjectState(input.projectState);
-  const inProgress = buildStateTaskItems(state.inProgress, 'in_progress');
-  const blocked = buildStateTaskItems(state.blocked, 'blocked');
-  const next = buildStateTaskItems(state.next, 'next');
-  const completed = dedupeTaskItems(buildStateTaskItems(state.completed, 'completed'));
+  const states = Array.isArray(input.projectState)
+    ? input.projectState.map((state) => normalizeProjectState(state))
+    : [normalizeProjectState(input.projectState)];
+  const inProgress = states.flatMap((state) =>
+    buildStateTaskItems(state.inProgress, 'in_progress', state.projectId),
+  );
+  const blocked = states.flatMap((state) =>
+    buildStateTaskItems(state.blocked, 'blocked', state.projectId),
+  );
+  const next = states.flatMap((state) => buildStateTaskItems(state.next, 'next', state.projectId));
+  const completed = dedupeTaskItems(
+    states.flatMap((state) => buildStateTaskItems(state.completed, 'completed', state.projectId)),
+  );
   const outstanding = dedupeTaskItems([...taskMemories, ...inProgress, ...blocked, ...next]);
 
   return {

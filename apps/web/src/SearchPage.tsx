@@ -1,7 +1,10 @@
+import type { ReactNode } from 'react';
 import { SearchResults } from './SearchResults';
 import { type SearchContext, type SearchHit } from './controlCenter';
 
 type Props = {
+  scopeLabel: string;
+  scopePanel: ReactNode;
   search: string;
   packContext: boolean;
   searchContext: SearchContext | null;
@@ -12,6 +15,8 @@ type Props = {
 };
 
 export function SearchPage({
+  scopeLabel,
+  scopePanel,
   search,
   packContext,
   searchContext,
@@ -26,9 +31,12 @@ export function SearchPage({
         <p className="eyebrow">Поиск</p>
         <h1>Глобальный поиск по памяти</h1>
         <p className="lede">
-          Ищите решения, заметки и состояние проекта без служебных деталей интерфейса.
+          Ищите решения, заметки и состояние проекта по {scopeLabel} без служебных деталей
+          интерфейса.
         </p>
       </header>
+
+      {scopePanel}
 
       <section className="panel">
         <h2>Запрос</h2>

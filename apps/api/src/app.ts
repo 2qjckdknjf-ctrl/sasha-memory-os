@@ -394,6 +394,10 @@ function isNotFoundError(err: unknown): boolean {
   return /not found|P0002/i.test(message);
 }
 
+function missingProjectResponse(c: { json: (body: { error: string }, status: 400) => Response }) {
+  return c.json({ error: 'project_id is required for this write' }, 400);
+}
+
 async function maybeEmbedCapturedMemory(
   gateway: SupabaseMemoryGateway,
   input: {
@@ -1929,7 +1933,7 @@ export function createApp(options?: {
   });
 
   app.get('/v1/rls/probe', async (c) => {
-    const projectId = c.req.query('project_id') ?? seedProject;
+    const projectId = c.req.query('project_id') ?? null;
     const sensitivity = c.req.query('sensitivity') ?? 'internal';
     const authz = c.get('authz');
     const gw = c.get('gateway');
@@ -2004,6 +2008,7 @@ export function createApp(options?: {
 
   app.post('/v1/capture/text', async (c) => {
     const body = captureTextSchema.parse(await c.req.json());
+    if (!body.project_id) return missingProjectResponse(c);
     const authz = c.get('authz');
     if (
       !authorize(authz, {
@@ -2056,6 +2061,7 @@ export function createApp(options?: {
 
   app.post('/v1/capture/document', async (c) => {
     const body = captureDocumentSchema.parse(await c.req.json());
+    if (!body.project_id) return missingProjectResponse(c);
     const authz = c.get('authz');
     if (
       !authorize(authz, {
@@ -2148,6 +2154,7 @@ export function createApp(options?: {
 
   app.post('/v1/capture/link', async (c) => {
     const body = captureLinkSchema.parse(await c.req.json());
+    if (!body.project_id) return missingProjectResponse(c);
     const authz = c.get('authz');
     if (
       !authorize(authz, {
@@ -2634,6 +2641,7 @@ export function createApp(options?: {
 
   app.post('/v1/memories', async (c) => {
     const body = createDecisionSchema.parse(await c.req.json());
+    if (!body.project_id) return missingProjectResponse(c);
     const authz = c.get('authz');
     if (
       !authorize(authz, {
@@ -3221,6 +3229,7 @@ export function createApp(options?: {
 
   app.post('/v1/handoffs', async (c) => {
     const body = createHandoffSchema.parse(await c.req.json());
+    if (!body.project_id) return missingProjectResponse(c);
     const authz = c.get('authz');
     if (
       !authorize(authz, {
@@ -3308,10 +3317,13 @@ export function createApp(options?: {
           applied: false,
         });
       }
+      if (!body.project_id) {
+        return c.json({ error: 'project_id is required for this write' }, 400);
+      }
       // Re-enter apply path via internal request shape.
       const applyBody = applyExtractionSchema.parse({
         workspace_id: body.workspace_id ?? seedWorkspace,
-        project_id: body.project_id ?? seedProject,
+        project_id: body.project_id,
         actor_subject_id: body.actor_subject_id ?? c.get('authz').subjectId,
         sensitivity: body.sensitivity,
         idempotency_prefix:
@@ -3343,6 +3355,7 @@ export function createApp(options?: {
 
   app.post('/v1/extraction/apply', async (c) => {
     const body = applyExtractionSchema.parse(await c.req.json());
+    if (!body.project_id) return missingProjectResponse(c);
     const authz = c.get('authz');
     if (
       !authorize(authz, {

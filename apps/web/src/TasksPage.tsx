@@ -1,8 +1,11 @@
+import type { ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import { PROJECT_ID, PROJECT_NAME, formatTimestamp } from './controlCenter';
 import { describeTaskLane, type TaskSurfaceData, type TaskSurfaceItem } from './surfaces';
 
 type Props = {
+  scopeLabel: string;
+  scopePanel: ReactNode;
   taskSurface: TaskSurfaceData;
 };
 
@@ -32,7 +35,7 @@ function TaskList({ items, emptyMessage }: TaskListProps) {
             {item.memoryId ? (
               <Link
                 to={`/memories/${item.memoryId}`}
-                state={{ from: 'project' as const, projectId: PROJECT_ID }}
+                state={{ from: 'project' as const, projectId: item.projectId ?? null }}
               >
                 {item.title}
               </Link>
@@ -45,7 +48,7 @@ function TaskList({ items, emptyMessage }: TaskListProps) {
             <div className="actions">
               <Link
                 to={`/memories/${item.memoryId}`}
-                state={{ from: 'project' as const, projectId: PROJECT_ID }}
+                state={{ from: 'project' as const, projectId: item.projectId ?? null }}
                 className="button-link button-link--secondary"
               >
                 Открыть инспектор
@@ -58,22 +61,23 @@ function TaskList({ items, emptyMessage }: TaskListProps) {
   );
 }
 
-export function TasksPage({ taskSurface }: Props) {
+export function TasksPage({ scopeLabel, scopePanel, taskSurface }: Props) {
   return (
     <section className="page">
       <header className="page-header">
         <p className="eyebrow">Задачи</p>
-        <h1>Задачи проекта</h1>
+        <h1>Задачи Memory OS</h1>
         <p className="lede">
-          Поверхность задач для владельца по {PROJECT_NAME}. Список собран из текущего состояния
-          проекта и записей памяти типа <code>task</code>, потому что отдельного list API для
-          задач сейчас нет.
+          Поверхность задач по {scopeLabel}. Список собран из project state и записей памяти типа{' '}
+          <code>task</code>, потому что отдельного list API для задач сейчас нет.
         </p>
       </header>
 
+      {scopePanel}
+
       <div className="cta-row">
         <Link to={`/projects/${PROJECT_ID}`} className="button-link button-link--secondary">
-          Открыть проект
+          Shortcut: {PROJECT_NAME}
         </Link>
         <Link to="/search" className="button-link button-link--secondary">
           Поиск по памяти

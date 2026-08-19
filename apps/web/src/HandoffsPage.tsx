@@ -1,4 +1,4 @@
-import { type FormEvent, useEffect, useMemo, useState } from 'react';
+import { type FormEvent, type ReactNode, useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
   ACTOR_LABELS,
@@ -17,7 +17,10 @@ import {
 } from './surfaces';
 
 type Props = {
+  scopeLabel: string;
+  scopePanel: ReactNode;
   handoffSurface: HandoffSurfaceData;
+  writeProjectName: string | null;
   onCreateHandoff: (
     payload: HandoffPayloadInput,
     options?: { targetActor?: AgentActor },
@@ -113,7 +116,13 @@ function HandoffDetail({ handoff }: { handoff: HandoffSurfaceItem | null }) {
   );
 }
 
-export function HandoffsPage({ handoffSurface, onCreateHandoff }: Props) {
+export function HandoffsPage({
+  scopeLabel,
+  scopePanel,
+  handoffSurface,
+  writeProjectName,
+  onCreateHandoff,
+}: Props) {
   const [completedText, setCompletedText] = useState(joinLines(DEFAULT_HANDOFF_PAYLOAD.completed));
   const [validationText, setValidationText] = useState(joinLines(DEFAULT_HANDOFF_PAYLOAD.validation));
   const [openItemsText, setOpenItemsText] = useState(joinLines(DEFAULT_HANDOFF_PAYLOAD.openItems));
@@ -163,14 +172,16 @@ export function HandoffsPage({ handoffSurface, onCreateHandoff }: Props) {
         <p className="eyebrow">Хэнд-оффы</p>
         <h1>Хэнд-оффы между агентами</h1>
         <p className="lede">
-          Поверхность handoff для владельца по {PROJECT_NAME}. Создание идет через{' '}
+          Поверхность handoff по {scopeLabel}. Создание идет через{' '}
           <code>POST /v1/handoffs</code>, а история читается через <code>GET /v1/handoffs</code>.
         </p>
       </header>
 
+      {scopePanel}
+
       <div className="cta-row">
         <Link to={`/projects/${PROJECT_ID}`} className="button-link button-link--secondary">
-          Открыть проект
+          Shortcut: {PROJECT_NAME}
         </Link>
         <Link to="/tasks" className="button-link button-link--secondary">
           Открыть задачи
@@ -193,6 +204,16 @@ export function HandoffsPage({ handoffSurface, onCreateHandoff }: Props) {
             По одной строке на пункт. Этот flow использует уже существующую схему payload и
             позволяет адресовать хэнд-офф в ChatGPT или ROMA.
           </p>
+          {!writeProjectName ? (
+            <p className="hint">
+              Для записи нужен явный проект: выберите его в фильтре выше или откройте{' '}
+              <code>/projects/:id</code>.
+            </p>
+          ) : (
+            <p className="hint">
+              Новый хэнд-офф будет записан в проект <strong>{writeProjectName}</strong>.
+            </p>
+          )}
           <form className="form" onSubmit={(event) => void handleSubmit(event)}>
             <label>
               Кому передать
@@ -248,7 +269,7 @@ export function HandoffsPage({ handoffSurface, onCreateHandoff }: Props) {
               />
             </label>
             <div className="actions">
-              <button type="submit" disabled={submitting}>
+              <button type="submit" disabled={submitting || !writeProjectName}>
                 {submitting ? 'Создаю…' : 'Создать хэнд-офф'}
               </button>
             </div>

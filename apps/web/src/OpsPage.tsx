@@ -1,8 +1,11 @@
+import type { ReactNode } from 'react';
 import { ACTOR_LABELS, type Actor, type BackendMode, type ConnectionRecord, type ExtractionCandidate, type OutboxPendingItem, type ReviewQueueItem, type SearchContext, type SearchHit } from './controlCenter';
 
 type Props = {
   actor: Actor;
   backend: BackendMode;
+  scopePanel: ReactNode;
+  writeProjectName: string | null;
   search: string;
   packContext: boolean;
   searchContext: SearchContext | null;
@@ -76,6 +79,8 @@ const actorOptions: Actor[] = ['owner', 'chatgpt', 'cursor', 'roma'];
 export function OpsPage({
   actor,
   backend,
+  scopePanel,
+  writeProjectName,
   search,
   packContext,
   searchContext,
@@ -142,6 +147,8 @@ export function OpsPage({
         </p>
       </header>
 
+      {scopePanel}
+
       <section className="panel">
         <h2>Сеанс разработчика</h2>
         <div className="toolbar" role="group" aria-label="Actor">
@@ -157,6 +164,7 @@ export function OpsPage({
           ))}
           <button
             type="button"
+            disabled={!writeProjectName}
             onClick={() => {
               void onBumpState();
             }}
@@ -168,6 +176,15 @@ export function OpsPage({
           </button>
         </div>
         <p className="hint">Текущий backend: {backend}</p>
+        {!writeProjectName ? (
+          <p className="hint">
+            Записывающие actions отключены, пока не выбран проект в фильтре выше.
+          </p>
+        ) : (
+          <p className="hint">
+            Записи из этой страницы будут адресованы проекту <strong>{writeProjectName}</strong>.
+          </p>
+        )}
       </section>
 
       <div className="grid">
@@ -198,7 +215,9 @@ export function OpsPage({
               />
             </label>
             <div className="actions">
-              <button type="submit">Capture text</button>
+              <button type="submit" disabled={!writeProjectName}>
+                Capture text
+              </button>
               <button
                 type="button"
                 className="button-secondary"
@@ -211,6 +230,7 @@ export function OpsPage({
               <button
                 type="button"
                 className="button-secondary"
+                disabled={!writeProjectName}
                 onClick={() => {
                   void onApplyExtraction();
                 }}
@@ -275,7 +295,9 @@ export function OpsPage({
               />
             </label>
             {docFileName ? <p className="meta">Selected: {docFileName}</p> : null}
-            <button type="submit">Capture document</button>
+            <button type="submit" disabled={!writeProjectName}>
+              Capture document
+            </button>
           </form>
 
           <form
@@ -301,7 +323,9 @@ export function OpsPage({
                 required
               />
             </label>
-            <button type="submit">Capture link</button>
+            <button type="submit" disabled={!writeProjectName}>
+              Capture link
+            </button>
           </form>
         </section>
       </div>

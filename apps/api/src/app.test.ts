@@ -3,6 +3,7 @@ import { createConnectorRegistry } from '@memory-os/connector-sdk';
 import { createApp } from './app.js';
 
 const projectId = '44444444-4444-4444-8444-444444444401';
+const otherProjectId = '44444444-4444-4444-8444-444444444420';
 const workspaceId = '11111111-1111-4111-8111-111111111111';
 const owner = '33333333-3333-4333-8333-333333333301';
 const cursor = '33333333-3333-4333-8333-333333333303';
@@ -41,6 +42,107 @@ describe('memory api demo slice', () => {
     const body = await res.json();
     expect(body.subjectId).toBe(cursor);
     expect(body.actor.externalKey).toBe('cursor');
+  });
+
+  it('lists candidate memories workspace-wide when project_id is omitted', async () => {
+    const app = createApp({});
+    for (const [index, targetProjectId] of [projectId, otherProjectId].entries()) {
+      const captureRes = await app.request('/v1/capture/text', {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          'x-subject-id': owner,
+        },
+        body: JSON.stringify({
+          workspace_id: workspaceId,
+          project_id: targetProjectId,
+          title: `Workspace candidate ${index + 1}`,
+          text: `Candidate memory for ${targetProjectId}`,
+          actor_subject_id: owner,
+          idempotency_key: `workspace-candidate-${index + 1}`,
+          process_now: true,
+        }),
+      });
+      expect(captureRes.status).toBe(201);
+    }
+
+    const listRes = await app.request(
+      `/v1/memories?workspace_id=${workspaceId}&status=candidate&limit=10`,
+      {
+        headers: { 'x-subject-id': owner },
+      },
+    );
+    expect(listRes.status).toBe(200);
+    const body = await listRes.json();
+    expect(body.memories).toHaveLength(2);
+    expect(body.memories.map((memory: { projectId?: string | null }) => memory.projectId)).toEqual(
+      expect.arrayContaining([projectId, otherProjectId]),
+    );
+  });
+
+  it('lists handoffs workspace-wide when project_id is omitted', async () => {
+    const app = createApp({});
+    for (const [index, targetProjectId] of [projectId, otherProjectId].entries()) {
+      const handoffRes = await app.request('/v1/handoffs', {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          'x-subject-id': owner,
+        },
+        body: JSON.stringify({
+          workspace_id: workspaceId,
+          project_id: targetProjectId,
+          from_subject_id: cursor,
+          to_subject_id: chatgpt,
+          idempotency_key: `workspace-handoff-${index + 1}`,
+          payload: {
+            completed: [`Done ${index + 1}`],
+            artifacts: [],
+            validation: [],
+            open_items: [],
+            blockers: [],
+            recommended_next: [`Next ${index + 1}`],
+          },
+        }),
+      });
+      expect(handoffRes.status).toBe(201);
+    }
+
+    const listRes = await app.request(`/v1/handoffs?workspace_id=${workspaceId}&limit=10`, {
+      headers: { 'x-subject-id': owner },
+    });
+    expect(listRes.status).toBe(200);
+    const body = await listRes.json();
+    expect(body.handoffs).toHaveLength(2);
+    expect(
+      body.handoffs.map((handoff: { projectId?: string | null }) => handoff.projectId),
+    ).toEqual(expect.arrayContaining([projectId, otherProjectId]));
+  });
+
+  it('rejects decision writes without an explicit project id', async () => {
+    const app = createApp({});
+    const res = await app.request('/v1/memories', {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'x-subject-id': owner,
+      },
+      body: JSON.stringify({
+        workspace_id: workspaceId,
+        title: 'Missing project',
+        content: 'Should fail instead of using AISTROYKA',
+        actor_subject_id: owner,
+        idempotency_key: 'missing-project-decision',
+        importance: 0.7,
+        confidence: 0.9,
+        sensitivity: 'internal',
+      }),
+    });
+
+    expect(res.status).toBe(400);
+    expect(await res.json()).toEqual({
+      error: 'project_id is required for this write',
+    });
   });
 
   it('upserts connection stub offline', async () => {
