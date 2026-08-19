@@ -11,11 +11,15 @@ const aclScopeMigrationPath = fileURLToPath(
 const projectRefFixMigrationPath = fileURLToPath(
   new URL('../../../supabase/migrations/20260819224721_fix_project_ref_uuid_aggregate.sql', import.meta.url),
 );
+const replayResyncFixMigrationPath = fileURLToPath(
+  new URL('../../../supabase/migrations/20260819224917_fix_replay_resync_claimability.sql', import.meta.url),
+);
 
 describe('m8 slice 03 migration guards', () => {
   const sql = readFileSync(migrationPath, 'utf8');
   const aclScopeSql = readFileSync(aclScopeMigrationPath, 'utf8');
   const projectRefFixSql = readFileSync(projectRefFixMigrationPath, 'utf8');
+  const replayResyncFixSql = readFileSync(replayResyncFixMigrationPath, 'utf8');
 
   it('matches connector projects only by unique repository identity', () => {
     expect(sql).toContain(`repo->>'url' = v_repo_url`);
@@ -47,5 +51,15 @@ describe('m8 slice 03 migration guards', () => {
   it('fixes project ref single-match resolution without invalid uuid aggregates', () => {
     expect(projectRefFixSql).toContain(`(array_agg(id ORDER BY name, slug))[1]::text`);
     expect(projectRefFixSql).not.toContain(`min(id)::text`);
+  });
+
+  it('clears connector cursors without a nonexistent workspace_id column and restores replayed accounts to connected', () => {
+    expect(replayResyncFixSql).toContain(`DELETE FROM connector_cursors`);
+    expect(replayResyncFixSql).toContain(`WHERE account_id = v_connection_id`);
+    expect(replayResyncFixSql).toContain(`WHERE account_id = p_connection_id`);
+    expect(replayResyncFixSql).not.toContain(`connector_cursors\n  WHERE workspace_id =`);
+    expect(replayResyncFixSql).toContain(`RAISE EXCEPTION 'connection is not eligible for replay'`);
+    expect(replayResyncFixSql).toContain(`ELSE 'connected'`);
+    expect(replayResyncFixSql).toContain(`last_error = NULL`);
   });
 });

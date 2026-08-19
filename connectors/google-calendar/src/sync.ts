@@ -1,6 +1,7 @@
 import {
   buildConnectionHealthReport,
   buildDefaultCursor,
+  connectorRateLimitError,
   resolvePullCredentials,
   runConnectorSync,
   vaultRefForAccount,
@@ -244,6 +245,11 @@ async function syncGoogleCalendarEvents(
     },
   );
   if (!response.ok) {
+    if (response.status === 429) {
+      throw connectorRateLimitError({
+        message: `Google Calendar events API failed: HTTP ${response.status}`,
+      });
+    }
     throw new Error(`Google Calendar events API failed: HTTP ${response.status}`);
   }
 

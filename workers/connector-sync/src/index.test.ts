@@ -475,6 +475,7 @@ describe('planConnectorSync', () => {
     let syncAttempts = 0;
     let jobStatus: 'queued' | 'dead_letter' | 'succeeded' = 'queued';
     let jobAttempt = 0;
+    let connectionStatus: 'connected' | 'degraded' = 'connected';
     const connectorRegistry = createConnectorRegistry([
       {
         manifest: {
@@ -533,9 +534,9 @@ describe('planConnectorSync', () => {
         enqueued: [],
       })),
       claimConnectorSyncJobs: vi.fn(async () => ({
-        count: jobStatus === 'queued' ? 1 : 0,
+        count: jobStatus === 'queued' && connectionStatus === 'connected' ? 1 : 0,
         jobs:
-          jobStatus === 'queued'
+          jobStatus === 'queued' && connectionStatus === 'connected'
             ? [
                 {
                   jobId: 'job-retry',
@@ -557,7 +558,7 @@ describe('planConnectorSync', () => {
         workspaceId,
         connectorId: 'retryable',
         displayName: 'Retryable connector',
-        status: 'connected',
+        status: connectionStatus,
         scopes: [],
         lastSyncAt: null,
         lastError: null,
@@ -578,6 +579,7 @@ describe('planConnectorSync', () => {
       completeConnectorSync: vi.fn(async ({ jobId, status }: { jobId: string; status: string }) => {
         jobStatus = status === 'succeeded' ? 'succeeded' : 'dead_letter';
         jobAttempt += 1;
+        connectionStatus = status === 'succeeded' ? 'connected' : 'degraded';
         return {
           jobId,
           status,
@@ -598,6 +600,7 @@ describe('planConnectorSync', () => {
       }),
       replayConnectorSync: vi.fn(async ({ jobId }: { subjectId: string; jobId: string; resync: boolean }) => {
         jobStatus = 'queued';
+        connectionStatus = 'connected';
         return {
           jobId,
           status: 'queued',
@@ -632,6 +635,14 @@ describe('planConnectorSync', () => {
         status: 'dead_letter',
       }),
     );
+
+    const blocked = await planConnectorSync({
+      gateway: gateway as any,
+      subjectId: owner,
+      workspaceId,
+      connectorRegistry,
+    });
+    expect(blocked.completed).toHaveLength(0);
 
     await gateway.replayConnectorSync({ subjectId: owner, jobId: 'job-retry', resync: false });
     const third = await planConnectorSync({

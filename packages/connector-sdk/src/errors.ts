@@ -71,12 +71,20 @@ export function connectorTerminalError(options: ConnectorErrorOptions): Connecto
   return new ConnectorError('terminal', options);
 }
 
+function messageLooksLikeRateLimit(message: string): boolean {
+  return (
+    /\b(http|status)\s*429\b/i.test(message) ||
+    /\b429\b/.test(message) && /\b(rate limit|too many requests|retry-after)\b/i.test(message)
+  );
+}
+
 export function classifyConnectorError(error: unknown): ClassifiedConnectorError {
+  const message = error instanceof Error ? error.message : String(error);
   if (error instanceof ConnectorError) {
     return {
       kind: error.kind,
       retryable: error.retryable,
-      message: error.message,
+      message,
       retryAfterMs: error.retryAfterMs,
       statusCode: error.statusCode,
       cause: error.cause,
@@ -100,9 +108,20 @@ export function classifyConnectorError(error: unknown): ClassifiedConnectorError
     return {
       kind: 'rate_limit',
       retryable: true,
-      message: error instanceof Error ? error.message : 'connector rate limited',
+      message,
       retryAfterMs: null,
       statusCode,
+      cause: error,
+    };
+  }
+
+  if (messageLooksLikeRateLimit(message)) {
+    return {
+      kind: 'rate_limit',
+      retryable: true,
+      message,
+      retryAfterMs: null,
+      statusCode: 429,
       cause: error,
     };
   }
@@ -110,7 +129,7 @@ export function classifyConnectorError(error: unknown): ClassifiedConnectorError
   return {
     kind: 'terminal',
     retryable: false,
-    message: error instanceof Error ? error.message : String(error),
+    message,
     retryAfterMs: null,
     statusCode,
     cause: error,

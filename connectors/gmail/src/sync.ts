@@ -1,6 +1,7 @@
 import {
   buildConnectionHealthReport,
   buildDefaultCursor,
+  connectorRateLimitError,
   resolvePullCredentials,
   runConnectorSync,
   vaultRefForAccount,
@@ -258,6 +259,11 @@ async function syncGmailMessages(
     },
   );
   if (!listRes.ok) {
+    if (listRes.status === 429) {
+      throw connectorRateLimitError({
+        message: `Gmail list API failed: HTTP ${listRes.status}`,
+      });
+    }
     throw new Error(`Gmail list API failed: HTTP ${listRes.status}`);
   }
   const list = (await listRes.json()) as GmailListResponse;
