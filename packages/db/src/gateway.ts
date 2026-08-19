@@ -812,6 +812,36 @@ export class SupabaseMemoryGateway {
     };
   }
 
+  async upsertConnectionCollectionItem(input: {
+    subjectId: string;
+    connectionId: string;
+    item: unknown;
+    projectBindings?: Record<string, string>;
+    discoveredAt?: string;
+  }) {
+    const { data, error } = await this.client.rpc('api_upsert_connection_collection_item', {
+      p_secret: this.apiSecret,
+      p_subject_id: input.subjectId,
+      p_connection_id: input.connectionId,
+      p_item: input.item,
+      p_project_bindings: input.projectBindings ?? {},
+      p_discovered_at: input.discoveredAt ?? new Date().toISOString(),
+    });
+    if (error) throw error;
+    return data as {
+      id: string;
+      workspaceId: string;
+      connectorId: string;
+      displayName: string;
+      status: string;
+      scopes: string[];
+      lastSyncAt: string | null;
+      lastError: string | null;
+      vaultRef?: string | null;
+      metadata?: Record<string, unknown>;
+    };
+  }
+
   async refreshConnectionCollections(input: {
     subjectId: string;
     connectionId: string;

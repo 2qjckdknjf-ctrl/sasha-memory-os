@@ -43,11 +43,11 @@ async function withEnv<T>(
   }
 }
 
-function createGatewayMock() {
+function createGatewayMock(options?: { excludedIds?: string[] }) {
   let metadataState: Record<string, unknown> = {
     collections: {
       selection_mode: 'all',
-      excluded_ids: [],
+      excluded_ids: options?.excludedIds ?? [],
       items: [
         {
           id: 'team/repo-existing',
@@ -70,6 +70,17 @@ function createGatewayMock() {
       },
     },
   };
+  const buildConnection = () => ({
+    id: connectionId,
+    workspaceId,
+    connectorId: 'github',
+    displayName: 'Fixture GitHub',
+    status: 'connected',
+    scopes: ['repositories.read'],
+    lastSyncAt: null,
+    lastError: null,
+    metadata: metadataState,
+  });
   const refreshConnectionCollections = vi.fn(async ({
     items,
     projectBindings,
@@ -90,33 +101,46 @@ function createGatewayMock() {
         },
       },
     };
-    return {
-      id: connectionId,
-      workspaceId,
-      connectorId: 'github',
-      displayName: 'Fixture GitHub',
-      status: 'connected',
-      scopes: ['repositories.read'],
-      lastSyncAt: null,
-      lastError: null,
-      metadata: metadataState,
-    };
+    return buildConnection();
   });
-  const getConnection = vi.fn(async () => ({
-    id: connectionId,
-    workspaceId,
-    connectorId: 'github',
-    displayName: 'Fixture GitHub',
-    status: 'connected',
-    scopes: ['repositories.read'],
-    lastSyncAt: null,
-    lastError: null,
-    metadata: metadataState,
-  }));
+  const upsertConnectionCollectionItem = vi.fn(async ({
+    item,
+    projectBindings,
+  }: {
+    item: { id?: string };
+    projectBindings?: Record<string, string>;
+  }) => {
+    const currentCollections = (metadataState.collections ?? {}) as Record<string, unknown>;
+    const currentItems = Array.isArray(currentCollections.items)
+      ? (currentCollections.items as Array<Record<string, unknown>>)
+      : [];
+    const nextItems =
+      typeof item.id === 'string'
+        ? [
+            ...currentItems.filter((existing) => existing.id !== item.id),
+            item as Record<string, unknown>,
+          ]
+        : currentItems;
+    metadataState = {
+      ...metadataState,
+      collections: {
+        selection_mode: 'all',
+        excluded_ids: currentCollections.excluded_ids ?? [],
+        items: nextItems,
+        project_bindings: {
+          ...((currentCollections.project_bindings ?? {}) as Record<string, string>),
+          ...(projectBindings ?? {}),
+        },
+      },
+    };
+    return buildConnection();
+  });
+  const getConnection = vi.fn(async () => buildConnection());
   const gateway = {
     getConnection,
     getConnectorCursor: vi.fn(async () => null),
     refreshConnectionCollections,
+    upsertConnectionCollectionItem,
     upsertProjectFromConnector: vi.fn(async ({ collectionId }: { collectionId: string }) => ({
       projectId:
         collectionId === 'team/repo-new'
@@ -253,12 +277,55 @@ describe('github webhook api', () => {
           ),
         ).toBe(true);
         expect(
+          ((state.metadataState.collections as Record<string, unknown>).items as Array<{ id: string }>).some(
+            (collection) => collection.id === 'team/repo-existing',
+          ),
+        ).toBe(true);
+        expect(
           (
             (state.metadataState.collections as Record<string, unknown>)
               .project_bindings as Record<string, string>
           )['team/repo-new'],
         ).toBe(newProjectId);
         expect(state.gateway.enqueueConnectorSync).toHaveBeenCalledOnce();
+      },
+    );
+  });
+
+  it('keeps excluded ids excluded when webhook adds a repository back into collections', async () => {
+    await withEnv(
+      {
+        MEMORY_OS_ENV: 'test',
+        MEMORY_OS_GITHUB_WEBHOOK_SECRET: 'webhook-secret',
+        MEMORY_OS_OWNER_SUBJECT_ID: ownerId,
+      },
+      async () => {
+        const state = createGatewayMock({ excludedIds: ['team/repo-new'] });
+        const app = createApp({ gateway: state.gateway as any });
+        const { rawBody, signature } = signGitHubWebhook(
+          repositoryCreatedFixture,
+          'webhook-secret',
+        );
+        const res = await app.request(`/v1/webhooks/github?connection_id=${connectionId}`, {
+          method: 'POST',
+          headers: {
+            'content-type': 'application/json',
+            'x-github-event': 'repository',
+            'x-github-delivery': 'delivery-created-excluded',
+            'x-hub-signature-256': signature,
+          },
+          body: rawBody,
+        });
+        expect(res.status).toBe(202);
+        expect(state.gateway.upsertProjectFromConnector).not.toHaveBeenCalled();
+        expect(
+          ((state.metadataState.collections as Record<string, unknown>).excluded_ids as string[]),
+        ).toContain('team/repo-new');
+        expect(
+          ((state.metadataState.collections as Record<string, unknown>).items as Array<{ id: string }>).map(
+            (collection) => collection.id,
+          ),
+        ).toEqual(expect.arrayContaining(['team/repo-existing', 'team/repo-new']));
       },
     );
   });

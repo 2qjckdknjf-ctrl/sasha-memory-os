@@ -480,20 +480,6 @@ function resolveCollectionProjectId(
   return normalized.collections?.project_bindings?.[collectionId] ?? null;
 }
 
-function mergeConnectionCollections(
-  metadata: Record<string, unknown> | undefined,
-  incoming: ConnectorCollection[],
-): ConnectorCollection[] {
-  const merged = new Map<string, ConnectorCollection>();
-  for (const existing of normalizeConnectionMetadata(metadata).collections?.items ?? []) {
-    merged.set(existing.id, existing);
-  }
-  for (const collection of incoming) {
-    merged.set(collection.id, collection);
-  }
-  return [...merged.values()];
-}
-
 function resolveOwnerSubjectId(
   env: NodeJS.ProcessEnv = process.env,
 ): string {
@@ -501,19 +487,17 @@ function resolveOwnerSubjectId(
   return explicit && explicit.length > 0 ? explicit : owner;
 }
 
-async function refreshAndSeedExplicitConnectionCollections(
+async function refreshAndSeedDiscoveredConnectionProjects(
   gateway: SupabaseMemoryGateway,
   subjectId: string,
   workspaceId: string,
   item: ConnectionLike,
   collections: ConnectorCollection[],
 ): Promise<ConnectionLike> {
-  if (collections.length === 0) return item;
-  const mergedCollections = mergeConnectionCollections(item.metadata, collections);
   const refreshed = await gateway.refreshConnectionCollections({
     subjectId,
     connectionId: item.id,
-    items: mergedCollections,
+    items: collections,
   });
   const selectedIds = new Set(
     selectedConnectionCollections(refreshed.metadata).map((collection) => collection.id),
@@ -538,16 +522,58 @@ async function refreshAndSeedExplicitConnectionCollections(
   }
 
   if (Object.keys(projectBindings).length === 0) {
-    return { ...item, metadata: refreshed.metadata };
+    return gateway.getConnection(subjectId, refreshed.id);
   }
 
   const updated = await gateway.refreshConnectionCollections({
     subjectId,
     connectionId: item.id,
-    items: mergedCollections,
+    items: collections,
     projectBindings,
   });
-  return { ...item, metadata: updated.metadata };
+  return gateway.getConnection(subjectId, updated.id);
+}
+
+async function upsertAndSeedConnectionCollection(
+  gateway: SupabaseMemoryGateway,
+  subjectId: string,
+  workspaceId: string,
+  item: ConnectionLike,
+  collection: ConnectorCollection,
+): Promise<ConnectionLike> {
+  await gateway.upsertConnectionCollectionItem({
+    subjectId,
+    connectionId: item.id,
+    item: collection,
+  });
+  const refreshed = await gateway.getConnection(subjectId, item.id);
+  const selectedIds = new Set(
+    selectedConnectionCollections(refreshed.metadata).map((candidate) => candidate.id),
+  );
+  if (!selectedIds.has(collection.id)) {
+    return refreshed;
+  }
+
+  const project = await gateway.upsertProjectFromConnector({
+    subjectId,
+    workspaceId,
+    provider: item.connectorId,
+    connectionId: item.id,
+    collectionId: collection.id,
+    externalId: collection.external_id ?? null,
+    name: collectionDisplayName(collection),
+    url: collection.url ?? null,
+    description: collection.description ?? null,
+    defaultBranch: collection.default_branch ?? null,
+    metadata: collection.metadata,
+  });
+  await gateway.upsertConnectionCollectionItem({
+    subjectId,
+    connectionId: item.id,
+    item: collection,
+    projectBindings: { [collection.id]: project.projectId },
+  });
+  return gateway.getConnection(subjectId, item.id);
 }
 
 async function discoverAndSeedConnectionProjects(
@@ -582,7 +608,7 @@ async function discoverAndSeedConnectionProjects(
   });
 
   if (!discovered) return item;
-  return refreshAndSeedExplicitConnectionCollections(
+  return refreshAndSeedDiscoveredConnectionProjects(
     gateway,
     subjectId,
     workspaceId,
@@ -1125,12 +1151,12 @@ export function createApp(options?: {
           if (!collection) {
             return c.json({ error: 'repository_payload_required' }, 400);
           }
-          updatedConnection = await refreshAndSeedExplicitConnectionCollections(
+          updatedConnection = await upsertAndSeedConnectionCollection(
             gw,
             subjectId,
             connection.workspaceId,
             connection,
-            [collection],
+            collection,
           );
           projectId = resolveCollectionProjectId(updatedConnection.metadata, collection.id);
           const sync = await gw.enqueueConnectorSync({

@@ -110,6 +110,169 @@ describe('memory api demo slice', () => {
     expect(body.collections[0].id).toBe('aistroyka/core');
   });
 
+  it('replaces discovered collections so vanished repos are removed', async () => {
+    const connectorRegistry = createConnectorRegistry([
+      {
+        manifest: {
+          id: 'github',
+          version: '1.0.0',
+          sdk_version: '^1.0',
+          default_stream: 'github:user-events',
+          auth: 'oauth2',
+          capabilities: ['repositories.read'],
+          supports: {
+            discover: true,
+            validate_scope: false,
+            initial_sync: true,
+            incremental_sync: false,
+            live_fetch: false,
+            webhooks: true,
+            write: false,
+          },
+          storage_modes: ['reference'],
+          data_classes: ['internal'],
+        },
+        lifecycle: {
+          async discover() {
+            return {
+              collections: [
+                {
+                  id: 'team/repo-a',
+                  kind: 'repository' as const,
+                  name: 'repo-a',
+                  title: 'team/repo-a',
+                  url: 'https://github.com/team/repo-a',
+                  default_branch: 'main',
+                  metadata: {},
+                },
+              ],
+            };
+          },
+          async normalize() {
+            throw new Error('not used in discover test');
+          },
+        },
+      },
+    ]);
+
+    let metadataState: Record<string, unknown> = {
+      collections: {
+        selection_mode: 'all',
+        excluded_ids: ['team/repo-b'],
+        items: [
+          {
+            id: 'team/repo-a',
+            kind: 'repository',
+            name: 'repo-a',
+            title: 'team/repo-a',
+            url: 'https://github.com/team/repo-a',
+            default_branch: 'main',
+            metadata: {},
+          },
+          {
+            id: 'team/repo-b',
+            kind: 'repository',
+            name: 'repo-b',
+            title: 'team/repo-b',
+            url: 'https://github.com/team/repo-b',
+            default_branch: 'main',
+            metadata: {},
+          },
+        ],
+        project_bindings: {
+          'team/repo-a': '44444444-4444-4444-8444-444444444420',
+          'team/repo-b': '44444444-4444-4444-8444-444444444421',
+        },
+      },
+    };
+    const refreshConnectionCollections = vi.fn(async ({
+      items,
+      projectBindings,
+    }: {
+      items: unknown[];
+      projectBindings?: Record<string, string>;
+    }) => {
+      const currentCollections = (metadataState.collections ?? {}) as Record<string, unknown>;
+      metadataState = {
+        ...metadataState,
+        collections: {
+          selection_mode: 'all',
+          excluded_ids: currentCollections.excluded_ids ?? [],
+          items,
+          project_bindings: {
+            ...((currentCollections.project_bindings ?? {}) as Record<string, string>),
+            ...(projectBindings ?? {}),
+          },
+        },
+      };
+      return {
+        id: 'conn-1',
+        workspaceId: workspaceId,
+        connectorId: 'github',
+        displayName: 'Fixture GitHub',
+        status: 'connected',
+        scopes: ['repositories.read'],
+        lastSyncAt: null,
+        lastError: null,
+        metadata: metadataState,
+      };
+    });
+    const gateway = {
+      getConnection: vi.fn(async () => ({
+        id: 'conn-1',
+        workspaceId: workspaceId,
+        connectorId: 'github',
+        displayName: 'Fixture GitHub',
+        status: 'connected',
+        scopes: ['repositories.read'],
+        lastSyncAt: null,
+        lastError: null,
+        metadata: metadataState,
+      })),
+      refreshConnectionCollections,
+      upsertProjectFromConnector: vi.fn(async ({ collectionId }: { collectionId: string }) => ({
+        projectId:
+          collectionId === 'team/repo-a'
+            ? '44444444-4444-4444-8444-444444444420'
+            : '44444444-4444-4444-8444-444444444421',
+        slug: collectionId.replace('/', '-'),
+        name: collectionId,
+        memoryId: `memory-${collectionId}`,
+        collectionId,
+      })),
+    };
+
+    const app = createApp({
+      gateway: gateway as any,
+      connectorRegistry,
+    });
+    const res = await app.request('/v1/connections/conn-1/discover', {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'x-subject-id': owner,
+      },
+      body: JSON.stringify({
+        workspace_id: workspaceId,
+        actor_subject_id: owner,
+      }),
+    });
+
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.collections.map((collection: { id: string }) => collection.id)).toEqual([
+      'team/repo-a',
+    ]);
+    expect(
+      ((metadataState.collections as Record<string, unknown>).items as Array<{ id: string }>).map(
+        (collection) => collection.id,
+      ),
+    ).toEqual(['team/repo-a']);
+    expect(
+      ((metadataState.collections as Record<string, unknown>).excluded_ids as string[]),
+    ).toContain('team/repo-b');
+  });
+
   it('preserves unchecked collections across API sync', async () => {
     const connectorRegistry = createConnectorRegistry([
       {
