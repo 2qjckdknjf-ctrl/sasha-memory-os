@@ -460,6 +460,22 @@ export class SupabaseMemoryGateway {
     }>;
   }
 
+  async listProjects(subjectId: string, workspaceId: string) {
+    const { data, error } = await this.client.rpc('api_list_projects', {
+      p_secret: this.apiSecret,
+      p_subject_id: subjectId,
+      p_workspace_id: workspaceId,
+    });
+    if (error) throw error;
+    return data as Array<{
+      id: string;
+      slug: string;
+      name: string;
+      status: string;
+      url?: string | null;
+    }>;
+  }
+
   async listConnectors(subjectId: string) {
     const { data, error } = await this.client.rpc('api_list_connectors', {
       p_secret: this.apiSecret,
@@ -740,6 +756,62 @@ export class SupabaseMemoryGateway {
       p_subject_id: input.subjectId,
       p_connection_id: input.connectionId,
       p_metadata: input.metadata,
+    });
+    if (error) throw error;
+    return data as {
+      id: string;
+      workspaceId: string;
+      connectorId: string;
+      displayName: string;
+      status: string;
+      scopes: string[];
+      lastSyncAt: string | null;
+      lastError: string | null;
+      vaultRef?: string | null;
+      metadata?: Record<string, unknown>;
+    };
+  }
+
+  async refreshConnectionCollections(input: {
+    subjectId: string;
+    connectionId: string;
+    items: unknown[];
+    projectBindings?: Record<string, string>;
+    discoveredAt?: string;
+  }) {
+    const { data, error } = await this.client.rpc('api_refresh_connection_collections', {
+      p_secret: this.apiSecret,
+      p_subject_id: input.subjectId,
+      p_connection_id: input.connectionId,
+      p_items: input.items,
+      p_project_bindings: input.projectBindings ?? {},
+      p_discovered_at: input.discoveredAt ?? new Date().toISOString(),
+    });
+    if (error) throw error;
+    return data as {
+      id: string;
+      workspaceId: string;
+      connectorId: string;
+      displayName: string;
+      status: string;
+      scopes: string[];
+      lastSyncAt: string | null;
+      lastError: string | null;
+      vaultRef?: string | null;
+      metadata?: Record<string, unknown>;
+    };
+  }
+
+  async setConnectionCollectionExclusions(input: {
+    subjectId: string;
+    connectionId: string;
+    excludedIds: string[];
+  }) {
+    const { data, error } = await this.client.rpc('api_set_connection_collection_exclusions', {
+      p_secret: this.apiSecret,
+      p_subject_id: input.subjectId,
+      p_connection_id: input.connectionId,
+      p_excluded_ids: input.excludedIds,
     });
     if (error) throw error;
     return data as {

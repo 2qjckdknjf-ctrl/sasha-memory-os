@@ -507,38 +507,6 @@ BEGIN
     RETURNING * INTO v_project;
   END IF;
 
-  INSERT INTO acl_entries (
-    workspace_id, subject_id, effect, resource_type, project_id, actions, sensitivity_max
-  )
-  SELECT p_workspace_id, s.id, 'allow', t.resource_type, v_project.id, t.actions, t.sensitivity_max
-  FROM subjects s
-  JOIN (
-    VALUES
-      ('chatgpt', 'memory', ARRAY['read', 'write']::text[], 'internal'),
-      ('chatgpt', 'project_state', ARRAY['read', 'write']::text[], 'internal'),
-      ('chatgpt', 'handoff', ARRAY['read', 'write']::text[], 'internal'),
-      ('cursor', 'memory', ARRAY['read']::text[], 'internal'),
-      ('cursor', 'project_state', ARRAY['read', 'write']::text[], 'internal'),
-      ('cursor', 'handoff', ARRAY['read', 'write']::text[], 'internal'),
-      ('roma', 'memory', ARRAY['read', 'write']::text[], 'internal'),
-      ('roma', 'project', ARRAY['read']::text[], 'internal'),
-      ('roma', 'project_state', ARRAY['read']::text[], 'internal'),
-      ('roma', 'handoff', ARRAY['read', 'write']::text[], 'internal')
-  ) AS t(actor_key, resource_type, actions, sensitivity_max)
-    ON s.external_key = t.actor_key
-   AND s.workspace_id = p_workspace_id
-  WHERE NOT EXISTS (
-    SELECT 1
-    FROM acl_entries a
-    WHERE a.workspace_id = p_workspace_id
-      AND a.subject_id = s.id
-      AND a.effect = 'allow'
-      AND a.resource_type = t.resource_type
-      AND a.project_id = v_project.id
-      AND a.actions = t.actions
-      AND coalesce(a.sensitivity_max, '') = coalesce(t.sensitivity_max, '')
-  );
-
   v_memory_title := format('Проект GitHub: %s', v_display_name);
   v_memory_content := concat_ws(E'\n',
     format('Проект: %s', v_display_name),

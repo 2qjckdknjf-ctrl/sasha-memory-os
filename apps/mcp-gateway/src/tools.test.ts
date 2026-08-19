@@ -267,6 +267,19 @@ describe('mcp gateway alpha', () => {
     expect(result.memoryId).toBeTruthy();
   });
 
+  it('keeps omitted ChatGPT project_id at workspace scope', async () => {
+    const mcp = createMcpHandlers({ profile: 'chatgpt' });
+    const captured = (await mcp.call('capture.text', {
+      title: 'Workspace capture',
+      text: 'No explicit project id here.',
+      idempotency_key: 'mcp-chatgpt-workspace-1',
+    })) as { memoryId: string };
+    const memory = (await mcp.call('memory.get', {
+      memory_id: captured.memoryId,
+    })) as { memory?: { projectId?: string | null } };
+    expect(memory.memory?.projectId ?? null).toBeNull();
+  });
+
   it('returns project context with seeded decision', async () => {
     const mcp = createMcpHandlers();
     const result = (await mcp.call('context.project', {

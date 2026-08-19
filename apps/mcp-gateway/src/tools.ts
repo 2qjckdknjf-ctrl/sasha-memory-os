@@ -52,8 +52,6 @@ import {
   setConnectionStatusSchema,
   setMemoryStatusSchema,
   upsertConnectionSchema,
-  withConnectionProjectBinding,
-  withDiscoveredCollections,
   type ApplyExtractionInput,
 } from '@memory-os/schemas';
 import { randomUUID } from 'node:crypto';
@@ -65,8 +63,6 @@ import {
   toolAnnotations,
   type McpProfileName,
 } from './profile.js';
-
-const DEFAULT_PROJECT_ID = '44444444-4444-4444-8444-444444444401';
 
 const defaultSdkConnectorRegistry = createConnectorRegistry([
   githubConnector,
@@ -106,8 +102,8 @@ function resolveCollectionProjectId(
   collectionId: string | undefined,
 ): string | null {
   const normalized = normalizeConnectionMetadata(metadata);
-  if (!collectionId) return normalized.default_project_id ?? null;
-  return normalized.collections?.project_bindings?.[collectionId] ?? normalized.default_project_id ?? null;
+  if (!collectionId) return null;
+  return normalized.collections?.project_bindings?.[collectionId] ?? null;
 }
 
 async function discoverAndSeedConnectionProjects(
@@ -147,8 +143,13 @@ async function discoverAndSeedConnectionProjects(
 
   if (!discovered) return item;
 
-  let metadata = withDiscoveredCollections(item.metadata, discovered.collections);
-  const selected = selectedConnectionCollections(metadata);
+  const refreshed = await gateway.refreshConnectionCollections({
+    subjectId,
+    connectionId: item.id,
+    items: discovered.collections,
+  });
+  const selected = selectedConnectionCollections(refreshed.metadata);
+  const projectBindings: Record<string, string> = {};
   for (const collection of selected) {
     const project = await gateway.upsertProjectFromConnector({
       subjectId,
@@ -163,19 +164,18 @@ async function discoverAndSeedConnectionProjects(
       defaultBranch: collection.default_branch ?? null,
       metadata: collection.metadata,
     });
-    metadata = withConnectionProjectBinding(metadata, {
-      collectionId: collection.id,
-      projectId: project.projectId,
-    });
-    if (!metadata.default_project_id) {
-      metadata.default_project_id = project.projectId;
-    }
+    projectBindings[collection.id] = project.projectId;
   }
 
-  const updated = await gateway.setConnectionMetadata({
+  if (Object.keys(projectBindings).length === 0) {
+    return { ...item, metadata: refreshed.metadata };
+  }
+
+  const updated = await gateway.refreshConnectionCollections({
     subjectId,
     connectionId: item.id,
-    metadata,
+    items: discovered.collections,
+    projectBindings,
   });
   return { ...item, metadata: updated.metadata };
 }
@@ -190,7 +190,7 @@ async function ingestSdkConnectorDelta(
   },
   subjectId: string,
   workspaceId: string,
-  projectId: string,
+  projectId: string | null,
   connector: RegisteredConnector<any>,
 ) {
   const connection = await gateway.getConnection(subjectId, item.connectionId);
@@ -920,7 +920,7 @@ export function createMcpHandlers(options?: {
           `Tool ${name} is not available on MCP profile '${profile.name}'`,
         );
       }
-      const args = applyProfileDefaults(profile, rawArgs);
+      const args = applyProfileDefaults(profile, rawArgs, name);
       switch (name) {
         case 'memory.search': {
           const query = String(args.query ?? '');
@@ -1231,7 +1231,7 @@ export function createMcpHandlers(options?: {
           const workspaceId = String(args.workspace_id);
           const projectId = args.project_id
             ? String(args.project_id)
-            : DEFAULT_PROJECT_ID;
+            : null;
           const completeNow = args.complete_now !== false;
           const result = await gateway.enqueueConnectorSync({
             subjectId,

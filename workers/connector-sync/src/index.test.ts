@@ -156,7 +156,7 @@ describe('planConnectorSync', () => {
         metadata: {},
       })),
       getConnectorCursor: vi.fn(async () => null),
-      setConnectionMetadata: vi.fn(async () => ({ metadata: {} })),
+      refreshConnectionCollections: vi.fn(async () => ({ metadata: {} })),
       upsertProjectFromConnector: vi.fn(async () => ({
         projectId: '44444444-4444-4444-8444-444444444401',
         slug: 'fixture',
@@ -345,9 +345,24 @@ describe('planConnectorSync', () => {
         metadata: metadataState,
       })),
       getConnectorCursor: vi.fn(async () => null),
-      setConnectionMetadata: vi.fn(async ({ metadata }: { metadata: Record<string, unknown> }) => {
-        metadataState = metadata;
-        return { metadata };
+      refreshConnectionCollections: vi.fn(async ({ items, projectBindings }: {
+        items: unknown[];
+        projectBindings?: Record<string, string>;
+      }) => {
+        const currentCollections = (metadataState.collections ?? {}) as Record<string, unknown>;
+        metadataState = {
+          ...metadataState,
+          collections: {
+            selection_mode: 'all',
+            excluded_ids: currentCollections.excluded_ids ?? [],
+            items,
+            project_bindings: {
+              ...((currentCollections.project_bindings ?? {}) as Record<string, string>),
+              ...(projectBindings ?? {}),
+            },
+          },
+        };
+        return { metadata: metadataState };
       }),
       upsertProjectFromConnector,
       captureText: vi.fn(async () => ({ process: null })),

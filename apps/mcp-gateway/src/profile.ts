@@ -118,6 +118,7 @@ export function isToolAllowed(
 export function applyProfileDefaults(
   profile: McpProfile,
   args: Record<string, unknown>,
+  toolName?: string,
 ): Record<string, unknown> {
   const next = { ...args };
   if (
@@ -135,9 +136,10 @@ export function applyProfileDefaults(
     next.workspace_id = profile.defaults.workspaceId;
   }
   if (
-    next.project_id === undefined ||
-    next.project_id === null ||
-    String(next.project_id).trim() === ''
+    (next.project_id === undefined ||
+      next.project_id === null ||
+      String(next.project_id).trim() === '') &&
+    (profile.name !== 'chatgpt' || toolName === 'context.project')
   ) {
     next.project_id = profile.defaults.projectId;
   }

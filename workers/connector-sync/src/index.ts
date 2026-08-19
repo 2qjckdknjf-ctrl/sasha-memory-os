@@ -23,8 +23,6 @@ import {
 import {
   normalizeConnectionMetadata,
   selectedConnectionCollections,
-  withConnectionProjectBinding,
-  withDiscoveredCollections,
 } from '@memory-os/schemas';
 
 export const packageName = 'worker-connector-sync' as const;
@@ -76,8 +74,8 @@ function resolveCollectionProjectId(
   collectionId: string | undefined,
 ): string | null {
   const normalized = normalizeConnectionMetadata(metadata);
-  if (!collectionId) return normalized.default_project_id ?? null;
-  return normalized.collections?.project_bindings?.[collectionId] ?? normalized.default_project_id ?? null;
+  if (!collectionId) return null;
+  return normalized.collections?.project_bindings?.[collectionId] ?? null;
 }
 
 async function discoverAndSeedConnectionProjects(
@@ -117,8 +115,13 @@ async function discoverAndSeedConnectionProjects(
 
   if (!discovered) return item;
 
-  let metadata = withDiscoveredCollections(item.metadata, discovered.collections);
-  const selected = selectedConnectionCollections(metadata);
+  const refreshed = await gateway.refreshConnectionCollections({
+    subjectId,
+    connectionId: item.id,
+    items: discovered.collections,
+  });
+  const selected = selectedConnectionCollections(refreshed.metadata);
+  const projectBindings: Record<string, string> = {};
   for (const collection of selected) {
     const project = await gateway.upsertProjectFromConnector({
       subjectId,
@@ -133,19 +136,18 @@ async function discoverAndSeedConnectionProjects(
       defaultBranch: collection.default_branch ?? null,
       metadata: collection.metadata,
     });
-    metadata = withConnectionProjectBinding(metadata, {
-      collectionId: collection.id,
-      projectId: project.projectId,
-    });
-    if (!metadata.default_project_id) {
-      metadata.default_project_id = project.projectId;
-    }
+    projectBindings[collection.id] = project.projectId;
   }
 
-  const updated = await gateway.setConnectionMetadata({
+  if (Object.keys(projectBindings).length === 0) {
+    return { ...item, metadata: refreshed.metadata };
+  }
+
+  const updated = await gateway.refreshConnectionCollections({
     subjectId,
     connectionId: item.id,
-    metadata,
+    items: discovered.collections,
+    projectBindings,
   });
   return { ...item, metadata: updated.metadata };
 }
@@ -236,7 +238,7 @@ async function ingestSdkConnectorDelta(
       resolveCollectionProjectId(
         syncedConnection.metadata,
         record.externalObject.collectionId,
-      ) ?? PROJECT_ID;
+      ) ?? null;
     const captureResult = await gateway.captureText({
       subjectId,
       workspaceId,

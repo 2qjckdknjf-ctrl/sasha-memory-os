@@ -244,6 +244,14 @@ export type ReviewQueueItem = {
   status: string;
 };
 
+export type ProjectRecord = {
+  id: string;
+  slug: string;
+  name: string;
+  status: string;
+  url?: string | null;
+};
+
 export type OutboxPendingItem = {
   id?: string;
   eventType?: string;

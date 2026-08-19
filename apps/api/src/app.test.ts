@@ -239,8 +239,26 @@ describe('memory api demo slice', () => {
         project_bindings: {},
       },
     };
-    const setConnectionMetadata = vi.fn(async ({ metadata }: { metadata: Record<string, unknown> }) => {
-      metadataState = metadata;
+    const refreshConnectionCollections = vi.fn(async ({
+      items,
+      projectBindings,
+    }: {
+      items: unknown[];
+      projectBindings?: Record<string, string>;
+    }) => {
+      const currentCollections = (metadataState.collections ?? {}) as Record<string, unknown>;
+      metadataState = {
+        ...metadataState,
+        collections: {
+          selection_mode: 'all',
+          excluded_ids: currentCollections.excluded_ids ?? [],
+          items,
+          project_bindings: {
+            ...((currentCollections.project_bindings ?? {}) as Record<string, string>),
+            ...(projectBindings ?? {}),
+          },
+        },
+      };
       return {
         id: 'conn-1',
         workspaceId: workspaceId,
@@ -250,7 +268,7 @@ describe('memory api demo slice', () => {
         scopes: ['repositories.read'],
         lastSyncAt: null,
         lastError: null,
-        metadata,
+        metadata: metadataState,
       };
     });
     const projectIds: Record<string, string> = {
@@ -288,7 +306,7 @@ describe('memory api demo slice', () => {
         lastError: null,
         metadata: metadataState,
       })),
-      setConnectionMetadata,
+      refreshConnectionCollections,
       upsertProjectFromConnector,
       getConnectorCursor: vi.fn(async () => null),
       captureText: vi.fn(async () => ({ process: null })),
@@ -318,7 +336,7 @@ describe('memory api demo slice', () => {
     });
 
     expect(res.status).toBe(202);
-    expect(setConnectionMetadata).toHaveBeenCalled();
+    expect(refreshConnectionCollections).toHaveBeenCalled();
     expect(metadataState.collections.excluded_ids).toContain('team/repo-b');
     expect(upsertProjectFromConnector.mock.calls.map(([input]) => input.collectionId)).toEqual([
       'team/repo-a',
@@ -375,6 +393,22 @@ describe('memory api demo slice', () => {
     expect(res.status).toBe(200);
     const body = await res.json();
     expect(body.decisions.length).toBeGreaterThan(0);
+  });
+
+  it('lists projects offline', async () => {
+    const app = createApp({});
+    const res = await app.request(`/v1/projects?workspace_id=${workspaceId}`, {
+      headers: { 'x-subject-id': owner },
+    });
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.projects).toEqual([
+      expect.objectContaining({
+        id: projectId,
+        slug: 'aistroyka',
+        name: 'AISTROYKA',
+      }),
+    ]);
   });
 
   it('creates handoff from cursor', async () => {
@@ -562,7 +596,7 @@ describe('memory api demo slice', () => {
     expect(body.memoryId).toBeTruthy();
   });
 
-  it('rejects workspace-level capture from chatgpt without project access', async () => {
+  it('allows workspace-level capture from chatgpt without widening project access', async () => {
     const app = createApp({});
     const res = await app.request('/v1/capture/text', {
       method: 'POST',
@@ -576,6 +610,26 @@ describe('memory api demo slice', () => {
         text: 'This should not widen access.',
         actor_subject_id: chatgpt,
         idempotency_key: 'manual/workspace-capture-1',
+      }),
+    });
+    expect(res.status).toBe(201);
+  });
+
+  it('still rejects chatgpt capture into an ungranted concrete project', async () => {
+    const app = createApp({});
+    const res = await app.request('/v1/capture/text', {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'x-subject-id': chatgpt,
+      },
+      body: JSON.stringify({
+        workspace_id: workspaceId,
+        project_id: '00000000-0000-4000-8000-000000000099',
+        title: 'Wrong project',
+        text: 'This should stay forbidden.',
+        actor_subject_id: chatgpt,
+        idempotency_key: 'manual/workspace-capture-2',
       }),
     });
     expect(res.status).toBe(403);
@@ -687,15 +741,15 @@ describe('memory api demo slice', () => {
       const names = (
         body.result.tools as Array<{ name: string }>
       ).map((t) => t.name);
-      expect(names).toEqual(
-        expect.arrayContaining([
-          'memory.search',
-          'capture.text',
-          'memory.store_decision',
-        ]),
-      );
-      expect(names).not.toContain('oauth.start');
-      expect(names).not.toContain('consolidation.run');
+      expect([...names].sort()).toEqual([
+        'memory.search',
+        'memory.get',
+        'context.project',
+        'capture.text',
+        'memory.store_decision',
+        'handoff.create',
+        'memory.set_status',
+      ].sort());
 
       const blocked = await app.request('/mcp', {
         method: 'POST',

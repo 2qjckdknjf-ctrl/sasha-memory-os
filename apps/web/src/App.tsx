@@ -13,6 +13,7 @@ import { HomePage } from './HomePage';
 import { MemoryInspectorPage } from './MemoryInspectorPage';
 import { OpsPage } from './OpsPage';
 import { PrivacyPage } from './PrivacyPage';
+import { ProjectsPage } from './ProjectsPage';
 import { storePendingOAuthSession } from './oauthSession';
 import { ProjectPage } from './ProjectPage';
 import { SearchPage } from './SearchPage';
@@ -34,6 +35,7 @@ import {
   type MeResponse,
   type MemoryStatusAction,
   type OutboxPendingItem,
+  type ProjectRecord,
   type RemoteContext,
   type ReviewQueueItem,
   type SearchContext,
@@ -70,6 +72,7 @@ export function App() {
   const [connectionHealth, setConnectionHealth] = useState<Record<string, ConnectionHealthRecord>>(
     {},
   );
+  const [projects, setProjects] = useState<ProjectRecord[]>([]);
   const [captureTitle, setCaptureTitle] = useState('Meeting note');
   const [captureText, setCaptureText] = useState(
     'Manual capture alpha: quarantine → hash → chunks → candidate memory.',
@@ -220,6 +223,15 @@ export function App() {
         ]);
         setConnectorCatalog(buildLocalConnectorCatalog());
         setConnectionHealth({});
+        setProjects([
+          {
+            id: PROJECT_ID,
+            slug: 'aistroyka',
+            name: 'AISTROYKA',
+            status: 'active',
+            url: 'https://github.com/aistroyka/core',
+          },
+        ]);
         setPersistedHandoffs(localStore.listHandoffs(PROJECT_ID));
         setHandoffHistoryAvailable(true);
         setOutboxPending([]);
@@ -243,6 +255,12 @@ export function App() {
         subjectId,
       );
       setConnectorCatalog(catalog.connectors ?? []);
+      const projectsResult = await apiGet<{ projects: ProjectRecord[] }>(
+        `/v1/projects?workspace_id=${WORKSPACE_ID}`,
+        subjectId,
+        actor,
+      );
+      setProjects(projectsResult.projects ?? []);
       const healthEntries = await Promise.all(
         (conn.connections ?? [])
           .filter((connection): connection is ConnectionRecord & { id: string } => Boolean(connection.id))
@@ -1605,7 +1623,7 @@ export function App() {
             />
           }
         />
-        <Route path="/projects" element={<Navigate to={`/projects/${PROJECT_ID}`} replace />} />
+        <Route path="/projects" element={<ProjectsPage projects={projects} />} />
         <Route
           path="/memories/:id"
           element={

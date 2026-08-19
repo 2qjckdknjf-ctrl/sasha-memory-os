@@ -50,8 +50,6 @@ import {
   upsertConnectionSchema,
   upsertProjectStateSchema,
   updateConnectionSchema,
-  withConnectionProjectBinding,
-  withDiscoveredCollections,
 } from '@memory-os/schemas';
 import {
   decodeBase64Document,
@@ -224,6 +222,46 @@ function seedAuthz(subjectId: string): AuthzContext {
         effect: 'allow',
         resourceType: 'handoff',
         projectId: seedProject,
+        actions: ['read', 'write'],
+        sensitivityMax: 'internal',
+      },
+      {
+        subjectId: chatgpt,
+        effect: 'allow',
+        resourceType: 'memory',
+        projectId: null,
+        actions: ['read', 'write'],
+        sensitivityMax: 'internal',
+      },
+      {
+        subjectId: chatgpt,
+        effect: 'allow',
+        resourceType: 'handoff',
+        projectId: null,
+        actions: ['read', 'write'],
+        sensitivityMax: 'internal',
+      },
+      {
+        subjectId: cursor,
+        effect: 'allow',
+        resourceType: 'handoff',
+        projectId: null,
+        actions: ['read', 'write'],
+        sensitivityMax: 'internal',
+      },
+      {
+        subjectId: roma,
+        effect: 'allow',
+        resourceType: 'memory',
+        projectId: null,
+        actions: ['read', 'write'],
+        sensitivityMax: 'internal',
+      },
+      {
+        subjectId: roma,
+        effect: 'allow',
+        resourceType: 'handoff',
+        projectId: null,
         actions: ['read', 'write'],
         sensitivityMax: 'internal',
       },
@@ -435,8 +473,8 @@ function resolveCollectionProjectId(
   collectionId: string | undefined,
 ): string | null {
   const normalized = normalizeConnectionMetadata(metadata);
-  if (!collectionId) return normalized.default_project_id ?? null;
-  return normalized.collections?.project_bindings?.[collectionId] ?? normalized.default_project_id ?? null;
+  if (!collectionId) return null;
+  return normalized.collections?.project_bindings?.[collectionId] ?? null;
 }
 
 async function discoverAndSeedConnectionProjects(
@@ -472,8 +510,13 @@ async function discoverAndSeedConnectionProjects(
 
   if (!discovered) return item;
 
-  let metadata = withDiscoveredCollections(baseConnection.metadata, discovered.collections);
-  const selected = selectedConnectionCollections(metadata);
+  const refreshed = await gateway.refreshConnectionCollections({
+    subjectId,
+    connectionId: baseConnection.id,
+    items: discovered.collections,
+  });
+  const selected = selectedConnectionCollections(refreshed.metadata);
+  const projectBindings: Record<string, string> = {};
   for (const collection of selected) {
     const project = await gateway.upsertProjectFromConnector({
       subjectId,
@@ -488,19 +531,18 @@ async function discoverAndSeedConnectionProjects(
       defaultBranch: collection.default_branch ?? null,
       metadata: collection.metadata,
     });
-    metadata = withConnectionProjectBinding(metadata, {
-      collectionId: collection.id,
-      projectId: project.projectId,
-    });
-    if (!metadata.default_project_id) {
-      metadata.default_project_id = project.projectId;
-    }
+    projectBindings[collection.id] = project.projectId;
   }
 
-  const updated = await gateway.setConnectionMetadata({
+  if (Object.keys(projectBindings).length === 0) {
+    return { ...baseConnection, metadata: refreshed.metadata };
+  }
+
+  const updated = await gateway.refreshConnectionCollections({
     subjectId,
     connectionId: baseConnection.id,
-    metadata,
+    items: discovered.collections,
+    projectBindings,
   });
   return { ...baseConnection, metadata: updated.metadata };
 }
@@ -704,7 +746,7 @@ async function ingestSdkConnectorDelta(
       resolveCollectionProjectId(
         syncedConnection.metadata,
         record.externalObject.collectionId,
-      ) ?? seedProject;
+      ) ?? null;
     const captureResult = await gateway.captureText({
       subjectId,
       workspaceId,
@@ -1554,11 +1596,27 @@ export function createApp(options?: {
       });
     }
     try {
-      const connection = await gw.setConnectionMetadata({
-        subjectId: body.actor_subject_id,
-        connectionId,
-        metadata: body.metadata,
-      });
+      const collections =
+        typeof body.metadata.collections === 'object' &&
+        body.metadata.collections !== null &&
+        !Array.isArray(body.metadata.collections)
+          ? (body.metadata.collections as { excluded_ids?: unknown })
+          : null;
+      const excludedIdsRaw = collections?.excluded_ids;
+      const excludedIds = Array.isArray(excludedIdsRaw)
+        ? excludedIdsRaw.filter((value): value is string => typeof value === 'string')
+        : null;
+      const connection = excludedIds
+        ? await gw.setConnectionCollectionExclusions({
+            subjectId: body.actor_subject_id,
+            connectionId,
+            excludedIds,
+          })
+        : await gw.setConnectionMetadata({
+            subjectId: body.actor_subject_id,
+            connectionId,
+            metadata: body.metadata,
+          });
       return c.json(connection);
     } catch (err) {
       if (isForbiddenError(err)) return c.json({ error: 'forbidden' }, 403);
@@ -2682,6 +2740,33 @@ export function createApp(options?: {
         engine: embedded.engine,
       });
       return c.json({ ...result, backend: 'supabase' });
+    } catch (err) {
+      if (isForbiddenError(err)) return c.json({ error: 'forbidden' }, 403);
+      return c.json({ error: (err as Error).message }, 500);
+    }
+  });
+
+  app.get('/v1/projects', async (c) => {
+    const authz = c.get('authz');
+    const workspaceId = c.req.query('workspace_id') ?? seedWorkspace;
+    const gw = c.get('gateway');
+    if (!gw) {
+      return c.json({
+        projects: [
+          {
+            id: seedProject,
+            slug: 'aistroyka',
+            name: 'AISTROYKA',
+            status: 'active',
+            url: 'https://github.com/aistroyka/core',
+          },
+        ],
+        backend: 'memory-store',
+      });
+    }
+    try {
+      const projects = await gw.listProjects(authz.subjectId, workspaceId);
+      return c.json({ projects });
     } catch (err) {
       if (isForbiddenError(err)) return c.json({ error: 'forbidden' }, 403);
       return c.json({ error: (err as Error).message }, 500);

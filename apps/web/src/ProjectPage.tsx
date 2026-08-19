@@ -54,15 +54,26 @@ export function ProjectPage({
       <section className="page">
         <header className="page-header">
           <p className="eyebrow">Проект</p>
-          <h1>Проект не найден</h1>
+          <h1>Карточка проекта</h1>
           <p className="lede">
-            В этом срезе доступен только seed-проект AISTROYKA без каталога проектов.
+            Проект уже есть в памяти, но в этом срезе детальная surface пока остаётся облегчённой.
+            Полный multi-project workflow будет расширен дальше.
           </p>
         </header>
 
-        <Link to={`/projects/${PROJECT_ID}`} className="button-link">
-          Открыть AISTROYKA
-        </Link>
+        <div className="panel">
+          <p>
+            <strong>ID проекта:</strong> {projectId}
+          </p>
+          <div className="actions">
+            <Link to="/projects" className="button-link button-link--secondary">
+              Вернуться к списку проектов
+            </Link>
+            <Link to={`/projects/${PROJECT_ID}`} className="button-link">
+              Открыть AISTROYKA
+            </Link>
+          </div>
+        </div>
       </section>
     );
   }

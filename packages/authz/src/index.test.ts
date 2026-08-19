@@ -45,6 +45,30 @@ const romaCtx: AuthzContext = {
   ],
 };
 
+const workspaceWriterCtx: AuthzContext = {
+  subjectId: '33333333-3333-4333-8333-333333333302',
+  workspaceId: '11111111-1111-4111-8111-111111111111',
+  isOwner: false,
+  entries: [
+    {
+      subjectId: '33333333-3333-4333-8333-333333333302',
+      effect: 'allow',
+      resourceType: 'memory',
+      projectId: null,
+      actions: ['write'],
+      sensitivityMax: 'internal',
+    },
+    {
+      subjectId: '33333333-3333-4333-8333-333333333302',
+      effect: 'allow',
+      resourceType: 'handoff',
+      projectId: null,
+      actions: ['write'],
+      sensitivityMax: 'internal',
+    },
+  ],
+};
+
 describe('authorize', () => {
   it('allows cursor internal project memory', () => {
     expect(
@@ -114,6 +138,46 @@ describe('authorize', () => {
       authorize(romaCtx, {
         resourceType: 'memory',
         action: 'read',
+        projectId: '00000000-0000-4000-8000-000000000099',
+        sensitivity: 'internal',
+      }),
+    ).toBe(false);
+  });
+
+  it('does not let workspace-scoped ACL write an unrelated concrete project', () => {
+    expect(
+      authorize(workspaceWriterCtx, {
+        resourceType: 'memory',
+        action: 'write',
+        projectId,
+        sensitivity: 'internal',
+      }),
+    ).toBe(false);
+  });
+
+  it('allows workspace-level write with a workspace-scoped ACL', () => {
+    expect(
+      authorize(workspaceWriterCtx, {
+        resourceType: 'memory',
+        action: 'write',
+        projectId: null,
+        sensitivity: 'internal',
+      }),
+    ).toBe(true);
+    expect(
+      authorize(workspaceWriterCtx, {
+        resourceType: 'handoff',
+        action: 'write',
+        projectId: null,
+      }),
+    ).toBe(true);
+  });
+
+  it('keeps chatgpt from writing an ungranted concrete project', () => {
+    expect(
+      authorize(workspaceWriterCtx, {
+        resourceType: 'memory',
+        action: 'write',
         projectId: '00000000-0000-4000-8000-000000000099',
         sensitivity: 'internal',
       }),
