@@ -525,13 +525,13 @@ async function refreshAndSeedDiscoveredConnectionProjects(
     return gateway.getConnection(subjectId, refreshed.id);
   }
 
-  const updated = await gateway.refreshConnectionCollections({
+  await gateway.upsertConnectionCollectionItem({
     subjectId,
     connectionId: item.id,
-    items: collections,
+    item: {},
     projectBindings,
   });
-  return gateway.getConnection(subjectId, updated.id);
+  return gateway.getConnection(subjectId, item.id);
 }
 
 async function upsertAndSeedConnectionCollection(
