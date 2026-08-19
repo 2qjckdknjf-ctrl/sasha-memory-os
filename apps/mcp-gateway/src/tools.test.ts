@@ -215,6 +215,49 @@ describe('mcp gateway alpha', () => {
     expect(result.failed).toBe(0);
   });
 
+  it('rejects extraction.apply without project_id', async () => {
+    const gateway = createTwoProjectGateway();
+    const mcp = createMcpHandlers({ gateway: gateway as any });
+    await expect(
+      mcp.call('extraction.apply', {
+        workspace_id: workspaceId,
+        actor_subject_id: cursor,
+        idempotency_prefix: 'mcp-extract-apply-no-project-1',
+        candidates: [
+          {
+            title: 'No project',
+            content: 'This should not write anywhere.',
+            memoryType: 'fact',
+            confidence: 0.8,
+          },
+        ],
+      }),
+    ).rejects.toThrow(/project reference is required/i);
+    expect(gateway.captureText).not.toHaveBeenCalled();
+  });
+
+  it('routes extraction.apply to an explicit project UUID', async () => {
+    const gateway = createTwoProjectGateway();
+    const mcp = createMcpHandlers({ gateway: gateway as any });
+    await mcp.call('extraction.apply', {
+      workspace_id: workspaceId,
+      project_id: otherProjectId,
+      actor_subject_id: cursor,
+      idempotency_prefix: 'mcp-extract-apply-explicit-1',
+      candidates: [
+        {
+          title: 'Repo B extract',
+          content: 'Write this to repo-b explicitly.',
+          memoryType: 'fact',
+          confidence: 0.8,
+        },
+      ],
+    });
+    expect(gateway.captureText).toHaveBeenCalledWith(
+      expect.objectContaining({ projectId: otherProjectId }),
+    );
+  });
+
   it('searches with RRF and packed context offline', async () => {
     const mcp = createMcpHandlers();
     const cursor = '33333333-3333-4333-8333-333333333303';
@@ -255,6 +298,35 @@ describe('mcp gateway alpha', () => {
     expect(result.applied).toBe(true);
     expect(result.candidates.length).toBeGreaterThan(0);
     expect(result.apply?.applied).toBeGreaterThan(0);
+  });
+
+  it('returns extraction.run preview without project_id when apply=false', async () => {
+    const mcp = createMcpHandlers();
+    const result = (await mcp.call('extraction.run', {
+      title: 'Preview only',
+      text: 'Preview this without persisting anything.',
+      actor_subject_id: cursor,
+      apply: false,
+    })) as { preview: boolean; applied: boolean; candidates: unknown[] };
+    expect(result.preview).toBe(true);
+    expect(result.applied).toBe(false);
+    expect(result.candidates.length).toBeGreaterThan(0);
+  });
+
+  it('rejects extraction.run with apply=true when project_id is omitted', async () => {
+    const gateway = createTwoProjectGateway();
+    const mcp = createMcpHandlers({ gateway: gateway as any });
+    await expect(
+      mcp.call('extraction.run', {
+        title: 'Apply without project',
+        text: 'This should fail before writing.',
+        workspace_id: workspaceId,
+        actor_subject_id: cursor,
+        apply: true,
+        idempotency_prefix: 'mcp-extract-run-no-project-1',
+      }),
+    ).rejects.toThrow(/project reference is required/i);
+    expect(gateway.captureText).not.toHaveBeenCalled();
   });
 
   it('exports memories for owner offline', async () => {
@@ -384,6 +456,83 @@ describe('mcp gateway alpha', () => {
     })) as { memoryId: string; extractedChars?: number };
     expect(result.memoryId).toBeTruthy();
     expect(result.extractedChars).toBeGreaterThan(0);
+  });
+
+  it('rejects capture.document without project_id', async () => {
+    const gateway = createTwoProjectGateway();
+    const mcp = createMcpHandlers({ gateway: gateway as any });
+    await expect(
+      mcp.call('capture.document', {
+        workspace_id: workspaceId,
+        title: 'MCP doc',
+        filename: 'note.txt',
+        mime_type: 'text/plain',
+        content_base64: Buffer.from('Document via MCP').toString('base64'),
+        actor_subject_id: cursor,
+        idempotency_key: 'mcp-doc-no-project-1',
+      }),
+    ).rejects.toThrow(/project reference is required/i);
+    expect(gateway.captureText).not.toHaveBeenCalled();
+  });
+
+  it('routes capture.document to an explicit project UUID', async () => {
+    const gateway = createTwoProjectGateway();
+    const mcp = createMcpHandlers({ gateway: gateway as any });
+    await mcp.call('capture.document', {
+      workspace_id: workspaceId,
+      project_id: otherProjectId,
+      title: 'Repo B doc',
+      filename: 'note.txt',
+      mime_type: 'text/plain',
+      content_base64: Buffer.from('Document via MCP').toString('base64'),
+      actor_subject_id: cursor,
+      idempotency_key: 'mcp-doc-explicit-project-1',
+    });
+    expect(gateway.captureText).toHaveBeenCalledWith(
+      expect.objectContaining({ projectId: otherProjectId }),
+    );
+  });
+
+  it('rejects capture.link without project_id', async () => {
+    const gateway = createTwoProjectGateway();
+    const mcp = createMcpHandlers({ gateway: gateway as any });
+    await expect(
+      mcp.call('capture.link', {
+        workspace_id: workspaceId,
+        url: 'https://example.com/note',
+        title: 'Link without project',
+        actor_subject_id: cursor,
+        idempotency_key: 'mcp-link-no-project-1',
+      }),
+    ).rejects.toThrow(/project reference is required/i);
+    expect(gateway.captureText).not.toHaveBeenCalled();
+  });
+
+  it('routes capture.link to an explicit project UUID', async () => {
+    const gateway = createTwoProjectGateway();
+    const mcp = createMcpHandlers({ gateway: gateway as any });
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = vi.fn(async () => ({
+      ok: true,
+      headers: new Headers({ 'content-type': 'text/plain' }),
+      arrayBuffer: async () => Buffer.from('Public link body'),
+      url: 'https://example.com/note',
+    })) as typeof fetch;
+    try {
+      await mcp.call('capture.link', {
+        workspace_id: workspaceId,
+        project_id: otherProjectId,
+        url: 'https://example.com/note',
+        title: 'Repo B link',
+        actor_subject_id: cursor,
+        idempotency_key: 'mcp-link-explicit-project-1',
+      });
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+    expect(gateway.captureText).toHaveBeenCalledWith(
+      expect.objectContaining({ projectId: otherProjectId }),
+    );
   });
 
   it('returns offline stub for connections.sync', async () => {

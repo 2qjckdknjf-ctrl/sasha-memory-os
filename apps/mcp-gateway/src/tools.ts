@@ -319,6 +319,21 @@ async function resolveProjectForArgs(input: {
   return null;
 }
 
+async function resolveRequiredProjectId(
+  gateway: SupabaseMemoryGateway | null,
+  args: Record<string, unknown>,
+): Promise<string> {
+  const resolvedProjectId = await resolveProjectForArgs({
+    gateway: gateway ?? undefined,
+    args,
+    requireProject: true,
+  });
+  if (!resolvedProjectId) {
+    throw new Error('project reference is required; pass project UUID or slug');
+  }
+  return resolvedProjectId;
+}
+
 function resolveCollectionProjectId(
   metadata: Record<string, unknown> | undefined,
   collectionId: string | undefined,
@@ -1879,7 +1894,13 @@ export function createMcpHandlers(options?: {
           };
         }
         case 'extraction.apply': {
-          return applyExtraction(applyExtractionSchema.parse(args));
+          const resolvedProjectId = await resolveRequiredProjectId(gateway, args);
+          return applyExtraction(
+            applyExtractionSchema.parse({
+              ...args,
+              project_id: resolvedProjectId,
+            }),
+          );
         }
         case 'extraction.run': {
           const text = String(args.text ?? '').trim();
@@ -1897,10 +1918,11 @@ export function createMcpHandlers(options?: {
               applied: false,
             };
           }
+          const resolvedProjectId = await resolveRequiredProjectId(gateway, args);
           const applied = await applyExtraction(
             applyExtractionSchema.parse({
               workspace_id: args.workspace_id,
-              project_id: args.project_id,
+              project_id: resolvedProjectId,
               actor_subject_id: args.actor_subject_id,
               sensitivity: args.sensitivity,
               idempotency_prefix:
@@ -2013,7 +2035,11 @@ export function createMcpHandlers(options?: {
           };
         }
         case 'capture.document': {
-          const input = captureDocumentSchema.parse(args);
+          const resolvedProjectId = await resolveRequiredProjectId(gateway, args);
+          const input = captureDocumentSchema.parse({
+            ...args,
+            project_id: resolvedProjectId,
+          });
           const parsed = await extractTextFromBytes({
             filename: input.filename,
             mimeType: input.mime_type,
@@ -2068,7 +2094,11 @@ export function createMcpHandlers(options?: {
           };
         }
         case 'capture.link': {
-          const input = captureLinkSchema.parse(args);
+          const resolvedProjectId = await resolveRequiredProjectId(gateway, args);
+          const input = captureLinkSchema.parse({
+            ...args,
+            project_id: resolvedProjectId,
+          });
           const fetched = await fetchPublicLink(input.url);
           const title = input.title ?? fetched.title;
           const text = [
