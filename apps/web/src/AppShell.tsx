@@ -19,6 +19,8 @@ type PrimaryLink = {
 
 const primaryLinks: PrimaryLink[] = [
   { to: '/', label: 'Главная', end: true },
+  { to: '/tasks', label: 'Задачи' },
+  { to: '/handoffs', label: 'Хэнд-оффы' },
   { to: '/conflicts', label: 'Конфликты' },
   { to: '/search', label: 'Поиск' },
   { to: `/projects/${PROJECT_ID}`, label: 'Проект AISTROYKA' },

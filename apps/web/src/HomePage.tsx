@@ -6,6 +6,7 @@ import {
   type StateSummary,
   type TimelineEntry,
 } from './controlCenter';
+import { describeHandoffActors, type HandoffSurfaceItem, type TaskSurfaceItem } from './surfaces';
 import { Timeline } from './Timeline';
 
 type Props = {
@@ -14,6 +15,8 @@ type Props = {
   reviewQueueCount: number;
   reviewQueueLoading: boolean;
   connectionWarnings: ConnectionRecord[];
+  taskPreview: TaskSurfaceItem | null;
+  lastHandoff: HandoffSurfaceItem | null;
 };
 
 export function HomePage({
@@ -22,6 +25,8 @@ export function HomePage({
   reviewQueueCount,
   reviewQueueLoading,
   connectionWarnings,
+  taskPreview,
+  lastHandoff,
 }: Props) {
   return (
     <section className="page">
@@ -35,6 +40,12 @@ export function HomePage({
       </header>
 
       <div className="cta-row">
+        <Link to="/tasks" className="button-link">
+          Задачи
+        </Link>
+        <Link to="/handoffs" className="button-link button-link--secondary">
+          Хэнд-оффы
+        </Link>
         <Link to="/search" className="button-link">
           Поиск
         </Link>
@@ -106,6 +117,44 @@ export function HomePage({
           ) : (
             <p className="hint">Критичных ошибок синхронизации не найдено.</p>
           )}
+        </section>
+
+        <section className="panel">
+          <h2>Следующий шаг и хэнд-офф</h2>
+          <div className="surface-stack">
+            <div>
+              <p className="section-subtitle">Следующая задача</p>
+              {taskPreview ? (
+                <>
+                  <strong>{taskPreview.title}</strong>
+                  <p className="hint">{taskPreview.detail}</p>
+                </>
+              ) : (
+                <p className="hint">Следующие задачи пока не выделены.</p>
+              )}
+            </div>
+
+            <div>
+              <p className="section-subtitle">Последний хэнд-офф</p>
+              {lastHandoff ? (
+                <>
+                  <strong>{describeHandoffActors(lastHandoff)}</strong>
+                  <p className="hint">{lastHandoff.summary}</p>
+                </>
+              ) : (
+                <p className="hint">Хэнд-оффы еще не создавались.</p>
+              )}
+            </div>
+
+            <div className="actions">
+              <Link to="/tasks" className="button-link button-link--secondary">
+                Открыть задачи
+              </Link>
+              <Link to="/handoffs" className="button-link button-link--secondary">
+                Открыть хэнд-оффы
+              </Link>
+            </div>
+          </div>
         </section>
       </div>
 

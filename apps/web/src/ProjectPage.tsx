@@ -73,7 +73,8 @@ export function ProjectPage({
         <p className="eyebrow">Проект</p>
         <h1>{PROJECT_NAME}</h1>
         <p className="lede">
-          Текущее состояние, лента событий, новые решения и handoff между Cursor и ChatGPT.
+          Текущее состояние, лента событий, новые решения и переходы в отдельные поверхности
+          задач и хэнд-оффов.
         </p>
       </header>
 
@@ -125,8 +126,14 @@ export function ProjectPage({
                   void onCreateHandoff();
                 }}
               >
-                Cursor → ChatGPT handoff
+                Cursor → ChatGPT хэнд-офф
               </button>
+              <Link to="/tasks" className="button-link button-link--secondary">
+                Открыть задачи
+              </Link>
+              <Link to="/handoffs" className="button-link button-link--secondary">
+                Открыть хэнд-оффы
+              </Link>
             </div>
           </form>
         </section>

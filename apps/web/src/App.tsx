@@ -5,11 +5,13 @@ import { apiGet, apiHealth, apiPatch, apiPost, setBoundAuthUserId } from './api'
 import { AppShell } from './AppShell';
 import { AuthPanel } from './AuthPanel';
 import { ConflictsPage } from './ConflictsPage';
+import { HandoffsPage } from './HandoffsPage';
 import { HomePage } from './HomePage';
 import { MemoryInspectorPage } from './MemoryInspectorPage';
 import { OpsPage } from './OpsPage';
 import { ProjectPage } from './ProjectPage';
 import { SearchPage } from './SearchPage';
+import { TasksPage } from './TasksPage';
 import {
   ACTOR_IDS,
   CHATGPT,
@@ -29,6 +31,13 @@ import {
   type StateSummary,
   type TimelineEntry,
 } from './controlCenter';
+import {
+  DEFAULT_HANDOFF_PAYLOAD,
+  deriveHandoffSurface,
+  deriveTaskSurface,
+  type HandoffLike,
+  type HandoffPayloadInput,
+} from './surfaces';
 
 export function App() {
   const [localStore] = useState(() => createSeededStore());
@@ -69,6 +78,7 @@ export function App() {
   const [extractionSelected, setExtractionSelected] = useState<Set<number>>(
     () => new Set(),
   );
+  const [sessionHandoffs, setSessionHandoffs] = useState<HandoffLike[]>([]);
 
   const subjectId = ACTOR_IDS[actor];
 
@@ -294,6 +304,30 @@ export function App() {
     };
   }, [localStore, remote, tick]);
 
+  const taskSurface = useMemo(
+    () =>
+      deriveTaskSurface({
+        taskMemories:
+          remote?.tasks ??
+          localStore
+            .listCurrentMemories(WORKSPACE_ID, PROJECT_ID)
+            .filter((memory) => memory.memoryType === 'task'),
+        projectState: remote?.state ?? localStore.getProjectState(PROJECT_ID),
+      }),
+    [localStore, remote, tick],
+  );
+
+  const handoffSurface = useMemo(
+    () =>
+      deriveHandoffSurface({
+        latestHandoff: remote?.latestHandoff ?? null,
+        persistedHandoffs: backend === 'local' ? (localStore.handoffs.get(PROJECT_ID) ?? []) : [],
+        sessionHandoffs,
+        historyAvailable: backend === 'local',
+      }),
+    [backend, localStore, remote, sessionHandoffs, tick],
+  );
+
   const connectionWarnings = useMemo(
     () =>
       connections.filter(
@@ -335,46 +369,46 @@ export function App() {
     }
   }
 
-  async function onCreateHandoff() {
+  async function createHandoff(payload: HandoffPayloadInput) {
     setError(null);
     try {
+      const handoffPayload = {
+        completed: payload.completed,
+        artifacts: payload.artifacts,
+        validation: payload.validation,
+        open_items: payload.openItems,
+        blockers: payload.blockers,
+        recommended_next: payload.recommendedNext,
+      };
+      let handoff: HandoffLike;
       if (backend !== 'local') {
-        await apiPost('/v1/handoffs', subjectId, {
+        handoff = await apiPost<Record<string, unknown>>('/v1/handoffs', subjectId, {
           workspace_id: WORKSPACE_ID,
           project_id: PROJECT_ID,
           from_subject_id: CURSOR,
           to_subject_id: CHATGPT,
           idempotency_key: `web-handoff-${Date.now()}`,
-          payload: {
-            completed: ['Loaded project context from Memory OS'],
-            artifacts: [],
-            validation: ['typecheck', 'unit tests'],
-            open_items: ['Keep expanding control center'],
-            blockers: [],
-            recommended_next: ['Wire search UX'],
-          },
+          payload: handoffPayload,
         });
       } else {
-        localStore.createHandoff({
+        handoff = localStore.createHandoff({
           workspaceId: WORKSPACE_ID,
           projectId: PROJECT_ID,
           fromSubjectId: CURSOR,
           toSubjectId: CHATGPT,
-          payload: {
-            completed: ['Loaded project context from Memory OS'],
-            artifacts: [],
-            validation: ['typecheck', 'unit tests'],
-            open_items: [],
-            blockers: [],
-            recommended_next: ['Wire search UX'],
-          },
+          payload: handoffPayload,
         });
       }
-      setLastCapture('created Cursor → ChatGPT handoff');
+      setSessionHandoffs((current) => [handoff, ...current]);
+      setLastCapture('создан хэнд-офф Cursor → ChatGPT');
       setTick((current) => current + 1);
     } catch (err) {
       setError((err as Error).message);
     }
+  }
+
+  async function onCreateHandoff() {
+    await createHandoff(DEFAULT_HANDOFF_PAYLOAD);
   }
 
   async function onSearch() {
@@ -1164,7 +1198,16 @@ export function App() {
               reviewQueueCount={reviewQueue.length}
               reviewQueueLoading={reviewQueueLoading}
               connectionWarnings={connectionWarnings}
+              taskPreview={taskSurface.outstanding[0] ?? null}
+              lastHandoff={handoffSurface.latest}
             />
+          }
+        />
+        <Route path="/tasks" element={<TasksPage taskSurface={taskSurface} />} />
+        <Route
+          path="/handoffs"
+          element={
+            <HandoffsPage handoffSurface={handoffSurface} onCreateHandoff={createHandoff} />
           }
         />
         <Route

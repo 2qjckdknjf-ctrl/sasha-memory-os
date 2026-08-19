@@ -383,6 +383,11 @@ summary:focus-visible {
   animation: rise 900ms ease both;
 }
 
+.panel--note {
+  padding-top: 0.9rem;
+  padding-bottom: 0.9rem;
+}
+
 .panel h2 {
   font-family: var(--font-display);
   font-size: 1.35rem;
@@ -449,6 +454,33 @@ summary:focus-visible {
   color: var(--warn);
 }
 
+.badge--task {
+  border-color: color-mix(in oklab, var(--ok) 45%, var(--line));
+}
+
+.badge--task-memory {
+  color: var(--accent);
+  border-color: color-mix(in oklab, var(--accent) 50%, var(--line));
+}
+
+.badge--task-in_progress {
+  color: var(--ok);
+}
+
+.badge--task-blocked {
+  color: var(--warn);
+  border-color: color-mix(in oklab, var(--warn) 55%, var(--line));
+}
+
+.badge--task-next {
+  color: var(--ink);
+}
+
+.badge--task-completed {
+  color: var(--ok);
+  border-color: color-mix(in oklab, var(--ok) 60%, var(--line));
+}
+
 .item h3 {
   margin: 0;
   font-size: 1.05rem;
@@ -499,6 +531,65 @@ summary:focus-visible {
   color: var(--muted);
   font-size: 0.85rem;
   margin: 0;
+}
+
+.surface-grid {
+  align-items: start;
+}
+
+.surface-stack {
+  display: grid;
+  gap: 1rem;
+}
+
+.surface-lede {
+  margin-top: -0.35rem;
+}
+
+.surface-section {
+  display: grid;
+  gap: 0.5rem;
+}
+
+.surface-section h3 {
+  margin: 0;
+  font-size: 1rem;
+}
+
+.surface-bullets {
+  margin: 0;
+  padding-left: 1.1rem;
+  display: grid;
+  gap: 0.35rem;
+  color: var(--muted);
+}
+
+.surface-selector {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: grid;
+  gap: 0.75rem;
+}
+
+.surface-selector__button {
+  width: 100%;
+  border: 1px solid var(--line);
+  background: var(--bg2);
+  color: var(--ink);
+  padding: 0.85rem 0.9rem;
+  text-align: left;
+  display: grid;
+  gap: 0.45rem;
+  cursor: pointer;
+}
+
+.surface-selector__button strong {
+  font-size: 1rem;
+}
+
+.surface-selector__button--active {
+  border-color: var(--accent);
 }
 
 .warning-list {
