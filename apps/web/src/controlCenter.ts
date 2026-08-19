@@ -59,6 +59,8 @@ export type SearchHit = {
 
 export type MemoryStatusAction = 'verified' | 'disputed' | 'retracted';
 
+export type AttentionItemSource = 'review' | 'conflicts';
+
 export type MemoryDetail = {
   id: string;
   title: string;
@@ -135,6 +137,27 @@ export function describeBackend(backend: BackendMode): string {
       const exhaustiveCheck: never = backend;
       return exhaustiveCheck;
     }
+  }
+}
+
+export function describeMemoryStatus(status: string): string {
+  switch (status) {
+    case 'candidate':
+      return 'Кандидат';
+    case 'active':
+      return 'Активна';
+    case 'verified':
+      return 'Подтверждена';
+    case 'disputed':
+      return 'Спорная';
+    case 'superseded':
+      return 'Замещена';
+    case 'retracted':
+      return 'Отозвана';
+    case 'deleted':
+      return 'Удалена';
+    default:
+      return status;
   }
 }
 

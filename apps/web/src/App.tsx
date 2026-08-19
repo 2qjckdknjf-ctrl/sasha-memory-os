@@ -4,6 +4,7 @@ import { createSeededStore } from '@memory-os/domain';
 import { apiGet, apiHealth, apiPatch, apiPost, setBoundAuthUserId } from './api';
 import { AppShell } from './AppShell';
 import { AuthPanel } from './AuthPanel';
+import { ConflictsPage } from './ConflictsPage';
 import { HomePage } from './HomePage';
 import { MemoryInspectorPage } from './MemoryInspectorPage';
 import { OpsPage } from './OpsPage';
@@ -1154,6 +1155,19 @@ export function App() {
           }
         />
         <Route
+          path="/conflicts"
+          element={
+            <ConflictsPage
+              actor={actor}
+              backend={backend}
+              reviewQueue={reviewQueue}
+              reviewQueueLoading={reviewQueueLoading}
+              onSetReviewStatus={onSetHitStatus}
+              onRunConsolidation={onRunConsolidation}
+            />
+          }
+        />
+        <Route
           path="/search"
           element={
             <SearchPage
@@ -1184,6 +1198,7 @@ export function App() {
           path="/projects/:id"
           element={
             <ProjectPage
+              actor={actor}
               stateSummary={stateSummary}
               timeline={timeline}
               title={title}

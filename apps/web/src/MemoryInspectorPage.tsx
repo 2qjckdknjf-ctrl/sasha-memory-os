@@ -25,7 +25,7 @@ type MemoryDetailResponse = {
 };
 
 type InspectorLocationState = {
-  from?: 'search' | 'project' | 'timeline' | 'review';
+  from?: 'search' | 'project' | 'timeline' | 'review' | 'conflicts';
   searchTerm?: string;
   projectId?: string | null;
 };
@@ -224,6 +224,9 @@ export function MemoryInspectorPage({
         <div className="cta-row">
           <Link to="/search" className="button-link button-link--secondary">
             {searchLabel}
+          </Link>
+          <Link to="/conflicts" className="button-link button-link--secondary">
+            К конфликтам
           </Link>
           <Link to="/" className="button-link button-link--secondary">
             На главную

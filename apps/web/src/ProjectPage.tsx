@@ -1,15 +1,18 @@
 import { useMemo } from 'react';
 import { Link, useParams } from 'react-router-dom';
+import { ReviewQueueList } from './ReviewQueueList';
 import {
+  type Actor,
   PROJECT_ID,
   PROJECT_NAME,
-  type ReviewQueueItem,
   type StateSummary,
   type TimelineEntry,
+  type ReviewQueueItem,
 } from './controlCenter';
 import { Timeline } from './Timeline';
 
 type Props = {
+  actor: Actor;
   stateSummary: StateSummary | null;
   timeline: TimelineEntry[];
   title: string;
@@ -27,6 +30,7 @@ type Props = {
 };
 
 export function ProjectPage({
+  actor,
   stateSummary,
   timeline,
   title,
@@ -135,58 +139,25 @@ export function ProjectPage({
 
       <section className="panel" id="review-queue">
         <h2>Очередь на проверку</h2>
+        <p className="hint">
+          Полный flow разрешения конфликтов вынесен на отдельную страницу, но быстрые действия
+          остаются и здесь.
+        </p>
+        <div className="actions">
+          <Link to="/conflicts" className="button-link button-link--secondary">
+            Открыть страницу конфликтов
+          </Link>
+        </div>
         {reviewQueueLoading ? <p className="hint">Загружаю очередь…</p> : null}
-        {!reviewQueueLoading && reviewQueue.length === 0 ? (
-          <p className="hint">Сейчас нет кандидатов или спорных записей.</p>
-        ) : null}
-
-        {reviewQueue.length > 0 ? (
-          <ul className="timeline">
-            {reviewQueue.map((item) => (
-              <li className="item" key={item.id}>
-                <div className="meta">
-                  <span className="badge state">{item.status}</span>
-                </div>
-                <h3>
-                  <Link
-                    to={`/memories/${item.id}`}
-                    state={{ from: 'review' as const, projectId }}
-                  >
-                    {item.title}
-                  </Link>
-                </h3>
-                <p>{item.content}</p>
-                <div className="actions">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      void onSetReviewStatus(item.id, 'verified');
-                    }}
-                  >
-                    Approve
-                  </button>
-                  <button
-                    type="button"
-                    className="button-secondary"
-                    onClick={() => {
-                      void onSetReviewStatus(item.id, 'disputed');
-                    }}
-                  >
-                    Dispute
-                  </button>
-                  <button
-                    type="button"
-                    className="button-secondary"
-                    onClick={() => {
-                      void onSetReviewStatus(item.id, 'retracted');
-                    }}
-                  >
-                    Retract
-                  </button>
-                </div>
-              </li>
-            ))}
-          </ul>
+        {!reviewQueueLoading ? (
+          <ReviewQueueList
+            actor={actor}
+            items={reviewQueue}
+            source="review"
+            projectId={projectId}
+            emptyMessage="Сейчас нет кандидатов или спорных записей."
+            onSetStatus={onSetReviewStatus}
+          />
         ) : null}
       </section>
     </section>
