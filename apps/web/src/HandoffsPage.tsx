@@ -1,6 +1,12 @@
 import { type FormEvent, useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { PROJECT_ID, PROJECT_NAME, formatTimestamp } from './controlCenter';
+import {
+  ACTOR_LABELS,
+  type AgentActor,
+  PROJECT_ID,
+  PROJECT_NAME,
+  formatTimestamp,
+} from './controlCenter';
 import {
   DEFAULT_HANDOFF_PAYLOAD,
   describeHandoffActors,
@@ -12,8 +18,13 @@ import {
 
 type Props = {
   handoffSurface: HandoffSurfaceData;
-  onCreateHandoff: (payload: HandoffPayloadInput) => Promise<void> | void;
+  onCreateHandoff: (
+    payload: HandoffPayloadInput,
+    options?: { targetActor?: AgentActor },
+  ) => Promise<void> | void;
 };
+
+const handoffTargets: AgentActor[] = ['chatgpt', 'roma'];
 
 type PayloadListProps = {
   title: string;
@@ -111,6 +122,7 @@ export function HandoffsPage({ handoffSurface, onCreateHandoff }: Props) {
     joinLines(DEFAULT_HANDOFF_PAYLOAD.recommendedNext),
   );
   const [selectedId, setSelectedId] = useState<string | null>(handoffSurface.items[0]?.id ?? null);
+  const [targetActor, setTargetActor] = useState<AgentActor>('chatgpt');
   const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
@@ -139,7 +151,7 @@ export function HandoffsPage({ handoffSurface, onCreateHandoff }: Props) {
         openItems: parseLines(openItemsText),
         blockers: parseLines(blockersText),
         recommendedNext: parseLines(recommendedText),
-      });
+      }, { targetActor });
     } finally {
       setSubmitting(false);
     }
@@ -176,11 +188,25 @@ export function HandoffsPage({ handoffSurface, onCreateHandoff }: Props) {
 
       <div className="grid surface-grid">
         <section className="panel">
-          <h2>Создать Cursor → ChatGPT хэнд-офф</h2>
+          <h2>Создать Cursor → агент хэнд-офф</h2>
           <p className="hint">
-            По одной строке на пункт. Этот flow использует уже существующую схему payload.
+            По одной строке на пункт. Этот flow использует уже существующую схему payload и
+            позволяет адресовать хэнд-офф в ChatGPT или ROMA.
           </p>
           <form className="form" onSubmit={(event) => void handleSubmit(event)}>
+            <label>
+              Кому передать
+              <select
+                value={targetActor}
+                onChange={(event) => setTargetActor(event.target.value as AgentActor)}
+              >
+                {handoffTargets.map((key) => (
+                  <option key={key} value={key}>
+                    {ACTOR_LABELS[key]}
+                  </option>
+                ))}
+              </select>
+            </label>
             <label>
               Что завершено
               <textarea

@@ -18,7 +18,7 @@ VALUES (
   'Sasha'
 );
 
-INSERT INTO subjects (id, workspace_id, kind, user_id, external_key, display_name)
+INSERT INTO subjects (id, workspace_id, kind, user_id, external_key, display_name, metadata)
 VALUES
   (
     '33333333-3333-4333-8333-333333333301',
@@ -26,7 +26,8 @@ VALUES
     'user',
     '22222222-2222-4222-8222-222222222222',
     'owner',
-    'Sasha'
+    'Sasha',
+    '{}'::jsonb
   ),
   (
     '33333333-3333-4333-8333-333333333302',
@@ -34,7 +35,8 @@ VALUES
     'agent',
     NULL,
     'chatgpt',
-    'ChatGPT'
+    'ChatGPT',
+    '{}'::jsonb
   ),
   (
     '33333333-3333-4333-8333-333333333303',
@@ -42,7 +44,27 @@ VALUES
     'agent',
     NULL,
     'cursor',
-    'Cursor'
+    'Cursor',
+    '{}'::jsonb
+  ),
+  (
+    '33333333-3333-4333-8333-333333333304',
+    '11111111-1111-4111-8111-111111111111',
+    'agent',
+    NULL,
+    'roma',
+    'ROMA',
+    '{
+      "purpose": "Аудит, QA и findings по явно разрешенным проектам без наследования owner-прав.",
+      "allowed_tools": [
+        "memory.search",
+        "memory.get",
+        "context.project",
+        "capture.text",
+        "handoff.create",
+        "memory.set_status"
+      ]
+    }'::jsonb
   );
 
 INSERT INTO workspace_memberships (workspace_id, user_id, subject_id, role)
@@ -69,6 +91,14 @@ VALUES
     'cursor',
     '1',
     '["memory.read.project","session.write","handoff.write"]'::jsonb,
+    'standard'
+  ),
+  (
+    '11111111-1111-4111-8111-111111111111',
+    '33333333-3333-4333-8333-333333333304',
+    'roma',
+    '1',
+    '["memory.read.project","memory.write.findings","qa.read","handoff.write"]'::jsonb,
     'standard'
   );
 
@@ -157,6 +187,43 @@ VALUES
     '44444444-4444-4444-8444-444444444401',
     ARRAY['read', 'write'],
     'internal'
+  ),
+  -- ROMA: audit/QA on allowlisted project only; no personal/mail/restricted by default
+  (
+    '11111111-1111-4111-8111-111111111111',
+    '33333333-3333-4333-8333-333333333304',
+    'allow',
+    'memory',
+    '44444444-4444-4444-8444-444444444401',
+    ARRAY['read', 'write'],
+    'internal'
+  ),
+  (
+    '11111111-1111-4111-8111-111111111111',
+    '33333333-3333-4333-8333-333333333304',
+    'allow',
+    'project',
+    '44444444-4444-4444-8444-444444444401',
+    ARRAY['read'],
+    'internal'
+  ),
+  (
+    '11111111-1111-4111-8111-111111111111',
+    '33333333-3333-4333-8333-333333333304',
+    'allow',
+    'project_state',
+    '44444444-4444-4444-8444-444444444401',
+    ARRAY['read'],
+    'internal'
+  ),
+  (
+    '11111111-1111-4111-8111-111111111111',
+    '33333333-3333-4333-8333-333333333304',
+    'allow',
+    'handoff',
+    '44444444-4444-4444-8444-444444444401',
+    ARRAY['read', 'write'],
+    'internal'
   );
 
 -- Cursor personal/confidential memory is denied by omission + sensitivity_max=internal
@@ -235,5 +302,6 @@ INSERT INTO api_clients (workspace_id, subject_id, client_id, audience)
 VALUES
   ('11111111-1111-4111-8111-111111111111', '33333333-3333-4333-8333-333333333301', 'demo-owner', ARRAY['memory-api', 'mcp']),
   ('11111111-1111-4111-8111-111111111111', '33333333-3333-4333-8333-333333333302', 'demo-chatgpt', ARRAY['memory-api', 'mcp']),
-  ('11111111-1111-4111-8111-111111111111', '33333333-3333-4333-8333-333333333303', 'demo-cursor', ARRAY['memory-api', 'mcp'])
+  ('11111111-1111-4111-8111-111111111111', '33333333-3333-4333-8333-333333333303', 'demo-cursor', ARRAY['memory-api', 'mcp']),
+  ('11111111-1111-4111-8111-111111111111', '33333333-3333-4333-8333-333333333304', 'demo-roma', ARRAY['memory-api', 'mcp'])
 ON CONFLICT (workspace_id, client_id) DO NOTHING;

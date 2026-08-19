@@ -18,9 +18,9 @@ import { ProjectPage } from './ProjectPage';
 import { SearchPage } from './SearchPage';
 import { TasksPage } from './TasksPage';
 import {
+  type AgentActor,
   ACTOR_IDS,
   ACTOR_LABELS,
-  CHATGPT,
   CURSOR,
   PROJECT_ID,
   WORKSPACE_ID,
@@ -470,7 +470,10 @@ export function App() {
     }
   }
 
-  async function createHandoff(payload: HandoffPayloadInput) {
+  async function createHandoff(
+    payload: HandoffPayloadInput,
+    options?: { targetActor?: AgentActor },
+  ) {
     setError(null);
     try {
       const handoffPayload = {
@@ -481,13 +484,14 @@ export function App() {
         blockers: payload.blockers,
         recommended_next: payload.recommendedNext,
       };
+      const targetActor = options?.targetActor ?? 'chatgpt';
       let handoff: HandoffLike;
       if (backend !== 'local') {
         handoff = await apiPost<Record<string, unknown>>('/v1/handoffs', subjectId, {
           workspace_id: WORKSPACE_ID,
           project_id: PROJECT_ID,
           from_subject_id: CURSOR,
-          to_subject_id: CHATGPT,
+          to_subject_id: ACTOR_IDS[targetActor],
           idempotency_key: `web-handoff-${Date.now()}`,
           payload: handoffPayload,
         });
@@ -496,13 +500,13 @@ export function App() {
           workspaceId: WORKSPACE_ID,
           projectId: PROJECT_ID,
           fromSubjectId: CURSOR,
-          toSubjectId: CHATGPT,
+          toSubjectId: ACTOR_IDS[targetActor],
           payload: handoffPayload,
         });
       }
       setSessionHandoffs((current) => [handoff, ...current]);
       await refreshHandoffs(backend);
-      setLastCapture('создан хэнд-офф Cursor → ChatGPT');
+      setLastCapture(`создан хэнд-офф Cursor → ${ACTOR_LABELS[targetActor]}`);
       setTick((current) => current + 1);
     } catch (err) {
       setError((err as Error).message);

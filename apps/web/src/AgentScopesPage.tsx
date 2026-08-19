@@ -26,6 +26,8 @@ function buildPreviewFallback(): AgentRightsActor[] {
     displayName: preview.displayName,
     kind: preview.kind,
     isOwner: preview.actor === 'owner',
+    purpose: preview.purpose ?? preview.note,
+    allowedTools: preview.allowedTools ?? null,
     scopes: preview.capabilities,
     capabilities: preview.capabilities,
     rights: preview.rights.map((right) => ({
@@ -152,7 +154,7 @@ export function AgentScopesPage({
           <h2>Статус матрицы прав</h2>
           <ul className="surface-bullets">
             <li>Write API для ACL по-прежнему не добавлялся: экран только читает текущую матрицу.</li>
-            <li>ROMA по-прежнему не показывается, потому что его нет в текущих domain types / seed.</li>
+            <li>Матрица ниже должна показывать owner, ChatGPT, Cursor и ROMA как отдельные actor identity.</li>
             <li>
               {backend === 'local'
                 ? 'Сейчас открыт локальный preview без API.'
@@ -169,7 +171,8 @@ export function AgentScopesPage({
       <section className="panel">
         <h2>{rights ? 'Живая матрица прав' : 'Fallback preview прав'}</h2>
         <p className="hint">
-          Это не редактор ACL. Ниже только текущие read-only права владельца, ChatGPT и Cursor.
+          Это не редактор ACL. Ниже только текущие read-only права владельца, ChatGPT, Cursor и
+          ROMA.
         </p>
         <div className="stat-grid">
           {actorRows.map((row) => {
@@ -186,6 +189,24 @@ export function AgentScopesPage({
                     ? 'Owner через membership'
                     : `Actor key: ${row.externalKey ?? 'unknown'}`}
                 </p>
+                {row.purpose ? (
+                  <>
+                    <p className="section-subtitle">Назначение</p>
+                    <p className="hint">{row.purpose}</p>
+                  </>
+                ) : null}
+                {row.allowedTools && row.allowedTools.length > 0 ? (
+                  <>
+                    <p className="section-subtitle">Разрешенные tools</p>
+                    <ul className="surface-bullets">
+                      {row.allowedTools.map((toolName) => (
+                        <li key={`${row.subjectId}-${toolName}`}>
+                          <code>{toolName}</code>
+                        </li>
+                      ))}
+                    </ul>
+                  </>
+                ) : null}
                 <p className="section-subtitle">Scopes</p>
                 <ul className="surface-bullets">
                   {row.scopes.map((scope) => (

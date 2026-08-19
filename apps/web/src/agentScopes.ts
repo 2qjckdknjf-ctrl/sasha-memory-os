@@ -10,6 +10,8 @@ export type AgentScopePreview = {
   displayName: string;
   kind: 'user' | 'agent';
   note: string;
+  purpose?: string;
+  allowedTools?: string[];
   sensitivity: string;
   capabilities: string[];
   rights: AgentScopeRow[];
@@ -56,6 +58,29 @@ export const AGENT_SCOPE_PREVIEWS: AgentScopePreview[] = [
       { resource: 'Проект', access: 'Чтение' },
       { resource: 'Состояние проекта', access: 'Чтение и запись' },
       { resource: 'Хэнд-оффы и сессии', access: 'Чтение и запись' },
+    ],
+  },
+  {
+    actor: 'roma',
+    displayName: 'ROMA',
+    kind: 'agent',
+    note: 'ROMA работает только по явно allowlisted проектам и не получает personal/mail/restricted без отдельного ACL.',
+    purpose: 'Аудит, QA и findings по явно разрешенным проектам без наследования owner-прав.',
+    allowedTools: [
+      'memory.search',
+      'memory.get',
+      'context.project',
+      'capture.text',
+      'handoff.create',
+      'memory.set_status',
+    ],
+    sensitivity: 'До internal',
+    capabilities: ['memory.read.project', 'memory.write.findings', 'qa.read', 'handoff.write'],
+    rights: [
+      { resource: 'Память allowlisted проекта', access: 'Чтение и запись' },
+      { resource: 'Состояние проекта', access: 'Чтение' },
+      { resource: 'Хэнд-оффы', access: 'Чтение и запись' },
+      { resource: 'Личные и почтовые данные', access: 'Нет доступа без явного ACL' },
     ],
   },
 ];
