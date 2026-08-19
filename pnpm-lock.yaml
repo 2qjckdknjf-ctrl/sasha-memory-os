@@ -42,6 +42,9 @@ importers:
       '@memory-os/authz':
         specifier: workspace:^
         version: link:../../packages/authz
+      '@memory-os/connector-apple-bridge':
+        specifier: workspace:*
+        version: link:../../connectors/apple-bridge
       '@memory-os/connector-github':
         specifier: workspace:*
         version: link:../../connectors/github
@@ -174,6 +177,9 @@ importers:
       '@memory-os/connector-sdk':
         specifier: workspace:*
         version: link:../../packages/connector-sdk
+      '@memory-os/schemas':
+        specifier: workspace:*
+        version: link:../../packages/schemas
 
   connectors/github:
     dependencies:
@@ -269,6 +275,9 @@ importers:
 
   workers/connector-sync:
     dependencies:
+      '@memory-os/connector-apple-bridge':
+        specifier: workspace:*
+        version: link:../../connectors/apple-bridge
       '@memory-os/connector-github':
         specifier: workspace:*
         version: link:../../connectors/github

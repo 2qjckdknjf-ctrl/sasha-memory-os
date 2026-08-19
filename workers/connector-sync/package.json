@@ -15,6 +15,7 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@memory-os/connector-apple-bridge": "workspace:*",
     "@memory-os/connector-github": "workspace:*",
     "@memory-os/connector-gmail": "workspace:*",
     "@memory-os/connector-google-calendar": "workspace:*",

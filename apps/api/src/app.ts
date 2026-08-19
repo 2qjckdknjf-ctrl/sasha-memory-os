@@ -11,6 +11,11 @@ import {
   type MemoryRecord,
   type MemoryStore,
 } from '@memory-os/domain';
+import {
+  appleBridgeConnector,
+  buildAppleBridgeRecord,
+  type AppleBridgeRawObject,
+} from '@memory-os/connector-apple-bridge';
 import { githubConnector } from '@memory-os/connector-github';
 import { gmailConnector } from '@memory-os/connector-gmail';
 import { googleCalendarConnector } from '@memory-os/connector-google-calendar';
@@ -30,6 +35,7 @@ import {
   type SyncCursor,
 } from '@memory-os/connector-sdk';
 import {
+  appleCompanionIngestRequestSchema,
   applyExtractionSchema,
   bindAuthUserSchema,
   captureDocumentSchema,
@@ -400,6 +406,39 @@ function missingProjectResponse(c: { json: (body: { error: string }, status: 400
   return c.json({ error: 'project_id is required for this write' }, 400);
 }
 
+async function resolveProjectIdForWrite(input: {
+  gateway: SupabaseMemoryGateway | null;
+  subjectId: string;
+  workspaceId: string;
+  projectRef: string;
+}): Promise<{ projectId: string | null; error: 'not_found' | 'ambiguous' | null }> {
+  const trimmed = input.projectRef.trim();
+  if (!trimmed) {
+    return { projectId: null, error: 'not_found' };
+  }
+  if (/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(trimmed)) {
+    return { projectId: trimmed, error: null };
+  }
+  if (!input.gateway) {
+    return {
+      projectId: trimmed.toLowerCase() === 'aistroyka' ? seedProject : null,
+      error: trimmed.toLowerCase() === 'aistroyka' ? null : 'not_found',
+    };
+  }
+  const resolved = await input.gateway.resolveProjectRef({
+    subjectId: input.subjectId,
+    workspaceId: input.workspaceId,
+    projectRef: trimmed,
+  });
+  if (!resolved.projectId) {
+    return {
+      projectId: null,
+      error: resolved.matchCount > 1 ? 'ambiguous' : 'not_found',
+    };
+  }
+  return { projectId: resolved.projectId, error: null };
+}
+
 async function maybeEmbedCapturedMemory(
   gateway: SupabaseMemoryGateway,
   input: {
@@ -434,6 +473,7 @@ async function maybeEmbedCapturedMemory(
 }
 
 const defaultSdkConnectorRegistry = createConnectorRegistry([
+  appleBridgeConnector,
   githubConnector,
   gmailConnector,
   googleDriveConnector,
@@ -441,6 +481,7 @@ const defaultSdkConnectorRegistry = createConnectorRegistry([
 ]);
 
 const connectorDisplayNames: Record<string, string> = {
+  apple: 'Apple companion',
   github: 'GitHub',
   gmail: 'Gmail (stub)',
   'google-drive': 'Google Drive',
@@ -2044,6 +2085,138 @@ export function createApp(options?: {
       createdBySubject: authz.subjectId,
     });
     return c.json({ id: event.id, idempotent: true }, 201);
+  });
+
+  app.post('/v1/ingestion/apple-items', async (c) => {
+    const parsedBody = appleCompanionIngestRequestSchema.safeParse(await c.req.json().catch(() => ({})));
+    if (!parsedBody.success) {
+      const missingProject = parsedBody.error.issues.some((issue) => issue.path[0] === 'project_id');
+      return c.json(
+        {
+          error: missingProject
+            ? 'project_id is required for this write'
+            : parsedBody.error.issues[0]?.message ?? 'invalid apple ingest request',
+        },
+        400,
+      );
+    }
+    const body = parsedBody.data;
+    const authz = c.get('authz');
+    const gw = c.get('gateway');
+    const resolved = await resolveProjectIdForWrite({
+      gateway: gw,
+      subjectId: body.actor_subject_id,
+      workspaceId: body.workspace_id,
+      projectRef: body.project_id,
+    });
+    if (!resolved.projectId) {
+      return c.json(
+        {
+          error:
+            resolved.error === 'ambiguous'
+              ? 'project_id is ambiguous'
+              : 'project_id was not found',
+        },
+        resolved.error === 'ambiguous' ? 409 : 404,
+      );
+    }
+    if (
+      !authorize(authz, {
+        resourceType: 'memory',
+        action: 'write',
+        projectId: resolved.projectId,
+        sensitivity: body.sensitivity,
+      })
+    ) {
+      return c.json({ error: 'forbidden' }, 403);
+    }
+
+    const rawObject: AppleBridgeRawObject = {
+      ...body,
+      project_id: resolved.projectId,
+    };
+    const accountId = body.connection_id ?? `device:${body.device_id}`;
+    const normalized = buildAppleBridgeRecord({
+      workspaceId: body.workspace_id,
+      accountId,
+      rawObject,
+    });
+
+    if (gw) {
+      try {
+        const result = await gw.captureConnectorRecord({
+          subjectId: body.actor_subject_id,
+          workspaceId: body.workspace_id,
+          projectId: resolved.projectId,
+          provider: normalized.envelope.source.provider,
+          accountId: normalized.envelope.source.account_id ?? null,
+          externalId: normalized.envelope.source.external_id ?? rawObject.item_id,
+          externalVersion: normalized.envelope.source.external_version ?? null,
+          eventType: normalized.envelope.event_type,
+          title: normalized.capture.title,
+          text: normalized.capture.text,
+          idempotencyKey: normalized.capture.idempotencyKey,
+          sensitivity: normalized.envelope.scope.sensitivity,
+          storageMode: normalized.envelope.scope.storage_mode,
+          observedAt: normalized.envelope.observed_at,
+          filename: normalized.capture.filename,
+          mimeType: normalized.capture.mimeType,
+          canonicalReference: normalized.externalObject.canonicalReference ?? null,
+          provenance: normalized.envelope.provenance,
+          metadata: normalized.externalObject.metadata,
+          processNow: body.process_now,
+        });
+        const embedding = await maybeEmbedCapturedMemory(gw, {
+          subjectId: body.actor_subject_id,
+          title: normalized.capture.title,
+          text: normalized.capture.text,
+          captureResult: result,
+        });
+        return c.json(
+          {
+            queued: true,
+            projectId: resolved.projectId,
+            normalized,
+            result: {
+              ...result,
+              embedding,
+            },
+          },
+          201,
+        );
+      } catch (err) {
+        if (isForbiddenError(err)) return c.json({ error: 'forbidden' }, 403);
+        return c.json({ error: (err as Error).message }, 500);
+      }
+    }
+
+    const event = c.get('store').ingestEvent({
+      workspaceId: body.workspace_id,
+      projectId: resolved.projectId,
+      provider: normalized.envelope.source.provider,
+      eventType: normalized.envelope.event_type,
+      idempotencyKey: normalized.envelope.idempotency_key,
+      observedAt: normalized.envelope.observed_at,
+      sensitivity: normalized.envelope.scope.sensitivity,
+      payload: {
+        ...normalized.envelope,
+        title: normalized.capture.title,
+        filename: normalized.capture.filename,
+        mime_type: normalized.capture.mimeType,
+        metadata: normalized.externalObject.metadata,
+      } as Record<string, unknown>,
+      createdBySubject: body.actor_subject_id,
+    });
+    return c.json(
+      {
+        queued: true,
+        projectId: resolved.projectId,
+        eventId: event.id,
+        backend: 'memory-store',
+        normalized,
+      },
+      201,
+    );
   });
 
   app.post('/v1/capture/text', async (c) => {
