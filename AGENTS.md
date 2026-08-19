@@ -15,3 +15,12 @@
 - Local API defaults to `http://localhost:8787` with `backend=supabase`; keep `service_role` and `MEMORY_OS_API_SECRET` server-side / in local `.env` only (never commit).
 - Canonical local project root is `/Users/alex/MAMORYOS/MAMORUOS` (renamed from `Без названия`); prefer the `Users-alex-MAMORYOS-MAMORUOS` Cursor project slug over the older `Users-alex-MAMORYOS` one.
 - Default SQL hybrid embeddings use `vector(32)` / dims 32; optional HQ path is 1536 via `MEMORY_OS_OPENAI_EMBED_DIMS` (do not assume dims>32 is the active default).
+
+## Cursor Cloud specific instructions
+
+- Toolchain: Node 22 is preinstalled. The repo pins `pnpm@9.15.9` via `packageManager`, but the default `pnpm` on PATH here is nvm's v10 (mismatches the lockfile). Always run pnpm through corepack so the pinned version is used, e.g. `corepack pnpm@9.15.9 <cmd>`. The update script already runs `corepack pnpm@9.15.9 install`.
+- Standard commands live in `README.md` and root `package.json` scripts (`typecheck`, `test`, `dev:api`, `dev:web`). `pnpm lint` is a placeholder no-op (reserved for M1); there is no real linter yet.
+- The API runs fully locally with NO secrets: when `MEMORY_OS_SUPABASE_URL` + anon key + `MEMORY_OS_API_SECRET` are not all set, `loadMemoryOsEnv()` returns null and the app boots in seeded in-memory `backend=memory-store` mode (`apps/api/src/server.ts`). Verify via `GET /health`.
+- With `MEMORY_OS_ENV` unset/`local` (default), owner/cron ops routes do NOT require the API secret (`apps/api/src/httpAuth.ts`).
+- Dev servers: `dev:api` serves on `:8787`; `dev:web` serves Vite on `:5173` and proxies `/v1` and `/health` to `:8787` (`apps/web/vite.config.ts`). The web Control Center auto-detects the backend from `/health`, so start the API first. The `/ops` route is the operational console (capture text/doc/link, search, review queue, consolidation).
+- Test suite: `pnpm test` passes without secrets; the Supabase RPC/RLS suites (`apps/api/src/supabase.*.test.ts`) auto-skip when live Supabase env is absent. Live Supabase backend, connector OAuth exchange, re-embed persistence, and consolidation require the dedicated Supabase project secrets and are optional for local dev.
