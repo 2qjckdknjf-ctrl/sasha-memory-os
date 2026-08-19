@@ -32,6 +32,7 @@ import {
   requireExplicitProjectId,
   resolveReadProjectId,
   resolveWriteProjectId,
+  shouldLoadProjectScopedContext,
 } from './projectScope';
 import { SearchPage } from './SearchPage';
 import { TasksPage } from './TasksPage';
@@ -267,22 +268,18 @@ export function App() {
   }
 
   async function refreshProjectContext(mode: BackendMode = backend) {
+    if (!shouldLoadProjectScopedContext(readProjectId)) {
+      setProjectContext(null);
+      setProjectStates([]);
+      return;
+    }
+
     if (mode === 'local') {
-      const localProjectStates = readProjectId
-        ? (() => {
-            const state = localStore.getProjectState(readProjectId);
-            return state ? [{ ...state } as Record<string, unknown>] : [];
-          })()
-        : [...localStore.projectStates.values()]
-            .flatMap((versions) => {
-              const state = versions[versions.length - 1];
-              return state ? ([{ ...state }] as Array<Record<string, unknown>>) : [];
-            });
+      const localProjectStates = (() => {
+        const state = localStore.getProjectState(readProjectId);
+        return state ? [{ ...state } as Record<string, unknown>] : [];
+      })();
       setProjectStates(localProjectStates);
-      if (!readProjectId) {
-        setProjectContext(null);
-        return;
-      }
       const localMemories = localStore.listCurrentMemories(WORKSPACE_ID, readProjectId);
       const localLatestHandoff = localStore.latestHandoff(readProjectId);
       setProjectContext({
@@ -303,53 +300,20 @@ export function App() {
       return;
     }
 
-    if (readProjectId) {
-      try {
-        const ctx = await apiGet<RemoteContext>(
-          `/v1/projects/${readProjectId}/context`,
-          subjectId,
-          actor,
-        );
-        setProjectContext(ctx);
-        setProjectStates(
-          ctx.state && typeof ctx.state === 'object' ? [ctx.state as Record<string, unknown>] : [],
-        );
-      } catch {
-        setProjectContext(null);
-        setProjectStates([]);
-      }
-      return;
-    }
-
-    setProjectContext(null);
-    if (projects.length === 0) {
+    try {
+      const ctx = await apiGet<RemoteContext>(
+        `/v1/projects/${readProjectId}/context`,
+        subjectId,
+        actor,
+      );
+      setProjectContext(ctx);
+      setProjectStates(
+        ctx.state && typeof ctx.state === 'object' ? [ctx.state as Record<string, unknown>] : [],
+      );
+    } catch {
+      setProjectContext(null);
       setProjectStates([]);
-      return;
     }
-    const states = await Promise.all(
-      projects.map(async (project) => {
-        try {
-          const state = await apiGet<Record<string, unknown> | null>(
-            `/v1/projects/${project.id}/state`,
-            subjectId,
-            actor,
-          );
-          if (!state || typeof state !== 'object') return null;
-          return {
-            ...state,
-            projectId:
-              typeof state.projectId === 'string'
-                ? state.projectId
-                : typeof state.project_id === 'string'
-                  ? state.project_id
-                  : project.id,
-          };
-        } catch {
-          return null;
-        }
-      }),
-    );
-    setProjectStates(states.filter(Boolean) as Array<Record<string, unknown>>);
   }
 
   async function refreshRemote() {
@@ -535,7 +499,7 @@ export function App() {
 
   useEffect(() => {
     void refreshProjectContext().catch((err: Error) => setError(err.message));
-  }, [actor, backend, projects, readProjectId, tick]);
+  }, [actor, backend, readProjectId, tick]);
 
   useEffect(() => {
     setHits([]);
@@ -1740,6 +1704,7 @@ export function App() {
   }
 
   const authPanel = <AuthPanel onBound={onAuthBound} onUnbound={onAuthUnbound} />;
+  const seedShortcutTo = findProjectById(projects, PROJECT_ID)?.id ?? null;
   const globalScopePanel = (
     <ProjectScopePanel
       projects={projects}
@@ -1756,6 +1721,7 @@ export function App() {
       authPanel={authPanel}
       error={error}
       notice={lastCapture}
+      seedShortcutTo={seedShortcutTo}
     >
       <Routes>
         <Route

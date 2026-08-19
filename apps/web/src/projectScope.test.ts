@@ -5,6 +5,7 @@ import {
   buildSearchRequest,
   requireExplicitProjectId,
   resolveWriteProjectId,
+  shouldLoadProjectScopedContext,
 } from './projectScope';
 
 const workspaceId = '11111111-1111-4111-8111-111111111111';
@@ -66,5 +67,10 @@ describe('project scope helpers', () => {
         selectedProjectId: seedProjectId,
       }),
     ).toBe(otherProjectId);
+  });
+
+  it('skips project-context loading when no single project is selected', () => {
+    expect(shouldLoadProjectScopedContext(null)).toBe(false);
+    expect(shouldLoadProjectScopedContext(otherProjectId)).toBe(true);
   });
 });

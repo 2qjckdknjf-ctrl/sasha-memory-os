@@ -3,8 +3,6 @@ import { Link } from 'react-router-dom';
 import {
   ACTOR_LABELS,
   type AgentActor,
-  PROJECT_ID,
-  PROJECT_NAME,
   formatTimestamp,
 } from './controlCenter';
 import {
@@ -180,8 +178,8 @@ export function HandoffsPage({
       {scopePanel}
 
       <div className="cta-row">
-        <Link to={`/projects/${PROJECT_ID}`} className="button-link button-link--secondary">
-          Shortcut: {PROJECT_NAME}
+        <Link to="/projects" className="button-link button-link--secondary">
+          Каталог проектов
         </Link>
         <Link to="/tasks" className="button-link button-link--secondary">
           Открыть задачи

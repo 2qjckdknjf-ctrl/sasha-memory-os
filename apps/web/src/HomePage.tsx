@@ -1,8 +1,6 @@
 import type { ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import {
-  PROJECT_ID,
-  PROJECT_NAME,
   type ConnectionRecord,
   type StateSummary,
   type TimelineEntry,
@@ -62,8 +60,8 @@ export function HomePage({
         <Link to="/projects" className="button-link button-link--secondary">
           Все проекты
         </Link>
-        <Link to={`/projects/${PROJECT_ID}`} className="button-link button-link--secondary">
-          Открыть проект
+        <Link to="/projects" className="button-link button-link--secondary">
+          Открыть каталог проектов
         </Link>
         <Link to="/conflicts" className="button-link button-link--secondary">
           Разобрать очередь
@@ -177,8 +175,8 @@ export function HomePage({
               <Link to="/handoffs" className="button-link button-link--secondary">
                 Открыть хэнд-оффы
               </Link>
-              <Link to={`/projects/${PROJECT_ID}`} className="button-link button-link--secondary">
-                Shortcut: {PROJECT_NAME}
+              <Link to="/projects" className="button-link button-link--secondary">
+                Каталог проектов
               </Link>
             </div>
           </div>

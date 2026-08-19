@@ -2,8 +2,6 @@ import type { ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import { ReviewQueueList } from './ReviewQueueList';
 import {
-  PROJECT_ID,
-  PROJECT_NAME,
   type Actor,
   type BackendMode,
   type ReviewQueueItem,
@@ -43,8 +41,8 @@ export function ConflictsPage({
       <header className="page-header">
         <p className="eyebrow">Конфликты</p>
         <div className="cta-row">
-          <Link to={`/projects/${PROJECT_ID}`} className="button-link button-link--secondary">
-            Shortcut: {PROJECT_NAME}
+          <Link to="/projects" className="button-link button-link--secondary">
+            Каталог проектов
           </Link>
           <Link to="/search" className="button-link button-link--secondary">
             К поиску

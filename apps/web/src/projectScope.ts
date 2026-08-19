@@ -52,6 +52,10 @@ export function resolveWriteProjectId(selection: ProjectScopeSelection): string 
   return selection.routeProjectId ?? selection.selectedProjectId ?? null;
 }
 
+export function shouldLoadProjectScopedContext(projectId: string | null | undefined): boolean {
+  return Boolean(projectId);
+}
+
 export function requireExplicitProjectId(projectId: string | null | undefined): string {
   if (projectId) return projectId;
   throw new Error(

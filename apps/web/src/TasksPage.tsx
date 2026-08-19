@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react';
 import { Link } from 'react-router-dom';
-import { PROJECT_ID, PROJECT_NAME, formatTimestamp } from './controlCenter';
+import { formatTimestamp } from './controlCenter';
 import { describeTaskLane, type TaskSurfaceData, type TaskSurfaceItem } from './surfaces';
 
 type Props = {
@@ -76,8 +76,8 @@ export function TasksPage({ scopeLabel, scopePanel, taskSurface }: Props) {
       {scopePanel}
 
       <div className="cta-row">
-        <Link to={`/projects/${PROJECT_ID}`} className="button-link button-link--secondary">
-          Shortcut: {PROJECT_NAME}
+        <Link to="/projects" className="button-link button-link--secondary">
+          Каталог проектов
         </Link>
         <Link to="/search" className="button-link button-link--secondary">
           Поиск по памяти
