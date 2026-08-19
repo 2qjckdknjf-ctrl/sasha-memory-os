@@ -476,6 +476,22 @@ export class SupabaseMemoryGateway {
     }>;
   }
 
+  async listProjectHints(subjectId: string, workspaceId: string) {
+    const { data, error } = await this.client.rpc('api_list_project_hints', {
+      p_secret: this.apiSecret,
+      p_subject_id: subjectId,
+      p_workspace_id: workspaceId,
+    });
+    if (error) throw error;
+    return data as Array<{
+      id: string;
+      slug: string;
+      name: string;
+      status: string;
+      url?: string | null;
+    }>;
+  }
+
   async resolveProjectRef(input: {
     subjectId: string;
     workspaceId: string;

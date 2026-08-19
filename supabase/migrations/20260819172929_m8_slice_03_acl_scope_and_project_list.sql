@@ -328,6 +328,65 @@ AS $$
   SELECT app.api_list_projects(p_secret, p_subject_id, p_workspace_id);
 $$;
 
+CREATE OR REPLACE FUNCTION app.api_list_project_hints(
+  p_secret text,
+  p_subject_id uuid,
+  p_workspace_id uuid
+)
+RETURNS jsonb
+LANGUAGE plpgsql
+STABLE
+SECURITY DEFINER
+SET search_path = public, app
+AS $$
+BEGIN
+  PERFORM app.assert_api_secret(p_secret);
+  PERFORM app.with_subject(p_subject_id);
+
+  IF NOT app.is_workspace_member(p_workspace_id) THEN
+    RAISE EXCEPTION 'forbidden' USING ERRCODE = '42501';
+  END IF;
+
+  RETURN COALESCE((
+    SELECT jsonb_agg(
+      jsonb_build_object(
+        'id', p.id,
+        'slug', p.slug,
+        'name', p.name,
+        'status', p.status,
+        'url', repo.url
+      )
+      ORDER BY p.name, p.slug
+    )
+    FROM projects p
+    LEFT JOIN LATERAL (
+      SELECT nullif(value->>'url', '') AS url
+      FROM jsonb_array_elements(coalesce(p.repositories, '[]'::jsonb))
+      ORDER BY value->>'collection_id'
+      LIMIT 1
+    ) repo ON true
+    WHERE p.workspace_id = p_workspace_id
+      AND (
+        app.has_acl(p.workspace_id, 'memory', 'read', p.id, 'internal')
+        OR app.has_acl(p.workspace_id, 'memory', 'write', p.id, 'internal')
+      )
+  ), '[]'::jsonb);
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION public.api_list_project_hints(
+  p_secret text,
+  p_subject_id uuid,
+  p_workspace_id uuid
+)
+RETURNS jsonb
+LANGUAGE sql
+SECURITY DEFINER
+SET search_path = public, app
+AS $$
+  SELECT app.api_list_project_hints(p_secret, p_subject_id, p_workspace_id);
+$$;
+
 CREATE OR REPLACE FUNCTION app.api_resolve_project_ref(
   p_secret text,
   p_subject_id uuid,
@@ -496,6 +555,10 @@ GRANT EXECUTE ON FUNCTION public.api_set_connection_collection_exclusions(text, 
 GRANT EXECUTE ON FUNCTION app.api_list_projects(text, uuid, uuid)
   TO anon, authenticated, service_role;
 GRANT EXECUTE ON FUNCTION public.api_list_projects(text, uuid, uuid)
+  TO anon, authenticated, service_role;
+GRANT EXECUTE ON FUNCTION app.api_list_project_hints(text, uuid, uuid)
+  TO anon, authenticated, service_role;
+GRANT EXECUTE ON FUNCTION public.api_list_project_hints(text, uuid, uuid)
   TO anon, authenticated, service_role;
 GRANT EXECUTE ON FUNCTION app.api_resolve_project_ref(text, uuid, uuid, text)
   TO anon, authenticated, service_role;

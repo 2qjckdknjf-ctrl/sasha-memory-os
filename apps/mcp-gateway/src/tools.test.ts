@@ -16,6 +16,15 @@ function createTwoProjectGateway() {
         status: 'active',
         url: 'https://github.com/aistroyka/core',
       },
+    ]),
+    listProjectHints: vi.fn(async () => [
+      {
+        id: projectId,
+        slug: 'aistroyka',
+        name: 'AISTROYKA',
+        status: 'active',
+        url: 'https://github.com/aistroyka/core',
+      },
       {
         id: otherProjectId,
         slug: 'repo-b',
@@ -421,6 +430,15 @@ describe('mcp gateway alpha', () => {
   it('errors on ambiguous project refs instead of defaulting to AISTROYKA', async () => {
     const gateway = {
       listProjects: vi.fn(async () => [
+        {
+          id: projectId,
+          slug: 'aistroyka',
+          name: 'AISTROYKA',
+          status: 'active',
+          url: 'https://github.com/aistroyka/core',
+        },
+      ]),
+      listProjectHints: vi.fn(async () => [
         {
           id: projectId,
           slug: 'aistroyka',

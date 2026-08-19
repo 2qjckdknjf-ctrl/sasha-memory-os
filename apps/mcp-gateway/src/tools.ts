@@ -168,7 +168,7 @@ async function loadProjectHints(
   if (!gateway) {
     return LOCAL_PROJECT_CATALOG.map(({ aliases: _aliases, ...project }) => project);
   }
-  return gateway.listProjects(subjectId, workspaceId);
+  return gateway.listProjectHints(subjectId, workspaceId);
 }
 
 function extractProjectRefsFromArgs(
