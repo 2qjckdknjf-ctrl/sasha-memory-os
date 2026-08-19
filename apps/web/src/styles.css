@@ -16,6 +16,7 @@
     radial-gradient(900px 500px at 100% 0%, #1a2a38 0%, transparent 50%),
     var(--bg0);
   font-family: var(--font-body);
+  color-scheme: dark;
 }
 
 * {
@@ -31,6 +32,7 @@ body,
 
 body {
   min-height: 100vh;
+  line-height: 1.5;
 }
 
 body,
@@ -41,6 +43,7 @@ a {
 button,
 input,
 textarea,
+select,
 summary {
   font: inherit;
 }
@@ -56,6 +59,7 @@ a:hover {
 button,
 input,
 textarea,
+select,
 a,
 summary {
   outline: none;
@@ -64,10 +68,29 @@ summary {
 button:focus-visible,
 input:focus-visible,
 textarea:focus-visible,
+select:focus-visible,
 a:focus-visible,
 summary:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
   box-shadow: 0 0 0 3px color-mix(in oklab, var(--accent) 45%, transparent);
   border-radius: 0.4rem;
+}
+
+.skip-link {
+  position: absolute;
+  left: 1rem;
+  top: 0;
+  transform: translateY(-140%);
+  z-index: 20;
+  padding: 0.75rem 1rem;
+  border: 1px solid var(--accent);
+  background: var(--bg0);
+  color: var(--ink);
+}
+
+.skip-link:focus {
+  transform: translateY(1rem);
 }
 
 .app {
@@ -206,6 +229,11 @@ summary:focus-visible {
 .shell__main {
   display: grid;
   gap: 1rem;
+}
+
+.shell__main:focus {
+  outline: 2px solid var(--accent);
+  outline-offset: 0.4rem;
 }
 
 .page {
@@ -613,6 +641,11 @@ summary:focus-visible {
   margin-top: 1rem;
 }
 
+.form label {
+  display: grid;
+  gap: 0.35rem;
+}
+
 .form input,
 .form textarea {
   width: 100%;
@@ -622,9 +655,17 @@ summary:focus-visible {
   padding: 0.65rem 0.7rem;
 }
 
+.form input[type='file'] {
+  padding: 0.45rem 0.55rem;
+}
+
 .hint {
   color: var(--muted);
   font-size: 0.85rem;
+}
+
+.error {
+  color: var(--warn);
 }
 
 .checkbox-row {
