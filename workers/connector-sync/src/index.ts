@@ -1,7 +1,7 @@
 import { githubConnector } from '@memory-os/connector-github';
-import { pullGmailDelta } from '@memory-os/connector-gmail';
-import { pullGoogleCalendarDelta } from '@memory-os/connector-google-calendar';
-import { pullGoogleDriveDelta } from '@memory-os/connector-google-drive';
+import { gmailConnector } from '@memory-os/connector-gmail';
+import { googleCalendarConnector } from '@memory-os/connector-google-calendar';
+import { googleDriveConnector } from '@memory-os/connector-google-drive';
 import {
   createConfiguredVaultStore,
   createMemoryOsClient,
@@ -10,6 +10,7 @@ import {
 } from '@memory-os/db';
 import { embedMemoryText } from '@memory-os/retrieval';
 import {
+  ConnectorRegistry,
   createConnectorRegistry,
   runConnectorSync,
   resolveConnectorSyncOutcome,
@@ -30,7 +31,12 @@ const OWNER_ID =
   process.env.MEMORY_OS_OWNER_SUBJECT_ID ??
   '33333333-3333-4333-8333-333333333301';
 
-const sdkConnectorRegistry = createConnectorRegistry([githubConnector]);
+const defaultSdkConnectorRegistry = createConnectorRegistry([
+  githubConnector,
+  gmailConnector,
+  googleDriveConnector,
+  googleCalendarConnector,
+]);
 
 export type SyncPlanItem = {
   connectionId: string;
@@ -61,25 +67,6 @@ function requireGateway(
     );
   }
   return new SupabaseMemoryGateway(createMemoryOsClient(env), env.apiSecret);
-}
-
-async function pullLegacyConnectorDelta(item: SyncPlanItem, vault: VaultStore) {
-  const common = {
-    connectionId: item.connectionId,
-    displayName: item.displayName ?? item.connectorId,
-    vaultRef: item.vaultRef ?? undefined,
-    vault,
-  };
-  switch (item.connectorId) {
-    case 'google-drive':
-      return pullGoogleDriveDelta(common);
-    case 'gmail':
-      return pullGmailDelta(common);
-    case 'google-calendar':
-      return pullGoogleCalendarDelta(common);
-    default:
-      return null;
-  }
 }
 
 function toSyncCursor(
@@ -196,8 +183,9 @@ async function ingestConnectorDelta(
   workspaceId: string,
   item: SyncPlanItem,
   vault: VaultStore,
+  connectorRegistry: ConnectorRegistry,
 ): Promise<{ captured: number; pullMode: string; note: string }> {
-  const sdkConnector = sdkConnectorRegistry.get(item.connectorId);
+  const sdkConnector = connectorRegistry.get(item.connectorId);
   if (sdkConnector) {
     return ingestSdkConnectorDelta(
       gateway,
@@ -208,31 +196,7 @@ async function ingestConnectorDelta(
       sdkConnector,
     );
   }
-  const delta = await pullLegacyConnectorDelta(item, vault);
-  if (!delta) return { captured: 0, pullMode: 'none', note: 'unsupported connector' };
-  let captured = 0;
-  for (const event of delta.items) {
-    const captureResult = await gateway.captureText({
-      subjectId,
-      workspaceId,
-      projectId: PROJECT_ID,
-      title: event.title,
-      text: event.text,
-      idempotencyKey: `connector-sync/${item.connectionId}/${event.externalId}`,
-      processNow: true,
-      filename: `${item.connectorId}://${event.externalId}`,
-      mimeType: 'text/plain',
-    });
-    await maybeEmbed(gateway, subjectId, event.title, event.text, captureResult);
-    captured += 1;
-  }
-  const pullMode =
-    'mode' in delta && typeof delta.mode === 'string' ? delta.mode : 'stub';
-  const note =
-    'note' in delta && typeof delta.note === 'string'
-      ? delta.note
-      : 'connector delta ingested';
-  return { captured, pullMode, note };
+  return { captured: 0, pullMode: 'none', note: 'unsupported connector' };
 }
 
 export async function planConnectorSync(options?: {
@@ -241,10 +205,12 @@ export async function planConnectorSync(options?: {
   connectionId?: string | null;
   gateway?: SupabaseMemoryGateway;
   ingest?: boolean;
+  connectorRegistry?: ConnectorRegistry;
 }): Promise<SyncPlan> {
   const gateway = requireGateway(options?.gateway);
   const subjectId = options?.subjectId ?? OWNER_ID;
   const workspaceId = options?.workspaceId ?? WORKSPACE_ID;
+  const connectorRegistry = options?.connectorRegistry ?? defaultSdkConnectorRegistry;
   const stale = await gateway.deadLetterStaleJobs({
     subjectId,
     workspaceId,
@@ -279,6 +245,7 @@ export async function planConnectorSync(options?: {
           workspaceId,
           item,
           vault,
+          connectorRegistry,
         );
         captured += ingested.captured;
         pullMode = ingested.pullMode;

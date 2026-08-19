@@ -129,7 +129,7 @@ export function App() {
       {
         id: 'gmail',
         version: '1.0.0',
-        displayName: 'Gmail',
+        displayName: 'Gmail (stub)',
         authType: 'oauth2',
         capabilities: ['messages.metadata', 'labels.read'],
         storageModes: ['reference', 'indexed'],

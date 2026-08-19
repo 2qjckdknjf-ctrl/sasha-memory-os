@@ -73,6 +73,8 @@ describe('memory api demo slice', () => {
       expect.arrayContaining([
         expect.objectContaining({ id: 'github', authType: 'oauth2' }),
         expect.objectContaining({ id: 'gmail' }),
+        expect.objectContaining({ id: 'google-drive' }),
+        expect.objectContaining({ id: 'google-calendar' }),
       ]),
     );
   });

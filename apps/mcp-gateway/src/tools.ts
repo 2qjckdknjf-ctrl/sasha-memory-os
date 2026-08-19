@@ -7,10 +7,11 @@ import {
   type SupabaseMemoryGateway,
 } from '@memory-os/db';
 import { githubConnector } from '@memory-os/connector-github';
-import { pullGmailDelta } from '@memory-os/connector-gmail';
-import { pullGoogleCalendarDelta } from '@memory-os/connector-google-calendar';
-import { pullGoogleDriveDelta } from '@memory-os/connector-google-drive';
+import { gmailConnector } from '@memory-os/connector-gmail';
+import { googleCalendarConnector } from '@memory-os/connector-google-calendar';
+import { googleDriveConnector } from '@memory-os/connector-google-drive';
 import {
+  ConnectorRegistry,
   createConnectorRegistry,
   exchangeAuthorizationCode,
   fingerprintAuthorizationCode,
@@ -19,7 +20,6 @@ import {
   runConnectorSync,
   type RegisteredConnector,
   type SyncCursor,
-  type VaultStore,
 } from '@memory-os/connector-sdk';
 import {
   createEmbeddingAdapter,
@@ -62,7 +62,12 @@ import {
 
 const DEFAULT_PROJECT_ID = '44444444-4444-4444-8444-444444444401';
 
-const sdkConnectorRegistry = createConnectorRegistry([githubConnector]);
+const defaultSdkConnectorRegistry = createConnectorRegistry([
+  githubConnector,
+  gmailConnector,
+  googleDriveConnector,
+  googleCalendarConnector,
+]);
 
 function toSyncCursor(
   row:
@@ -154,33 +159,6 @@ async function ingestSdkConnectorDelta(
     pullMode: syncRun.page.pullMode ?? 'stub',
     note: syncRun.page.note ?? `${syncRun.manifest.id} connector sync completed`,
   };
-}
-
-async function pullMcpLegacyConnectorDelta(
-  item: {
-    connectorId: string;
-    connectionId: string;
-    displayName?: string;
-    vaultRef?: string | null;
-  },
-  vault?: VaultStore,
-) {
-  const common = {
-    connectionId: item.connectionId,
-    displayName: item.displayName ?? item.connectorId,
-    vaultRef: item.vaultRef ?? undefined,
-    vault,
-  };
-  switch (item.connectorId) {
-    case 'google-drive':
-      return pullGoogleDriveDelta(common);
-    case 'gmail':
-      return pullGmailDelta(common);
-    case 'google-calendar':
-      return pullGoogleCalendarDelta(common);
-    default:
-      return null;
-  }
 }
 
 async function maybeEmbedMcpCapture(
@@ -693,10 +671,12 @@ export function createMcpHandlers(options?: {
   store?: MemoryStore;
   gateway?: SupabaseMemoryGateway | null;
   profile?: McpProfileName | string | null;
+  connectorRegistry?: ConnectorRegistry;
 }) {
   const store = options?.store ?? createSeededStore();
   const gateway = options?.gateway ?? null;
   const profile = getMcpProfile(options?.profile);
+  const connectorRegistry = options?.connectorRegistry ?? defaultSdkConnectorRegistry;
   const tools: McpTool[] = mcpTools
     .filter((tool) => isToolAllowed(profile, tool.name))
     .map((tool) => ({
@@ -1148,13 +1128,12 @@ export function createMcpHandlers(options?: {
           const completed: Array<Record<string, unknown>> = [];
           let captured = 0;
           if (completeNow) {
-            const vault = createConfiguredVaultStore({ gateway });
             for (const item of result.enqueued ?? []) {
               if (!item.jobId) continue;
               try {
-                const sdkConnector = sdkConnectorRegistry.get(item.connectorId);
+                const sdkConnector = connectorRegistry.get(item.connectorId);
                 let pullMode = 'none';
-                let note: string | undefined;
+                let note = 'unsupported connector';
                 if (sdkConnector) {
                   const ingested = await ingestSdkConnectorDelta(
                     gateway,
@@ -1167,40 +1146,6 @@ export function createMcpHandlers(options?: {
                   captured += ingested.captured;
                   pullMode = ingested.pullMode;
                   note = ingested.note;
-                } else {
-                  const delta = await pullMcpLegacyConnectorDelta(item, vault);
-                  if (delta) {
-                    for (const event of delta.items) {
-                      const captureResult = await gateway.captureText({
-                        subjectId,
-                        workspaceId,
-                        projectId,
-                        title: event.title,
-                        text: event.text,
-                        idempotencyKey: `connector-sync/${item.connectionId}/${event.externalId}`,
-                        processNow: true,
-                        filename: `${item.connectorId}://${event.externalId}`,
-                        mimeType: 'text/plain',
-                      });
-                      await maybeEmbedMcpCapture(gateway, {
-                        subjectId,
-                        title: event.title,
-                        text: event.text,
-                        captureResult,
-                      });
-                      captured += 1;
-                    }
-                  }
-                  pullMode =
-                    delta && 'mode' in delta && typeof delta.mode === 'string'
-                      ? delta.mode
-                      : 'none';
-                  note =
-                    delta && 'note' in delta && typeof delta.note === 'string'
-                      ? delta.note
-                      : delta
-                        ? undefined
-                        : 'unsupported connector';
                 }
                 const outcome = resolveConnectorSyncOutcome({ pullMode, note });
                 completed.push({
