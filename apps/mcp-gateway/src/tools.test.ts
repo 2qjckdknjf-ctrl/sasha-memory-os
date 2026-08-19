@@ -65,6 +65,7 @@ function createTwoProjectGateway() {
       return { projectId: null, matchCount: 0, candidates: [] };
     }),
     captureText: vi.fn(async () => ({ process: null })),
+    createHandoff: vi.fn(async () => ({ id: 'handoff-1' })),
   };
 }
 
@@ -424,6 +425,27 @@ describe('mcp gateway alpha', () => {
     });
     expect(gateway.captureText).toHaveBeenCalledWith(
       expect.objectContaining({ projectId: null }),
+    );
+  });
+
+  it('routes ChatGPT handoff.create to an ingested project by shared name', async () => {
+    const gateway = createTwoProjectGateway();
+    const mcp = createMcpHandlers({ gateway: gateway as any, profile: 'chatgpt' });
+    await mcp.call('handoff.create', {
+      workspace_id: workspaceId,
+      from_subject_id: '33333333-3333-4333-8333-333333333302',
+      idempotency_key: 'mcp-chatgpt-handoff-repo-b-1',
+      payload: {
+        completed: ['routed handoff'],
+        artifacts: [],
+        validation: [],
+        open_items: ['repo-b'],
+        blockers: [],
+        recommended_next: ['continue repo-b'],
+      },
+    });
+    expect(gateway.createHandoff).toHaveBeenCalledWith(
+      expect.objectContaining({ projectId: otherProjectId }),
     );
   });
 

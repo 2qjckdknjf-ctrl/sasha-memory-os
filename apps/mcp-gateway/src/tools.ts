@@ -206,6 +206,10 @@ function extractProjectRefsFromArgs(
     if (slugPattern.test(lowered)) {
       refs.add(project.slug);
     }
+    const projectName = project.name.trim().toLowerCase();
+    if (projectName && lowered.includes(projectName)) {
+      refs.add(project.name);
+    }
   }
 
   return [...refs];

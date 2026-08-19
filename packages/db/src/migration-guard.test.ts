@@ -19,7 +19,8 @@ describe('m8 slice 03 migration guards', () => {
     expect(sql).toContain(`repo->>'collection_id' = p_collection_id`);
     expect(sql).not.toContain(`lower(p.slug) IN (v_owner_hint, v_repo_hint, v_name_hint)`);
     expect(sql).not.toContain(`lower(p.name) IN (lower(v_display_name), lower(coalesce(p_collection_id, '')))`);
-    expect(sql).not.toContain(`FROM unnest(coalesce(p.aliases`);
+    expect(sql).not.toContain(`lower(v_owner_hint)`);
+    expect(sql).not.toContain(`lower(v_repo_hint)`);
   });
 
   it('does not grant wildcard project access through null ACL rows', () => {
@@ -30,10 +31,12 @@ describe('m8 slice 03 migration guards', () => {
   it('limits connector project grants to ChatGPT/Cursor and keeps ROMA out', () => {
     expect(sql).toContain(`s.external_key IN ('chatgpt', 'cursor')`);
     expect(sql).not.toContain(`'roma'`);
+    expect(sql).toContain(`'handoff'`);
   });
 
   it('overrides ACL matching so workspace scope does not match concrete projects', () => {
     expect(aclScopeSql).toContain(`WHEN p_requested_project_id IS NULL THEN p_acl_project_id IS NULL`);
     expect(aclScopeSql).toContain(`ELSE p_acl_project_id = p_requested_project_id`);
+    expect(aclScopeSql).not.toContain(`unnest(coalesce(p.aliases`);
   });
 });

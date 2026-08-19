@@ -460,9 +460,7 @@ BEGIN
       'active',
       ARRAY[
         lower(v_display_name),
-        lower(coalesce(p_collection_id, '')),
-        lower(v_owner_hint),
-        lower(v_repo_hint)
+        lower(coalesce(p_collection_id, ''))
       ]::text[],
       jsonb_build_array(v_repo),
       jsonb_build_object(
@@ -479,9 +477,7 @@ BEGIN
         coalesce(v_project.aliases, '{}'::text[])
         || ARRAY[
           lower(v_display_name),
-          lower(coalesce(p_collection_id, '')),
-          lower(v_owner_hint),
-          lower(v_repo_hint)
+          lower(coalesce(p_collection_id, ''))
         ]::text[]
       ) alias
       WHERE alias IS NOT NULL AND btrim(alias) <> ''
@@ -533,19 +529,6 @@ BEGIN
   FROM subjects s
   WHERE s.workspace_id = p_workspace_id
     AND s.external_key IN ('chatgpt', 'cursor')
-    AND EXISTS (
-      SELECT 1
-      FROM acl_entries seed_acl
-      WHERE seed_acl.workspace_id = p_workspace_id
-        AND seed_acl.subject_id = s.id
-        AND seed_acl.effect = 'allow'
-        AND seed_acl.resource_type = 'handoff'
-        AND seed_acl.project_id = '44444444-4444-4444-8444-444444444401'
-        AND (
-          seed_acl.actions = '{}'
-          OR seed_acl.actions @> ARRAY['read', 'write']::text[]
-        )
-    )
     AND NOT EXISTS (
       SELECT 1
       FROM acl_entries a

@@ -447,11 +447,6 @@ BEGIN
           OR repo.collection_id = v_ref
           OR repo.external_id = v_ref
           OR repo.full_name = v_ref
-          OR EXISTS (
-            SELECT 1
-            FROM unnest(coalesce(p.aliases, '{}'::text[])) alias
-            WHERE lower(alias) = v_ref
-          )
         )
     )
     SELECT jsonb_build_object(
