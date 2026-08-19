@@ -6,6 +6,7 @@
 # Optional: MEMORY_OS_API_SECRET. Server should run MEMORY_OS_MCP_PROFILE=chatgpt.
 set -euo pipefail
 API="${MEMORY_OS_API_BASE_URL:-http://localhost:8787}"
+PROJECT_ID="44444444-4444-4444-8444-444444444401"
 SECRET_HEADER=()
 if [[ -n "${MEMORY_OS_API_SECRET:-}" ]]; then
   SECRET_HEADER=(-H "x-memory-os-api-secret: ${MEMORY_OS_API_SECRET}")
@@ -103,14 +104,14 @@ node -e '
   console.log(`tool allowlist ok (${actual.length})`);
 '
 
-echo "== memory.search (defaults fill actor/project)"
+echo "== memory.search (defaults fill actor/workspace; project stays optional)"
 rpc 3 tools/call "{\"name\":\"memory.search\",\"arguments\":{\"query\":\"Slice 01\",\"pack_context\":true}}" \
   | tee /tmp/memory-os-mcp-chatgpt-search.json
 echo
 assert_rpc_ok /tmp/memory-os-mcp-chatgpt-search.json
 
 echo "== memory.store_decision"
-rpc 4 tools/call "{\"name\":\"memory.store_decision\",\"arguments\":{\"title\":\"ChatGPT smoke decision ${KEY}\",\"content\":\"Pilot MCP write via streamable HTTP; marker=${KEY}\",\"idempotency_key\":\"${KEY}\"}}" \
+rpc 4 tools/call "{\"name\":\"memory.store_decision\",\"arguments\":{\"project_id\":\"${PROJECT_ID}\",\"title\":\"ChatGPT smoke decision ${KEY}\",\"content\":\"Pilot MCP write via streamable HTTP; marker=${KEY}\",\"idempotency_key\":\"${KEY}\"}}" \
   | tee /tmp/memory-os-mcp-chatgpt-decision.json
 echo
 assert_rpc_ok /tmp/memory-os-mcp-chatgpt-decision.json

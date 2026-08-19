@@ -1,8 +1,7 @@
+import type { ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import { ReviewQueueList } from './ReviewQueueList';
 import {
-  PROJECT_ID,
-  PROJECT_NAME,
   type Actor,
   type BackendMode,
   type ReviewQueueItem,
@@ -11,6 +10,8 @@ import {
 type Props = {
   actor: Actor;
   backend: BackendMode;
+  scopeLabel: string;
+  scopePanel: ReactNode;
   reviewQueue: ReviewQueueItem[];
   reviewQueueLoading: boolean;
   onSetReviewStatus: (
@@ -23,6 +24,8 @@ type Props = {
 export function ConflictsPage({
   actor,
   backend,
+  scopeLabel,
+  scopePanel,
   reviewQueue,
   reviewQueueLoading,
   onSetReviewStatus,
@@ -38,8 +41,8 @@ export function ConflictsPage({
       <header className="page-header">
         <p className="eyebrow">Конфликты</p>
         <div className="cta-row">
-          <Link to={`/projects/${PROJECT_ID}`} className="button-link button-link--secondary">
-            К проекту
+          <Link to="/projects" className="button-link button-link--secondary">
+            Каталог проектов
           </Link>
           <Link to="/search" className="button-link button-link--secondary">
             К поиску
@@ -48,13 +51,15 @@ export function ConflictsPage({
         <h1>Конфликты и спорные записи</h1>
         <p className="lede">
           Отдельная очередь для владельца: кандидаты на проверку, спорные записи и доступный
-          маршрут исправления дублей без перехода в ops-панель.
+          маршрут исправления дублей по {scopeLabel} без перехода в ops-панель.
         </p>
       </header>
 
+      {scopePanel}
+
       <div className="grid grid--home">
         <section className="panel">
-          <h2>Нужно внимание по {PROJECT_NAME}</h2>
+          <h2>Нужно внимание по {scopeLabel}</h2>
           <div className="stat-grid">
             <div className="stat-card">
               <span className="stat-card__label">Всего элементов</span>
@@ -112,7 +117,6 @@ export function ConflictsPage({
           actor={actor}
           items={reviewQueue}
           source="conflicts"
-          projectId={PROJECT_ID}
           emptyMessage={
             reviewQueueLoading
               ? 'Загружаю элементы, требующие решения…'

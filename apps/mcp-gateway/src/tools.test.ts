@@ -5,6 +5,8 @@ const projectId = '44444444-4444-4444-8444-444444444401';
 const workspaceId = '11111111-1111-4111-8111-111111111111';
 const cursor = '33333333-3333-4333-8333-333333333303';
 const otherProjectId = '44444444-4444-4444-8444-444444444430';
+const coreProjectId = '44444444-4444-4444-8444-444444444431';
+const osProjectId = '44444444-4444-4444-8444-444444444432';
 
 function createTwoProjectGateway() {
   return {
@@ -65,7 +67,84 @@ function createTwoProjectGateway() {
       return { projectId: null, matchCount: 0, candidates: [] };
     }),
     captureText: vi.fn(async () => ({ process: null })),
+    createDecision: vi.fn(async () => ({ id: 'decision-1' })),
     createHandoff: vi.fn(async () => ({ id: 'handoff-1' })),
+    search: vi.fn(async () => []),
+  };
+}
+
+function createShortTokenGateway() {
+  return {
+    listProjectHints: vi.fn(async () => [
+      {
+        id: coreProjectId,
+        slug: 'core',
+        name: 'core',
+        status: 'active',
+        url: 'https://github.com/team/core',
+      },
+      {
+        id: osProjectId,
+        slug: 'os',
+        name: 'os',
+        status: 'active',
+        url: 'https://github.com/team/os',
+      },
+      {
+        id: projectId,
+        slug: 'aistroyka',
+        name: 'AISTROYKA',
+        status: 'active',
+        url: 'https://github.com/aistroyka/core',
+      },
+    ]),
+    resolveProjectRef: vi.fn(async ({ projectRef }: { projectRef?: string | null }) => {
+      if (projectRef === coreProjectId || projectRef === 'core') {
+        return {
+          projectId: coreProjectId,
+          matchCount: 1,
+          candidates: [
+            {
+              id: coreProjectId,
+              slug: 'core',
+              name: 'core',
+              url: 'https://github.com/team/core',
+            },
+          ],
+        };
+      }
+      if (projectRef === osProjectId || projectRef === 'os') {
+        return {
+          projectId: osProjectId,
+          matchCount: 1,
+          candidates: [
+            {
+              id: osProjectId,
+              slug: 'os',
+              name: 'os',
+              url: 'https://github.com/team/os',
+            },
+          ],
+        };
+      }
+      if (projectRef === projectId || projectRef === 'aistroyka' || projectRef === 'AISTROYKA') {
+        return {
+          projectId,
+          matchCount: 1,
+          candidates: [
+            {
+              id: projectId,
+              slug: 'aistroyka',
+              name: 'AISTROYKA',
+              url: 'https://github.com/aistroyka/core',
+            },
+          ],
+        };
+      }
+      return { projectId: null, matchCount: 0, candidates: [] };
+    }),
+    createDecision: vi.fn(async () => ({ id: 'decision-short-token' })),
+    captureText: vi.fn(async () => ({ process: null })),
   };
 }
 
@@ -136,6 +215,49 @@ describe('mcp gateway alpha', () => {
     expect(result.failed).toBe(0);
   });
 
+  it('rejects extraction.apply without project_id', async () => {
+    const gateway = createTwoProjectGateway();
+    const mcp = createMcpHandlers({ gateway: gateway as any });
+    await expect(
+      mcp.call('extraction.apply', {
+        workspace_id: workspaceId,
+        actor_subject_id: cursor,
+        idempotency_prefix: 'mcp-extract-apply-no-project-1',
+        candidates: [
+          {
+            title: 'No project',
+            content: 'This should not write anywhere.',
+            memoryType: 'fact',
+            confidence: 0.8,
+          },
+        ],
+      }),
+    ).rejects.toThrow(/project reference is required/i);
+    expect(gateway.captureText).not.toHaveBeenCalled();
+  });
+
+  it('routes extraction.apply to an explicit project UUID', async () => {
+    const gateway = createTwoProjectGateway();
+    const mcp = createMcpHandlers({ gateway: gateway as any });
+    await mcp.call('extraction.apply', {
+      workspace_id: workspaceId,
+      project_id: otherProjectId,
+      actor_subject_id: cursor,
+      idempotency_prefix: 'mcp-extract-apply-explicit-1',
+      candidates: [
+        {
+          title: 'Repo B extract',
+          content: 'Write this to repo-b explicitly.',
+          memoryType: 'fact',
+          confidence: 0.8,
+        },
+      ],
+    });
+    expect(gateway.captureText).toHaveBeenCalledWith(
+      expect.objectContaining({ projectId: otherProjectId }),
+    );
+  });
+
   it('searches with RRF and packed context offline', async () => {
     const mcp = createMcpHandlers();
     const cursor = '33333333-3333-4333-8333-333333333303';
@@ -176,6 +298,35 @@ describe('mcp gateway alpha', () => {
     expect(result.applied).toBe(true);
     expect(result.candidates.length).toBeGreaterThan(0);
     expect(result.apply?.applied).toBeGreaterThan(0);
+  });
+
+  it('returns extraction.run preview without project_id when apply=false', async () => {
+    const mcp = createMcpHandlers();
+    const result = (await mcp.call('extraction.run', {
+      title: 'Preview only',
+      text: 'Preview this without persisting anything.',
+      actor_subject_id: cursor,
+      apply: false,
+    })) as { preview: boolean; applied: boolean; candidates: unknown[] };
+    expect(result.preview).toBe(true);
+    expect(result.applied).toBe(false);
+    expect(result.candidates.length).toBeGreaterThan(0);
+  });
+
+  it('rejects extraction.run with apply=true when project_id is omitted', async () => {
+    const gateway = createTwoProjectGateway();
+    const mcp = createMcpHandlers({ gateway: gateway as any });
+    await expect(
+      mcp.call('extraction.run', {
+        title: 'Apply without project',
+        text: 'This should fail before writing.',
+        workspace_id: workspaceId,
+        actor_subject_id: cursor,
+        apply: true,
+        idempotency_prefix: 'mcp-extract-run-no-project-1',
+      }),
+    ).rejects.toThrow(/project reference is required/i);
+    expect(gateway.captureText).not.toHaveBeenCalled();
   });
 
   it('exports memories for owner offline', async () => {
@@ -307,6 +458,83 @@ describe('mcp gateway alpha', () => {
     expect(result.extractedChars).toBeGreaterThan(0);
   });
 
+  it('rejects capture.document without project_id', async () => {
+    const gateway = createTwoProjectGateway();
+    const mcp = createMcpHandlers({ gateway: gateway as any });
+    await expect(
+      mcp.call('capture.document', {
+        workspace_id: workspaceId,
+        title: 'MCP doc',
+        filename: 'note.txt',
+        mime_type: 'text/plain',
+        content_base64: Buffer.from('Document via MCP').toString('base64'),
+        actor_subject_id: cursor,
+        idempotency_key: 'mcp-doc-no-project-1',
+      }),
+    ).rejects.toThrow(/project reference is required/i);
+    expect(gateway.captureText).not.toHaveBeenCalled();
+  });
+
+  it('routes capture.document to an explicit project UUID', async () => {
+    const gateway = createTwoProjectGateway();
+    const mcp = createMcpHandlers({ gateway: gateway as any });
+    await mcp.call('capture.document', {
+      workspace_id: workspaceId,
+      project_id: otherProjectId,
+      title: 'Repo B doc',
+      filename: 'note.txt',
+      mime_type: 'text/plain',
+      content_base64: Buffer.from('Document via MCP').toString('base64'),
+      actor_subject_id: cursor,
+      idempotency_key: 'mcp-doc-explicit-project-1',
+    });
+    expect(gateway.captureText).toHaveBeenCalledWith(
+      expect.objectContaining({ projectId: otherProjectId }),
+    );
+  });
+
+  it('rejects capture.link without project_id', async () => {
+    const gateway = createTwoProjectGateway();
+    const mcp = createMcpHandlers({ gateway: gateway as any });
+    await expect(
+      mcp.call('capture.link', {
+        workspace_id: workspaceId,
+        url: 'https://example.com/note',
+        title: 'Link without project',
+        actor_subject_id: cursor,
+        idempotency_key: 'mcp-link-no-project-1',
+      }),
+    ).rejects.toThrow(/project reference is required/i);
+    expect(gateway.captureText).not.toHaveBeenCalled();
+  });
+
+  it('routes capture.link to an explicit project UUID', async () => {
+    const gateway = createTwoProjectGateway();
+    const mcp = createMcpHandlers({ gateway: gateway as any });
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = vi.fn(async () => ({
+      ok: true,
+      headers: new Headers({ 'content-type': 'text/plain' }),
+      arrayBuffer: async () => Buffer.from('Public link body'),
+      url: 'https://example.com/note',
+    })) as typeof fetch;
+    try {
+      await mcp.call('capture.link', {
+        workspace_id: workspaceId,
+        project_id: otherProjectId,
+        url: 'https://example.com/note',
+        title: 'Repo B link',
+        actor_subject_id: cursor,
+        idempotency_key: 'mcp-link-explicit-project-1',
+      });
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+    expect(gateway.captureText).toHaveBeenCalledWith(
+      expect.objectContaining({ projectId: otherProjectId }),
+    );
+  });
+
   it('returns offline stub for connections.sync', async () => {
     const mcp = createMcpHandlers();
     const result = (await mcp.call('connections.sync', {
@@ -331,17 +559,15 @@ describe('mcp gateway alpha', () => {
     expect(result.memoryId).toBeTruthy();
   });
 
-  it('keeps omitted ChatGPT project_id at workspace scope', async () => {
+  it('rejects omitted ChatGPT project_id when no project can be inferred', async () => {
     const mcp = createMcpHandlers({ profile: 'chatgpt' });
-    const captured = (await mcp.call('capture.text', {
-      title: 'Workspace capture',
-      text: 'No explicit project id here.',
-      idempotency_key: 'mcp-chatgpt-workspace-1',
-    })) as { memoryId: string };
-    const memory = (await mcp.call('memory.get', {
-      memory_id: captured.memoryId,
-    })) as { memory?: { projectId?: string | null } };
-    expect(memory.memory?.projectId ?? null).toBeNull();
+    await expect(
+      mcp.call('capture.text', {
+        title: 'Workspace capture',
+        text: 'No explicit project id here.',
+        idempotency_key: 'mcp-chatgpt-workspace-1',
+      }),
+    ).rejects.toThrow(/project reference is required/i);
   });
 
   it('routes ChatGPT capture to AISTROYKA when slug is mentioned', async () => {
@@ -413,19 +639,19 @@ describe('mcp gateway alpha', () => {
     ]);
   });
 
-  it('keeps omitted Cursor/full project at workspace scope when there is no hint', async () => {
+  it('rejects capture.text without a project hint instead of writing to workspace scope', async () => {
     const gateway = createTwoProjectGateway();
     const mcp = createMcpHandlers({ gateway: gateway as any });
-    await mcp.call('capture.text', {
-      workspace_id: workspaceId,
-      actor_subject_id: cursor,
-      title: 'General note',
-      text: 'No project name here.',
-      idempotency_key: 'mcp-cursor-workspace-1',
-    });
-    expect(gateway.captureText).toHaveBeenCalledWith(
-      expect.objectContaining({ projectId: null }),
-    );
+    await expect(
+      mcp.call('capture.text', {
+        workspace_id: workspaceId,
+        actor_subject_id: cursor,
+        title: 'General note',
+        text: 'No project name here.',
+        idempotency_key: 'mcp-cursor-workspace-1',
+      }),
+    ).rejects.toThrow(/project reference is required/i);
+    expect(gateway.captureText).not.toHaveBeenCalled();
   });
 
   it('routes ChatGPT handoff.create to an ingested project by shared name', async () => {
@@ -446,6 +672,243 @@ describe('mcp gateway alpha', () => {
     });
     expect(gateway.createHandoff).toHaveBeenCalledWith(
       expect.objectContaining({ projectId: otherProjectId }),
+    );
+  });
+
+  it('routes memory.store_decision to an ingested project by slug', async () => {
+    const gateway = createTwoProjectGateway();
+    const mcp = createMcpHandlers({ gateway: gateway as any });
+    await mcp.call('memory.store_decision', {
+      workspace_id: workspaceId,
+      actor_subject_id: cursor,
+      title: 'repo-b decision',
+      content: 'Choose repo-b rollout order.',
+      idempotency_key: 'mcp-decision-repo-b-1',
+      importance: 0.7,
+      confidence: 0.9,
+      sensitivity: 'internal',
+    });
+    expect(gateway.createDecision).toHaveBeenCalledWith(
+      expect.objectContaining({ projectId: otherProjectId }),
+    );
+  });
+
+  it('prefers an explicit project_id even when the body mentions another catalog project', async () => {
+    const gateway = createTwoProjectGateway();
+    const mcp = createMcpHandlers({ gateway: gateway as any });
+    await mcp.call('memory.store_decision', {
+      workspace_id: workspaceId,
+      actor_subject_id: cursor,
+      project_id: projectId,
+      title: 'AISTROYKA decision',
+      content: 'AISTROYKA owns this, but gmail-style repo-b is mentioned in the note.',
+      idempotency_key: 'mcp-decision-explicit-wins-1',
+      importance: 0.7,
+      confidence: 0.9,
+      sensitivity: 'internal',
+    });
+    expect(gateway.createDecision).toHaveBeenCalledWith(
+      expect.objectContaining({ projectId }),
+    );
+  });
+
+  it('rejects an explicit UUID when that project does not exist', async () => {
+    const gateway = createTwoProjectGateway();
+    const mcp = createMcpHandlers({ gateway: gateway as any });
+    await expect(
+      mcp.call('memory.store_decision', {
+        workspace_id: workspaceId,
+        actor_subject_id: cursor,
+        project_id: '44444444-4444-4444-8444-444444444499',
+        title: 'Unknown project',
+        content: 'No textual fallback should override this explicit id.',
+        idempotency_key: 'mcp-decision-explicit-missing-1',
+        importance: 0.7,
+        confidence: 0.9,
+        sensitivity: 'internal',
+      }),
+    ).rejects.toThrow(/project not found/i);
+    expect(gateway.createDecision).not.toHaveBeenCalled();
+  });
+
+  it('does not infer short/common project tokens from ordinary prose', async () => {
+    const gateway = createShortTokenGateway();
+    const mcp = createMcpHandlers({ gateway: gateway as any });
+    await expect(
+      mcp.call('memory.store_decision', {
+        workspace_id: workspaceId,
+        actor_subject_id: cursor,
+        title: 'General note',
+        content: 'the core idea of Memory OS',
+        idempotency_key: 'mcp-decision-short-token-1',
+        importance: 0.7,
+        confidence: 0.9,
+        sensitivity: 'internal',
+      }),
+    ).rejects.toThrow(/project reference is required/i);
+    expect(gateway.createDecision).not.toHaveBeenCalled();
+  });
+
+  it('still resolves an explicit project UUID without any text hint', async () => {
+    const gateway = createTwoProjectGateway();
+    const mcp = createMcpHandlers({ gateway: gateway as any });
+    await mcp.call('memory.store_decision', {
+      workspace_id: workspaceId,
+      actor_subject_id: cursor,
+      project_id: otherProjectId,
+      title: 'General note',
+      content: 'No textual project reference is needed here.',
+      idempotency_key: 'mcp-decision-explicit-uuid-1',
+      importance: 0.7,
+      confidence: 0.9,
+      sensitivity: 'internal',
+    });
+    expect(gateway.createDecision).toHaveBeenCalledWith(
+      expect.objectContaining({ projectId: otherProjectId }),
+    );
+  });
+
+  it('rejects ChatGPT memory.store_decision without project_id', async () => {
+    const gateway = createTwoProjectGateway();
+    const mcp = createMcpHandlers({ gateway: gateway as any, profile: 'chatgpt' });
+    await expect(
+      mcp.call('memory.store_decision', {
+        title: 'ChatGPT decision',
+        content: 'No project id is present here.',
+        idempotency_key: 'mcp-chatgpt-decision-no-project-1',
+      }),
+    ).rejects.toThrow(/project reference is required/i);
+    expect(gateway.createDecision).not.toHaveBeenCalled();
+  });
+
+  it('accepts ChatGPT memory.store_decision with the seed UUID', async () => {
+    const gateway = createTwoProjectGateway();
+    const mcp = createMcpHandlers({ gateway: gateway as any, profile: 'chatgpt' });
+    await mcp.call('memory.store_decision', {
+      project_id: projectId,
+      title: 'ChatGPT decision',
+      content: 'Seed project is explicit here.',
+      idempotency_key: 'mcp-chatgpt-decision-seed-1',
+    });
+    expect(gateway.createDecision).toHaveBeenCalledWith(
+      expect.objectContaining({ projectId }),
+    );
+  });
+
+  it('still resolves an explicit short slug without any text hint', async () => {
+    const gateway = createShortTokenGateway();
+    const mcp = createMcpHandlers({ gateway: gateway as any });
+    await mcp.call('memory.store_decision', {
+      workspace_id: workspaceId,
+      actor_subject_id: cursor,
+      project_id: 'core',
+      title: 'General note',
+      content: 'No textual project reference is needed here.',
+      idempotency_key: 'mcp-decision-explicit-core-1',
+      importance: 0.7,
+      confidence: 0.9,
+      sensitivity: 'internal',
+    });
+    expect(gateway.createDecision).toHaveBeenCalledWith(
+      expect.objectContaining({ projectId: coreProjectId }),
+    );
+  });
+
+  it('rejects memory.store_decision without a project hint', async () => {
+    const gateway = createTwoProjectGateway();
+    const mcp = createMcpHandlers({ gateway: gateway as any });
+    await expect(
+      mcp.call('memory.store_decision', {
+        workspace_id: workspaceId,
+        actor_subject_id: cursor,
+        title: 'General decision',
+        content: 'No project is referenced here.',
+        idempotency_key: 'mcp-decision-no-project-1',
+        importance: 0.7,
+        confidence: 0.9,
+        sensitivity: 'internal',
+      }),
+    ).rejects.toThrow(/project reference is required/i);
+    expect(gateway.createDecision).not.toHaveBeenCalled();
+  });
+
+  it('rejects handoff.create without a project hint', async () => {
+    const gateway = createTwoProjectGateway();
+    const mcp = createMcpHandlers({ gateway: gateway as any });
+    await expect(
+      mcp.call('handoff.create', {
+        workspace_id: workspaceId,
+        from_subject_id: cursor,
+        to_subject_id: cursor,
+        idempotency_key: 'mcp-handoff-no-project-1',
+        payload: {
+          completed: ['done'],
+          artifacts: [],
+          validation: [],
+          open_items: [],
+          blockers: [],
+          recommended_next: ['continue'],
+        },
+      }),
+    ).rejects.toThrow(/project reference is required/i);
+    expect(gateway.createHandoff).not.toHaveBeenCalled();
+  });
+
+  it('routes capture.text to an ingested project by URL hint', async () => {
+    const gateway = createTwoProjectGateway();
+    const mcp = createMcpHandlers({ gateway: gateway as any });
+    await mcp.call('capture.text', {
+      workspace_id: workspaceId,
+      actor_subject_id: cursor,
+      title: 'General note',
+      text: 'Source: https://github.com/team/repo-b',
+      idempotency_key: 'mcp-cursor-url-project-1',
+    });
+    expect(gateway.captureText).toHaveBeenCalledWith(
+      expect.objectContaining({ projectId: otherProjectId }),
+    );
+  });
+
+  it('routes capture.text to an ingested project by owner/repo hint', async () => {
+    const gateway = createTwoProjectGateway();
+    const mcp = createMcpHandlers({ gateway: gateway as any });
+    await mcp.call('capture.text', {
+      workspace_id: workspaceId,
+      actor_subject_id: cursor,
+      title: 'Repo token note',
+      text: 'Owner/repo hint: team/repo-b',
+      idempotency_key: 'mcp-cursor-owner-repo-1',
+    });
+    expect(gateway.captureText).toHaveBeenCalledWith(
+      expect.objectContaining({ projectId: otherProjectId }),
+    );
+  });
+
+  it('does not treat arbitrary path-like slash tokens as project refs', async () => {
+    const gateway = createTwoProjectGateway();
+    const mcp = createMcpHandlers({ gateway: gateway as any });
+    await expect(
+      mcp.call('capture.text', {
+        workspace_id: workspaceId,
+        actor_subject_id: cursor,
+        title: 'Path token note',
+        text: 'Touched apps/web and src/index today.',
+        idempotency_key: 'mcp-cursor-path-token-1',
+      }),
+    ).rejects.toThrow(/project reference is required/i);
+    expect(gateway.captureText).not.toHaveBeenCalled();
+  });
+
+  it('keeps memory.search workspace-wide when there is no project hint', async () => {
+    const gateway = createTwoProjectGateway();
+    const mcp = createMcpHandlers({ gateway: gateway as any });
+    await mcp.call('memory.search', {
+      workspace_id: workspaceId,
+      actor_subject_id: cursor,
+      query: 'general note without project hint',
+    });
+    expect(gateway.search).toHaveBeenCalledWith(
+      expect.objectContaining({ projectId: undefined }),
     );
   });
 

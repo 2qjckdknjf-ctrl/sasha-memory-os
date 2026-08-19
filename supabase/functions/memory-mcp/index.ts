@@ -1,5 +1,11 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient, type SupabaseClient } from "jsr:@supabase/supabase-js@2";
+import {
+  applyEdgeDefaults,
+  EDGE_INSTRUCTIONS,
+  EDGE_TOOL_DEFS,
+  resolveEdgeProjectId,
+} from "./contract.ts";
 
 const SUBJECT = Deno.env.get("MEMORY_OS_CHATGPT_SUBJECT_ID") ??
   "33333333-3333-4333-8333-333333333302";
@@ -17,123 +23,8 @@ const OAUTH_ISSUER = `${SUPABASE_URL}/auth/v1`;
 const OAUTH_SCOPES = ["openid", "email", "profile"];
 const OAUTH_SECURITY_SCHEMES = [{ type: "oauth2", scopes: OAUTH_SCOPES }];
 
-const INSTRUCTIONS = [
-  "Sasha Memory OS ChatGPT pilot. Prefer memory.search (pack_context=true) then context.project before writing.",
-  "Writes: capture.text for notes/facts; memory.store_decision for decisions; memory.set_status for review.",
-  "Defaults fill actor_subject_id / workspace_id / project_id when omitted.",
-  "Do not invent owner/ops tools (oauth, outbox, consolidation, embed).",
-].join(" ");
-
 const READ_ONLY = new Set(["memory.search", "memory.get", "context.project"]);
-
-const tools = [
-  {
-    name: "memory.search",
-    description:
-      "Hybrid RRF search over allowed memories (optional temporal window + packed context)",
-    inputSchema: {
-      type: "object",
-      properties: {
-        query: { type: "string" },
-        project_id: { type: "string" },
-        include_history: { type: "boolean" },
-        recorded_after: { type: "string" },
-        recorded_before: { type: "string" },
-        pack_context: { type: "boolean" },
-        max_context_chars: { type: "number" },
-        actor_subject_id: { type: "string" },
-      },
-      required: ["query"],
-    },
-  },
-  {
-    name: "context.project",
-    description: "Current project context: decisions, tasks, facts",
-    inputSchema: {
-      type: "object",
-      properties: {
-        project_id: { type: "string" },
-        actor_subject_id: { type: "string" },
-      },
-      required: [],
-    },
-  },
-  {
-    name: "memory.store_decision",
-    description: "Store a verified decision with idempotency",
-    inputSchema: {
-      type: "object",
-      properties: {
-        workspace_id: { type: "string" },
-        project_id: { type: "string" },
-        title: { type: "string" },
-        content: { type: "string" },
-        actor_subject_id: { type: "string" },
-        idempotency_key: { type: "string" },
-      },
-      required: ["title", "content", "idempotency_key"],
-    },
-  },
-  {
-    name: "handoff.create",
-    description: "Create agent handoff for a project",
-    inputSchema: {
-      type: "object",
-      properties: {
-        workspace_id: { type: "string" },
-        project_id: { type: "string" },
-        from_subject_id: { type: "string" },
-        to_subject_id: { type: "string" },
-        idempotency_key: { type: "string" },
-        payload: { type: "object" },
-      },
-      required: ["from_subject_id", "idempotency_key", "payload"],
-    },
-  },
-  {
-    name: "capture.text",
-    description: "Capture plain text into quarantine → candidate memory",
-    inputSchema: {
-      type: "object",
-      properties: {
-        workspace_id: { type: "string" },
-        project_id: { type: "string" },
-        title: { type: "string" },
-        text: { type: "string" },
-        actor_subject_id: { type: "string" },
-        idempotency_key: { type: "string" },
-        process_now: { type: "boolean" },
-      },
-      required: ["title", "text", "idempotency_key"],
-    },
-  },
-  {
-    name: "memory.set_status",
-    description: "Approve/reject/retract/dispute a memory (owner or dispute)",
-    inputSchema: {
-      type: "object",
-      properties: {
-        memory_id: { type: "string" },
-        status: { type: "string" },
-        reason: { type: "string" },
-        actor_subject_id: { type: "string" },
-      },
-      required: ["memory_id", "status", "reason"],
-    },
-  },
-  {
-    name: "memory.get",
-    description: "Fetch a single memory with full content (ACL-aware)",
-    inputSchema: {
-      type: "object",
-      properties: {
-        memory_id: { type: "string" },
-        actor_subject_id: { type: "string" },
-      },
-      required: ["memory_id"],
-    },
-  },
-].map((tool) => ({
+const tools = EDGE_TOOL_DEFS.map((tool) => ({
   ...tool,
   securitySchemes: OAUTH_SECURITY_SCHEMES,
   _meta: { securitySchemes: OAUTH_SECURITY_SCHEMES },
@@ -279,12 +170,10 @@ function resourceMetadata(): Record<string, unknown> {
 }
 
 function defaults(raw: Record<string, unknown>): Record<string, unknown> {
-  return {
-    ...raw,
-    actor_subject_id: String(raw.actor_subject_id ?? "").trim() || SUBJECT,
-    workspace_id: String(raw.workspace_id ?? "").trim() || WORKSPACE,
-    project_id: String(raw.project_id ?? "").trim() || PROJECT,
-  };
+  return applyEdgeDefaults(raw, {
+    subjectId: SUBJECT,
+    workspaceId: WORKSPACE,
+  });
 }
 
 async function rpc(
@@ -513,10 +402,31 @@ async function callTool(
   const args = defaults(raw);
   const actor = String(args.actor_subject_id);
   const workspace = String(args.workspace_id);
-  const project = String(args.project_id);
+  const resolveProjectId = (mode: "optional" | "required") =>
+    resolveEdgeProjectId({
+      args,
+      mode,
+      resolve: async (projectRef) =>
+        await rpc(client, "api_resolve_project_ref", {
+          p_secret: secret,
+          p_subject_id: actor,
+          p_workspace_id: workspace,
+          p_project_ref: projectRef,
+        }) as {
+          projectId?: string | null;
+          matchCount?: number | null;
+          candidates?: Array<{
+            id?: string | null;
+            slug?: string | null;
+            name?: string | null;
+            url?: string | null;
+          }> | null;
+        },
+    });
 
   switch (name) {
     case "memory.search": {
+      const project = await resolveProjectId("optional");
       const query = String(args.query ?? "").trim();
       if (!query) throw new Error("query is required");
       const embedded = await embedText(query);
@@ -556,13 +466,16 @@ async function callTool(
           : {}),
       };
     }
-    case "context.project":
+    case "context.project": {
+      const project = await resolveProjectId("required");
       return rpc(client, "api_project_context", {
         p_secret: secret,
         p_subject_id: actor,
         p_project_id: project,
       });
+    }
     case "memory.store_decision": {
+      const project = await resolveProjectId("required");
       const title = String(args.title ?? "").trim();
       const content = String(args.content ?? "").trim();
       const key = String(args.idempotency_key ?? "").trim();
@@ -584,6 +497,7 @@ async function callTool(
       });
     }
     case "handoff.create": {
+      const project = await resolveProjectId("required");
       const from = String(args.from_subject_id ?? "").trim();
       const key = String(args.idempotency_key ?? "").trim();
       const payload = args.payload;
@@ -605,6 +519,7 @@ async function callTool(
       });
     }
     case "capture.text": {
+      const project = await resolveProjectId("required");
       const title = String(args.title ?? "").trim();
       const text = String(args.text ?? "").trim();
       const key = String(args.idempotency_key ?? "").trim();
@@ -715,7 +630,7 @@ async function handleRpc(
           backend: "supabase",
           profile: "chatgpt",
         },
-        instructions: INSTRUCTIONS,
+        instructions: EDGE_INSTRUCTIONS,
       });
     case "notifications/initialized":
     case "initialized":

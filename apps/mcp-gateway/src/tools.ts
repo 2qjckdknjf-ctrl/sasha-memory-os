@@ -118,6 +118,8 @@ type LocalProjectCandidate = ProjectCandidate & {
   aliases?: string[];
 };
 
+const MIN_INFERRED_PROJECT_TOKEN_LENGTH = 5;
+
 const LOCAL_PROJECT_CATALOG: LocalProjectCandidate[] = [
   {
     id: DEFAULT_PROJECT_ID,
@@ -130,6 +132,41 @@ const LOCAL_PROJECT_CATALOG: LocalProjectCandidate[] = [
 
 function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function hasBoundedProjectToken(text: string, token: string): boolean {
+  const normalizedToken = token.trim().toLowerCase();
+  if (normalizedToken.length < MIN_INFERRED_PROJECT_TOKEN_LENGTH) {
+    return false;
+  }
+  const pattern = new RegExp(
+    `(^|[^a-z0-9_-])${escapeRegExp(normalizedToken)}([^a-z0-9_-]|$)`,
+    'i',
+  );
+  return pattern.test(text);
+}
+
+function extractOwnerRepoFromUrl(url: string | null | undefined): string | null {
+  if (!url) return null;
+  try {
+    const pathname = new URL(url).pathname.replace(/^\/+|\/+$/g, '');
+    return pathname || null;
+  } catch {
+    return null;
+  }
+}
+
+function isKnownOwnerRepoRef(projectRef: string, projectHints: ProjectCandidate[]): boolean {
+  const normalizedRef = projectRef.trim().toLowerCase();
+  return projectHints.some((project) => {
+    const ownerRepo = extractOwnerRepoFromUrl(project.url)?.toLowerCase();
+    return (
+      ownerRepo === normalizedRef ||
+      project.slug.trim().toLowerCase() === normalizedRef ||
+      project.name.trim().toLowerCase() === normalizedRef ||
+      project.id.trim().toLowerCase() === normalizedRef
+    );
+  });
 }
 
 function localResolveProjectRef(projectRef: string | null | undefined): ProjectResolution {
@@ -179,7 +216,10 @@ function extractProjectRefsFromArgs(
 ): string[] {
   const refs = new Set<string>();
   const explicitRef = typeof args.project_id === 'string' ? args.project_id.trim() : '';
-  if (explicitRef) refs.add(explicitRef);
+  if (explicitRef) {
+    refs.add(explicitRef);
+    return [...refs];
+  }
 
   const textBits = [
     typeof args.title === 'string' ? args.title : null,
@@ -199,17 +239,18 @@ function extractProjectRefsFromArgs(
     refs.add(match[0]);
   }
   for (const match of textBits.matchAll(/\b[\w.-]+\/[\w.-]+\b/g)) {
-    refs.add(match[0]);
+    if (isKnownOwnerRepoRef(match[0], projectHints)) {
+      refs.add(match[0]);
+    }
   }
 
   const lowered = textBits.toLowerCase();
   for (const project of projectHints) {
-    const slugPattern = new RegExp(`(^|[^a-z0-9_-])${escapeRegExp(project.slug.toLowerCase())}([^a-z0-9_-]|$)`, 'i');
-    if (slugPattern.test(lowered)) {
+    if (hasBoundedProjectToken(lowered, project.slug)) {
       refs.add(project.slug);
     }
     const projectName = project.name.trim().toLowerCase();
-    if (projectName && lowered.includes(projectName)) {
+    if (projectName && hasBoundedProjectToken(lowered, projectName)) {
       refs.add(project.name);
     }
   }
@@ -276,6 +317,21 @@ async function resolveProjectForArgs(input: {
     throw new Error('project not found; pass a valid project UUID or slug from /projects');
   }
   return null;
+}
+
+async function resolveRequiredProjectId(
+  gateway: SupabaseMemoryGateway | null,
+  args: Record<string, unknown>,
+): Promise<string> {
+  const resolvedProjectId = await resolveProjectForArgs({
+    gateway: gateway ?? undefined,
+    args,
+    requireProject: true,
+  });
+  if (!resolvedProjectId) {
+    throw new Error('project reference is required; pass project UUID or slug');
+  }
+  return resolvedProjectId;
 }
 
 function resolveCollectionProjectId(
@@ -545,6 +601,7 @@ export const mcpTools: McpTool[] = [
       },
       required: [
         'workspace_id',
+        'project_id',
         'title',
         'content',
         'actor_subject_id',
@@ -567,6 +624,7 @@ export const mcpTools: McpTool[] = [
       },
       required: [
         'workspace_id',
+        'project_id',
         'from_subject_id',
         'idempotency_key',
         'payload',
@@ -636,6 +694,7 @@ export const mcpTools: McpTool[] = [
       },
       required: [
         'workspace_id',
+        'project_id',
         'title',
         'text',
         'actor_subject_id',
@@ -1204,17 +1263,20 @@ export function createMcpHandlers(options?: {
           const resolvedProjectId = await resolveProjectForArgs({
             gateway: gateway ?? undefined,
             args,
-            requireProject: false,
+            requireProject: true,
           });
+          if (!resolvedProjectId) {
+            throw new Error('project reference is required; pass project UUID or slug');
+          }
           const input = createDecisionSchema.parse({
             ...args,
-            project_id: resolvedProjectId ?? undefined,
+            project_id: resolvedProjectId,
           });
           if (gateway) {
             return gateway.createDecision({
               subjectId: input.actor_subject_id,
               workspaceId: input.workspace_id,
-              projectId: input.project_id ?? null,
+              projectId: input.project_id,
               title: input.title,
               content: input.content,
               idempotencyKey: input.idempotency_key,
@@ -1225,7 +1287,7 @@ export function createMcpHandlers(options?: {
           }
           return store.createDecision({
             workspaceId: input.workspace_id,
-            projectId: input.project_id ?? null,
+            projectId: input.project_id,
             title: input.title,
             content: input.content,
             actorSubjectId: input.actor_subject_id,
@@ -1239,24 +1301,27 @@ export function createMcpHandlers(options?: {
           const resolvedProjectId = await resolveProjectForArgs({
             gateway: gateway ?? undefined,
             args,
-            requireProject: false,
+            requireProject: true,
           });
+          if (!resolvedProjectId) {
+            throw new Error('project reference is required; pass project UUID or slug');
+          }
           const input = createHandoffSchema.parse({
             ...args,
-            project_id: resolvedProjectId ?? undefined,
+            project_id: resolvedProjectId,
           });
           if (gateway) {
             return gateway.createHandoff({
               subjectId: input.from_subject_id,
               workspaceId: input.workspace_id,
-              projectId: input.project_id ?? null,
+              projectId: input.project_id,
               toSubjectId: input.to_subject_id,
               payload: input.payload,
             });
           }
           return store.createHandoff({
             workspaceId: input.workspace_id,
-            projectId: input.project_id ?? null,
+            projectId: input.project_id,
             fromSubjectId: input.from_subject_id,
             toSubjectId: input.to_subject_id,
             sessionId: input.session_id,
@@ -1327,17 +1392,20 @@ export function createMcpHandlers(options?: {
           const resolvedProjectId = await resolveProjectForArgs({
             gateway: gateway ?? undefined,
             args,
-            requireProject: false,
+            requireProject: true,
           });
+          if (!resolvedProjectId) {
+            throw new Error('project reference is required; pass project UUID or slug');
+          }
           const input = captureTextSchema.parse({
             ...args,
-            project_id: resolvedProjectId ?? undefined,
+            project_id: resolvedProjectId,
           });
           if (gateway) {
             const result = await gateway.captureText({
               subjectId: input.actor_subject_id,
               workspaceId: input.workspace_id,
-              projectId: input.project_id ?? null,
+              projectId: input.project_id,
               title: input.title,
               text: input.text,
               idempotencyKey: input.idempotency_key,
@@ -1354,7 +1422,7 @@ export function createMcpHandlers(options?: {
           }
           return store.captureText({
             workspaceId: input.workspace_id,
-            projectId: input.project_id ?? null,
+            projectId: input.project_id,
             title: input.title,
             text: input.text,
             actorSubjectId: input.actor_subject_id,
@@ -1826,7 +1894,13 @@ export function createMcpHandlers(options?: {
           };
         }
         case 'extraction.apply': {
-          return applyExtraction(applyExtractionSchema.parse(args));
+          const resolvedProjectId = await resolveRequiredProjectId(gateway, args);
+          return applyExtraction(
+            applyExtractionSchema.parse({
+              ...args,
+              project_id: resolvedProjectId,
+            }),
+          );
         }
         case 'extraction.run': {
           const text = String(args.text ?? '').trim();
@@ -1844,10 +1918,11 @@ export function createMcpHandlers(options?: {
               applied: false,
             };
           }
+          const resolvedProjectId = await resolveRequiredProjectId(gateway, args);
           const applied = await applyExtraction(
             applyExtractionSchema.parse({
               workspace_id: args.workspace_id,
-              project_id: args.project_id,
+              project_id: resolvedProjectId,
               actor_subject_id: args.actor_subject_id,
               sensitivity: args.sensitivity,
               idempotency_prefix:
@@ -1960,7 +2035,11 @@ export function createMcpHandlers(options?: {
           };
         }
         case 'capture.document': {
-          const input = captureDocumentSchema.parse(args);
+          const resolvedProjectId = await resolveRequiredProjectId(gateway, args);
+          const input = captureDocumentSchema.parse({
+            ...args,
+            project_id: resolvedProjectId,
+          });
           const parsed = await extractTextFromBytes({
             filename: input.filename,
             mimeType: input.mime_type,
@@ -2015,7 +2094,11 @@ export function createMcpHandlers(options?: {
           };
         }
         case 'capture.link': {
-          const input = captureLinkSchema.parse(args);
+          const resolvedProjectId = await resolveRequiredProjectId(gateway, args);
+          const input = captureLinkSchema.parse({
+            ...args,
+            project_id: resolvedProjectId,
+          });
           const fetched = await fetchPublicLink(input.url);
           const title = input.title ?? fetched.title;
           const text = [

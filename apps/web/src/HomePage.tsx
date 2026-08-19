@@ -1,7 +1,6 @@
+import type { ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import {
-  PROJECT_ID,
-  PROJECT_NAME,
   type ConnectionRecord,
   type StateSummary,
   type TimelineEntry,
@@ -10,6 +9,8 @@ import { describeHandoffActors, type HandoffSurfaceItem, type TaskSurfaceItem } 
 import { Timeline } from './Timeline';
 
 type Props = {
+  scopeLabel: string;
+  scopePanel: ReactNode;
   stateSummary: StateSummary | null;
   timeline: TimelineEntry[];
   reviewQueueCount: number;
@@ -20,6 +21,8 @@ type Props = {
 };
 
 export function HomePage({
+  scopeLabel,
+  scopePanel,
   stateSummary,
   timeline,
   reviewQueueCount,
@@ -32,12 +35,14 @@ export function HomePage({
     <section className="page">
       <header className="page-header">
         <p className="eyebrow">Главная</p>
-        <h1>Память проекта под рукой</h1>
+        <h1>Память рабочей области под рукой</h1>
         <p className="lede">
-          Быстрый обзор по проекту {PROJECT_NAME}: состояние, свежие события, очередь на
-          проверку и ошибки синхронизации.
+          Быстрый обзор по {scopeLabel}: свежие события, очередь на проверку и ошибки
+          синхронизации без неявной привязки к seed project.
         </p>
       </header>
+
+      {scopePanel}
 
       <div className="cta-row">
         <Link to="/tasks" className="button-link">
@@ -55,8 +60,8 @@ export function HomePage({
         <Link to="/projects" className="button-link button-link--secondary">
           Все проекты
         </Link>
-        <Link to={`/projects/${PROJECT_ID}`} className="button-link button-link--secondary">
-          Открыть проект
+        <Link to="/projects" className="button-link button-link--secondary">
+          Открыть каталог проектов
         </Link>
         <Link to="/conflicts" className="button-link button-link--secondary">
           Разобрать очередь
@@ -65,7 +70,7 @@ export function HomePage({
 
       <div className="grid grid--home">
         <section className="panel">
-          <h2>Проект {PROJECT_NAME}</h2>
+          <h2>Состояние и фокус</h2>
           {stateSummary ? (
             <div className="stat-grid">
               <div className="stat-card">
@@ -86,7 +91,9 @@ export function HomePage({
               </div>
             </div>
           ) : (
-            <p className="hint">Состояние проекта еще не загружено.</p>
+            <p className="hint">
+              Выберите проект в фильтре или откройте карточку проекта, чтобы увидеть его состояние.
+            </p>
           )}
         </section>
 
@@ -167,6 +174,9 @@ export function HomePage({
               </Link>
               <Link to="/handoffs" className="button-link button-link--secondary">
                 Открыть хэнд-оффы
+              </Link>
+              <Link to="/projects" className="button-link button-link--secondary">
+                Каталог проектов
               </Link>
             </div>
           </div>

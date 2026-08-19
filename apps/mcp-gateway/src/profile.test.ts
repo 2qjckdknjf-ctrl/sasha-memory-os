@@ -72,8 +72,21 @@ describe('mcp profile', () => {
     expect(search?.inputSchema?.required ?? []).not.toContain(
       'actor_subject_id',
     );
+    expect(search?.inputSchema?.required ?? []).not.toContain('workspace_id');
+    expect(search?.inputSchema?.required ?? []).not.toContain('project_id');
+    const contextProject = tools.find((t) => t.name === 'context.project');
+    expect(contextProject?.inputSchema?.required ?? []).toContain('project_id');
     const capture = tools.find((t) => t.name === 'capture.text');
     expect(capture?.annotations?.readOnlyHint).toBe(false);
+    expect(capture?.inputSchema?.required ?? []).toContain('project_id');
+    expect(capture?.inputSchema?.required ?? []).not.toContain('actor_subject_id');
+    expect(capture?.inputSchema?.required ?? []).not.toContain('workspace_id');
+    const storeDecision = tools.find((t) => t.name === 'memory.store_decision');
+    expect(storeDecision?.inputSchema?.required ?? []).toContain('project_id');
+    expect(storeDecision?.inputSchema?.required ?? []).not.toContain('actor_subject_id');
+    expect(storeDecision?.inputSchema?.required ?? []).not.toContain('workspace_id');
+    const handoff = tools.find((t) => t.name === 'handoff.create');
+    expect(handoff?.inputSchema?.required ?? []).toContain('project_id');
   });
 
   it('applies defaults helper', () => {

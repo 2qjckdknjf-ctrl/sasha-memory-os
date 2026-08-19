@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { apiGet } from './api';
+import { buildAuditPath } from './projectScope';
 import {
-  PROJECT_ID,
   WORKSPACE_ID,
   formatTimestamp,
   type Actor,
@@ -83,7 +83,7 @@ export function AuditPage({ actor, backend, backendResolved, subjectId }: Props)
       setError(null);
       try {
         const result = await apiGet<{ events?: AuditEventRecord[] }>(
-          `/v1/audit?workspace_id=${WORKSPACE_ID}&project_id=${PROJECT_ID}&limit=50`,
+          buildAuditPath({ workspaceId: WORKSPACE_ID, limit: 50 }),
           subjectId,
           actor,
         );

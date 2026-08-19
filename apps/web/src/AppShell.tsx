@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react';
 import { NavLink } from 'react-router-dom';
-import { PROJECT_ID, describeBackend, type BackendMode } from './controlCenter';
+import { describeBackend, type BackendMode } from './controlCenter';
 
 type Props = {
   backend: BackendMode;
@@ -8,6 +8,7 @@ type Props = {
   authPanel: ReactNode;
   error: string | null;
   notice: string | null;
+  seedShortcutTo: string | null;
   children: ReactNode;
 };
 
@@ -26,7 +27,6 @@ const primaryLinks: PrimaryLink[] = [
   { to: '/conflicts', label: 'Конфликты' },
   { to: '/search', label: 'Поиск' },
   { to: '/projects', label: 'Проекты', end: true },
-  { to: `/projects/${PROJECT_ID}`, label: 'Проект AISTROYKA' },
 ];
 
 const secondaryLinks: PrimaryLink[] = [
@@ -42,8 +42,12 @@ export function AppShell({
   authPanel,
   error,
   notice,
+  seedShortcutTo,
   children,
 }: Props) {
+  const navLinks = seedShortcutTo
+    ? [...primaryLinks, { to: `/projects/${seedShortcutTo}`, label: 'Проект AISTROYKA' }]
+    : primaryLinks;
   return (
     <>
       <a className="skip-link" href={`#${mainContentId}`}>
@@ -61,7 +65,7 @@ export function AppShell({
 
           <nav aria-label="Основная навигация" className="shell-nav">
             <div className="shell-nav__group">
-              {primaryLinks.map((link) => (
+              {navLinks.map((link) => (
                 <NavLink
                   key={link.to}
                   to={link.to}

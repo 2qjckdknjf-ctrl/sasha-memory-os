@@ -27,7 +27,7 @@ export function Timeline({ entries, emptyMessage }: Props) {
                   {entry.memoryId ? (
                     <Link
                       to={`/memories/${entry.memoryId}`}
-                      state={{ from: 'timeline' as const }}
+                      state={{ from: 'timeline' as const, projectId: entry.projectId ?? null }}
                     >
                       {entry.title}
                     </Link>

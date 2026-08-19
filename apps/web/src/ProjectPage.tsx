@@ -3,8 +3,6 @@ import { Link, useParams } from 'react-router-dom';
 import { ReviewQueueList } from './ReviewQueueList';
 import {
   type Actor,
-  PROJECT_ID,
-  PROJECT_NAME,
   type StateSummary,
   type TimelineEntry,
   type ReviewQueueItem,
@@ -13,6 +11,7 @@ import { Timeline } from './Timeline';
 
 type Props = {
   actor: Actor;
+  projectName: string;
   stateSummary: StateSummary | null;
   timeline: TimelineEntry[];
   title: string;
@@ -31,6 +30,7 @@ type Props = {
 
 export function ProjectPage({
   actor,
+  projectName,
   stateSummary,
   timeline,
   title,
@@ -44,33 +44,23 @@ export function ProjectPage({
   onSetReviewStatus,
 }: Props) {
   const params = useParams<{ id: string }>();
-  const projectId = params.id ?? PROJECT_ID;
-  const isSeedProject = projectId === PROJECT_ID;
+  const projectId = params.id ?? null;
 
   const latestTimeline = useMemo(() => timeline.slice(0, 10), [timeline]);
 
-  if (!isSeedProject) {
+  if (!projectId) {
     return (
       <section className="page">
         <header className="page-header">
           <p className="eyebrow">Проект</p>
-          <h1>Карточка проекта</h1>
-          <p className="lede">
-            Проект уже есть в памяти, но в этом срезе детальная surface пока остаётся облегчённой.
-            Полный multi-project workflow будет расширен дальше.
-          </p>
+          <h1>Карточка проекта недоступна</h1>
+          <p className="lede">Идентификатор проекта не найден в маршруте.</p>
         </header>
 
         <div className="panel">
-          <p>
-            <strong>ID проекта:</strong> {projectId}
-          </p>
           <div className="actions">
             <Link to="/projects" className="button-link button-link--secondary">
               Вернуться к списку проектов
-            </Link>
-            <Link to={`/projects/${PROJECT_ID}`} className="button-link">
-              Открыть AISTROYKA
             </Link>
           </div>
         </div>
@@ -82,10 +72,10 @@ export function ProjectPage({
     <section className="page">
       <header className="page-header">
         <p className="eyebrow">Проект</p>
-        <h1>{PROJECT_NAME}</h1>
+        <h1>{projectName}</h1>
         <p className="lede">
-          Текущее состояние, лента событий, новые решения и переходы в отдельные поверхности
-          задач и хэнд-оффов.
+          Текущее состояние, лента событий, новые решения и переходы в отдельные поверхности задач
+          и хэнд-оффов.
         </p>
       </header>
 
@@ -173,7 +163,6 @@ export function ProjectPage({
           actor={actor}
           items={reviewQueue}
           source="review"
-          projectId={projectId}
           emptyMessage={
             reviewQueueLoading
               ? 'Загружаю очередь…'

@@ -4,7 +4,6 @@ import { Link, useLocation, useParams } from 'react-router-dom';
 import { apiGet } from './api';
 import {
   type CorrectMemoryPayload,
-  PROJECT_ID,
   formatTimestamp,
   type Actor,
   type BackendMode,
@@ -283,7 +282,7 @@ export function MemoryInspectorPage({
     return rows.filter((row): row is FactRow => row !== null);
   }, [memory]);
 
-  const projectLink = memory?.projectId ?? navState?.projectId ?? PROJECT_ID;
+  const projectLink = memory?.projectId ?? navState?.projectId ?? null;
   const searchLabel = navState?.searchTerm ? `К поиску «${navState.searchTerm}»` : 'К поиску';
 
   async function handleStatusChange(status: MemoryStatusAction) {
@@ -325,9 +324,11 @@ export function MemoryInspectorPage({
           <Link to="/" className="button-link button-link--secondary">
             На главную
           </Link>
-          <Link to={`/projects/${projectLink}`} className="button-link button-link--secondary">
-            К проекту
-          </Link>
+          {projectLink ? (
+            <Link to={`/projects/${projectLink}`} className="button-link button-link--secondary">
+              К проекту
+            </Link>
+          ) : null}
         </div>
         <h1 ref={headingRef} tabIndex={-1}>
           {memory?.title ?? 'Запись памяти'}

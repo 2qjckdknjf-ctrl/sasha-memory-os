@@ -12,7 +12,6 @@ type Props = {
   actor: Actor;
   items: ReviewQueueItem[];
   source: AttentionItemSource;
-  projectId?: string | null;
   emptyMessage: string;
   onSetStatus: (memoryId: string, status: MemoryStatusAction) => void | Promise<boolean>;
 };
@@ -27,7 +26,6 @@ export function ReviewQueueList({
   actor,
   items,
   source,
-  projectId = null,
   emptyMessage,
   onSetStatus,
 }: Props) {
@@ -75,7 +73,7 @@ export function ReviewQueueList({
             <h3>
               <Link
                 to={`/memories/${item.id}`}
-                state={{ from: source, projectId }}
+                state={{ from: source, projectId: item.projectId ?? null }}
               >
                 {item.title}
               </Link>
