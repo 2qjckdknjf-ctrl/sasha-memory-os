@@ -112,6 +112,64 @@ export type MeResponse = {
   actor: ActorMeta;
 };
 
+export type AuditEventRecord = {
+  id: string;
+  workspaceId: string;
+  actorSubjectId?: string | null;
+  actor?: ActorMeta | null;
+  action: string;
+  objectType?: string | null;
+  objectId?: string | null;
+  reason?: string | null;
+  beforeState?: Record<string, unknown> | null;
+  afterState?: Record<string, unknown> | null;
+  recordedAt: string;
+};
+
+export type PrivacyRequestRecord = {
+  id: string;
+  workspaceId: string;
+  projectId?: string | null;
+  actorSubjectId?: string | null;
+  actor?: ActorMeta | null;
+  requestType: 'deletion' | 'correction' | 'retraction';
+  status: 'submitted';
+  targetMemoryId?: string | null;
+  reason: string;
+  correctionText?: string | null;
+  createdAt: string;
+};
+
+export type AgentRight = {
+  effect: string;
+  resourceType: string;
+  projectId?: string | null;
+  actions: string[];
+  sensitivityMax?: string | null;
+  source: string;
+};
+
+export type AgentRightsActor = {
+  subjectId: string;
+  externalKey?: string | null;
+  displayName?: string | null;
+  kind?: string | null;
+  isOwner: boolean;
+  scopes: string[];
+  capabilities: string[];
+  rights: AgentRight[];
+};
+
+export type AgentRightsResponse = {
+  currentActor: {
+    subjectId: string;
+    isOwner: boolean;
+    actor: ActorMeta;
+  };
+  actors: AgentRightsActor[];
+  backend?: string;
+};
+
 export type ReviewQueueItem = {
   id: string;
   title: string;

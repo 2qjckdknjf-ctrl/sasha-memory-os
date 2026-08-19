@@ -1,5 +1,7 @@
 import {
+  type AuditLogEntry,
   filterCurrentMemories,
+  type PrivacyRequest,
   nextProjectStateVersion,
   type Handoff,
   type MemoryRecord,
@@ -31,6 +33,9 @@ export class MemoryStore {
   readonly memories = new Map<string, MemoryRecord>();
   readonly projectStates = new Map<string, ProjectStateVersion[]>();
   readonly handoffs = new Map<string, Handoff[]>();
+  readonly auditLog: AuditLogEntry[] = [];
+  readonly privacyRequests = new Map<string, PrivacyRequest>();
+  readonly privacyRequestByIdempotency = new Map<string, string>();
 
   ingestEvent(input: Omit<SourceEvent, 'id' | 'recordedAt'> & { id?: string }): SourceEvent {
     const idemKey = `${input.workspaceId}:${input.provider}:${input.idempotencyKey}`;
@@ -48,6 +53,38 @@ export class MemoryStore {
     this.events.set(event.id, event);
     this.eventByIdempotency.set(idemKey, event.id);
     return event;
+  }
+
+  createAuditEvent(input: {
+    workspaceId: string;
+    actorSubjectId?: string | null;
+    action: string;
+    objectType?: string | null;
+    objectId?: string | null;
+    reason?: string | null;
+    beforeState?: Record<string, unknown> | null;
+    afterState?: Record<string, unknown> | null;
+  }): AuditLogEntry {
+    const event: AuditLogEntry = {
+      id: newId(),
+      workspaceId: input.workspaceId,
+      actorSubjectId: input.actorSubjectId ?? null,
+      action: input.action,
+      objectType: input.objectType ?? null,
+      objectId: input.objectId ?? null,
+      reason: input.reason ?? null,
+      beforeState: input.beforeState ?? null,
+      afterState: input.afterState ?? null,
+      recordedAt: new Date().toISOString(),
+    };
+    this.auditLog.unshift(event);
+    return event;
+  }
+
+  listAudit(workspaceId: string, limit = 50): AuditLogEntry[] {
+    return this.auditLog
+      .filter((entry) => entry.workspaceId === workspaceId)
+      .slice(0, Math.max(1, limit));
   }
 
   createDecision(input: {
@@ -97,7 +134,20 @@ export class MemoryStore {
       sourceEventId: event.id,
       createdBySubject: input.actorSubjectId,
       schemaVersion: '1.0',
-      metadata: {},
+      metadata: {
+        source: {
+          sourceEventId: event.id,
+          provider: event.provider,
+          eventType: event.eventType,
+          observedAt: event.observedAt,
+          recordedAt: event.recordedAt,
+        },
+        provenance: {
+          origin: 'manual.decision',
+          createdBySubject: input.actorSubjectId,
+          sourceEventId: event.id,
+        },
+      },
     };
     this.memories.set(record.id, record);
     return record;
@@ -204,7 +254,30 @@ export class MemoryStore {
       sourceEventId: event.id,
       createdBySubject: input.actorSubjectId,
       schemaVersion: '1.0',
-      metadata: { capture: true, needs_review: true },
+      metadata: {
+        capture: true,
+        needs_review: true,
+        source: {
+          sourceEventId: event.id,
+          provider: event.provider,
+          eventType: event.eventType,
+          observedAt: event.observedAt,
+          recordedAt: event.recordedAt,
+          payload: event.payload,
+        },
+        evidence: [
+          {
+            kind: 'source_event',
+            sourceEventId: event.id,
+            observedAt: event.observedAt,
+          },
+        ],
+        provenance: {
+          origin: 'capture.text',
+          createdBySubject: input.actorSubjectId,
+          sourceEventId: event.id,
+        },
+      },
     };
     this.memories.set(record.id, record);
     return {
@@ -236,12 +309,89 @@ export class MemoryStore {
     const list = this.handoffs.get(input.projectId) ?? [];
     list.push(handoff);
     this.handoffs.set(input.projectId, list);
+    this.createAuditEvent({
+      workspaceId: input.workspaceId,
+      actorSubjectId: input.fromSubjectId,
+      action: 'handoff.create',
+      objectType: 'handoff',
+      objectId: handoff.id,
+      afterState: {
+        projectId: handoff.projectId,
+        fromSubjectId: handoff.fromSubjectId,
+        toSubjectId: handoff.toSubjectId,
+        payload: handoff.payload,
+      },
+    });
     return handoff;
   }
 
   latestHandoff(projectId: string): Handoff | null {
     const list = this.handoffs.get(projectId) ?? [];
     return list[list.length - 1] ?? null;
+  }
+
+  listHandoffs(projectId?: string | null, limit = 50): Handoff[] {
+    const list = projectId
+      ? [...(this.handoffs.get(projectId) ?? [])]
+      : [...this.handoffs.values()].flat();
+    return list
+      .sort((left, right) => right.createdAt.localeCompare(left.createdAt))
+      .slice(0, Math.max(1, limit));
+  }
+
+  createPrivacyRequest(input: {
+    workspaceId: string;
+    projectId?: string | null;
+    actorSubjectId: string;
+    requestType: PrivacyRequest['requestType'];
+    targetMemoryId?: string | null;
+    reason: string;
+    correctionText?: string | null;
+    idempotencyKey: string;
+  }): PrivacyRequest {
+    const idemKey = `${input.workspaceId}:${input.idempotencyKey}`;
+    const existingId = this.privacyRequestByIdempotency.get(idemKey);
+    if (existingId) {
+      const existing = this.privacyRequests.get(existingId);
+      if (!existing) throw new Error('privacy request index corrupt');
+      return existing;
+    }
+    const request: PrivacyRequest = {
+      id: newId(),
+      workspaceId: input.workspaceId,
+      projectId: input.projectId ?? null,
+      actorSubjectId: input.actorSubjectId,
+      requestType: input.requestType,
+      status: 'submitted',
+      targetMemoryId: input.targetMemoryId ?? null,
+      reason: input.reason,
+      correctionText: input.correctionText ?? null,
+      createdAt: new Date().toISOString(),
+    };
+    this.privacyRequests.set(request.id, request);
+    this.privacyRequestByIdempotency.set(idemKey, request.id);
+    this.createAuditEvent({
+      workspaceId: input.workspaceId,
+      actorSubjectId: input.actorSubjectId,
+      action: 'privacy.request.submitted',
+      objectType: 'privacy_request',
+      objectId: request.id,
+      reason: input.reason,
+      afterState: {
+        requestType: request.requestType,
+        targetMemoryId: request.targetMemoryId,
+        projectId: request.projectId,
+        status: request.status,
+      },
+    });
+    return request;
+  }
+
+  listPrivacyRequests(workspaceId: string, limit = 50): PrivacyRequest[] {
+    return [...this.privacyRequests.values()]
+      .filter((request) => request.workspaceId === workspaceId)
+      .sort((left, right) => right.createdAt.localeCompare(left.createdAt))
+      .slice(0, Math.max(1, limit));
   }
 
   setMemoryStatus(input: {
@@ -252,6 +402,7 @@ export class MemoryStore {
   }): MemoryRecord {
     const current = this.memories.get(input.memoryId);
     if (!current) throw new Error('memory not found');
+    const statusAt = new Date().toISOString();
     const next: MemoryRecord = {
       ...current,
       status: input.status,
@@ -259,10 +410,25 @@ export class MemoryStore {
         ...current.metadata,
         status_reason: input.reason,
         status_actor: input.actorSubjectId,
-        status_at: new Date().toISOString(),
+        status_at: statusAt,
       },
     };
     this.memories.set(next.id, next);
+    this.createAuditEvent({
+      workspaceId: next.workspaceId,
+      actorSubjectId: input.actorSubjectId,
+      action: 'memory.set_status',
+      objectType: 'memory',
+      objectId: next.id,
+      reason: input.reason,
+      beforeState: { status: current.status, projectId: current.projectId },
+      afterState: {
+        status: next.status,
+        reason: input.reason,
+        statusAt,
+        projectId: next.projectId,
+      },
+    });
     return next;
   }
 
@@ -304,6 +470,20 @@ export class MemoryStore {
     };
     this.memories.set(nextDup.id, nextDup);
     this.memories.set(nextKeeper.id, nextKeeper);
+    this.createAuditEvent({
+      workspaceId: duplicate.workspaceId,
+      actorSubjectId: input.actorSubjectId,
+      action: 'memory.supersede',
+      objectType: 'memory',
+      objectId: duplicate.id,
+      reason: input.reason,
+      afterState: {
+        duplicateId: duplicate.id,
+        keeperId: keeper.id,
+        status: 'superseded',
+        projectId: duplicate.projectId,
+      },
+    });
     return nextDup;
   }
 }

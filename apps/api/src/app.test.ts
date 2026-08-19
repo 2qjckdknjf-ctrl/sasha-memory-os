@@ -3,6 +3,7 @@ import { createApp } from './app.js';
 
 const projectId = '44444444-4444-4444-8444-444444444401';
 const workspaceId = '11111111-1111-4111-8111-111111111111';
+const owner = '33333333-3333-4333-8333-333333333301';
 const cursor = '33333333-3333-4333-8333-333333333303';
 const chatgpt = '33333333-3333-4333-8333-333333333302';
 
@@ -95,6 +96,43 @@ describe('memory api demo slice', () => {
       }),
     });
     expect(res.status).toBe(201);
+  });
+
+  it('lists persisted handoff history offline', async () => {
+    const app = createApp({});
+    await app.request('/v1/handoffs', {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'x-subject-id': cursor,
+      },
+      body: JSON.stringify({
+        workspace_id: workspaceId,
+        project_id: projectId,
+        from_subject_id: cursor,
+        to_subject_id: chatgpt,
+        idempotency_key: 'handoff-history-1',
+        payload: {
+          completed: ['queued implementation'],
+          artifacts: [],
+          validation: ['unit tests'],
+          open_items: ['finish audit page'],
+          blockers: [],
+          recommended_next: ['wire privacy page'],
+        },
+      }),
+    });
+    const listed = await app.request(
+      `/v1/handoffs?workspace_id=${workspaceId}&project_id=${projectId}&limit=10`,
+      {
+        headers: { 'x-subject-id': cursor },
+      },
+    );
+    expect(listed.status).toBe(200);
+    const body = await listed.json();
+    expect(Array.isArray(body.handoffs)).toBe(true);
+    expect(body.handoffs.length).toBeGreaterThan(0);
+    expect(body.handoffs[0].payload.recommended_next).toContain('wire privacy page');
   });
 
   it('captures a plain-text document into candidate memory', async () => {
@@ -566,6 +604,203 @@ describe('memory api demo slice', () => {
     expect(res.status).toBe(200);
     const got = (await res.json()) as { memory: { content: string } };
     expect(got.memory.content.length).toBe(600);
+  });
+
+  it('returns provenance and evidence for captured memory', async () => {
+    const app = createApp({});
+    const captured = await app.request('/v1/capture/text', {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'x-subject-id': chatgpt,
+      },
+      body: JSON.stringify({
+        workspace_id: workspaceId,
+        project_id: projectId,
+        title: 'Evidence alpha',
+        text: 'Evidence should surface in memory detail.',
+        actor_subject_id: chatgpt,
+        idempotency_key: 'memory-detail-evidence-1',
+      }),
+    });
+    expect(captured.status).toBe(201);
+    const created = (await captured.json()) as { memoryId: string };
+    const detail = await app.request(`/v1/memories/${created.memoryId}`, {
+      headers: { 'x-subject-id': owner, 'x-actor-key': 'owner' },
+    });
+    expect(detail.status).toBe(200);
+    const body = (await detail.json()) as {
+      memory: {
+        source?: { sourceEventId?: string };
+        evidence?: unknown[];
+        provenance?: { origin?: string };
+      };
+    };
+    expect(body.memory.source?.sourceEventId).toBeTruthy();
+    expect(Array.isArray(body.memory.evidence)).toBe(true);
+    expect(body.memory.evidence?.length).toBeGreaterThan(0);
+    expect(body.memory.provenance?.origin).toBeTruthy();
+  });
+
+  it('creates and lists privacy requests for owner', async () => {
+    const app = createApp({});
+    const ownerId = '33333333-3333-4333-8333-333333333301';
+    const created = await app.request('/v1/privacy/requests', {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'x-subject-id': ownerId,
+        'x-actor-key': 'owner',
+      },
+      body: JSON.stringify({
+        workspace_id: workspaceId,
+        project_id: projectId,
+        actor_subject_id: ownerId,
+        request_type: 'correction',
+        reason: 'The date should be corrected.',
+        correction_text: 'Use the updated date from the signed brief.',
+        idempotency_key: 'privacy-request-1',
+      }),
+    });
+    expect(created.status).toBe(201);
+    const listed = await app.request(
+      `/v1/privacy/requests?workspace_id=${workspaceId}&limit=10`,
+      {
+        headers: {
+          'x-subject-id': ownerId,
+          'x-actor-key': 'owner',
+        },
+      },
+    );
+    expect(listed.status).toBe(200);
+    const body = await listed.json();
+    expect(body.requests).toHaveLength(1);
+    expect(body.requests[0].requestType).toBe('correction');
+    expect(body.requests[0].correctionText).toContain('updated date');
+  });
+
+  it('lists audit events after status changes, handoffs, privacy, and export', async () => {
+    const app = createApp({});
+    const ownerId = '33333333-3333-4333-8333-333333333301';
+    const captured = await app.request('/v1/capture/text', {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'x-subject-id': chatgpt,
+      },
+      body: JSON.stringify({
+        workspace_id: workspaceId,
+        project_id: projectId,
+        title: 'Audit target',
+        text: 'This captured note will be reviewed.',
+        actor_subject_id: chatgpt,
+        idempotency_key: 'audit-capture-1',
+      }),
+    });
+    const captureBody = (await captured.json()) as { memoryId: string };
+
+    await app.request(`/v1/memories/${captureBody.memoryId}/status`, {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'x-subject-id': ownerId,
+        'x-actor-key': 'owner',
+      },
+      body: JSON.stringify({
+        status: 'verified',
+        reason: 'Reviewed by owner for audit trail',
+        actor_subject_id: ownerId,
+      }),
+    });
+
+    await app.request('/v1/handoffs', {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'x-subject-id': cursor,
+      },
+      body: JSON.stringify({
+        workspace_id: workspaceId,
+        project_id: projectId,
+        from_subject_id: cursor,
+        to_subject_id: chatgpt,
+        idempotency_key: 'audit-handoff-1',
+        payload: {
+          completed: ['reviewed candidate memory'],
+          artifacts: [],
+          validation: ['api tests'],
+          open_items: ['finish privacy wiring'],
+          blockers: [],
+          recommended_next: ['inspect audit timeline'],
+        },
+      }),
+    });
+
+    await app.request('/v1/privacy/requests', {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'x-subject-id': ownerId,
+        'x-actor-key': 'owner',
+      },
+      body: JSON.stringify({
+        workspace_id: workspaceId,
+        project_id: projectId,
+        actor_subject_id: ownerId,
+        request_type: 'deletion',
+        target_memory_id: captureBody.memoryId,
+        reason: 'Owner requested deletion audit trail.',
+        idempotency_key: 'audit-privacy-1',
+      }),
+    });
+
+    await app.request(
+      `/v1/export/memories?project_id=${projectId}&limit=10`,
+      {
+      headers: {
+        'x-subject-id': ownerId,
+        'x-actor-key': 'owner',
+      },
+      },
+    );
+
+    const audit = await app.request(
+      `/v1/audit?workspace_id=${workspaceId}&project_id=${projectId}&limit=20`,
+      {
+        headers: {
+          'x-subject-id': ownerId,
+          'x-actor-key': 'owner',
+        },
+      },
+    );
+    expect(audit.status).toBe(200);
+    const body = await audit.json();
+    const actions = (body.events as Array<{ action: string }>).map((event) => event.action);
+    expect(actions).toEqual(
+      expect.arrayContaining([
+        'memory.set_status',
+        'handoff.create',
+        'privacy.request.submitted',
+        'memory.export',
+      ]),
+    );
+  });
+
+  it('returns a live agent-rights matrix', async () => {
+    const app = createApp({});
+    const res = await app.request(`/v1/agents/rights?workspace_id=${workspaceId}`, {
+      headers: { 'x-subject-id': cursor, 'x-actor-key': 'cursor' },
+    });
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.currentActor.subjectId).toBe(cursor);
+    expect(body.actors).toHaveLength(3);
+    expect(
+      body.actors.some(
+        (row: { externalKey?: string; rights?: unknown[] }) =>
+          row.externalKey === 'cursor' && Array.isArray(row.rights) && row.rights.length > 0,
+      ),
+    ).toBe(true);
   });
 
   it('embeds offline rejection without supabase gateway', async () => {

@@ -87,6 +87,34 @@ export class SupabaseMemoryGateway {
     return data;
   }
 
+  async listHandoffs(input: {
+    subjectId: string;
+    workspaceId: string;
+    projectId?: string | null;
+    limit?: number;
+  }) {
+    const { data, error } = await this.client.rpc('api_list_handoffs', {
+      p_secret: this.apiSecret,
+      p_subject_id: input.subjectId,
+      p_workspace_id: input.workspaceId,
+      p_project_id: input.projectId ?? null,
+      p_limit: input.limit ?? 50,
+    });
+    if (error) throw error;
+    return data as {
+      handoffs: Array<{
+        id: string;
+        workspaceId: string;
+        projectId: string;
+        fromSubjectId: string | null;
+        toSubjectId: string | null;
+        sessionId: string | null;
+        payload: Record<string, unknown>;
+        createdAt: string;
+      }>;
+    };
+  }
+
   async search(input: {
     subjectId: string;
     query: string;
@@ -165,10 +193,202 @@ export class SupabaseMemoryGateway {
       projectId: string | null;
       workspaceId: string;
       recordedAt: string;
+      observedAt?: string | null;
+      validFrom?: string | null;
+      validTo?: string | null;
+      sourceEventId?: string | null;
+      createdBySubject?: string | null;
+      supersededBy?: string | null;
+      importance?: number | null;
+      confidence?: number | null;
+      schemaVersion?: string | null;
+      source?: Record<string, unknown> | null;
+      evidence?: Array<Record<string, unknown>> | null;
+      provenance?: Record<string, unknown> | null;
       metadata: Record<string, unknown>;
       embedding?: number[] | null;
       embeddingEngine?: string | null;
       embeddingDims?: number | null;
+    };
+  }
+
+  async listAudit(input: {
+    subjectId: string;
+    workspaceId: string;
+    limit?: number;
+  }) {
+    const { data, error } = await this.client.rpc('api_list_audit', {
+      p_secret: this.apiSecret,
+      p_subject_id: input.subjectId,
+      p_workspace_id: input.workspaceId,
+      p_limit: input.limit ?? 50,
+    });
+    if (error) throw error;
+    return data as {
+      events: Array<{
+        id: string;
+        workspaceId: string;
+        actorSubjectId: string | null;
+        actor?: {
+          id: string;
+          externalKey?: string | null;
+          displayName?: string | null;
+          kind?: string | null;
+        } | null;
+        action: string;
+        objectType: string | null;
+        objectId: string | null;
+        reason: string | null;
+        beforeState: Record<string, unknown> | null;
+        afterState: Record<string, unknown> | null;
+        recordedAt: string;
+      }>;
+    };
+  }
+
+  async appendAuditEvent(input: {
+    subjectId: string;
+    workspaceId: string;
+    action: string;
+    objectType?: string | null;
+    objectId?: string | null;
+    reason?: string | null;
+    beforeState?: Record<string, unknown> | null;
+    afterState?: Record<string, unknown> | null;
+  }) {
+    const { data, error } = await this.client.rpc('api_append_audit_event', {
+      p_secret: this.apiSecret,
+      p_subject_id: input.subjectId,
+      p_workspace_id: input.workspaceId,
+      p_action: input.action,
+      p_object_type: input.objectType ?? null,
+      p_object_id: input.objectId ?? null,
+      p_reason: input.reason ?? null,
+      p_before_state: input.beforeState ?? null,
+      p_after_state: input.afterState ?? null,
+    });
+    if (error) throw error;
+    return data as {
+      id: string;
+      action: string;
+      objectType: string | null;
+      objectId: string | null;
+      reason: string | null;
+      recordedAt: string;
+    };
+  }
+
+  async createPrivacyRequest(input: {
+    subjectId: string;
+    workspaceId: string;
+    projectId?: string | null;
+    requestType: 'deletion' | 'correction' | 'retraction';
+    targetMemoryId?: string | null;
+    reason: string;
+    correctionText?: string | null;
+    idempotencyKey: string;
+  }) {
+    const { data, error } = await this.client.rpc('api_create_privacy_request', {
+      p_secret: this.apiSecret,
+      p_subject_id: input.subjectId,
+      p_workspace_id: input.workspaceId,
+      p_project_id: input.projectId ?? null,
+      p_request_type: input.requestType,
+      p_target_memory_id: input.targetMemoryId ?? null,
+      p_reason: input.reason,
+      p_correction_text: input.correctionText ?? null,
+      p_idempotency_key: input.idempotencyKey,
+    });
+    if (error) throw error;
+    return data as {
+      id: string;
+      workspaceId: string;
+      projectId: string | null;
+      actorSubjectId: string | null;
+      requestType: 'deletion' | 'correction' | 'retraction';
+      status: 'submitted';
+      targetMemoryId: string | null;
+      reason: string;
+      correctionText: string | null;
+      createdAt: string;
+      actor?: {
+        id: string;
+        externalKey?: string | null;
+        displayName?: string | null;
+        kind?: string | null;
+      } | null;
+    };
+  }
+
+  async listPrivacyRequests(input: {
+    subjectId: string;
+    workspaceId: string;
+    limit?: number;
+  }) {
+    const { data, error } = await this.client.rpc('api_list_privacy_requests', {
+      p_secret: this.apiSecret,
+      p_subject_id: input.subjectId,
+      p_workspace_id: input.workspaceId,
+      p_limit: input.limit ?? 50,
+    });
+    if (error) throw error;
+    return data as {
+      requests: Array<{
+        id: string;
+        workspaceId: string;
+        projectId: string | null;
+        actorSubjectId: string | null;
+        requestType: 'deletion' | 'correction' | 'retraction';
+        status: 'submitted';
+        targetMemoryId: string | null;
+        reason: string;
+        correctionText: string | null;
+        createdAt: string;
+        actor?: {
+          id: string;
+          externalKey?: string | null;
+          displayName?: string | null;
+          kind?: string | null;
+        } | null;
+      }>;
+    };
+  }
+
+  async getAgentRights(input: { subjectId: string; workspaceId: string }) {
+    const { data, error } = await this.client.rpc('api_list_agent_rights', {
+      p_secret: this.apiSecret,
+      p_subject_id: input.subjectId,
+      p_workspace_id: input.workspaceId,
+    });
+    if (error) throw error;
+    return data as {
+      currentActor: {
+        subjectId: string;
+        isOwner: boolean;
+        actor: {
+          id: string;
+          externalKey?: string | null;
+          displayName?: string | null;
+          kind?: string | null;
+        };
+      };
+      actors: Array<{
+        subjectId: string;
+        externalKey: string | null;
+        displayName: string | null;
+        kind: string | null;
+        isOwner: boolean;
+        scopes: string[];
+        capabilities: string[];
+        rights: Array<{
+          effect: string;
+          resourceType: string;
+          projectId: string | null;
+          actions: string[];
+          sensitivityMax: string | null;
+          source: string;
+        }>;
+      }>;
     };
   }
 
