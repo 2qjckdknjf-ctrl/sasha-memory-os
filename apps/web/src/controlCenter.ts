@@ -19,7 +19,14 @@ export const ACTOR_LABELS: Record<Actor, string> = {
 };
 
 export type TimelineEntry =
-  | { kind: 'decision'; at: string; title: string; content: string; status: string }
+  | {
+      kind: 'decision';
+      at: string;
+      title: string;
+      content: string;
+      status: string;
+      memoryId?: string;
+    }
   | { kind: 'state'; at: string; summary: string; version: number; next: string }
   | { kind: 'handoff'; at: string; summary: string };
 
@@ -44,9 +51,37 @@ export type SearchHit = {
     status?: string;
     memoryType?: string;
     type?: string;
+    projectId?: string | null;
   };
   reason?: string;
   score?: number;
+};
+
+export type MemoryStatusAction = 'verified' | 'disputed' | 'retracted';
+
+export type MemoryDetail = {
+  id: string;
+  title: string;
+  content: string;
+  status: string;
+  memoryType?: string;
+  type?: string;
+  sensitivity?: string;
+  projectId?: string | null;
+  workspaceId?: string | null;
+  recordedAt?: string;
+  observedAt?: string | null;
+  validFrom?: string | null;
+  validTo?: string | null;
+  sourceEventId?: string | null;
+  createdBySubject?: string | null;
+  supersededBy?: string | null;
+  importance?: number;
+  confidence?: number;
+  schemaVersion?: string;
+  metadata?: Record<string, unknown>;
+  embeddingEngine?: string | null;
+  embeddingDims?: number | null;
 };
 
 export type ConnectionRecord = {

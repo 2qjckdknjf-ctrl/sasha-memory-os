@@ -85,7 +85,7 @@ export function SearchPage({
 
       <section className="panel">
         <h2>Результаты</h2>
-        <SearchResults hits={hits} />
+        <SearchResults hits={hits} search={search} />
       </section>
     </section>
   );

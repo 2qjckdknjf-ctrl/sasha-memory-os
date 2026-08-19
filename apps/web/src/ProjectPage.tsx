@@ -147,7 +147,14 @@ export function ProjectPage({
                 <div className="meta">
                   <span className="badge state">{item.status}</span>
                 </div>
-                <h3>{item.title}</h3>
+                <h3>
+                  <Link
+                    to={`/memories/${item.id}`}
+                    state={{ from: 'review' as const, projectId }}
+                  >
+                    {item.title}
+                  </Link>
+                </h3>
                 <p>{item.content}</p>
                 <div className="actions">
                   <button
