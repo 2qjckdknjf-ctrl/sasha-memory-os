@@ -269,18 +269,22 @@ export function App() {
   async function refreshProjectContext(mode: BackendMode = backend) {
     if (mode === 'local') {
       const localProjectStates = readProjectId
-        ? [localStore.getProjectState(readProjectId)].filter(
-            (state): state is Record<string, unknown> => state !== null,
-          )
+        ? (() => {
+            const state = localStore.getProjectState(readProjectId);
+            return state ? [{ ...state } as Record<string, unknown>] : [];
+          })()
         : [...localStore.projectStates.values()]
-            .map((versions) => versions[versions.length - 1] ?? null)
-            .filter((state): state is Record<string, unknown> => state !== null);
+            .flatMap((versions) => {
+              const state = versions[versions.length - 1];
+              return state ? ([{ ...state }] as Array<Record<string, unknown>>) : [];
+            });
       setProjectStates(localProjectStates);
       if (!readProjectId) {
         setProjectContext(null);
         return;
       }
       const localMemories = localStore.listCurrentMemories(WORKSPACE_ID, readProjectId);
+      const localLatestHandoff = localStore.latestHandoff(readProjectId);
       setProjectContext({
         decisions: localMemories
           .filter((memory) => memory.memoryType === 'decision')
@@ -291,8 +295,10 @@ export function App() {
               memory.memoryType === 'task' && isVisibleTaskStatus(memory.status),
           )
           .map((memory) => ({ ...memory })),
-        state: localProjectStates[0] ?? null,
-        latestHandoff: localStore.latestHandoff(readProjectId),
+        state: localProjectStates[0]
+          ? ({ ...localProjectStates[0] } as Record<string, unknown>)
+          : null,
+        latestHandoff: localLatestHandoff ? { ...localLatestHandoff } : null,
       });
       return;
     }
@@ -343,7 +349,7 @@ export function App() {
         }
       }),
     );
-    setProjectStates(states.filter((state): state is Record<string, unknown> => state !== null));
+    setProjectStates(states.filter(Boolean) as Array<Record<string, unknown>>);
   }
 
   async function refreshRemote() {

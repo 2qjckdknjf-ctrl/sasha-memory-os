@@ -1400,7 +1400,7 @@ describe('memory api demo slice', () => {
     expect(body.memoryId).toBeTruthy();
   });
 
-  it('allows workspace-level capture from chatgpt without widening project access', async () => {
+  it('rejects workspace-level capture from chatgpt without an explicit project', async () => {
     const app = createApp({});
     const res = await app.request('/v1/capture/text', {
       method: 'POST',
@@ -1416,7 +1416,10 @@ describe('memory api demo slice', () => {
         idempotency_key: 'manual/workspace-capture-1',
       }),
     });
-    expect(res.status).toBe(201);
+    expect(res.status).toBe(400);
+    expect(await res.json()).toEqual({
+      error: 'project_id is required for this write',
+    });
   });
 
   it('still rejects chatgpt capture into an ungranted concrete project', async () => {

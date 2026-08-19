@@ -1937,6 +1937,9 @@ export function createApp(options?: {
     const sensitivity = c.req.query('sensitivity') ?? 'internal';
     const authz = c.get('authz');
     const gw = c.get('gateway');
+    if (!projectId) {
+      return c.json({ error: 'project_id is required for rls probe' }, 400);
+    }
     if (!gw) {
       return c.json({
         subjectId: authz.subjectId,
