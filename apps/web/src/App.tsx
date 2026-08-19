@@ -87,6 +87,10 @@ export function App() {
     () => new Set(),
   );
   const [sessionHandoffs, setSessionHandoffs] = useState<HandoffLike[]>([]);
+  const [persistedHandoffs, setPersistedHandoffs] = useState<HandoffLike[]>(() =>
+    localStore.listHandoffs(PROJECT_ID),
+  );
+  const [handoffHistoryAvailable, setHandoffHistoryAvailable] = useState(true);
   const [me, setMe] = useState<MeResponse | null>(null);
 
   const subjectId = ACTOR_IDS[actor];
@@ -136,6 +140,26 @@ export function App() {
     }
   }
 
+  async function refreshHandoffs(mode: BackendMode = backend) {
+    if (mode === 'local') {
+      setPersistedHandoffs(localStore.listHandoffs(PROJECT_ID));
+      setHandoffHistoryAvailable(true);
+      return;
+    }
+    try {
+      const result = await apiGet<{ handoffs?: HandoffLike[] }>(
+        `/v1/handoffs?workspace_id=${WORKSPACE_ID}&project_id=${PROJECT_ID}&limit=50`,
+        subjectId,
+        actor,
+      );
+      setPersistedHandoffs(result.handoffs ?? []);
+      setHandoffHistoryAvailable(true);
+    } catch {
+      setPersistedHandoffs([]);
+      setHandoffHistoryAvailable(false);
+    }
+  }
+
   async function refreshRemote() {
     try {
       const health = await apiHealth();
@@ -150,6 +174,8 @@ export function App() {
             status: 'connected',
           },
         ]);
+        setPersistedHandoffs(localStore.listHandoffs(PROJECT_ID));
+        setHandoffHistoryAvailable(true);
         setOutboxPending([]);
         return;
       }
@@ -172,6 +198,7 @@ export function App() {
       } catch {
         setMe(buildLocalMe(actor));
       }
+      await refreshHandoffs(nextBackend);
       await refreshOutboxPending(nextBackend);
     } finally {
       setBackendResolved(true);
@@ -294,14 +321,20 @@ export function App() {
           next: (state?.next ?? []).join(', ') || '—',
         });
       }
-      if (remote.latestHandoff) {
-        const payload = remote.latestHandoff.payload as {
+      const latestHandoff = persistedHandoffs[0] ?? remote.latestHandoff;
+      if (latestHandoff) {
+        const latestHandoffRecord = latestHandoff as Record<string, unknown>;
+        const payload = latestHandoff.payload as {
           recommended_next?: string[];
           completed?: string[];
         };
         entries.push({
           kind: 'handoff',
-          at: String(remote.latestHandoff.created_at ?? new Date().toISOString()),
+          at: String(
+            latestHandoffRecord.created_at ??
+              latestHandoffRecord.createdAt ??
+              new Date().toISOString(),
+          ),
           summary:
             payload?.recommended_next?.join(', ') ||
             payload?.completed?.join(', ') ||
@@ -344,7 +377,7 @@ export function App() {
       });
     }
     return entries.sort((left, right) => right.at.localeCompare(left.at));
-  }, [localStore, remote, tick]);
+  }, [localStore, persistedHandoffs, remote, tick]);
 
   const stateSummary = useMemo<StateSummary | null>(() => {
     if (remote?.state) {
@@ -387,12 +420,12 @@ export function App() {
   const handoffSurface = useMemo(
     () =>
       deriveHandoffSurface({
-        latestHandoff: remote?.latestHandoff ?? null,
-        persistedHandoffs: backend === 'local' ? (localStore.handoffs.get(PROJECT_ID) ?? []) : [],
+        latestHandoff: persistedHandoffs[0] ?? remote?.latestHandoff ?? null,
+        persistedHandoffs,
         sessionHandoffs,
-        historyAvailable: backend === 'local',
+        historyAvailable: handoffHistoryAvailable,
       }),
-    [backend, localStore, remote, sessionHandoffs, tick],
+    [handoffHistoryAvailable, persistedHandoffs, remote, sessionHandoffs],
   );
 
   const connectionWarnings = useMemo(
@@ -467,6 +500,7 @@ export function App() {
         });
       }
       setSessionHandoffs((current) => [handoff, ...current]);
+      await refreshHandoffs(backend);
       setLastCapture('создан хэнд-офф Cursor → ChatGPT');
       setTick((current) => current + 1);
     } catch (err) {
@@ -1295,16 +1329,36 @@ export function App() {
         />
         <Route
           path="/agents"
-          element={<AgentScopesPage backend={backend} me={me} />}
+          element={
+            <AgentScopesPage
+              actor={actor}
+              backend={backend}
+              backendResolved={backendResolved}
+              me={me}
+              subjectId={subjectId}
+            />
+          }
         />
-        <Route path="/audit" element={<AuditPage backend={backend} />} />
+        <Route
+          path="/audit"
+          element={
+            <AuditPage
+              actor={actor}
+              backend={backend}
+              backendResolved={backendResolved}
+              subjectId={subjectId}
+            />
+          }
+        />
         <Route
           path="/privacy"
           element={
             <PrivacyPage
               actor={actor}
               backend={backend}
+              backendResolved={backendResolved}
               onExportMemories={onExportMemories}
+              subjectId={subjectId}
             />
           }
         />

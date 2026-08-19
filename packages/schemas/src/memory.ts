@@ -102,6 +102,23 @@ export const setMemoryStatusSchema = z.object({
   actor_subject_id: z.string().uuid(),
 });
 
+export const privacyRequestTypeSchema = z.enum([
+  'deletion',
+  'correction',
+  'retraction',
+]);
+
+export const createPrivacyRequestSchema = z.object({
+  workspace_id: z.string().uuid(),
+  project_id: z.string().uuid().optional(),
+  actor_subject_id: z.string().uuid(),
+  request_type: privacyRequestTypeSchema,
+  target_memory_id: z.string().uuid().optional(),
+  reason: z.string().min(1).max(2000),
+  correction_text: z.string().max(4000).optional(),
+  idempotency_key: z.string().min(1).max(200),
+});
+
 export const extractionCandidateSchema = z.object({
   title: z.string().min(1).max(200),
   content: z.string().min(1).max(4000),
@@ -126,4 +143,5 @@ export type CreateDecisionInput = z.infer<typeof createDecisionSchema>;
 export type UpsertProjectStateInput = z.infer<typeof upsertProjectStateSchema>;
 export type CreateHandoffInput = z.infer<typeof createHandoffSchema>;
 export type SetMemoryStatusInput = z.infer<typeof setMemoryStatusSchema>;
+export type CreatePrivacyRequestInput = z.infer<typeof createPrivacyRequestSchema>;
 export type ApplyExtractionInput = z.infer<typeof applyExtractionSchema>;

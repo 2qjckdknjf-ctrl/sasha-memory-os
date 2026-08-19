@@ -1,16 +1,101 @@
+import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
+import { apiGet } from './api';
 import { AGENT_SCOPE_PREVIEWS, actorIdForPreview } from './agentScopes';
-import { type BackendMode, type MeResponse } from './controlCenter';
+import {
+  WORKSPACE_ID,
+  type Actor,
+  type AgentRightsActor,
+  type AgentRightsResponse,
+  type BackendMode,
+  type MeResponse,
+} from './controlCenter';
 
 type Props = {
+  actor: Actor;
   backend: BackendMode;
+  backendResolved: boolean;
   me: MeResponse | null;
+  subjectId: string;
 };
 
-export function AgentScopesPage({ backend, me }: Props) {
+function buildPreviewFallback(): AgentRightsActor[] {
+  return AGENT_SCOPE_PREVIEWS.map((preview) => ({
+    subjectId: actorIdForPreview(preview.actor),
+    externalKey: preview.actor,
+    displayName: preview.displayName,
+    kind: preview.kind,
+    isOwner: preview.actor === 'owner',
+    scopes: preview.capabilities,
+    capabilities: preview.capabilities,
+    rights: preview.rights.map((right) => ({
+      effect: 'allow',
+      resourceType: right.resource,
+      projectId: null,
+      actions: [right.access],
+      sensitivityMax: preview.sensitivity,
+      source: 'preview',
+    })),
+  }));
+}
+
+export function AgentScopesPage({
+  actor,
+  backend,
+  backendResolved,
+  me,
+  subjectId,
+}: Props) {
   const currentActorName = me?.actor.displayName ?? 'Текущий актор';
   const currentActorKey = me?.actor.externalKey ?? 'unknown';
   const currentActorId = me?.actor.id ?? me?.subjectId ?? '—';
+  const [rights, setRights] = useState<AgentRightsResponse | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadRights() {
+      if (!backendResolved || backend === 'local') {
+        setRights(null);
+        setLoading(false);
+        setError(null);
+        return;
+      }
+      setLoading(true);
+      setError(null);
+      try {
+        const result = await apiGet<AgentRightsResponse>(
+          `/v1/agents/rights?workspace_id=${WORKSPACE_ID}`,
+          subjectId,
+          actor,
+        );
+        if (!cancelled) {
+          setRights(result);
+        }
+      } catch (loadError) {
+        if (!cancelled) {
+          setRights(null);
+          setError((loadError as Error).message);
+        }
+      } finally {
+        if (!cancelled) {
+          setLoading(false);
+        }
+      }
+    }
+
+    void loadRights();
+    return () => {
+      cancelled = true;
+    };
+  }, [actor, backend, backendResolved, subjectId]);
+
+  const actorRows = useMemo(
+    () => rights?.actors ?? buildPreviewFallback(),
+    [rights],
+  );
 
   return (
     <section className="page">
@@ -18,9 +103,8 @@ export function AgentScopesPage({ backend, me }: Props) {
         <p className="eyebrow">Агенты</p>
         <h1>Агенты и права доступа</h1>
         <p className="lede">
-          Отдельного API матрицы прав пока нет, поэтому этот экран честно показывает текущего
-          актора через <code>/v1/me</code> и preview прав только для чтения из текущей
-          seed/demo policy. Опасный switch actor остается на <code>/ops</code>.
+          Экран показывает текущего актора через <code>/v1/me</code> и матрицу прав через реальный
+          backend endpoint <code>/v1/agents/rights</code>, если он доступен.
         </p>
       </header>
 
@@ -59,52 +143,64 @@ export function AgentScopesPage({ backend, me }: Props) {
             </div>
             <div className="memory-inspector__fact">
               <dt>Источник</dt>
-              <dd>{backend === 'local' ? 'Локальный preview' : '/v1/me'}</dd>
+              <dd>{backend === 'local' ? 'Локальный preview' : '/v1/me + /v1/agents/rights'}</dd>
             </div>
           </dl>
         </section>
 
         <section className="panel">
-          <h2>Что пока не видно через API</h2>
+          <h2>Статус матрицы прав</h2>
           <ul className="surface-bullets">
-            <li>Нет живого endpoint-а матрицы прав для всех агентов рабочей области.</li>
-            <li>Нет write API продукта для изменения ACL или trust/scopes.</li>
-            <li>ROMA не показывается, потому что в текущем API/seed его еще нет.</li>
+            <li>Write API для ACL по-прежнему не добавлялся: экран только читает текущую матрицу.</li>
+            <li>ROMA по-прежнему не показывается, потому что его нет в текущих domain types / seed.</li>
+            <li>
+              {backend === 'local'
+                ? 'Сейчас открыт локальный preview без API.'
+                : loading
+                  ? 'Загружаю live matrix…'
+                  : error
+                    ? `Не удалось загрузить live matrix: ${error}`
+                    : 'Права ниже пришли из backend без preview-файла.'}
+            </li>
           </ul>
         </section>
       </div>
 
       <section className="panel">
-        <h2>Preview прав только для чтения</h2>
+        <h2>{rights ? 'Живая матрица прав' : 'Fallback preview прав'}</h2>
         <p className="hint">
-          Это не редактор ACL. Ниже только то, что текущий билд уже знает о владельце, ChatGPT и
-          Cursor из seed/demo policy и actor metadata.
+          Это не редактор ACL. Ниже только текущие read-only права владельца, ChatGPT и Cursor.
         </p>
         <div className="stat-grid">
-          {AGENT_SCOPE_PREVIEWS.map((preview) => {
-            const isCurrentActor = me?.actor.id === actorIdForPreview(preview.actor);
+          {actorRows.map((row) => {
+            const isCurrentActor = me?.actor.id === row.subjectId;
             return (
-              <article className="stat-card" key={preview.actor}>
+              <article className="stat-card" key={row.subjectId}>
                 <div className="meta">
-                  <span className="badge state">{preview.kind}</span>
+                  <span className="badge state">{row.kind ?? 'actor'}</span>
                   {isCurrentActor ? <span>текущий актор</span> : null}
                 </div>
-                <strong>{preview.displayName}</strong>
-                <p className="hint">{preview.note}</p>
-                <p className="hint">Чувствительность: {preview.sensitivity}</p>
-                <p className="section-subtitle">Права</p>
+                <strong>{row.displayName ?? row.externalKey ?? row.subjectId}</strong>
+                <p className="hint">
+                  {row.isOwner
+                    ? 'Owner через membership'
+                    : `Actor key: ${row.externalKey ?? 'unknown'}`}
+                </p>
+                <p className="section-subtitle">Scopes</p>
                 <ul className="surface-bullets">
-                  {preview.rights.map((right) => (
-                    <li key={`${preview.actor}-${right.resource}`}>
-                      <strong>{right.resource}:</strong> {right.access}
+                  {row.scopes.map((scope) => (
+                    <li key={`${row.subjectId}-${scope}`}>
+                      <code>{scope}</code>
                     </li>
                   ))}
                 </ul>
-                <p className="section-subtitle">Capabilities / surface hints</p>
+                <p className="section-subtitle">Подробные права</p>
                 <ul className="surface-bullets">
-                  {preview.capabilities.map((capability) => (
-                    <li key={`${preview.actor}-${capability}`}>
-                      <code>{capability}</code>
+                  {row.rights.map((right, index) => (
+                    <li key={`${row.subjectId}-${right.resourceType}-${index}`}>
+                      <strong>{right.resourceType}</strong>: {right.actions.join(', ') || 'all'}
+                      {right.projectId ? ` · project ${right.projectId.slice(0, 8)}…` : ''}
+                      {right.sensitivityMax ? ` · <= ${right.sensitivityMax}` : ''}
                     </li>
                   ))}
                 </ul>

@@ -64,6 +64,32 @@ export interface Handoff {
   createdAt: string;
 }
 
+export interface AuditLogEntry {
+  id: string;
+  workspaceId: string;
+  actorSubjectId: string | null;
+  action: string;
+  objectType: string | null;
+  objectId: string | null;
+  reason: string | null;
+  beforeState: Record<string, unknown> | null;
+  afterState: Record<string, unknown> | null;
+  recordedAt: string;
+}
+
+export interface PrivacyRequest {
+  id: string;
+  workspaceId: string;
+  projectId: string | null;
+  actorSubjectId: string | null;
+  requestType: 'deletion' | 'correction' | 'retraction';
+  status: 'submitted';
+  targetMemoryId: string | null;
+  reason: string;
+  correctionText: string | null;
+  createdAt: string;
+}
+
 export function filterCurrentMemories(records: MemoryRecord[]): MemoryRecord[] {
   return records.filter((r) => isCurrentTruth(r.status));
 }

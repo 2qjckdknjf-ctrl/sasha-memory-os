@@ -3,9 +3,14 @@ import { cors } from 'hono/cors';
 import {
   authorize,
   resolveLocalSubject,
+  type AclEntry,
   type AuthzContext,
 } from '@memory-os/authz';
-import { createSeededStore, type MemoryStore } from '@memory-os/domain';
+import {
+  createSeededStore,
+  type MemoryRecord,
+  type MemoryStore,
+} from '@memory-os/domain';
 import { pullGithubDelta } from '@memory-os/connector-github';
 import { pullGmailDelta } from '@memory-os/connector-gmail';
 import { pullGoogleCalendarDelta } from '@memory-os/connector-google-calendar';
@@ -24,6 +29,7 @@ import {
   captureTextSchema,
   createDecisionSchema,
   createHandoffSchema,
+  createPrivacyRequestSchema,
   ingestionEnvelopeSchema,
   oauthCompleteSchema,
   oauthStartSchema,
@@ -125,6 +131,110 @@ function seedAuthz(subjectId: string): AuthzContext {
       },
     ],
   };
+}
+
+function resolveSeedActor(
+  subjectId: string | null | undefined,
+): {
+  id: string;
+  externalKey?: string;
+  displayName?: string;
+  kind?: string;
+} | null {
+  if (!subjectId) return null;
+  return (
+    resolveLocalSubject({
+      subjectId,
+      workspaceId: seedWorkspace,
+    }) ?? { id: subjectId }
+  );
+}
+
+function formatAclScope(entry: AclEntry): string {
+  const actions = entry.actions.length > 0 ? entry.actions.join('+') : 'all';
+  const sensitivity = entry.sensitivityMax ?? 'all';
+  const project = entry.projectId ?? 'workspace';
+  return `${entry.resourceType}.${actions}@${project}<=${sensitivity}`;
+}
+
+function buildLocalAgentRow(subjectId: string) {
+  const actor = resolveSeedActor(subjectId);
+  const authz = seedAuthz(subjectId);
+  const rights = authz.isOwner
+    ? [
+        {
+          effect: 'allow',
+          resourceType: '*',
+          projectId: null,
+          actions: ['read', 'write'],
+          sensitivityMax: null,
+          source: 'workspace_owner',
+        },
+      ]
+    : authz.entries
+        .filter((entry) => entry.subjectId === subjectId)
+        .map((entry) => ({
+          effect: entry.effect,
+          resourceType: entry.resourceType,
+          projectId: entry.projectId,
+          actions: entry.actions,
+          sensitivityMax: entry.sensitivityMax,
+          source: 'acl',
+        }));
+  const scopes = authz.isOwner
+    ? ['workspace.owner', 'memory.export', 'connections.manage']
+    : authz.entries
+        .filter((entry) => entry.subjectId === subjectId && entry.effect === 'allow')
+        .map(formatAclScope);
+
+  return {
+    subjectId,
+    externalKey: actor?.externalKey ?? null,
+    displayName: actor?.displayName ?? subjectId,
+    kind: actor?.kind ?? 'unknown',
+    isOwner: authz.isOwner,
+    scopes,
+    capabilities: scopes,
+    rights,
+  };
+}
+
+function buildLocalMemoryDetail(memory: MemoryRecord) {
+  const metadata = memory.metadata ?? {};
+  return {
+    id: memory.id,
+    title: memory.title,
+    content: memory.content,
+    status: memory.status,
+    sensitivity: memory.sensitivity,
+    memoryType: memory.memoryType,
+    projectId: memory.projectId,
+    workspaceId: memory.workspaceId,
+    recordedAt: memory.recordedAt,
+    observedAt: memory.observedAt,
+    validFrom: memory.validFrom,
+    validTo: memory.validTo,
+    sourceEventId: memory.sourceEventId,
+    createdBySubject: memory.createdBySubject,
+    supersededBy: memory.supersededBy,
+    importance: memory.importance,
+    confidence: memory.confidence,
+    schemaVersion: memory.schemaVersion,
+    source: metadata.source,
+    evidence: metadata.evidence,
+    provenance: metadata.provenance,
+    metadata,
+  };
+}
+
+function auditProjectId(entry: {
+  afterState?: Record<string, unknown> | null;
+  beforeState?: Record<string, unknown> | null;
+}) {
+  const afterProjectId = entry.afterState?.projectId;
+  if (typeof afterProjectId === 'string') return afterProjectId;
+  const beforeProjectId = entry.beforeState?.projectId;
+  return typeof beforeProjectId === 'string' ? beforeProjectId : null;
 }
 
 function isForbiddenError(err: unknown): boolean {
@@ -375,6 +485,78 @@ export function createApp(options?: {
     });
   });
 
+  app.get('/v1/agents/rights', async (c) => {
+    const authz = c.get('authz');
+    const actor = c.get('actor');
+    const workspaceId = c.req.query('workspace_id') ?? seedWorkspace;
+    const gw = c.get('gateway');
+    if (gw) {
+      try {
+        const matrix = await gw.getAgentRights({
+          subjectId: authz.subjectId,
+          workspaceId,
+        });
+        return c.json(matrix);
+      } catch (err) {
+        if (isForbiddenError(err)) return c.json({ error: 'forbidden' }, 403);
+        return c.json({ error: (err as Error).message }, 500);
+      }
+    }
+    return c.json({
+      currentActor: {
+        subjectId: authz.subjectId,
+        isOwner: authz.isOwner,
+        actor,
+      },
+      actors: [owner, chatgpt, cursor].map(buildLocalAgentRow),
+      backend: 'memory-store',
+    });
+  });
+
+  app.get('/v1/audit', async (c) => {
+    const authz = c.get('authz');
+    const workspaceId = c.req.query('workspace_id') ?? seedWorkspace;
+    const projectId = c.req.query('project_id') ?? null;
+    const limit = Number(c.req.query('limit') ?? '50');
+    const gw = c.get('gateway');
+    if (gw) {
+      try {
+        const result = await gw.listAudit({
+          subjectId: authz.subjectId,
+          workspaceId,
+          limit: Number.isFinite(limit) ? limit : 50,
+        });
+        const events =
+          projectId === null
+            ? result.events
+            : result.events.filter((event) => {
+                const afterProjectId =
+                  typeof event.afterState?.projectId === 'string'
+                    ? event.afterState.projectId
+                    : null;
+                const beforeProjectId =
+                  typeof event.beforeState?.projectId === 'string'
+                    ? event.beforeState.projectId
+                    : null;
+                return afterProjectId === projectId || beforeProjectId === projectId;
+              });
+        return c.json({ ...result, events });
+      } catch (err) {
+        if (isForbiddenError(err)) return c.json({ error: 'forbidden' }, 403);
+        return c.json({ error: (err as Error).message }, 500);
+      }
+    }
+    const events = c
+      .get('store')
+      .listAudit(workspaceId, Number.isFinite(limit) ? limit : 50)
+      .filter((entry) => projectId === null || auditProjectId(entry) === projectId)
+      .map((entry) => ({
+        ...entry,
+        actor: resolveSeedActor(entry.actorSubjectId),
+      }));
+    return c.json({ events, backend: 'memory-store' });
+  });
+
   app.get('/v1/connections', async (c) => {
     const authz = c.get('authz');
     const workspaceId = c.req.query('workspace_id') ?? seedWorkspace;
@@ -416,6 +598,17 @@ export function createApp(options?: {
     }
     const gw = c.get('gateway');
     if (!gw) {
+      c.get('store').createAuditEvent({
+        workspaceId,
+        actorSubjectId: actorSubjectId,
+        action: 'connection.sync.requested',
+        objectType: 'connector_sync',
+        reason: 'connector sync requested in memory-store mode',
+        afterState: {
+          connectionId: body.connection_id ?? null,
+          count: 0,
+        },
+      });
       return c.json({
         count: 0,
         enqueued: [],
@@ -493,6 +686,21 @@ export function createApp(options?: {
           }
         }
       }
+      await gw.appendAuditEvent({
+        subjectId: actorSubjectId,
+        workspaceId,
+        action: 'connection.sync.requested',
+        objectType: 'connector_sync',
+        reason: body.connection_id
+          ? `connector sync requested for ${body.connection_id}`
+          : 'connector sync requested',
+        afterState: {
+          connectionId: body.connection_id ?? null,
+          enqueued: result.count ?? 0,
+          completed: completed.length,
+          captured,
+        },
+      });
       return c.json({ ...result, completed, captured }, 202);
     } catch (err) {
       if (isForbiddenError(err)) return c.json({ error: 'forbidden' }, 403);
@@ -1194,6 +1402,20 @@ export function createApp(options?: {
           });
           memories.push(memory);
         }
+        await gw.appendAuditEvent({
+          subjectId: authz.subjectId,
+          workspaceId,
+          action: 'memory.export',
+          objectType: 'memory_export',
+          reason: `exported ${memories.length} memories`,
+          afterState: {
+            workspaceId,
+            count: memories.length,
+            projectId: projectId ?? null,
+            recordedAfter: recordedAfter ?? null,
+            recordedBefore: recordedBefore ?? null,
+          },
+        });
         return c.json({
           format: 'memory-os.export.memories.v1',
           exportedAt,
@@ -1238,6 +1460,21 @@ export function createApp(options?: {
         metadata: m.metadata,
       }));
 
+    c.get('store').createAuditEvent({
+      workspaceId,
+      actorSubjectId: authz.subjectId,
+      action: 'memory.export',
+      objectType: 'memory_export',
+      reason: `exported ${memories.length} memories`,
+      afterState: {
+        workspaceId,
+        count: memories.length,
+        projectId: projectId ?? null,
+        recordedAfter: recordedAfter ?? null,
+        recordedBefore: recordedBefore ?? null,
+      },
+    });
+
     return c.json({
       format: 'memory-os.export.memories.v1',
       exportedAt,
@@ -1249,6 +1486,80 @@ export function createApp(options?: {
       recordedBefore: recordedBefore ?? null,
       backend: 'memory-store',
     });
+  });
+
+  app.get('/v1/privacy/requests', async (c) => {
+    const authz = c.get('authz');
+    if (!authz.isOwner) return c.json({ error: 'forbidden' }, 403);
+    const workspaceId = c.req.query('workspace_id') ?? seedWorkspace;
+    const limit = Number(c.req.query('limit') ?? '50');
+    const gw = c.get('gateway');
+    if (gw) {
+      try {
+        const requests = await gw.listPrivacyRequests({
+          subjectId: authz.subjectId,
+          workspaceId,
+          limit: Number.isFinite(limit) ? limit : 50,
+        });
+        return c.json(requests);
+      } catch (err) {
+        if (isForbiddenError(err)) return c.json({ error: 'forbidden' }, 403);
+        return c.json({ error: (err as Error).message }, 500);
+      }
+    }
+    const requests = c
+      .get('store')
+      .listPrivacyRequests(workspaceId, Number.isFinite(limit) ? limit : 50)
+      .map((request) => ({
+        ...request,
+        actor: resolveSeedActor(request.actorSubjectId),
+      }));
+    return c.json({ requests, backend: 'memory-store' });
+  });
+
+  app.post('/v1/privacy/requests', async (c) => {
+    const body = createPrivacyRequestSchema.parse(await c.req.json());
+    const authz = c.get('authz');
+    if (!authz.isOwner || authz.subjectId !== body.actor_subject_id) {
+      return c.json({ error: 'forbidden' }, 403);
+    }
+    const gw = c.get('gateway');
+    if (gw) {
+      try {
+        const request = await gw.createPrivacyRequest({
+          subjectId: body.actor_subject_id,
+          workspaceId: body.workspace_id,
+          projectId: body.project_id ?? null,
+          requestType: body.request_type,
+          targetMemoryId: body.target_memory_id ?? null,
+          reason: body.reason,
+          correctionText: body.correction_text ?? null,
+          idempotencyKey: body.idempotency_key,
+        });
+        return c.json(request, 201);
+      } catch (err) {
+        if (isForbiddenError(err)) return c.json({ error: 'forbidden' }, 403);
+        return c.json({ error: (err as Error).message }, 500);
+      }
+    }
+    const request = c.get('store').createPrivacyRequest({
+      workspaceId: body.workspace_id,
+      projectId: body.project_id ?? null,
+      actorSubjectId: body.actor_subject_id,
+      requestType: body.request_type,
+      targetMemoryId: body.target_memory_id ?? null,
+      reason: body.reason,
+      correctionText: body.correction_text ?? null,
+      idempotencyKey: body.idempotency_key,
+    });
+    return c.json(
+      {
+        ...request,
+        actor: resolveSeedActor(request.actorSubjectId),
+        backend: 'memory-store',
+      },
+      201,
+    );
   });
 
   app.get('/v1/memories/:id', async (c) => {
@@ -1284,17 +1595,7 @@ export function createApp(options?: {
       return c.json({ error: 'forbidden' }, 403);
     }
     return c.json({
-      memory: {
-        id: memory.id,
-        title: memory.title,
-        content: memory.content,
-        status: memory.status,
-        sensitivity: memory.sensitivity,
-        memoryType: memory.memoryType,
-        projectId: memory.projectId,
-        recordedAt: memory.recordedAt,
-        metadata: memory.metadata,
-      },
+      memory: buildLocalMemoryDetail(memory),
       backend: 'memory-store',
     });
   });
@@ -1759,6 +2060,41 @@ export function createApp(options?: {
     } catch (err) {
       return c.json({ error: (err as Error).message }, 409);
     }
+  });
+
+  app.get('/v1/handoffs', async (c) => {
+    const authz = c.get('authz');
+    const workspaceId = c.req.query('workspace_id') ?? seedWorkspace;
+    const projectId = c.req.query('project_id') ?? null;
+    const limit = Number(c.req.query('limit') ?? '50');
+    const gw = c.get('gateway');
+    if (gw) {
+      try {
+        const handoffs = await gw.listHandoffs({
+          subjectId: authz.subjectId,
+          workspaceId,
+          projectId,
+          limit: Number.isFinite(limit) ? limit : 50,
+        });
+        return c.json(handoffs);
+      } catch (err) {
+        if (isForbiddenError(err)) return c.json({ error: 'forbidden' }, 403);
+        return c.json({ error: (err as Error).message }, 500);
+      }
+    }
+    const handoffs = c
+      .get('store')
+      .listHandoffs(projectId, Number.isFinite(limit) ? limit : 50)
+      .filter(
+        (handoff) =>
+          handoff.workspaceId === workspaceId &&
+          authorize(authz, {
+            resourceType: 'handoff',
+            action: 'read',
+            projectId: handoff.projectId,
+          }),
+      );
+    return c.json({ handoffs, backend: 'memory-store' });
   });
 
   app.post('/v1/handoffs', async (c) => {

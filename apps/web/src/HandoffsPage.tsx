@@ -151,8 +151,8 @@ export function HandoffsPage({ handoffSurface, onCreateHandoff }: Props) {
         <p className="eyebrow">Хэнд-оффы</p>
         <h1>Хэнд-оффы между агентами</h1>
         <p className="lede">
-          Поверхность handoff для владельца по {PROJECT_NAME}. Создание идет через текущий POST{' '}
-          <code>/v1/handoffs</code>, без новых API и без вымышленных адресатов.
+          Поверхность handoff для владельца по {PROJECT_NAME}. Создание идет через{' '}
+          <code>POST /v1/handoffs</code>, а история читается через <code>GET /v1/handoffs</code>.
         </p>
       </header>
 
@@ -168,8 +168,8 @@ export function HandoffsPage({ handoffSurface, onCreateHandoff }: Props) {
       {!handoffSurface.historyAvailable ? (
         <div className="panel panel--note">
           <p className="hint">
-            Текущий API контекста проекта отдает только <code>latestHandoff</code>. Поэтому здесь
-            показаны последний хэнд-офф из API и хэнд-оффы, созданные в этой веб-сессии.
+            История из backend сейчас недоступна, поэтому здесь показаны только хэнд-оффы из текущей
+            веб-сессии и последний известный handoff.
           </p>
         </div>
       ) : null}

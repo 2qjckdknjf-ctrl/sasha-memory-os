@@ -1,19 +1,64 @@
+import { type FormEvent, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { ACTOR_LABELS, type Actor, type BackendMode } from './controlCenter';
+import { apiGet, apiPost } from './api';
+import {
+  ACTOR_LABELS,
+  PROJECT_ID,
+  WORKSPACE_ID,
+  formatTimestamp,
+  type Actor,
+  type BackendMode,
+  type PrivacyRequestRecord,
+} from './controlCenter';
 
 type Props = {
   actor: Actor;
   backend: BackendMode;
+  backendResolved: boolean;
   onExportMemories: () => void | Promise<void>;
+  subjectId: string;
 };
 
 function describeAvailability(enabled: boolean): string {
   return enabled ? 'Доступно' : 'Недоступно';
 }
 
-export function PrivacyPage({ actor, backend, onExportMemories }: Props) {
+function describeRequestType(
+  value: PrivacyRequestRecord['requestType'],
+): string {
+  switch (value) {
+    case 'deletion':
+      return 'Удаление / forget';
+    case 'correction':
+      return 'Корректировка';
+    case 'retraction':
+      return 'Отзыв / retraction';
+    default: {
+      const exhaustiveCheck: never = value;
+      return exhaustiveCheck;
+    }
+  }
+}
+
+export function PrivacyPage({
+  actor,
+  backend,
+  backendResolved,
+  onExportMemories,
+  subjectId,
+}: Props) {
   const isOwner = actor === 'owner';
   const exportAvailable = isOwner && backend !== 'local';
+  const requestAvailable = isOwner && backend !== 'local';
+  const [requests, setRequests] = useState<PrivacyRequestRecord[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [requestType, setRequestType] =
+    useState<PrivacyRequestRecord['requestType']>('deletion');
+  const [targetMemoryId, setTargetMemoryId] = useState('');
+  const [reason, setReason] = useState('');
+  const [correctionText, setCorrectionText] = useState('');
 
   let exportHint = 'Экспорт использует существующий endpoint GET /v1/export/memories.';
   if (!isOwner) {
@@ -22,6 +67,79 @@ export function PrivacyPage({ actor, backend, onExportMemories }: Props) {
   } else if (backend === 'local') {
     exportHint =
       'Экспорт требует подключенный API backend. В локальном preview страница не притворяется, что выгрузка сработает.';
+  }
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadRequests() {
+      if (!backendResolved || !requestAvailable) {
+        setRequests([]);
+        setLoading(false);
+        setError(null);
+        return;
+      }
+      setLoading(true);
+      setError(null);
+      try {
+        const result = await apiGet<{ requests?: PrivacyRequestRecord[] }>(
+          `/v1/privacy/requests?workspace_id=${WORKSPACE_ID}&limit=50`,
+          subjectId,
+          actor,
+        );
+        if (!cancelled) {
+          setRequests(result.requests ?? []);
+        }
+      } catch (loadError) {
+        if (!cancelled) {
+          setRequests([]);
+          setError((loadError as Error).message);
+        }
+      } finally {
+        if (!cancelled) {
+          setLoading(false);
+        }
+      }
+    }
+
+    void loadRequests();
+    return () => {
+      cancelled = true;
+    };
+  }, [actor, backendResolved, requestAvailable, subjectId]);
+
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!requestAvailable) return;
+    setSubmitting(true);
+    setError(null);
+    try {
+      const created = await apiPost<PrivacyRequestRecord>(
+        '/v1/privacy/requests',
+        subjectId,
+        {
+          workspace_id: WORKSPACE_ID,
+          project_id: PROJECT_ID,
+          actor_subject_id: subjectId,
+          request_type: requestType,
+          target_memory_id: targetMemoryId.trim() || undefined,
+          reason,
+          correction_text:
+            requestType === 'correction' ? correctionText.trim() || undefined : undefined,
+          idempotency_key: `privacy/${requestType}/${Date.now()}`,
+        },
+        actor,
+      );
+      setRequests((current) => [created, ...current.filter((item) => item.id !== created.id)]);
+      setReason('');
+      setTargetMemoryId('');
+      setCorrectionText('');
+      setRequestType('deletion');
+    } catch (submitError) {
+      setError((submitError as Error).message);
+    } finally {
+      setSubmitting(false);
+    }
   }
 
   return (
@@ -84,40 +202,108 @@ export function PrivacyPage({ actor, backend, onExportMemories }: Props) {
         <section className="panel">
           <h2>Запрос на удаление / forget</h2>
           <p className="hint">
-            В текущем <code>main</code> нет отдельного API для owner delete/privacy request. Endpoint
-            вида <code>POST /v1/privacy/deletions</code> не реализован, поэтому форма отправки
-            запроса здесь намеренно отсутствует.
+            Этот экран создает реальные privacy requests в backend и показывает уже сохраненные
+            обращения владельца. Он не делает скрытого удаления только в UI.
           </p>
-          <ul className="surface-bullets">
-            <li>Никакого локального “удаления” только в UI эта страница не делает.</li>
-            <li>
-              Если запись ошибочна уже сейчас, используйте существующий retract/dispute flow через
-              Inspector и очередь конфликтов.
-            </li>
-          </ul>
-          <div className="actions">
-            <Link to="/conflicts" className="button-link button-link--secondary">
-              К очереди конфликтов
-            </Link>
-          </div>
+          <form className="form" onSubmit={(event) => void handleSubmit(event)}>
+            <label>
+              Тип запроса
+              <select
+                value={requestType}
+                disabled={!requestAvailable || submitting}
+                onChange={(event) =>
+                  setRequestType(event.target.value as PrivacyRequestRecord['requestType'])
+                }
+              >
+                <option value="deletion">Удаление / forget</option>
+                <option value="correction">Корректировка</option>
+                <option value="retraction">Отзыв / retraction</option>
+              </select>
+            </label>
+            <label>
+              ID записи памяти
+              <input
+                value={targetMemoryId}
+                disabled={!requestAvailable || submitting}
+                onChange={(event) => setTargetMemoryId(event.target.value)}
+                placeholder="Опционально: UUID записи"
+              />
+            </label>
+            <label>
+              Причина
+              <textarea
+                rows={3}
+                value={reason}
+                disabled={!requestAvailable || submitting}
+                onChange={(event) => setReason(event.target.value)}
+                placeholder="Что нужно удалить, исправить или отозвать"
+              />
+            </label>
+            {requestType === 'correction' ? (
+              <label>
+                Текст корректировки
+                <textarea
+                  rows={3}
+                  value={correctionText}
+                  disabled={!requestAvailable || submitting}
+                  onChange={(event) => setCorrectionText(event.target.value)}
+                  placeholder="Как должна выглядеть исправленная запись"
+                />
+              </label>
+            ) : null}
+            <div className="actions">
+              <button
+                type="submit"
+                disabled={!requestAvailable || submitting || reason.trim().length === 0}
+              >
+                {submitting ? 'Отправляю…' : 'Отправить privacy request'}
+              </button>
+              <Link to="/conflicts" className="button-link button-link--secondary">
+                К очереди конфликтов
+              </Link>
+            </div>
+          </form>
+          {!backendResolved ? <p className="hint">Определяю режим backend…</p> : null}
+          {backendResolved && !isOwner ? (
+            <p className="hint">Отправка privacy requests доступна только владельцу.</p>
+          ) : null}
+          {backendResolved && isOwner && backend === 'local' ? (
+            <p className="hint">
+              Для privacy requests нужен подключенный API backend. Локальный preview не притворяется,
+              что запрос уже сохранен.
+            </p>
+          ) : null}
+          {loading ? <p className="hint">Загружаю историю запросов…</p> : null}
+          {error ? <p className="hint">Не удалось выполнить privacy flow: {error}</p> : null}
         </section>
 
         <section className="panel">
-          <h2>Запрос на корректировку / supersede</h2>
-          <p className="hint">
-            Owner API для корректировки с reason пока нет: в текущем backend не найден отдельный
-            endpoint для correct/supersede request, и экран не подменяет его локальной формой.
-          </p>
-          <ul className="surface-bullets">
-            <li>
-              <Link to="/conflicts">Конфликты</Link> уже поддерживают dispute/retract и запуск
-              существующей консолидации кандидатов.
-            </li>
-            <li>
-              <Link to="/search">Поиск</Link> помогает быстро найти нужную запись, после чего можно
-              открыть Inspector и отозвать её.
-            </li>
-          </ul>
+          <h2>История запросов владельца</h2>
+          {requests.length === 0 && !loading ? (
+            <p className="hint">Сохраненных privacy requests пока нет.</p>
+          ) : (
+            <ul className="surface-selector" aria-label="История privacy requests">
+              {requests.map((request) => (
+                <li key={request.id}>
+                  <article className="surface-selector__button">
+                    <span className="meta">
+                      <span className="badge state">{request.status}</span>
+                      <span>{formatTimestamp(request.createdAt)}</span>
+                    </span>
+                    <strong>{describeRequestType(request.requestType)}</strong>
+                    <span className="hint">
+                      {request.actor?.displayName ?? 'Owner'}
+                      {request.targetMemoryId ? ` · memory ${request.targetMemoryId.slice(0, 8)}…` : ''}
+                    </span>
+                    <p>{request.reason}</p>
+                    {request.correctionText ? (
+                      <pre className="preformatted">{request.correctionText}</pre>
+                    ) : null}
+                  </article>
+                </li>
+              ))}
+            </ul>
+          )}
         </section>
       </div>
     </section>
