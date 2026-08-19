@@ -58,6 +58,8 @@ import { randomUUID } from 'node:crypto';
 import {
   adaptToolSchemaForProfile,
   applyProfileDefaults,
+  DEFAULT_PROJECT_ID,
+  DEFAULT_WORKSPACE_ID,
   getMcpProfile,
   isToolAllowed,
   toolAnnotations,
@@ -95,6 +97,179 @@ function collectionDisplayName(collection: ConnectorCollection): string {
   return typeof fullName === 'string' && fullName.trim().length > 0
     ? fullName
     : (collection.title ?? collection.name);
+}
+
+type ProjectCandidate = {
+  id: string;
+  slug: string;
+  name: string;
+  url?: string | null;
+};
+
+type ProjectResolution = {
+  projectId: string | null;
+  matchCount: number;
+  candidates: ProjectCandidate[];
+};
+
+type LocalProjectCandidate = ProjectCandidate & {
+  aliases?: string[];
+};
+
+const LOCAL_PROJECT_CATALOG: LocalProjectCandidate[] = [
+  {
+    id: DEFAULT_PROJECT_ID,
+    slug: 'aistroyka',
+    name: 'AISTROYKA',
+    url: 'https://github.com/aistroyka/core',
+    aliases: ['aistroyka', 'ais'],
+  },
+];
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function localResolveProjectRef(projectRef: string | null | undefined): ProjectResolution {
+  const normalizedRef = String(projectRef ?? '').trim().toLowerCase();
+  if (!normalizedRef) {
+    return { projectId: null, matchCount: 0, candidates: [] };
+  }
+  const candidates = LOCAL_PROJECT_CATALOG.filter((project) => {
+    return (
+      project.id.toLowerCase() === normalizedRef ||
+      project.slug.toLowerCase() === normalizedRef ||
+      project.name.toLowerCase() === normalizedRef ||
+      (project.url?.toLowerCase() ?? '') === normalizedRef ||
+      (project.aliases ?? []).some((alias) => alias.toLowerCase() === normalizedRef)
+    );
+  }).map(({ aliases: _aliases, ...project }) => project);
+  return {
+    projectId: candidates.length === 1 ? candidates[0]?.id ?? null : null,
+    matchCount: candidates.length,
+    candidates,
+  };
+}
+
+function resolveActorSubjectId(args: Record<string, unknown>): string {
+  const actorSubjectId = args.actor_subject_id ?? args.from_subject_id;
+  return String(actorSubjectId ?? '');
+}
+
+function resolveWorkspaceId(args: Record<string, unknown>): string {
+  return String(args.workspace_id ?? DEFAULT_WORKSPACE_ID);
+}
+
+async function loadProjectHints(
+  gateway: SupabaseMemoryGateway | undefined,
+  subjectId: string,
+  workspaceId: string,
+): Promise<ProjectCandidate[]> {
+  if (!gateway) {
+    return LOCAL_PROJECT_CATALOG.map(({ aliases: _aliases, ...project }) => project);
+  }
+  return gateway.listProjects(subjectId, workspaceId);
+}
+
+function extractProjectRefsFromArgs(
+  args: Record<string, unknown>,
+  projectHints: ProjectCandidate[],
+): string[] {
+  const refs = new Set<string>();
+  const explicitRef = typeof args.project_id === 'string' ? args.project_id.trim() : '';
+  if (explicitRef) refs.add(explicitRef);
+
+  const textBits = [
+    typeof args.title === 'string' ? args.title : null,
+    typeof args.text === 'string' ? args.text : null,
+    typeof args.content === 'string' ? args.content : null,
+    typeof args.query === 'string' ? args.query : null,
+    args.payload ? JSON.stringify(args.payload) : null,
+  ]
+    .filter((value): value is string => Boolean(value))
+    .join('\n');
+
+  if (!textBits.trim()) {
+    return [...refs];
+  }
+
+  for (const match of textBits.matchAll(/https?:\/\/[^\s)]+/g)) {
+    refs.add(match[0]);
+  }
+  for (const match of textBits.matchAll(/\b[\w.-]+\/[\w.-]+\b/g)) {
+    refs.add(match[0]);
+  }
+
+  const lowered = textBits.toLowerCase();
+  for (const project of projectHints) {
+    const slugPattern = new RegExp(`(^|[^a-z0-9_-])${escapeRegExp(project.slug.toLowerCase())}([^a-z0-9_-]|$)`, 'i');
+    if (slugPattern.test(lowered)) {
+      refs.add(project.slug);
+    }
+  }
+
+  return [...refs];
+}
+
+function formatProjectCandidates(candidates: ProjectCandidate[]): string {
+  return candidates.map((candidate) => `${candidate.slug} (${candidate.name})`).join(', ');
+}
+
+async function resolveProjectForArgs(input: {
+  gateway?: SupabaseMemoryGateway;
+  args: Record<string, unknown>;
+  requireProject: boolean;
+}): Promise<string | null> {
+  const subjectId = resolveActorSubjectId(input.args);
+  const workspaceId = resolveWorkspaceId(input.args);
+  const projectHints = await loadProjectHints(input.gateway, subjectId, workspaceId);
+  const refs = extractProjectRefsFromArgs(input.args, projectHints);
+  if (refs.length === 0) {
+    if (input.requireProject) {
+      throw new Error('project reference is required; pass project UUID or slug');
+    }
+    return null;
+  }
+
+  const matchedProjectIds = new Set<string>();
+  const candidateMap = new Map<string, ProjectCandidate>();
+  for (const ref of refs) {
+    const resolution = input.gateway
+      ? await input.gateway.resolveProjectRef({
+          subjectId,
+          workspaceId,
+          projectRef: ref,
+        })
+      : localResolveProjectRef(ref);
+    for (const candidate of resolution.candidates) {
+      candidateMap.set(candidate.id, candidate);
+    }
+    if (resolution.matchCount > 1) {
+      throw new Error(
+        `project reference "${ref}" is ambiguous. Candidates: ${formatProjectCandidates(
+          resolution.candidates,
+        )}`,
+      );
+    }
+    if (resolution.projectId) {
+      matchedProjectIds.add(resolution.projectId);
+    }
+  }
+
+  if (matchedProjectIds.size > 1) {
+    throw new Error(
+      `project reference is ambiguous. Candidates: ${formatProjectCandidates(
+        [...candidateMap.values()],
+      )}`,
+    );
+  }
+  if (matchedProjectIds.size === 1) {
+    return [...matchedProjectIds][0] ?? null;
+  }
+  if (input.requireProject) {
+    throw new Error('project not found; pass a valid project UUID or slug from /projects');
+  }
+  return null;
 }
 
 function resolveCollectionProjectId(
@@ -364,7 +539,6 @@ export const mcpTools: McpTool[] = [
       },
       required: [
         'workspace_id',
-        'project_id',
         'title',
         'content',
         'actor_subject_id',
@@ -387,7 +561,6 @@ export const mcpTools: McpTool[] = [
       },
       required: [
         'workspace_id',
-        'project_id',
         'from_subject_id',
         'idempotency_key',
         'payload',
@@ -457,7 +630,6 @@ export const mcpTools: McpTool[] = [
       },
       required: [
         'workspace_id',
-        'project_id',
         'title',
         'text',
         'actor_subject_id',
@@ -924,6 +1096,11 @@ export function createMcpHandlers(options?: {
       switch (name) {
         case 'memory.search': {
           const query = String(args.query ?? '');
+          const resolvedProjectId = await resolveProjectForArgs({
+            gateway: gateway ?? undefined,
+            args,
+            requireProject: false,
+          });
           const recordedAfter = args.recorded_after
             ? String(args.recorded_after)
             : undefined;
@@ -949,7 +1126,7 @@ export function createMcpHandlers(options?: {
             const raw = await gateway.search({
               subjectId: String(args.actor_subject_id),
               query,
-              projectId: args.project_id ? String(args.project_id) : undefined,
+              projectId: resolvedProjectId ?? undefined,
               includeHistory: Boolean(args.include_history),
               queryEmbedding,
               recordedAfter,
@@ -985,7 +1162,7 @@ export function createMcpHandlers(options?: {
             [...store.memories.values()],
             query,
             {
-              projectId: args.project_id ? String(args.project_id) : undefined,
+              projectId: resolvedProjectId ?? undefined,
               includeHistory: Boolean(args.include_history),
               recordedAfter,
               recordedBefore,
@@ -1000,7 +1177,14 @@ export function createMcpHandlers(options?: {
           };
         }
         case 'context.project': {
-          const projectId = String(args.project_id);
+          const projectId = await resolveProjectForArgs({
+            gateway: gateway ?? undefined,
+            args,
+            requireProject: true,
+          });
+          if (!projectId) {
+            throw new Error('project reference is required; pass project UUID or slug');
+          }
           if (gateway) {
             return gateway.projectContext(String(args.actor_subject_id), projectId);
           }
@@ -1011,7 +1195,15 @@ export function createMcpHandlers(options?: {
           };
         }
         case 'memory.store_decision': {
-          const input = createDecisionSchema.parse(args);
+          const resolvedProjectId = await resolveProjectForArgs({
+            gateway: gateway ?? undefined,
+            args,
+            requireProject: false,
+          });
+          const input = createDecisionSchema.parse({
+            ...args,
+            project_id: resolvedProjectId ?? undefined,
+          });
           if (gateway) {
             return gateway.createDecision({
               subjectId: input.actor_subject_id,
@@ -1038,7 +1230,15 @@ export function createMcpHandlers(options?: {
           });
         }
         case 'handoff.create': {
-          const input = createHandoffSchema.parse(args);
+          const resolvedProjectId = await resolveProjectForArgs({
+            gateway: gateway ?? undefined,
+            args,
+            requireProject: false,
+          });
+          const input = createHandoffSchema.parse({
+            ...args,
+            project_id: resolvedProjectId ?? undefined,
+          });
           if (gateway) {
             return gateway.createHandoff({
               subjectId: input.from_subject_id,
@@ -1118,7 +1318,15 @@ export function createMcpHandlers(options?: {
           });
         }
         case 'capture.text': {
-          const input = captureTextSchema.parse(args);
+          const resolvedProjectId = await resolveProjectForArgs({
+            gateway: gateway ?? undefined,
+            args,
+            requireProject: false,
+          });
+          const input = captureTextSchema.parse({
+            ...args,
+            project_id: resolvedProjectId ?? undefined,
+          });
           if (gateway) {
             const result = await gateway.captureText({
               subjectId: input.actor_subject_id,

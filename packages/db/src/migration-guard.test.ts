@@ -27,10 +27,9 @@ describe('m8 slice 03 migration guards', () => {
     expect(sql).not.toContain(`a.project_id IS NULL`);
   });
 
-  it('does not copy the agent ACL pack onto every ingested project', () => {
-    expect(sql).not.toContain(`('chatgpt', 'memory'`);
-    expect(sql).not.toContain(`('cursor', 'handoff'`);
-    expect(sql).not.toContain(`('roma', 'project'`);
+  it('limits connector project grants to ChatGPT/Cursor and keeps ROMA out', () => {
+    expect(sql).toContain(`s.external_key IN ('chatgpt', 'cursor')`);
+    expect(sql).not.toContain(`'roma'`);
   });
 
   it('overrides ACL matching so workspace scope does not match concrete projects', () => {

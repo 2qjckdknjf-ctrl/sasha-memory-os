@@ -507,6 +507,57 @@ BEGIN
     RETURNING * INTO v_project;
   END IF;
 
+  INSERT INTO acl_entries (
+    workspace_id, subject_id, effect, resource_type, project_id, actions, sensitivity_max
+  )
+  SELECT p_workspace_id, s.id, 'allow', 'memory', v_project.id, ARRAY['read', 'write']::text[], 'internal'
+  FROM subjects s
+  WHERE s.workspace_id = p_workspace_id
+    AND s.external_key IN ('chatgpt', 'cursor')
+    AND NOT EXISTS (
+      SELECT 1
+      FROM acl_entries a
+      WHERE a.workspace_id = p_workspace_id
+        AND a.subject_id = s.id
+        AND a.effect = 'allow'
+        AND a.resource_type = 'memory'
+        AND a.project_id = v_project.id
+        AND a.actions = ARRAY['read', 'write']::text[]
+        AND coalesce(a.sensitivity_max, '') = 'internal'
+    );
+
+  INSERT INTO acl_entries (
+    workspace_id, subject_id, effect, resource_type, project_id, actions, sensitivity_max
+  )
+  SELECT p_workspace_id, s.id, 'allow', 'handoff', v_project.id, ARRAY['read', 'write']::text[], 'internal'
+  FROM subjects s
+  WHERE s.workspace_id = p_workspace_id
+    AND s.external_key IN ('chatgpt', 'cursor')
+    AND EXISTS (
+      SELECT 1
+      FROM acl_entries seed_acl
+      WHERE seed_acl.workspace_id = p_workspace_id
+        AND seed_acl.subject_id = s.id
+        AND seed_acl.effect = 'allow'
+        AND seed_acl.resource_type = 'handoff'
+        AND seed_acl.project_id = '44444444-4444-4444-8444-444444444401'
+        AND (
+          seed_acl.actions = '{}'
+          OR seed_acl.actions @> ARRAY['read', 'write']::text[]
+        )
+    )
+    AND NOT EXISTS (
+      SELECT 1
+      FROM acl_entries a
+      WHERE a.workspace_id = p_workspace_id
+        AND a.subject_id = s.id
+        AND a.effect = 'allow'
+        AND a.resource_type = 'handoff'
+        AND a.project_id = v_project.id
+        AND a.actions = ARRAY['read', 'write']::text[]
+        AND coalesce(a.sensitivity_max, '') = 'internal'
+    );
+
   v_memory_title := format('Проект GitHub: %s', v_display_name);
   v_memory_content := concat_ws(E'\n',
     format('Проект: %s', v_display_name),

@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { createMcpHandlers } from './tools.js';
 
 const projectId = '44444444-4444-4444-8444-444444444401';
@@ -280,6 +280,128 @@ describe('mcp gateway alpha', () => {
     expect(memory.memory?.projectId ?? null).toBeNull();
   });
 
+  it('routes ChatGPT capture to AISTROYKA when slug is mentioned', async () => {
+    const mcp = createMcpHandlers({ profile: 'chatgpt' });
+    const captured = (await mcp.call('capture.text', {
+      title: 'aistroyka follow-up',
+      text: 'Note about aistroyka backlog',
+      idempotency_key: 'mcp-chatgpt-aistroyka-1',
+    })) as { memoryId: string };
+    const memory = (await mcp.call('memory.get', {
+      memory_id: captured.memoryId,
+    })) as { memory?: { projectId?: string | null } };
+    expect(memory.memory?.projectId).toBe(projectId);
+  });
+
+  it('routes Cursor capture to a non-AISTROYKA ingested project by slug', async () => {
+    const otherProjectId = '44444444-4444-4444-8444-444444444430';
+    const gateway = {
+      listProjects: vi.fn(async () => [
+        {
+          id: projectId,
+          slug: 'aistroyka',
+          name: 'AISTROYKA',
+          status: 'active',
+          url: 'https://github.com/aistroyka/core',
+        },
+        {
+          id: otherProjectId,
+          slug: 'repo-b',
+          name: 'Repo B',
+          status: 'active',
+          url: 'https://github.com/team/repo-b',
+        },
+      ]),
+      resolveProjectRef: vi.fn(async ({ projectRef }: { projectRef?: string | null }) => {
+        if (projectRef === 'repo-b') {
+          return {
+            projectId: otherProjectId,
+            matchCount: 1,
+            candidates: [
+              {
+                id: otherProjectId,
+                slug: 'repo-b',
+                name: 'Repo B',
+                url: 'https://github.com/team/repo-b',
+              },
+            ],
+          };
+        }
+        if (projectRef === 'aistroyka') {
+          return {
+            projectId,
+            matchCount: 1,
+            candidates: [
+              {
+                id: projectId,
+                slug: 'aistroyka',
+                name: 'AISTROYKA',
+                url: 'https://github.com/aistroyka/core',
+              },
+            ],
+          };
+        }
+        return { projectId: null, matchCount: 0, candidates: [] };
+      }),
+      captureText: vi.fn(async () => ({ process: null })),
+    };
+    const mcp = createMcpHandlers({ gateway: gateway as any });
+    await mcp.call('capture.text', {
+      workspace_id: workspaceId,
+      title: 'repo-b note',
+      text: 'Cursor mentioned repo-b explicitly.',
+      actor_subject_id: cursor,
+      idempotency_key: 'mcp-cursor-repo-b-1',
+    });
+    expect(gateway.captureText).toHaveBeenCalledWith(
+      expect.objectContaining({ projectId: otherProjectId }),
+    );
+  });
+
+  it('errors on ambiguous project refs instead of defaulting to AISTROYKA', async () => {
+    const gateway = {
+      listProjects: vi.fn(async () => [
+        {
+          id: projectId,
+          slug: 'aistroyka',
+          name: 'AISTROYKA',
+          status: 'active',
+          url: 'https://github.com/aistroyka/core',
+        },
+      ]),
+      resolveProjectRef: vi.fn(async () => ({
+        projectId: null,
+        matchCount: 2,
+        candidates: [
+          {
+            id: projectId,
+            slug: 'aistroyka',
+            name: 'AISTROYKA',
+            url: 'https://github.com/aistroyka/core',
+          },
+          {
+            id: '44444444-4444-4444-8444-444444444430',
+            slug: 'repo-b',
+            name: 'Repo B',
+            url: 'https://github.com/team/repo-b',
+          },
+        ],
+      })),
+      captureText: vi.fn(async () => ({ process: null })),
+    };
+    const mcp = createMcpHandlers({ gateway: gateway as any, profile: 'chatgpt' });
+    await expect(
+      mcp.call('capture.text', {
+        workspace_id: workspaceId,
+        project_id: 'shared-ref',
+        title: 'Shared ref',
+        text: 'This ref is ambiguous.',
+        idempotency_key: 'mcp-chatgpt-ambiguous-1',
+      }),
+    ).rejects.toThrow(/ambiguous/i);
+    expect(gateway.captureText).not.toHaveBeenCalled();
+  });
+
   it('returns project context with seeded decision', async () => {
     const mcp = createMcpHandlers();
     const result = (await mcp.call('context.project', {
@@ -288,6 +410,14 @@ describe('mcp gateway alpha', () => {
     })) as { decisions: unknown[]; state: { version: number } | null };
     expect(result.decisions.length).toBe(1);
     expect(result.state?.version).toBe(1);
+  });
+
+  it('accepts context.project by slug', async () => {
+    const mcp = createMcpHandlers({ profile: 'chatgpt' });
+    const result = (await mcp.call('context.project', {
+      project_id: 'aistroyka',
+    })) as { decisions: unknown[] };
+    expect(result.decisions.length).toBe(1);
   });
 
   it('lists connections stub offline', async () => {

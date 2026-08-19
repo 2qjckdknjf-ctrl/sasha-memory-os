@@ -476,6 +476,30 @@ export class SupabaseMemoryGateway {
     }>;
   }
 
+  async resolveProjectRef(input: {
+    subjectId: string;
+    workspaceId: string;
+    projectRef?: string | null;
+  }) {
+    const { data, error } = await this.client.rpc('api_resolve_project_ref', {
+      p_secret: this.apiSecret,
+      p_subject_id: input.subjectId,
+      p_workspace_id: input.workspaceId,
+      p_project_ref: input.projectRef ?? null,
+    });
+    if (error) throw error;
+    return data as {
+      projectId: string | null;
+      matchCount: number;
+      candidates: Array<{
+        id: string;
+        slug: string;
+        name: string;
+        url?: string | null;
+      }>;
+    };
+  }
+
   async listConnectors(subjectId: string) {
     const { data, error } = await this.client.rpc('api_list_connectors', {
       p_secret: this.apiSecret,

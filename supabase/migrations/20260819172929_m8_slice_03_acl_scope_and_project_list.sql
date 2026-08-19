@@ -328,6 +328,117 @@ AS $$
   SELECT app.api_list_projects(p_secret, p_subject_id, p_workspace_id);
 $$;
 
+CREATE OR REPLACE FUNCTION app.api_resolve_project_ref(
+  p_secret text,
+  p_subject_id uuid,
+  p_workspace_id uuid,
+  p_project_ref text DEFAULT NULL
+)
+RETURNS jsonb
+LANGUAGE plpgsql
+STABLE
+SECURITY DEFINER
+SET search_path = public, app
+AS $$
+DECLARE
+  v_ref text := lower(nullif(btrim(coalesce(p_project_ref, '')), ''));
+BEGIN
+  PERFORM app.assert_api_secret(p_secret);
+  PERFORM app.with_subject(p_subject_id);
+
+  IF NOT app.is_workspace_member(p_workspace_id) THEN
+    RAISE EXCEPTION 'forbidden' USING ERRCODE = '42501';
+  END IF;
+
+  IF v_ref IS NULL THEN
+    RETURN jsonb_build_object(
+      'projectId', NULL,
+      'matchCount', 0,
+      'candidates', '[]'::jsonb
+    );
+  END IF;
+
+  RETURN COALESCE((
+    WITH project_candidates AS (
+      SELECT DISTINCT
+        p.id,
+        p.slug,
+        p.name,
+        repo.url
+      FROM projects p
+      LEFT JOIN LATERAL (
+        SELECT
+          nullif(value->>'url', '') AS url,
+          lower(coalesce(nullif(value->>'collection_id', ''), '')) AS collection_id,
+          lower(coalesce(nullif(value->>'external_id', ''), '')) AS external_id,
+          lower(coalesce(nullif(value->'metadata'->>'full_name', ''), '')) AS full_name
+        FROM jsonb_array_elements(coalesce(p.repositories, '[]'::jsonb)) repo_values(value)
+      ) repo ON true
+      WHERE p.workspace_id = p_workspace_id
+        AND (
+          app.has_acl(p.workspace_id, 'memory', 'read', p.id, 'internal')
+          OR app.has_acl(p.workspace_id, 'memory', 'write', p.id, 'internal')
+          OR app.has_acl(p.workspace_id, 'handoff', 'write', p.id)
+        )
+        AND (
+          lower(p.id::text) = v_ref
+          OR lower(p.slug) = v_ref
+          OR lower(p.name) = v_ref
+          OR lower(coalesce(repo.url, '')) = v_ref
+          OR repo.collection_id = v_ref
+          OR repo.external_id = v_ref
+          OR repo.full_name = v_ref
+          OR EXISTS (
+            SELECT 1
+            FROM unnest(coalesce(p.aliases, '{}'::text[])) alias
+            WHERE lower(alias) = v_ref
+          )
+        )
+    )
+    SELECT jsonb_build_object(
+      'projectId', CASE WHEN count(*) = 1 THEN min(id)::text ELSE NULL END,
+      'matchCount', count(*),
+      'candidates', coalesce(
+        jsonb_agg(
+          jsonb_build_object(
+            'id', id,
+            'slug', slug,
+            'name', name,
+            'url', url
+          )
+          ORDER BY name, slug
+        ),
+        '[]'::jsonb
+      )
+    )
+    FROM project_candidates
+  ), jsonb_build_object(
+    'projectId', NULL,
+    'matchCount', 0,
+    'candidates', '[]'::jsonb
+  ));
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION public.api_resolve_project_ref(
+  p_secret text,
+  p_subject_id uuid,
+  p_workspace_id uuid,
+  p_project_ref text DEFAULT NULL
+)
+RETURNS jsonb
+LANGUAGE sql
+SECURITY DEFINER
+SET search_path = public, app
+AS $$
+  SELECT app.api_resolve_project_ref(
+    p_secret,
+    p_subject_id,
+    p_workspace_id,
+    p_project_ref
+  );
+$$;
+
 INSERT INTO acl_entries (
   workspace_id, subject_id, effect, resource_type, project_id, actions, sensitivity_max
 )
@@ -338,9 +449,8 @@ JOIN (
   VALUES
     ('chatgpt', 'memory', ARRAY['read', 'write']::text[], 'internal'),
     ('chatgpt', 'handoff', ARRAY['read', 'write']::text[], 'internal'),
+    ('cursor', 'memory', ARRAY['read', 'write']::text[], 'internal'),
     ('cursor', 'handoff', ARRAY['read', 'write']::text[], 'internal'),
-    ('roma', 'memory', ARRAY['read', 'write']::text[], 'internal'),
-    ('roma', 'handoff', ARRAY['read', 'write']::text[], 'internal')
 ) AS t(actor_key, resource_type, actions, sensitivity_max)
   ON s.external_key = t.actor_key
 WHERE NOT EXISTS (
@@ -355,6 +465,24 @@ WHERE NOT EXISTS (
     AND coalesce(a.sensitivity_max, '') = coalesce(t.sensitivity_max, '')
 );
 
+INSERT INTO acl_entries (
+  workspace_id, subject_id, effect, resource_type, project_id, actions, sensitivity_max
+)
+SELECT s.workspace_id, s.id, 'allow', 'memory', '44444444-4444-4444-8444-444444444401', ARRAY['read', 'write']::text[], 'internal'
+FROM subjects s
+WHERE s.external_key = 'cursor'
+  AND NOT EXISTS (
+    SELECT 1
+    FROM acl_entries a
+    WHERE a.workspace_id = s.workspace_id
+      AND a.subject_id = s.id
+      AND a.effect = 'allow'
+      AND a.resource_type = 'memory'
+      AND a.project_id = '44444444-4444-4444-8444-444444444401'
+      AND a.actions = ARRAY['read', 'write']::text[]
+      AND coalesce(a.sensitivity_max, '') = 'internal'
+  );
+
 GRANT EXECUTE ON FUNCTION app.project_scope_matches(uuid, uuid)
   TO anon, authenticated, service_role;
 GRANT EXECUTE ON FUNCTION app.api_refresh_connection_collections(text, uuid, uuid, jsonb, jsonb, timestamptz)
@@ -368,4 +496,8 @@ GRANT EXECUTE ON FUNCTION public.api_set_connection_collection_exclusions(text, 
 GRANT EXECUTE ON FUNCTION app.api_list_projects(text, uuid, uuid)
   TO anon, authenticated, service_role;
 GRANT EXECUTE ON FUNCTION public.api_list_projects(text, uuid, uuid)
+  TO anon, authenticated, service_role;
+GRANT EXECUTE ON FUNCTION app.api_resolve_project_ref(text, uuid, uuid, text)
+  TO anon, authenticated, service_role;
+GRANT EXECUTE ON FUNCTION public.api_resolve_project_ref(text, uuid, uuid, text)
   TO anon, authenticated, service_role;

@@ -174,7 +174,7 @@ function seedAuthz(subjectId: string): AuthzContext {
         effect: 'allow',
         resourceType: 'memory',
         projectId: seedProject,
-        actions: ['read'],
+        actions: ['read', 'write'],
         sensitivityMax: 'internal',
       },
       {
@@ -244,21 +244,13 @@ function seedAuthz(subjectId: string): AuthzContext {
       {
         subjectId: cursor,
         effect: 'allow',
-        resourceType: 'handoff',
-        projectId: null,
-        actions: ['read', 'write'],
-        sensitivityMax: 'internal',
-      },
-      {
-        subjectId: roma,
-        effect: 'allow',
         resourceType: 'memory',
         projectId: null,
         actions: ['read', 'write'],
         sensitivityMax: 'internal',
       },
       {
-        subjectId: roma,
+        subjectId: cursor,
         effect: 'allow',
         resourceType: 'handoff',
         projectId: null,
