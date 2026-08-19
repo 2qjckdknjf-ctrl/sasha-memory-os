@@ -1,6 +1,6 @@
 import Foundation
 
-// Mirrors packages/schemas/src/appleCompanion.ts for Slice 01.
+// Mirrors packages/schemas/src/appleCompanion.ts for Slice 02.
 public enum ApplePermissionState: String, Codable, CaseIterable, Sendable {
     case notDetermined = "not_determined"
     case limited
@@ -137,6 +137,66 @@ public struct AppleCompanionIdentifiers: Codable, Hashable, Sendable {
         case localIdentifier = "local_identifier"
         case cloudIdentifier = "cloud_identifier"
         case providerItemIdentifier = "provider_item_identifier"
+    }
+}
+
+public struct AppleCompanionSelectedAsset: Codable, Hashable, Sendable {
+    public var localIdentifier: String?
+    public var cloudIdentifier: String?
+    public var providerItemIdentifier: String?
+
+    public init(
+        localIdentifier: String? = nil,
+        cloudIdentifier: String? = nil,
+        providerItemIdentifier: String? = nil
+    ) {
+        self.localIdentifier = localIdentifier
+        self.cloudIdentifier = cloudIdentifier
+        self.providerItemIdentifier = providerItemIdentifier
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case localIdentifier = "local_identifier"
+        case cloudIdentifier = "cloud_identifier"
+        case providerItemIdentifier = "provider_item_identifier"
+    }
+}
+
+public struct AppleCompanionPhotoLibraryCheckpoint: Codable, Hashable, Sendable {
+    public var permissionState: ApplePermissionState
+    public var selectedAssets: [AppleCompanionSelectedAsset]
+    public var changeToken: String?
+
+    public init(
+        permissionState: ApplePermissionState = .notDetermined,
+        selectedAssets: [AppleCompanionSelectedAsset] = [],
+        changeToken: String? = nil
+    ) {
+        self.permissionState = permissionState
+        self.selectedAssets = selectedAssets
+        self.changeToken = changeToken
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case permissionState = "permission_state"
+        case selectedAssets = "selected_assets"
+        case changeToken = "change_token"
+    }
+}
+
+public struct AppleCompanionPhotoLibrarySelectionDelta: Codable, Hashable, Sendable {
+    public var added: [AppleCompanionSelectedAsset]
+    public var removed: [AppleCompanionSelectedAsset]
+    public var updated: [AppleCompanionSelectedAsset]
+
+    public init(
+        added: [AppleCompanionSelectedAsset] = [],
+        removed: [AppleCompanionSelectedAsset] = [],
+        updated: [AppleCompanionSelectedAsset] = []
+    ) {
+        self.added = added
+        self.removed = removed
+        self.updated = updated
     }
 }
 
@@ -291,6 +351,31 @@ public struct AppleCompanionQueueItem: Codable, Hashable, Identifiable, Sendable
         case lastAttemptAt = "last_attempt_at"
         case nextRetryAt = "next_retry_at"
         case completedAt = "completed_at"
+    }
+}
+
+public struct AppleCompanionDeviceQueueCursor: Codable, Hashable, Sendable {
+    public var photoLibrary: AppleCompanionPhotoLibraryCheckpoint?
+
+    public init(photoLibrary: AppleCompanionPhotoLibraryCheckpoint? = nil) {
+        self.photoLibrary = photoLibrary
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case photoLibrary = "photo_library"
+    }
+}
+
+public struct AppleCompanionQueueSnapshot: Codable, Hashable, Sendable {
+    public var items: [AppleCompanionQueueItem]
+    public var cursor: AppleCompanionDeviceQueueCursor
+
+    public init(
+        items: [AppleCompanionQueueItem] = [],
+        cursor: AppleCompanionDeviceQueueCursor = .init()
+    ) {
+        self.items = items
+        self.cursor = cursor
     }
 }
 

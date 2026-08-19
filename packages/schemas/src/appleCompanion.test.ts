@@ -2,8 +2,11 @@ import { describe, expect, it } from 'vitest';
 import {
   acknowledgeAppleCompanionQueueItem,
   appleCompanionIngestRequestSchema,
+  appleCompanionPhotoLibraryCheckpointSchema,
   appleCompanionQueueSchema,
+  canIngestApplePhotoLibraryAsset,
   createAppleCompanionQueueItem,
+  matchesAppleCompanionSelectedAsset,
   markAppleCompanionQueueItemDone,
   markAppleCompanionQueueItemFailed,
   markAppleCompanionQueueItemUploading,
@@ -41,6 +44,85 @@ describe('appleCompanionIngestRequestSchema', () => {
     const parsed = appleCompanionIngestRequestSchema.parse(basePayload);
     expect(parsed.project_id).toBe('sasha-memory-os');
     expect(parsed.identifiers.cloud_identifier).toBe('A1B2C3D4-CLOUD');
+  });
+});
+
+describe('appleCompanionPhotoLibraryCheckpointSchema', () => {
+  it('round-trips a limited-library checkpoint with durable selected asset identifiers', () => {
+    const parsed = appleCompanionPhotoLibraryCheckpointSchema.parse({
+      permission_state: 'limited',
+      selected_assets: [
+        { local_identifier: 'PHOTO-LOCAL-1' },
+        { cloud_identifier: 'PHOTO-CLOUD-2' },
+      ],
+      change_token: 'photokit-change-2',
+    });
+
+    expect(parsed.permission_state).toBe('limited');
+    expect(parsed.selected_assets).toHaveLength(2);
+    expect(parsed.change_token).toBe('photokit-change-2');
+  });
+
+  it('requires at least one durable identifier for every selected asset', () => {
+    expect(() =>
+      appleCompanionPhotoLibraryCheckpointSchema.parse({
+        permission_state: 'limited',
+        selected_assets: [{}],
+        change_token: 'photokit-change-3',
+      }),
+    ).toThrow(/selected assets require at least one durable identifier/i);
+  });
+});
+
+describe('limited-library helpers', () => {
+  const selectedAssets = [{ local_identifier: 'PHOTO-LOCAL-1' }, { cloud_identifier: 'PHOTO-CLOUD-2' }];
+
+  it('matches selected assets through either local or cloud identifiers', () => {
+    expect(
+      matchesAppleCompanionSelectedAsset({
+        identifiers: { local_identifier: 'PHOTO-LOCAL-1' },
+        selectedAssets,
+      }),
+    ).toBe(true);
+    expect(
+      matchesAppleCompanionSelectedAsset({
+        identifiers: { cloud_identifier: 'PHOTO-CLOUD-2' },
+        selectedAssets,
+      }),
+    ).toBe(true);
+    expect(
+      matchesAppleCompanionSelectedAsset({
+        identifiers: { local_identifier: 'PHOTO-LOCAL-3', cloud_identifier: 'PHOTO-CLOUD-3' },
+        selectedAssets,
+      }),
+    ).toBe(false);
+  });
+
+  it('allows only explicitly selected assets when permission is limited', () => {
+    expect(
+      canIngestApplePhotoLibraryAsset({
+        permissionState: 'limited',
+        identifiers: { local_identifier: 'PHOTO-LOCAL-1' },
+        selectedAssets,
+      }),
+    ).toBe(true);
+    expect(
+      canIngestApplePhotoLibraryAsset({
+        permissionState: 'limited',
+        identifiers: { cloud_identifier: 'PHOTO-CLOUD-3' },
+        selectedAssets,
+      }),
+    ).toBe(false);
+  });
+
+  it('represents full-library permission without implicitly expanding ingest scope', () => {
+    expect(
+      canIngestApplePhotoLibraryAsset({
+        permissionState: 'full',
+        identifiers: { local_identifier: 'PHOTO-LOCAL-1' },
+        selectedAssets,
+      }),
+    ).toBe(false);
   });
 });
 

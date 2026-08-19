@@ -9,9 +9,18 @@ import {
   type NormalizedConnectorRecord,
   type RegisteredConnector,
 } from '@memory-os/connector-sdk';
-import type { AppleCompanionIngestRequest } from '@memory-os/schemas';
+import {
+  canIngestApplePhotoLibraryAsset,
+  listAppleCompanionIdentifierCandidates,
+  matchesAppleCompanionSelectedAsset,
+  type AppleCompanionIngestRequest,
+  type AppleCompanionPhotoLibraryCheckpoint,
+  type ApplePermissionState,
+} from '@memory-os/schemas';
 
 export const APPLE_BRIDGE_CURSOR_STREAM = 'apple:device-items' as const;
+const APPLE_PHOTO_LIBRARY_CHANGE_TOKEN_KEY = 'photoLibraryChangeToken' as const;
+const APPLE_PHOTO_LIBRARY_DELTA_REASON_KEY = 'photoLibraryDeltaReason' as const;
 
 type AppleBridgeScenario = 'default' | 'rate_limit';
 
@@ -19,7 +28,17 @@ export type AppleBridgeRawObject = AppleCompanionIngestRequest & {
   deleted?: boolean;
   permissions?: Record<string, unknown>;
   poison?: boolean;
+  photo_library_checkpoint?: AppleCompanionPhotoLibraryCheckpoint;
 };
+
+export type ApplePhotoLibrarySelectionDeltaInput = {
+  previousCheckpoint: AppleCompanionPhotoLibraryCheckpoint | null;
+  nextCheckpoint: AppleCompanionPhotoLibraryCheckpoint;
+  knownAssets: AppleBridgeRawObject[];
+  currentAssets: AppleBridgeRawObject[];
+};
+
+type ApplePhotoLibraryDeltaReason = 'selection_removed' | 'permission_revoked';
 
 function resolveAppleBridgeScenario(context: ConnectorSyncContext): AppleBridgeScenario {
   const scenario = context.account.metadata?.appleScenario;
@@ -43,6 +62,228 @@ function isUuid(value: string | undefined): boolean {
 
 function resolveObservedAt(rawObject: AppleBridgeRawObject): string {
   return rawObject.observed_at ?? new Date().toISOString();
+}
+
+function isApplePermissionState(value: unknown): value is ApplePermissionState {
+  switch (value) {
+    case 'not_determined':
+    case 'limited':
+    case 'full':
+    case 'denied':
+      return true;
+    default:
+      return false;
+  }
+}
+
+function hasPhotoLibraryAccess(permissionState: ApplePermissionState): boolean {
+  switch (permissionState) {
+    case 'limited':
+    case 'full':
+      return true;
+    case 'not_determined':
+    case 'denied':
+      return false;
+    default: {
+      const _exhaustive: never = permissionState;
+      return _exhaustive;
+    }
+  }
+}
+
+function isPhotoLibraryAsset(rawObject: AppleBridgeRawObject): boolean {
+  return rawObject.source === 'photo_library' && rawObject.kind === 'photo';
+}
+
+function resolvePhotoLibraryPermissionState(rawObject: AppleBridgeRawObject): ApplePermissionState {
+  const checkpointState = rawObject.photo_library_checkpoint?.permission_state;
+  if (checkpointState) return checkpointState;
+  const permissionState = rawObject.permissions?.photo_library;
+  return isApplePermissionState(permissionState) ? permissionState : 'not_determined';
+}
+
+function withPhotoLibraryCheckpoint(
+  rawObject: AppleBridgeRawObject,
+  checkpoint: AppleCompanionPhotoLibraryCheckpoint,
+): AppleBridgeRawObject {
+  return {
+    ...rawObject,
+    external_version: rawObject.external_version ?? checkpoint.change_token ?? rawObject.observed_at,
+    permissions: {
+      ...rawObject.permissions,
+      photo_library: checkpoint.permission_state,
+    },
+    photo_library_checkpoint: checkpoint,
+    metadata: {
+      ...rawObject.metadata,
+      photo_library_change_token: checkpoint.change_token,
+    },
+  };
+}
+
+function buildPhotoLibraryAssetIndex(
+  assets: AppleBridgeRawObject[],
+): Map<string, AppleBridgeRawObject> {
+  const index = new Map<string, AppleBridgeRawObject>();
+  for (const asset of assets) {
+    for (const key of listAppleCompanionIdentifierCandidates(asset.identifiers)) {
+      if (!index.has(key)) {
+        index.set(key, asset);
+      }
+    }
+  }
+  return index;
+}
+
+function findPhotoLibraryAsset(
+  index: Map<string, AppleBridgeRawObject>,
+  rawObject: AppleBridgeRawObject,
+): AppleBridgeRawObject | null {
+  for (const key of listAppleCompanionIdentifierCandidates(rawObject.identifiers)) {
+    const match = index.get(key);
+    if (match) return match;
+  }
+  return null;
+}
+
+function hasAppleBridgeRawObjectChanged(
+  current: AppleBridgeRawObject,
+  previous: AppleBridgeRawObject,
+): boolean {
+  return (
+    current.external_version !== previous.external_version ||
+    current.observed_at !== previous.observed_at ||
+    current.title !== previous.title ||
+    current.filename !== previous.filename ||
+    current.mime_type !== previous.mime_type ||
+    current.url !== previous.url
+  );
+}
+
+function buildPhotoLibraryTombstone(
+  rawObject: AppleBridgeRawObject,
+  checkpoint: AppleCompanionPhotoLibraryCheckpoint,
+  reason: ApplePhotoLibraryDeltaReason,
+): AppleBridgeRawObject {
+  const checkpointed = withPhotoLibraryCheckpoint(rawObject, checkpoint);
+  return {
+    ...checkpointed,
+    deleted: true,
+    external_version: checkpoint.change_token ?? checkpointed.external_version,
+    idempotency_key: `${rawObject.idempotency_key}/${reason}/${checkpoint.change_token ?? 'cursor'}`,
+    metadata: {
+      ...checkpointed.metadata,
+      [APPLE_PHOTO_LIBRARY_DELTA_REASON_KEY]: reason,
+    },
+  };
+}
+
+function uniqueRawObjectsByItemId(rawObjects: AppleBridgeRawObject[]): AppleBridgeRawObject[] {
+  const seen = new Set<string>();
+  return rawObjects.filter((rawObject) => {
+    if (seen.has(rawObject.item_id)) return false;
+    seen.add(rawObject.item_id);
+    return true;
+  });
+}
+
+export function filterAppleBridgeRawObjectsForCurrentSelection(
+  rawObjects: AppleBridgeRawObject[],
+): AppleBridgeRawObject[] {
+  return rawObjects.filter((rawObject) => {
+    if (!isPhotoLibraryAsset(rawObject)) return true;
+    if (rawObject.deleted) return true;
+
+    const permissionState = resolvePhotoLibraryPermissionState(rawObject);
+    switch (permissionState) {
+      case 'limited':
+        return canIngestApplePhotoLibraryAsset({
+          permissionState,
+          identifiers: rawObject.identifiers,
+          selectedAssets: rawObject.photo_library_checkpoint?.selected_assets ?? [],
+        });
+      case 'full':
+      case 'denied':
+      case 'not_determined':
+        return false;
+      default: {
+        const _exhaustive: never = permissionState;
+        return _exhaustive;
+      }
+    }
+  });
+}
+
+export function buildApplePhotoLibrarySelectionDelta(
+  input: ApplePhotoLibrarySelectionDeltaInput,
+): AppleBridgeRawObject[] {
+  const knownAssetIndex = buildPhotoLibraryAssetIndex(input.knownAssets);
+
+  switch (input.nextCheckpoint.permission_state) {
+    case 'limited': {
+      const delta: AppleBridgeRawObject[] = [];
+      for (const asset of input.currentAssets) {
+        const checkpointed = withPhotoLibraryCheckpoint(asset, input.nextCheckpoint);
+        if (
+          !canIngestApplePhotoLibraryAsset({
+            permissionState: input.nextCheckpoint.permission_state,
+            identifiers: checkpointed.identifiers,
+            selectedAssets: input.nextCheckpoint.selected_assets,
+          })
+        ) {
+          continue;
+        }
+        const knownAsset = findPhotoLibraryAsset(knownAssetIndex, checkpointed);
+        if (!knownAsset || hasAppleBridgeRawObjectChanged(checkpointed, knownAsset)) {
+          delta.push(checkpointed);
+        }
+      }
+
+      if (input.previousCheckpoint?.permission_state === 'limited') {
+        for (const asset of input.knownAssets) {
+          if (asset.deleted) continue;
+          if (
+            !matchesAppleCompanionSelectedAsset({
+              identifiers: asset.identifiers,
+              selectedAssets: input.previousCheckpoint.selected_assets,
+            })
+          ) {
+            continue;
+          }
+          if (
+            matchesAppleCompanionSelectedAsset({
+              identifiers: asset.identifiers,
+              selectedAssets: input.nextCheckpoint.selected_assets,
+            })
+          ) {
+            continue;
+          }
+          delta.push(buildPhotoLibraryTombstone(asset, input.nextCheckpoint, 'selection_removed'));
+        }
+      }
+
+      return uniqueRawObjectsByItemId(filterAppleBridgeRawObjectsForCurrentSelection(delta));
+    }
+    case 'denied':
+    case 'not_determined':
+      if (!input.previousCheckpoint || !hasPhotoLibraryAccess(input.previousCheckpoint.permission_state)) {
+        return [];
+      }
+      return uniqueRawObjectsByItemId(
+        input.knownAssets
+          .filter((asset) => !asset.deleted)
+          .map((asset) =>
+            buildPhotoLibraryTombstone(asset, input.nextCheckpoint, 'permission_revoked'),
+          ),
+      );
+    case 'full':
+      // Slice 02 tracks the full-library state but must not expand into an implicit crawl.
+      return [];
+    default: {
+      const _exhaustive: never = input.nextCheckpoint.permission_state;
+      return _exhaustive;
+    }
+  }
 }
 
 function resolveMimeType(rawObject: AppleBridgeRawObject): string {
@@ -150,6 +391,7 @@ export function buildAppleBridgeRecord(input: {
         identifiers: input.rawObject.identifiers,
         itemId: input.rawObject.item_id,
         deleteLocalAfterAck: input.rawObject.delete_local_after_ack,
+        photoLibraryCheckpoint: input.rawObject.photo_library_checkpoint ?? null,
         ...input.rawObject.metadata,
       },
       canonicalReference,
@@ -221,6 +463,43 @@ function buildInitialFixtures(): AppleBridgeRawObject[] {
       device_id: 'fixture-iphone',
       connection_id: '88888888-8888-4888-8888-888888888899',
       item_id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa1',
+      kind: 'photo',
+      title: 'Removed limited-library asset',
+      filename: 'IMG_1002.HEIC',
+      mime_type: 'image/heic',
+      observed_at: '2026-08-19T20:30:00.000Z',
+      storage_mode: 'reference',
+      sensitivity: 'personal',
+      idempotency_key: 'apple-share/fixture-iphone/photo-2/selection_removed/photokit-change-1',
+      delete_local_after_ack: false,
+      process_now: false,
+      source: 'photo_library',
+      identifiers: {
+        local_identifier: 'PHOTO-LOCAL-2',
+        cloud_identifier: 'PHOTO-CLOUD-2',
+      },
+      metadata: {
+        album: 'Camera Roll',
+        photo_library_change_token: 'photokit-change-1',
+        photoLibraryDeltaReason: 'selection_removed',
+      },
+      deleted: true,
+      permissions: {
+        photo_library: 'limited',
+      },
+      photo_library_checkpoint: {
+        permission_state: 'limited',
+        selected_assets: [],
+        change_token: 'photokit-change-1',
+      },
+    },
+    {
+      workspace_id: '11111111-1111-4111-8111-111111111111',
+      project_id: '44444444-4444-4444-8444-444444444401',
+      actor_subject_id: '33333333-3333-4333-8333-333333333301',
+      device_id: 'fixture-iphone',
+      connection_id: '88888888-8888-4888-8888-888888888899',
+      item_id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa2',
       kind: 'text',
       title: 'Apple companion note',
       text: 'Remember the selected sprint whiteboard.',
@@ -237,36 +516,6 @@ function buildInitialFixtures(): AppleBridgeRawObject[] {
       metadata: {
         origin: 'fixture',
       },
-      permissions: {
-        photo_library: 'limited',
-      },
-    },
-    {
-      workspace_id: '11111111-1111-4111-8111-111111111111',
-      project_id: '44444444-4444-4444-8444-444444444401',
-      actor_subject_id: '33333333-3333-4333-8333-333333333301',
-      device_id: 'fixture-iphone',
-      connection_id: '88888888-8888-4888-8888-888888888899',
-      item_id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa2',
-      kind: 'photo',
-      title: 'Deleted asset tombstone',
-      filename: 'IMG_1002.HEIC',
-      mime_type: 'image/heic',
-      observed_at: '2026-08-19T20:30:00.000Z',
-      storage_mode: 'reference',
-      sensitivity: 'personal',
-      idempotency_key: 'apple-share/fixture-iphone/photo-2',
-      delete_local_after_ack: false,
-      process_now: false,
-      source: 'photo_library',
-      identifiers: {
-        local_identifier: 'PHOTO-LOCAL-2',
-        cloud_identifier: 'PHOTO-CLOUD-2',
-      },
-      metadata: {
-        album: 'Camera Roll',
-      },
-      deleted: true,
       permissions: {
         photo_library: 'limited',
       },
@@ -297,44 +546,71 @@ function buildInitialFixtures(): AppleBridgeRawObject[] {
   ];
 }
 
-function buildIncrementalFixtures(lastSeenExternalId: string | null): AppleBridgeRawObject[] {
-  if (lastSeenExternalId === 'https://example.com/apple-note-4') {
+function buildIncrementalFixtures(input: {
+  lastSeenExternalId: string | null;
+  photoLibraryChangeToken: string | null;
+}): AppleBridgeRawObject[] {
+  if (
+    input.photoLibraryChangeToken === 'photokit-change-2' ||
+    input.lastSeenExternalId === 'URL-4'
+  ) {
     return [];
   }
-  return [
-    {
-      workspace_id: '11111111-1111-4111-8111-111111111111',
-      project_id: '44444444-4444-4444-8444-444444444401',
-      actor_subject_id: '33333333-3333-4333-8333-333333333301',
-      device_id: 'fixture-mac',
-      connection_id: '88888888-8888-4888-8888-888888888899',
-      item_id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa4',
-      kind: 'url',
-      title: 'Apple shared URL',
-      url: 'https://example.com/apple-note-4',
-      observed_at: '2026-08-19T22:00:00.000Z',
-      storage_mode: 'reference',
-      sensitivity: 'internal',
-      idempotency_key: 'apple-share/fixture-mac/url-4',
-      delete_local_after_ack: true,
-      process_now: false,
-      source: 'share_extension',
-      identifiers: {
-        provider_item_identifier: 'URL-4',
-      },
-      metadata: {
-        browser: 'Safari',
-      },
-      permissions: {
-        files: 'full',
-      },
+  return buildApplePhotoLibrarySelectionDelta({
+    previousCheckpoint:
+      input.photoLibraryChangeToken === 'photokit-change-1'
+        ? {
+            permission_state: 'limited',
+            selected_assets: [],
+            change_token: 'photokit-change-1',
+          }
+        : null,
+    nextCheckpoint: {
+      permission_state: 'limited',
+      selected_assets: [{ provider_item_identifier: 'URL-4' }],
+      change_token: 'photokit-change-2',
     },
-  ];
+    knownAssets: [],
+    currentAssets: [
+      {
+        workspace_id: '11111111-1111-4111-8111-111111111111',
+        project_id: '44444444-4444-4444-8444-444444444401',
+        actor_subject_id: '33333333-3333-4333-8333-333333333301',
+        device_id: 'fixture-mac',
+        connection_id: '88888888-8888-4888-8888-888888888899',
+        item_id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa4',
+        kind: 'photo',
+        title: 'Selected limited-library asset',
+        url: 'https://example.com/apple-note-4',
+        filename: 'IMG_1004.HEIC',
+        mime_type: 'image/heic',
+        observed_at: '2026-08-19T22:00:00.000Z',
+        storage_mode: 'reference',
+        sensitivity: 'internal',
+        idempotency_key: 'apple-share/fixture-mac/url-4',
+        delete_local_after_ack: true,
+        process_now: false,
+        source: 'photo_library',
+        identifiers: {
+          provider_item_identifier: 'URL-4',
+        },
+        metadata: {
+          album: 'Selected imports',
+        },
+      },
+    ],
+  });
 }
 
 function resolveCursorExternalId(context: ConnectorSyncContext): string | null {
   return typeof context.cursor?.opaque.lastSeenExternalId === 'string'
     ? context.cursor.opaque.lastSeenExternalId
+    : null;
+}
+
+function resolveCursorPhotoLibraryChangeToken(context: ConnectorSyncContext): string | null {
+  return typeof context.cursor?.opaque[APPLE_PHOTO_LIBRARY_CHANGE_TOKEN_KEY] === 'string'
+    ? String(context.cursor?.opaque[APPLE_PHOTO_LIBRARY_CHANGE_TOKEN_KEY])
     : null;
 }
 
@@ -373,7 +649,7 @@ export const appleBridgeConnector: RegisteredConnector<AppleBridgeRawObject> = {
       return {
         stream: APPLE_BRIDGE_CURSOR_STREAM,
         mode: 'initial',
-        rawObjects: buildInitialFixtures(),
+        rawObjects: filterAppleBridgeRawObjectsForCurrentSelection(buildInitialFixtures()),
         pullMode: 'device_checkpoint',
         note: 'fixture Apple device checkpoint',
       };
@@ -388,7 +664,12 @@ export const appleBridgeConnector: RegisteredConnector<AppleBridgeRawObject> = {
       return {
         stream: APPLE_BRIDGE_CURSOR_STREAM,
         mode: 'incremental',
-        rawObjects: buildIncrementalFixtures(resolveCursorExternalId(context)),
+        rawObjects: filterAppleBridgeRawObjectsForCurrentSelection(
+          buildIncrementalFixtures({
+            lastSeenExternalId: resolveCursorExternalId(context),
+            photoLibraryChangeToken: resolveCursorPhotoLibraryChangeToken(context),
+          }),
+        ),
         pullMode: 'device_checkpoint',
         note: 'fixture Apple incremental checkpoint',
       };
@@ -406,6 +687,12 @@ export const appleBridgeConnector: RegisteredConnector<AppleBridgeRawObject> = {
       return buildDefaultCursor(APPLE_BRIDGE_CURSOR_STREAM, {
         lastSeenExternalId: resolveExternalId(newestRawObject),
         lastSeenObservedAt: resolveObservedAt(newestRawObject),
+        ...(newestRawObject.photo_library_checkpoint?.change_token
+          ? {
+              [APPLE_PHOTO_LIBRARY_CHANGE_TOKEN_KEY]:
+                newestRawObject.photo_library_checkpoint.change_token,
+            }
+          : {}),
       });
     },
     async healthcheck(context) {

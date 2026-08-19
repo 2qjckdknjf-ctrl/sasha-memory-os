@@ -36,8 +36,12 @@ public protocol AppleCompanionAuthenticating: Sendable {
     var currentSession: AppleCompanionAuthSession? { get }
 }
 
+// Slice 02 keeps the PhotoKit surface contract-only: permission, selected assets, and change token.
 public protocol ApplePhotoLibraryInspecting: Sendable {
-    func currentPhotoLibraryPermission() async -> ApplePermissionState
+    func currentPhotoLibraryCheckpoint() async -> AppleCompanionPhotoLibraryCheckpoint
+    func currentPhotoLibrarySelectionDelta(
+        since previous: AppleCompanionPhotoLibraryCheckpoint?
+    ) async -> AppleCompanionPhotoLibrarySelectionDelta
 }
 
 public protocol AppleDocumentBookmarkManaging: Sendable {
