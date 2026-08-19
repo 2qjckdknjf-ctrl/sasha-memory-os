@@ -30,6 +30,33 @@ export const appleCompanionIdentifierSchema = z.object({
   provider_item_identifier: z.string().min(1).optional(),
 });
 
+export const appleCompanionSelectedAssetSchema = appleCompanionIdentifierSchema.superRefine(
+  (value, ctx) => {
+    if (
+      !value.local_identifier &&
+      !value.cloud_identifier &&
+      !value.provider_item_identifier
+    ) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'selected assets require at least one durable identifier',
+      });
+    }
+  },
+);
+
+export const appleCompanionPhotoLibraryCheckpointSchema = z.object({
+  permission_state: applePermissionStateSchema.default('not_determined'),
+  selected_assets: z.array(appleCompanionSelectedAssetSchema).default([]),
+  change_token: z.string().min(1).nullable().default(null),
+});
+
+export const appleCompanionPhotoLibrarySelectionDeltaSchema = z.object({
+  added: z.array(appleCompanionSelectedAssetSchema).default([]),
+  removed: z.array(appleCompanionSelectedAssetSchema).default([]),
+  updated: z.array(appleCompanionSelectedAssetSchema).default([]),
+});
+
 export const appleCompanionProjectRefSchema = z.string().min(1);
 
 export const appleCompanionIngestRequestSchema = z
@@ -104,6 +131,15 @@ export const appleCompanionQueueItemSchema = z.object({
 
 export const appleCompanionQueueSchema = z.array(appleCompanionQueueItemSchema);
 
+export const appleCompanionDeviceQueueCursorSchema = z.object({
+  photo_library: appleCompanionPhotoLibraryCheckpointSchema.optional(),
+});
+
+export const appleCompanionQueueSnapshotSchema = z.object({
+  items: appleCompanionQueueSchema.default([]),
+  cursor: appleCompanionDeviceQueueCursorSchema.default({}),
+});
+
 export type ApplePermissionState = z.infer<typeof applePermissionStateSchema>;
 export type AppleCompanionPermissionSnapshot = z.infer<
   typeof appleCompanionPermissionSnapshotSchema
@@ -111,9 +147,81 @@ export type AppleCompanionPermissionSnapshot = z.infer<
 export type AppleCompanionSource = z.infer<typeof appleCompanionSourceSchema>;
 export type AppleCompanionItemKind = z.infer<typeof appleCompanionItemKindSchema>;
 export type AppleCompanionIdentifier = z.infer<typeof appleCompanionIdentifierSchema>;
+export type AppleCompanionSelectedAsset = z.infer<typeof appleCompanionSelectedAssetSchema>;
+export type AppleCompanionPhotoLibraryCheckpoint = z.infer<
+  typeof appleCompanionPhotoLibraryCheckpointSchema
+>;
+export type AppleCompanionPhotoLibrarySelectionDelta = z.infer<
+  typeof appleCompanionPhotoLibrarySelectionDeltaSchema
+>;
 export type AppleCompanionIngestRequest = z.infer<typeof appleCompanionIngestRequestSchema>;
 export type AppleCompanionQueueState = z.infer<typeof appleCompanionQueueStateSchema>;
 export type AppleCompanionQueueItem = z.infer<typeof appleCompanionQueueItemSchema>;
+export type AppleCompanionDeviceQueueCursor = z.infer<
+  typeof appleCompanionDeviceQueueCursorSchema
+>;
+export type AppleCompanionQueueSnapshot = z.infer<typeof appleCompanionQueueSnapshotSchema>;
+
+function uniqueNonEmptyStrings(values: Array<string | undefined>): string[] {
+  return [...new Set(values.filter((value): value is string => Boolean(value && value.trim())))];
+}
+
+export function listAppleCompanionIdentifierCandidates(
+  identifiers: AppleCompanionIdentifier | AppleCompanionSelectedAsset,
+): string[] {
+  return uniqueNonEmptyStrings([
+    identifiers.local_identifier,
+    identifiers.cloud_identifier,
+    identifiers.provider_item_identifier,
+  ]);
+}
+
+export function buildAppleCompanionSelectedAssetIndex(
+  selectedAssets: AppleCompanionSelectedAsset[],
+): Set<string> {
+  const index = new Set<string>();
+  for (const asset of selectedAssets) {
+    for (const key of listAppleCompanionIdentifierCandidates(asset)) {
+      index.add(key);
+    }
+  }
+  return index;
+}
+
+export function matchesAppleCompanionSelectedAsset(input: {
+  identifiers: AppleCompanionIdentifier;
+  selectedAssets: AppleCompanionSelectedAsset[];
+}): boolean {
+  const selectedAssetIndex = buildAppleCompanionSelectedAssetIndex(input.selectedAssets);
+  return listAppleCompanionIdentifierCandidates(input.identifiers).some((key) =>
+    selectedAssetIndex.has(key),
+  );
+}
+
+export function canIngestApplePhotoLibraryAsset(input: {
+  permissionState: ApplePermissionState;
+  identifiers: AppleCompanionIdentifier;
+  selectedAssets?: AppleCompanionSelectedAsset[];
+}): boolean {
+  const selectedAssets = input.selectedAssets ?? [];
+  switch (input.permissionState) {
+    case 'limited':
+      return matchesAppleCompanionSelectedAsset({
+        identifiers: input.identifiers,
+        selectedAssets,
+      });
+    case 'full':
+      // Slice 02 represents full access but must not expand into an implicit full-library ingest.
+      return false;
+    case 'denied':
+    case 'not_determined':
+      return false;
+    default: {
+      const _exhaustive: never = input.permissionState;
+      return _exhaustive;
+    }
+  }
+}
 
 export function createAppleCompanionQueueItem(input: {
   payload: AppleCompanionIngestRequest;

@@ -62,7 +62,7 @@ public final class AppleCompanionPreviewModel: ObservableObject {
                 shareExtension: .full
             ),
             queue: queue,
-            connectionStatusNote: "Slice 01 placeholder: device registration and permissions only."
+            connectionStatusNote: "Slice 02 placeholder: limited-library permission, selection, and queue contract only."
         )
     }
 
@@ -188,7 +188,7 @@ public struct MemoryOSAppleCompanionRootView: View {
             NavigationStack {
                 Form {
                     Section("Share item intake stub") {
-                        Text("Slice 01 queues durable items only. PhotoKit enumeration, bookmark resolution, and runtime Share Extension code land in later slices.")
+                        Text("Slice 02 keeps the contract testable in CI. Live PhotoKit enumeration, bookmark resolution, and the runtime Share Extension target land in later slices.")
                             .font(.footnote)
                             .foregroundStyle(.secondary)
                         Button("Queue shared text stub") {
