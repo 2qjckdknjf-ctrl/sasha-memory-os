@@ -102,6 +102,34 @@ export const setMemoryStatusSchema = z.object({
   actor_subject_id: z.string().uuid(),
 });
 
+export const correctMemorySchema = z
+  .object({
+    actor_subject_id: z.string().uuid(),
+    reason: z.string().min(1).max(2000),
+    title: z.string().min(1).max(200).optional(),
+    content: z.string().min(1).max(4000).optional(),
+    replacement_memory_id: z.string().uuid().optional(),
+  })
+  .superRefine((value, ctx) => {
+    const hasReplacement = value.replacement_memory_id !== undefined;
+    const hasContentUpdate = value.content !== undefined;
+    const hasTitleUpdate = value.title !== undefined;
+    if (!hasReplacement && !hasContentUpdate) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'content is required when replacement_memory_id is not provided',
+        path: ['content'],
+      });
+    }
+    if (hasReplacement && (hasContentUpdate || hasTitleUpdate)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'replacement_memory_id cannot be combined with title or content',
+        path: ['replacement_memory_id'],
+      });
+    }
+  });
+
 export const privacyRequestTypeSchema = z.enum([
   'deletion',
   'correction',
@@ -143,5 +171,6 @@ export type CreateDecisionInput = z.infer<typeof createDecisionSchema>;
 export type UpsertProjectStateInput = z.infer<typeof upsertProjectStateSchema>;
 export type CreateHandoffInput = z.infer<typeof createHandoffSchema>;
 export type SetMemoryStatusInput = z.infer<typeof setMemoryStatusSchema>;
+export type CorrectMemoryInput = z.infer<typeof correctMemorySchema>;
 export type CreatePrivacyRequestInput = z.infer<typeof createPrivacyRequestSchema>;
 export type ApplyExtractionInput = z.infer<typeof applyExtractionSchema>;

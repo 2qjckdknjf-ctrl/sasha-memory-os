@@ -1,8 +1,9 @@
 import { type MemoryStore } from '@memory-os/domain';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import { Link, useLocation, useParams } from 'react-router-dom';
 import { apiGet } from './api';
 import {
+  type CorrectMemoryPayload,
   PROJECT_ID,
   formatTimestamp,
   type Actor,
@@ -18,6 +19,7 @@ type Props = {
   subjectId: string;
   localStore: MemoryStore;
   onSetMemoryStatus: (memoryId: string, status: MemoryStatusAction) => Promise<boolean>;
+  onCorrectMemory: (memoryId: string, payload: CorrectMemoryPayload) => Promise<boolean>;
 };
 
 type MemoryDetailResponse = {
@@ -62,7 +64,9 @@ function extractSupplementaryField(memory: MemoryDetail, field: string): unknown
   const direct = (memory as Record<string, unknown>)[field];
   if (direct !== undefined) return direct;
   const metadata = isRecord(memory.metadata) ? memory.metadata : null;
-  return metadata?.[field];
+  if (metadata?.[field] !== undefined) return metadata[field];
+  const provenance = isRecord(memory.provenance) ? memory.provenance : null;
+  return provenance?.[field];
 }
 
 function DisplayValue({ value }: DisplayValueProps) {
@@ -80,6 +84,7 @@ export function MemoryInspectorPage({
   subjectId,
   localStore,
   onSetMemoryStatus,
+  onCorrectMemory,
 }: Props) {
   const { id: memoryId } = useParams<{ id: string }>();
   const location = useLocation();
@@ -90,6 +95,10 @@ export function MemoryInspectorPage({
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [pendingStatus, setPendingStatus] = useState<MemoryStatusAction | null>(null);
+  const [correctionTitle, setCorrectionTitle] = useState('');
+  const [correctionContent, setCorrectionContent] = useState('');
+  const [correctionReason, setCorrectionReason] = useState('');
+  const [correctionPending, setCorrectionPending] = useState(false);
   const [reloadToken, setReloadToken] = useState(0);
 
   useEffect(() => {
@@ -154,6 +163,14 @@ export function MemoryInspectorPage({
     }
   }, [memory]);
 
+  useEffect(() => {
+    if (!memory) return;
+    setCorrectionTitle(memory.title);
+    setCorrectionContent(memory.content);
+    setCorrectionReason('');
+    setCorrectionPending(false);
+  }, [memory]);
+
   const memoryType = memory?.memoryType ?? memory?.type ?? 'unknown';
   const sourceValue = useMemo(
     () => (memory ? extractSupplementaryField(memory, 'source') : undefined),
@@ -165,6 +182,40 @@ export function MemoryInspectorPage({
   );
   const provenanceValue = useMemo(
     () => (memory ? extractSupplementaryField(memory, 'provenance') : undefined),
+    [memory],
+  );
+  const changeReasonValue = useMemo(
+    () =>
+      memory
+        ? (extractSupplementaryField(memory, 'correctionReason') ??
+          extractSupplementaryField(memory, 'correction_reason') ??
+          extractSupplementaryField(memory, 'statusReason') ??
+          extractSupplementaryField(memory, 'status_reason'))
+        : undefined,
+    [memory],
+  );
+  const correctedFromValue = useMemo(
+    () =>
+      memory
+        ? (extractSupplementaryField(memory, 'correctedFromMemoryId') ??
+          extractSupplementaryField(memory, 'corrected_from'))
+        : undefined,
+    [memory],
+  );
+  const correctedByValue = useMemo(
+    () =>
+      memory
+        ? (extractSupplementaryField(memory, 'correctedBySubject') ??
+          extractSupplementaryField(memory, 'corrected_by'))
+        : undefined,
+    [memory],
+  );
+  const correctionAtValue = useMemo(
+    () =>
+      memory
+        ? (extractSupplementaryField(memory, 'correctionAt') ??
+          extractSupplementaryField(memory, 'correction_at'))
+        : undefined,
     [memory],
   );
 
@@ -191,6 +242,18 @@ export function MemoryInspectorPage({
         ? { label: 'Создано субъектом', value: memory.createdBySubject }
         : null,
       memory.supersededBy ? { label: 'Замещено записью', value: memory.supersededBy } : null,
+      correctedFromValue ? { label: 'Исправляет запись', value: formatValue(correctedFromValue) } : null,
+      correctedByValue ? { label: 'Исправлено субъектом', value: formatValue(correctedByValue) } : null,
+      changeReasonValue ? { label: 'Причина изменения', value: formatValue(changeReasonValue) } : null,
+      correctionAtValue
+        ? {
+            label: 'Исправлено',
+            value:
+              typeof correctionAtValue === 'string'
+                ? formatTimestamp(correctionAtValue)
+                : formatValue(correctionAtValue),
+          }
+        : null,
       typeof memory.importance === 'number'
         ? { label: 'Важность', value: memory.importance.toFixed(2) }
         : null,
@@ -199,7 +262,15 @@ export function MemoryInspectorPage({
         : null,
     ];
     return rows.filter((row): row is FactRow => row !== null);
-  }, [detailBackend, memory, memoryType]);
+  }, [
+    changeReasonValue,
+    correctionAtValue,
+    correctedByValue,
+    correctedFromValue,
+    detailBackend,
+    memory,
+    memoryType,
+  ]);
 
   const timestampRows = useMemo<FactRow[]>(() => {
     if (!memory) return [];
@@ -220,6 +291,21 @@ export function MemoryInspectorPage({
     setPendingStatus(status);
     const ok = await onSetMemoryStatus(memoryId, status);
     setPendingStatus(null);
+    if (ok) {
+      setReloadToken((value) => value + 1);
+    }
+  }
+
+  async function handleCorrectionSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!memoryId) return;
+    setCorrectionPending(true);
+    const ok = await onCorrectMemory(memoryId, {
+      title: correctionTitle.trim() || undefined,
+      content: correctionContent.trim(),
+      reason: correctionReason.trim(),
+    });
+    setCorrectionPending(false);
     if (ok) {
       setReloadToken((value) => value + 1);
     }
@@ -346,6 +432,88 @@ export function MemoryInspectorPage({
               ) : null}
             </section>
           </div>
+
+          {actor === 'owner' ? (
+            <section className="panel">
+              <h2>Исправить и заместить</h2>
+              <p className="hint">
+                Владелец может создать authoritative-версию записи. Текущая запись станет
+                замещенной, а причина попадет в аудит и обе карточки памяти.
+              </p>
+              <form className="stack" onSubmit={handleCorrectionSubmit}>
+                <label className="field">
+                  <span>Новый заголовок</span>
+                  <input
+                    type="text"
+                    value={correctionTitle}
+                    onChange={(event) => {
+                      setCorrectionTitle(event.target.value);
+                    }}
+                    disabled={
+                      correctionPending ||
+                      pendingStatus !== null ||
+                      memory.status === 'superseded' ||
+                      memory.status === 'deleted'
+                    }
+                  />
+                </label>
+                <label className="field">
+                  <span>Исправленный текст</span>
+                  <textarea
+                    rows={8}
+                    value={correctionContent}
+                    onChange={(event) => {
+                      setCorrectionContent(event.target.value);
+                    }}
+                    disabled={
+                      correctionPending ||
+                      pendingStatus !== null ||
+                      memory.status === 'superseded' ||
+                      memory.status === 'deleted'
+                    }
+                  />
+                </label>
+                <label className="field">
+                  <span>Причина исправления</span>
+                  <textarea
+                    rows={3}
+                    value={correctionReason}
+                    onChange={(event) => {
+                      setCorrectionReason(event.target.value);
+                    }}
+                    placeholder="Например: подтверждено по подписанному брифу от 12 августа."
+                    disabled={
+                      correctionPending ||
+                      pendingStatus !== null ||
+                      memory.status === 'superseded' ||
+                      memory.status === 'deleted'
+                    }
+                  />
+                </label>
+                <div className="actions">
+                  <button
+                    type="submit"
+                    disabled={
+                      correctionPending ||
+                      pendingStatus !== null ||
+                      memory.status === 'superseded' ||
+                      memory.status === 'deleted' ||
+                      correctionContent.trim().length === 0 ||
+                      correctionReason.trim().length === 0
+                    }
+                  >
+                    {correctionPending ? 'Сохраняю исправление…' : 'Сохранить исправление'}
+                  </button>
+                </div>
+              </form>
+              {memory.status === 'superseded' || memory.status === 'deleted' ? (
+                <p className="hint">
+                  Эту запись уже нельзя исправить напрямую: откройте актуальную authoritative
+                  версию или создайте новую замену через API.
+                </p>
+              ) : null}
+            </section>
+          ) : null}
 
           {timestampRows.length > 0 ? (
             <section className="panel">

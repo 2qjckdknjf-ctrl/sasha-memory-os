@@ -35,6 +35,8 @@ function describeAuditAction(action: string): string {
   switch (action) {
     case 'memory.set_status':
       return 'Изменение статуса памяти';
+    case 'memory.correct':
+      return 'Исправление памяти';
     case 'handoff.create':
       return 'Создание хэнд-оффа';
     case 'privacy.request.submitted':

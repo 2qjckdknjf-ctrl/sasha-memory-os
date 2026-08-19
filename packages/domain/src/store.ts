@@ -12,6 +12,10 @@ function newId(): string {
   return globalThis.crypto.randomUUID();
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
 export interface SourceEvent {
   id: string;
   workspaceId: string;
@@ -430,6 +434,149 @@ export class MemoryStore {
       },
     });
     return next;
+  }
+
+  correctMemory(input: {
+    memoryId: string;
+    reason: string;
+    actorSubjectId: string;
+    title?: string;
+    content?: string;
+    replacementMemoryId?: string;
+  }): { superseded: MemoryRecord; authoritative: MemoryRecord } {
+    const current = this.memories.get(input.memoryId);
+    if (!current) throw new Error('memory not found');
+    if (current.status === 'superseded') {
+      throw new Error('superseded memory cannot be corrected');
+    }
+    if (current.status === 'deleted') {
+      throw new Error('deleted memory cannot be corrected');
+    }
+    const reason = input.reason.trim();
+    if (!reason) throw new Error('reason required');
+    const correctionAt = new Date().toISOString();
+    const priorProvenance = isRecord(current.metadata.provenance)
+      ? current.metadata.provenance
+      : {};
+
+    let authoritative: MemoryRecord;
+    if (input.replacementMemoryId) {
+      if (input.replacementMemoryId === input.memoryId) {
+        throw new Error('replacement memory must differ');
+      }
+      const existingReplacement = this.memories.get(input.replacementMemoryId);
+      if (!existingReplacement) throw new Error('replacement memory not found');
+      if (existingReplacement.workspaceId !== current.workspaceId) {
+        throw new Error('workspace mismatch');
+      }
+      if (existingReplacement.projectId !== current.projectId) {
+        throw new Error('project mismatch');
+      }
+      if (existingReplacement.status === 'superseded') {
+        throw new Error('superseded replacement memory cannot become authoritative');
+      }
+      authoritative = {
+        ...existingReplacement,
+        status: 'verified',
+        metadata: {
+          ...existingReplacement.metadata,
+          status_reason: reason,
+          status_actor: input.actorSubjectId,
+          status_at: correctionAt,
+          corrected_from: current.id,
+          correction_reason: reason,
+          correction_actor: input.actorSubjectId,
+          correction_at: correctionAt,
+          provenance: {
+            ...(isRecord(existingReplacement.metadata.provenance)
+              ? existingReplacement.metadata.provenance
+              : {}),
+            origin: 'memory.correction',
+            correctedFromMemoryId: current.id,
+            correctedBySubject: input.actorSubjectId,
+            correctionReason: reason,
+            correctionAt,
+          },
+        },
+      };
+    } else {
+      if (!input.content) {
+        throw new Error('content is required when replacement memory is not provided');
+      }
+      authoritative = {
+        ...current,
+        id: newId(),
+        title: input.title ?? current.title,
+        content: input.content,
+        status: 'verified',
+        recordedAt: correctionAt,
+        supersededBy: null,
+        createdBySubject: input.actorSubjectId,
+        metadata: {
+          ...current.metadata,
+          status_reason: reason,
+          status_actor: input.actorSubjectId,
+          status_at: correctionAt,
+          corrected_from: current.id,
+          correction_reason: reason,
+          correction_actor: input.actorSubjectId,
+          correction_at: correctionAt,
+          provenance: {
+            ...priorProvenance,
+            origin: 'memory.correction',
+            correctedFromMemoryId: current.id,
+            correctedBySubject: input.actorSubjectId,
+            correctionReason: reason,
+            correctionAt,
+            previousCreatedBySubject: current.createdBySubject,
+            previousSourceEventId: current.sourceEventId,
+          },
+        },
+      };
+    }
+
+    const superseded: MemoryRecord = {
+      ...current,
+      status: 'superseded',
+      supersededBy: authoritative.id,
+      metadata: {
+        ...current.metadata,
+        status_reason: reason,
+        status_actor: input.actorSubjectId,
+        status_at: correctionAt,
+        corrected_by: authoritative.id,
+        correction_reason: reason,
+        correction_actor: input.actorSubjectId,
+        correction_at: correctionAt,
+      },
+    };
+
+    this.memories.set(superseded.id, superseded);
+    this.memories.set(authoritative.id, authoritative);
+    this.createAuditEvent({
+      workspaceId: current.workspaceId,
+      actorSubjectId: input.actorSubjectId,
+      action: 'memory.correct',
+      objectType: 'memory',
+      objectId: superseded.id,
+      reason,
+      beforeState: {
+        memoryId: current.id,
+        status: current.status,
+        title: current.title,
+        content: current.content,
+        projectId: current.projectId,
+      },
+      afterState: {
+        supersededId: superseded.id,
+        authoritativeId: authoritative.id,
+        supersededStatus: superseded.status,
+        authoritativeStatus: authoritative.status,
+        reason,
+        projectId: current.projectId,
+      },
+    });
+    return { superseded, authoritative };
   }
 
   supersedeMemory(input: {

@@ -718,6 +718,35 @@ export class SupabaseMemoryGateway {
     };
   }
 
+  async correctMemory(input: {
+    subjectId: string;
+    memoryId: string;
+    reason: string;
+    title?: string;
+    content?: string;
+    replacementMemoryId?: string;
+  }) {
+    const { data, error } = await this.client.rpc('api_correct_memory', {
+      p_secret: this.apiSecret,
+      p_subject_id: input.subjectId,
+      p_memory_id: input.memoryId,
+      p_reason: input.reason,
+      p_title: input.title ?? null,
+      p_content: input.content ?? null,
+      p_replacement_memory_id: input.replacementMemoryId ?? null,
+    });
+    if (error) throw error;
+    return data as {
+      supersededId: string;
+      authoritativeId: string;
+      supersededStatus: string;
+      authoritativeStatus: string;
+      reason: string;
+      projectId: string | null;
+      title: string;
+    };
+  }
+
   async supersedeMemory(input: {
     subjectId: string;
     duplicateId: string;
