@@ -25,7 +25,7 @@ function createTwoProjectGateway() {
       },
     ]),
     resolveProjectRef: vi.fn(async ({ projectRef }: { projectRef?: string | null }) => {
-      if (projectRef === 'repo-b') {
+      if (projectRef === 'repo-b' || projectRef === otherProjectId) {
         return {
           projectId: otherProjectId,
           matchCount: 1,
@@ -39,7 +39,7 @@ function createTwoProjectGateway() {
           ],
         };
       }
-      if (projectRef === 'aistroyka') {
+      if (projectRef === 'aistroyka' || projectRef === projectId) {
         return {
           projectId,
           matchCount: 1,
@@ -401,6 +401,21 @@ describe('mcp gateway alpha', () => {
       projectId,
       otherProjectId,
     ]);
+  });
+
+  it('keeps omitted Cursor/full project at workspace scope when there is no hint', async () => {
+    const gateway = createTwoProjectGateway();
+    const mcp = createMcpHandlers({ gateway: gateway as any });
+    await mcp.call('capture.text', {
+      workspace_id: workspaceId,
+      actor_subject_id: cursor,
+      title: 'General note',
+      text: 'No project name here.',
+      idempotency_key: 'mcp-cursor-workspace-1',
+    });
+    expect(gateway.captureText).toHaveBeenCalledWith(
+      expect.objectContaining({ projectId: null }),
+    );
   });
 
   it('errors on ambiguous project refs instead of defaulting to AISTROYKA', async () => {

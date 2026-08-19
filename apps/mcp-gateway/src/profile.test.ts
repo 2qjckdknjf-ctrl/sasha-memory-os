@@ -85,6 +85,6 @@ describe('mcp profile', () => {
     expect(filled.workspace_id).toBeTruthy();
     expect(filled.project_id).toBeUndefined();
     const context = applyProfileDefaults(profile, {}, 'context.project');
-    expect(context.project_id).toBeTruthy();
+    expect(context.project_id).toBeUndefined();
   });
 });

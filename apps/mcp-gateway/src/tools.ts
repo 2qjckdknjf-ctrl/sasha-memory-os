@@ -1208,7 +1208,7 @@ export function createMcpHandlers(options?: {
             return gateway.createDecision({
               subjectId: input.actor_subject_id,
               workspaceId: input.workspace_id,
-              projectId: input.project_id,
+              projectId: input.project_id ?? null,
               title: input.title,
               content: input.content,
               idempotencyKey: input.idempotency_key,
@@ -1219,7 +1219,7 @@ export function createMcpHandlers(options?: {
           }
           return store.createDecision({
             workspaceId: input.workspace_id,
-            projectId: input.project_id,
+            projectId: input.project_id ?? null,
             title: input.title,
             content: input.content,
             actorSubjectId: input.actor_subject_id,
@@ -1243,14 +1243,14 @@ export function createMcpHandlers(options?: {
             return gateway.createHandoff({
               subjectId: input.from_subject_id,
               workspaceId: input.workspace_id,
-              projectId: input.project_id,
+              projectId: input.project_id ?? null,
               toSubjectId: input.to_subject_id,
               payload: input.payload,
             });
           }
           return store.createHandoff({
             workspaceId: input.workspace_id,
-            projectId: input.project_id,
+            projectId: input.project_id ?? null,
             fromSubjectId: input.from_subject_id,
             toSubjectId: input.to_subject_id,
             sessionId: input.session_id,
@@ -1331,7 +1331,7 @@ export function createMcpHandlers(options?: {
             const result = await gateway.captureText({
               subjectId: input.actor_subject_id,
               workspaceId: input.workspace_id,
-              projectId: input.project_id,
+              projectId: input.project_id ?? null,
               title: input.title,
               text: input.text,
               idempotencyKey: input.idempotency_key,
@@ -1348,7 +1348,7 @@ export function createMcpHandlers(options?: {
           }
           return store.captureText({
             workspaceId: input.workspace_id,
-            projectId: input.project_id,
+            projectId: input.project_id ?? null,
             title: input.title,
             text: input.text,
             actorSubjectId: input.actor_subject_id,
