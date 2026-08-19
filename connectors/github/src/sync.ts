@@ -45,7 +45,7 @@ type GithubEvent = {
   __mode?: 'stub' | 'vault';
 };
 
-type GithubRepo = {
+export type GitHubRepositoryRecord = {
   id?: string | number;
   name?: string;
   full_name?: string;
@@ -102,7 +102,7 @@ function buildStubGithubEvents(input: {
   ];
 }
 
-function buildStubGithubRepos(): GithubRepo[] {
+function buildStubGithubRepos(): GitHubRepositoryRecord[] {
   return [
     {
       id: 215001,
@@ -129,11 +129,11 @@ function buildStubGithubRepos(): GithubRepo[] {
   ];
 }
 
-function repoCollectionId(repo: Pick<GithubRepo, 'full_name' | 'name'>): string {
+function repoCollectionId(repo: Pick<GitHubRepositoryRecord, 'full_name' | 'name'>): string {
   return repo.full_name ?? repo.name ?? 'unknown-repo';
 }
 
-function toGithubCollection(repo: GithubRepo): ConnectorCollection {
+export function githubRepositoryToCollection(repo: GitHubRepositoryRecord): ConnectorCollection {
   const collectionId = repoCollectionId(repo);
   return {
     id: collectionId,
@@ -453,7 +453,7 @@ async function discoverGithubRepositories(
 
   if (creds.mode === 'stub') {
     return {
-      collections: buildStubGithubRepos().map(toGithubCollection),
+      collections: buildStubGithubRepos().map(githubRepositoryToCollection),
       note: 'synthetic GitHub discover; vault credentials not read',
     };
   }
@@ -464,7 +464,7 @@ async function discoverGithubRepositories(
     'User-Agent': 'sasha-memory-os-connector',
     'X-GitHub-Api-Version': '2022-11-28',
   };
-  const repositories: GithubRepo[] = [];
+  const repositories: GitHubRepositoryRecord[] = [];
   let pageUrl: string | null =
     `https://api.github.com/user/repos?sort=updated&per_page=${GITHUB_DISCOVER_PAGE_SIZE}`;
 
@@ -473,13 +473,13 @@ async function discoverGithubRepositories(
     if (!response.ok) {
       throw new Error(`GitHub repositories API failed: HTTP ${response.status}`);
     }
-    repositories.push(...((await response.json()) as GithubRepo[]));
+    repositories.push(...((await response.json()) as GitHubRepositoryRecord[]));
     pageUrl = nextGithubPageUrl(response.headers.get('link'));
   }
 
   const collections = repositories
     .filter((repo) => Boolean(repo.full_name ?? repo.name))
-    .map(toGithubCollection);
+    .map(githubRepositoryToCollection);
   return {
     collections,
     note:
@@ -596,14 +596,14 @@ export const githubConnector: RegisteredConnector<GithubEvent> = {
     sdk_version: '^1.0',
     default_stream: GITHUB_CURSOR_STREAM,
     auth: 'oauth2',
-    capabilities: ['repositories.read', 'pull_requests.read', 'issues.read'],
+    capabilities: ['repositories.read', 'pull_requests.read', 'issues.read', 'events.webhook'],
     supports: {
       discover: true,
       validate_scope: true,
       initial_sync: true,
       incremental_sync: true,
       live_fetch: true,
-      webhooks: false,
+      webhooks: true,
       write: false,
     },
     storage_modes: ['reference', 'indexed'],

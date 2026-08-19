@@ -32,8 +32,8 @@ export const connectorCollectionsStateSchema = z.object({
   selection_mode: z.literal('all').default('all'),
   excluded_ids: z.array(z.string()).default([]),
   items: z.array(connectorCollectionSchema).default([]),
-  discovered_at: z.string().datetime().optional(),
-  synced_at: z.string().datetime().optional(),
+  discovered_at: z.string().datetime({ offset: true }).nullish(),
+  synced_at: z.string().datetime({ offset: true }).nullish(),
   project_bindings: z.record(z.string(), z.string().uuid()).default({}),
 });
 
@@ -93,26 +93,51 @@ export function normalizeConnectionMetadata(metadata: unknown): ConnectionMetada
   return next as ConnectionMetadata;
 }
 
-export function selectedConnectionCollectionIds(
+function rawCollectionsRecord(
   metadata: unknown,
-): Set<string> | null {
-  const normalized = normalizeConnectionMetadata(metadata);
-  const collections = normalized.collections;
-  if (!collections || collections.items.length === 0) return null;
-  const excluded = new Set(collections.excluded_ids);
+): Record<string, unknown> | null {
+  const normalizedCollections = normalizeConnectionMetadata(metadata).collections;
+  if (normalizedCollections && isPlainObject(normalizedCollections)) {
+    return normalizedCollections as unknown as Record<string, unknown>;
+  }
+  if (!isPlainObject(metadata)) return null;
+  const collections = metadata.collections;
+  return isPlainObject(collections) ? collections : null;
+}
+
+export function connectionCollectionItems(
+  metadata: unknown,
+): ConnectorCollection[] {
+  const collections = rawCollectionsRecord(metadata);
+  const rawItems = Array.isArray(collections?.items) ? collections.items : [];
+  return rawItems.flatMap((item) => {
+    const parsed = connectorCollectionSchema.safeParse(item);
+    return parsed.success ? [parsed.data] : [];
+  });
+}
+
+export function connectionCollectionExclusionSet(
+  metadata: unknown,
+): Set<string> {
+  const collections = rawCollectionsRecord(metadata);
+  const rawExcluded = Array.isArray(collections?.excluded_ids) ? collections.excluded_ids : [];
   return new Set(
-    collections.items
-      .map((item) => item.id)
-      .filter((collectionId) => !excluded.has(collectionId)),
+    rawExcluded.filter((collectionId): collectionId is string => typeof collectionId === 'string'),
   );
 }
 
+export function selectedConnectionCollectionIds(
+  metadata: unknown,
+): Set<string> | null {
+  const items = connectionCollectionItems(metadata);
+  if (items.length === 0) return null;
+  const excluded = connectionCollectionExclusionSet(metadata);
+  return new Set(items.map((item) => item.id).filter((collectionId) => !excluded.has(collectionId)));
+}
+
 export function selectedConnectionCollections(metadata: unknown): ConnectorCollection[] {
-  const normalized = normalizeConnectionMetadata(metadata);
-  const collections = normalized.collections;
-  if (!collections) return [];
-  const excluded = new Set(collections.excluded_ids);
-  return collections.items.filter((item) => !excluded.has(item.id));
+  const excluded = connectionCollectionExclusionSet(metadata);
+  return connectionCollectionItems(metadata).filter((item) => !excluded.has(item.id));
 }
 
 export function withDiscoveredCollections(

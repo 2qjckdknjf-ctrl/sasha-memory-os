@@ -34,6 +34,8 @@ import {
   bindAuthUserSchema,
   captureDocumentSchema,
   captureLinkSchema,
+  connectionCollectionExclusionSet,
+  connectionCollectionItems,
   captureTextSchema,
   correctMemorySchema,
   createDecisionSchema,
@@ -73,6 +75,17 @@ import {
   type JsonRpcReq,
 } from '@memory-os/mcp-gateway';
 import type { SupabaseMemoryGateway } from './supabase.js';
+import {
+  describeGitHubWebhookAction,
+  GITHUB_WEBHOOK_CURSOR_STREAM,
+  GITHUB_WEBHOOK_DELIVERY_HEADER,
+  GITHUB_WEBHOOK_EVENT_HEADER,
+  GITHUB_WEBHOOK_SIGNATURE_HEADER,
+  type GitHubWebhookPayload,
+  parseGitHubWebhookPayload,
+  resolveGitHubWebhookRepositoryCollection,
+  verifyGitHubWebhookSignature,
+} from './githubWebhook.js';
 import { requireHttpApiSecret } from './httpAuth.js';
 import { withRequestId } from './requestId.js';
 
@@ -469,6 +482,110 @@ function resolveCollectionProjectId(
   return normalized.collections?.project_bindings?.[collectionId] ?? null;
 }
 
+function resolveOwnerSubjectId(
+  env: NodeJS.ProcessEnv = process.env,
+): string {
+  const explicit = env.MEMORY_OS_OWNER_SUBJECT_ID?.trim();
+  return explicit && explicit.length > 0 ? explicit : owner;
+}
+
+function tagWebhookCollection(
+  collection: ConnectorCollection,
+  addedAt = new Date().toISOString(),
+): ConnectorCollection {
+  return {
+    ...collection,
+    metadata: {
+      ...(collection.metadata ?? {}),
+      added_via: 'webhook',
+      added_at: addedAt,
+    },
+  };
+}
+
+async function refreshAndSeedDiscoveredConnectionProjects(
+  gateway: SupabaseMemoryGateway,
+  subjectId: string,
+  workspaceId: string,
+  item: ConnectionLike,
+  collections: ConnectorCollection[],
+): Promise<ConnectionLike> {
+  const refreshed = await gateway.refreshConnectionCollections({
+    subjectId,
+    connectionId: item.id,
+    items: collections,
+  });
+  const excludedIds = connectionCollectionExclusionSet(refreshed.metadata);
+  const projectBindings: Record<string, string> = {};
+  for (const collection of connectionCollectionItems(refreshed.metadata)) {
+    if (excludedIds.has(collection.id)) continue;
+    const project = await gateway.upsertProjectFromConnector({
+      subjectId,
+      workspaceId,
+      provider: item.connectorId,
+      connectionId: item.id,
+      collectionId: collection.id,
+      externalId: collection.external_id ?? null,
+      name: collectionDisplayName(collection),
+      url: collection.url ?? null,
+      description: collection.description ?? null,
+      defaultBranch: collection.default_branch ?? null,
+      metadata: collection.metadata,
+    });
+    projectBindings[collection.id] = project.projectId;
+  }
+
+  if (Object.keys(projectBindings).length === 0) {
+    return gateway.getConnection(subjectId, refreshed.id);
+  }
+
+  await gateway.mergeConnectionProjectBindings({
+    subjectId,
+    connectionId: item.id,
+    projectBindings,
+  });
+  return gateway.getConnection(subjectId, item.id);
+}
+
+async function upsertAndSeedConnectionCollection(
+  gateway: SupabaseMemoryGateway,
+  subjectId: string,
+  workspaceId: string,
+  item: ConnectionLike,
+  collection: ConnectorCollection,
+): Promise<ConnectionLike> {
+  await gateway.upsertConnectionCollectionItem({
+    subjectId,
+    connectionId: item.id,
+    item: collection,
+  });
+  const refreshed = await gateway.getConnection(subjectId, item.id);
+  if (connectionCollectionExclusionSet(refreshed.metadata).has(collection.id)) {
+    return refreshed;
+  }
+
+  const project = await gateway.upsertProjectFromConnector({
+    subjectId,
+    workspaceId,
+    provider: item.connectorId,
+    connectionId: item.id,
+    collectionId: collection.id,
+    externalId: collection.external_id ?? null,
+    name: collectionDisplayName(collection),
+    url: collection.url ?? null,
+    description: collection.description ?? null,
+    defaultBranch: collection.default_branch ?? null,
+    metadata: collection.metadata,
+  });
+  await gateway.upsertConnectionCollectionItem({
+    subjectId,
+    connectionId: item.id,
+    item: collection,
+    projectBindings: { [collection.id]: project.projectId },
+  });
+  return gateway.getConnection(subjectId, item.id);
+}
+
 async function discoverAndSeedConnectionProjects(
   gateway: SupabaseMemoryGateway,
   subjectId: string,
@@ -501,42 +618,13 @@ async function discoverAndSeedConnectionProjects(
   });
 
   if (!discovered) return item;
-
-  const refreshed = await gateway.refreshConnectionCollections({
+  return refreshAndSeedDiscoveredConnectionProjects(
+    gateway,
     subjectId,
-    connectionId: baseConnection.id,
-    items: discovered.collections,
-  });
-  const selected = selectedConnectionCollections(refreshed.metadata);
-  const projectBindings: Record<string, string> = {};
-  for (const collection of selected) {
-    const project = await gateway.upsertProjectFromConnector({
-      subjectId,
-      workspaceId,
-      provider: baseConnection.connectorId,
-      connectionId: baseConnection.id,
-      collectionId: collection.id,
-      externalId: collection.external_id ?? null,
-      name: collectionDisplayName(collection),
-      url: collection.url ?? null,
-      description: collection.description ?? null,
-      defaultBranch: collection.default_branch ?? null,
-      metadata: collection.metadata,
-    });
-    projectBindings[collection.id] = project.projectId;
-  }
-
-  if (Object.keys(projectBindings).length === 0) {
-    return { ...baseConnection, metadata: refreshed.metadata };
-  }
-
-  const updated = await gateway.refreshConnectionCollections({
-    subjectId,
-    connectionId: baseConnection.id,
-    items: discovered.collections,
-    projectBindings,
-  });
-  return { ...baseConnection, metadata: updated.metadata };
+    workspaceId,
+    baseConnection,
+    discovered.collections,
+  );
 }
 
 function toSyncCursor(
@@ -946,6 +1034,230 @@ export function createApp(options?: {
   app.use('/v1/outbox/*', requireHttpApiSecret);
   app.use('/v1/memories/embed-missing', requireHttpApiSecret);
   app.use('/v1/export/*', requireHttpApiSecret);
+
+  app.post('/v1/webhooks/:connectorId', async (c) => {
+    const connectorId = c.req.param('connectorId');
+    const connector = connectorRegistry.get(connectorId);
+    if (!connector) {
+      return c.json({ error: 'connector_not_found' }, 404);
+    }
+    if (connectorId !== 'github') {
+      return c.json(
+        {
+          error: 'not_implemented',
+          note: 'Webhook receiver currently supports GitHub only. Full GitHub App install remains M10.',
+        },
+        501,
+      );
+    }
+
+    const rawBody = await c.req.raw.text();
+    const verification = verifyGitHubWebhookSignature({
+      rawBody,
+      signatureHeader: c.req.header(GITHUB_WEBHOOK_SIGNATURE_HEADER),
+    });
+    if (!verification.ok) {
+      return c.json({ error: 'unauthorized', reason: verification.error }, 401);
+    }
+
+    let payload: GitHubWebhookPayload;
+    try {
+      payload = parseGitHubWebhookPayload(rawBody);
+    } catch {
+      return c.json({ error: 'invalid_json' }, 400);
+    }
+
+    const event = (c.req.header(GITHUB_WEBHOOK_EVENT_HEADER) ?? '').trim().toLowerCase();
+    if (!event) {
+      return c.json({ error: 'missing_event' }, 400);
+    }
+
+    const connectionId = c.req.query('connection_id') ?? payload.connection_id ?? null;
+    if (!connectionId) {
+      return c.json({ error: 'connection_id_required' }, 400);
+    }
+
+    const deliveryId = c.req.header(GITHUB_WEBHOOK_DELIVERY_HEADER)?.trim() ?? null;
+    const action = describeGitHubWebhookAction({ event, payload });
+    const gw = c.get('gateway');
+    if (!gw) {
+      return c.json(
+        {
+          accepted: true,
+          duplicate: false,
+          connectorId,
+          connectionId,
+          deliveryId,
+          event,
+          action,
+          enqueued: 0,
+          backend: 'memory-store',
+          note: 'webhook receiver requires supabase backend for project upsert and sync enqueue',
+        },
+        event === 'ping' ? 200 : 202,
+      );
+    }
+
+    const subjectId = resolveOwnerSubjectId();
+    try {
+      const connection = await gw.getConnection(subjectId, connectionId);
+      if (connection.connectorId !== connectorId) {
+        return c.json({ error: 'connection_connector_mismatch' }, 400);
+      }
+
+      const previousCursor = toSyncCursor(
+        await gw.getConnectorCursor({
+          subjectId,
+          accountId: connection.id,
+          stream: GITHUB_WEBHOOK_CURSOR_STREAM,
+        }),
+      );
+      if (deliveryId && previousCursor?.opaque.deliveryId === deliveryId) {
+        return c.json({
+          accepted: true,
+          duplicate: true,
+          connectorId,
+          connectionId: connection.id,
+          deliveryId,
+          event,
+          action,
+          enqueued: 0,
+          note: 'duplicate delivery ignored',
+        });
+      }
+
+      let updatedConnection: ConnectionLike = connection;
+      let projectId: string | null = null;
+      let enqueued = 0;
+      let note = `github ${event} webhook acknowledged without connector action`;
+
+      switch (event) {
+        case 'ping':
+          note = 'github webhook ping acknowledged';
+          break;
+        case 'push': {
+          const pushCollection = resolveGitHubWebhookRepositoryCollection(payload);
+          if (
+            pushCollection &&
+            connectionCollectionExclusionSet(connection.metadata).has(pushCollection.id)
+          ) {
+            note = 'github push acknowledged for excluded repository; sync enqueue skipped';
+            break;
+          }
+          const sync = await gw.enqueueConnectorSync({
+            subjectId,
+            workspaceId: connection.workspaceId,
+            connectionId: connection.id,
+          });
+          enqueued = sync.count ?? 0;
+          note = 'connector sync enqueued from github push';
+          break;
+        }
+        case 'public':
+        case 'repository': {
+          const shouldSeedRepository =
+            event === 'public' ||
+            payload.action === 'created' ||
+            payload.action === 'publicized';
+          if (!shouldSeedRepository) {
+            note = payload.action
+              ? `github repository.${payload.action} ignored`
+              : 'github repository webhook ignored';
+            break;
+          }
+          const collection = resolveGitHubWebhookRepositoryCollection(payload);
+          if (!collection) {
+            return c.json({ error: 'repository_payload_required' }, 400);
+          }
+          const taggedCollection = tagWebhookCollection(collection);
+          updatedConnection = await upsertAndSeedConnectionCollection(
+            gw,
+            subjectId,
+            connection.workspaceId,
+            connection,
+            taggedCollection,
+          );
+          projectId = resolveCollectionProjectId(updatedConnection.metadata, taggedCollection.id);
+          if (projectId) {
+            const sync = await gw.enqueueConnectorSync({
+              subjectId,
+              workspaceId: connection.workspaceId,
+              connectionId: connection.id,
+            });
+            enqueued = sync.count ?? 0;
+            note = 'repository project upserted and connector sync enqueued';
+          } else {
+            note = 'repository recorded but excluded from project seeding and sync enqueue';
+          }
+          break;
+        }
+        default:
+          break;
+      }
+
+      await gw.upsertConnectorCursor({
+        subjectId,
+        accountId: connection.id,
+        stream: GITHUB_WEBHOOK_CURSOR_STREAM,
+        cursor: {
+          deliveryId,
+          event,
+          action,
+          receivedAt: new Date().toISOString(),
+          repositoryId:
+            payload.repository?.id != null ? String(payload.repository.id) : null,
+          repositoryFullName: payload.repository?.full_name ?? null,
+        },
+        schemaVersion: '1.0',
+      });
+      await gw.appendAuditEvent({
+        subjectId,
+        workspaceId: connection.workspaceId,
+        action: 'connection.webhook.received',
+        objectType: 'connector_webhook',
+        objectId: deliveryId,
+        reason: `${connectorId}.${action}`,
+        afterState: {
+          connectionId: connection.id,
+          connectorId,
+          event,
+          action,
+          deliveryId,
+          projectId,
+          enqueued,
+          repository: payload.repository?.full_name ?? null,
+        },
+      });
+
+      return c.json(
+        {
+          accepted: true,
+          duplicate: false,
+          connectorId,
+          connectionId: updatedConnection.id,
+          deliveryId,
+          event,
+          action,
+          projectId,
+          enqueued,
+          note,
+        },
+        event === 'ping' ? 200 : 202,
+      );
+    } catch (err) {
+      if (isForbiddenError(err)) return c.json({ error: 'forbidden' }, 403);
+      console.error(
+        JSON.stringify({
+          event: 'connector_webhook_failed',
+          connectorId,
+          connectionId,
+          deliveryId,
+          error: err instanceof Error ? err.message : String(err),
+        }),
+      );
+      return c.json({ error: 'internal_error' }, 500);
+    }
+  });
 
   app.get('/v1/me', (c) => {
     const authz = c.get('authz');

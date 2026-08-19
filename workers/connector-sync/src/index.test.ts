@@ -157,6 +157,7 @@ describe('planConnectorSync', () => {
       })),
       getConnectorCursor: vi.fn(async () => null),
       refreshConnectionCollections: vi.fn(async () => ({ metadata: {} })),
+      mergeConnectionProjectBindings: vi.fn(async () => ({ metadata: {} })),
       upsertProjectFromConnector: vi.fn(async () => ({
         projectId: '44444444-4444-4444-8444-444444444401',
         slug: 'fixture',
@@ -359,6 +360,24 @@ describe('planConnectorSync', () => {
             project_bindings: {
               ...((currentCollections.project_bindings ?? {}) as Record<string, string>),
               ...(projectBindings ?? {}),
+            },
+          },
+        };
+        return { metadata: metadataState };
+      }),
+      mergeConnectionProjectBindings: vi.fn(async ({ projectBindings }: {
+        projectBindings: Record<string, string>;
+      }) => {
+        const currentCollections = (metadataState.collections ?? {}) as Record<string, unknown>;
+        metadataState = {
+          ...metadataState,
+          collections: {
+            selection_mode: 'all',
+            excluded_ids: currentCollections.excluded_ids ?? [],
+            items: currentCollections.items ?? [],
+            project_bindings: {
+              ...((currentCollections.project_bindings ?? {}) as Record<string, string>),
+              ...projectBindings,
             },
           },
         };

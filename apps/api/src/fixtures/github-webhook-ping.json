@@ -1,0 +1,17 @@
+{
+  "zen": "Keep it logically awesome.",
+  "hook_id": 123456789,
+  "repository": {
+    "id": 901,
+    "name": "repo-existing",
+    "full_name": "team/repo-existing",
+    "html_url": "https://github.com/team/repo-existing",
+    "description": "Existing repository webhook fixture.",
+    "default_branch": "main",
+    "private": false,
+    "archived": false,
+    "owner": {
+      "login": "team"
+    }
+  }
+}
