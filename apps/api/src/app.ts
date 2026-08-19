@@ -1838,7 +1838,11 @@ export function createApp(options?: {
 
   app.patch('/v1/memories/:id', async (c) => {
     const memoryId = c.req.param('id');
-    const parsed = correctMemorySchema.safeParse(await c.req.json().catch(() => ({})));
+    const rawBody = (await c.req.json().catch(() => ({}))) as Record<string, unknown>;
+    if (typeof rawBody.reason !== 'string' || rawBody.reason.trim() === '') {
+      return c.json({ error: 'reason required' }, 400);
+    }
+    const parsed = correctMemorySchema.safeParse(rawBody);
     if (!parsed.success) {
       const firstIssue = parsed.error.issues[0]?.message ?? 'invalid request';
       return c.json({ error: firstIssue }, 400);
