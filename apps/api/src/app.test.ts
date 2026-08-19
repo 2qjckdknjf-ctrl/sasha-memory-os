@@ -62,6 +62,50 @@ describe('memory api demo slice', () => {
     expect(res.status).toBe(201);
   });
 
+  it('lists connector catalog offline', async () => {
+    const app = createApp({});
+    const res = await app.request('/v1/connectors', {
+      headers: { 'x-subject-id': owner },
+    });
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.connectors).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ id: 'github', authType: 'oauth2' }),
+        expect.objectContaining({ id: 'gmail' }),
+      ]),
+    );
+  });
+
+  it('reports connector health offline', async () => {
+    const app = createApp({});
+    const res = await app.request('/v1/connections/88888888-8888-4888-8888-888888888801/health', {
+      headers: { 'x-subject-id': owner },
+    });
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.connectionId).toBe('88888888-8888-4888-8888-888888888801');
+    expect(body.status).toBe('healthy');
+  });
+
+  it('revokes a connection offline via revoke alias', async () => {
+    const app = createApp({});
+    const res = await app.request('/v1/connections/88888888-8888-4888-8888-888888888801/revoke', {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'x-subject-id': owner,
+      },
+      body: JSON.stringify({
+        actor_subject_id: owner,
+      }),
+    });
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.status).toBe('revoked');
+    expect(body.revoked).toBe(true);
+  });
+
   it('serves project context to cursor', async () => {
     const app = createApp({});
     const res = await app.request(`/v1/projects/${projectId}/context`, {

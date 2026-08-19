@@ -14,6 +14,7 @@
   },
   "dependencies": {
     "@memory-os/domain": "workspace:*",
+    "@memory-os/schemas": "workspace:*",
     "zod": "^4.4.3"
   }
 }

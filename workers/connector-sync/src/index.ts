@@ -1,4 +1,4 @@
-import { pullGithubDelta } from '@memory-os/connector-github';
+import { githubConnector } from '@memory-os/connector-github';
 import { pullGmailDelta } from '@memory-os/connector-gmail';
 import { pullGoogleCalendarDelta } from '@memory-os/connector-google-calendar';
 import { pullGoogleDriveDelta } from '@memory-os/connector-google-drive';
@@ -10,7 +10,11 @@ import {
 } from '@memory-os/db';
 import { embedMemoryText } from '@memory-os/retrieval';
 import {
+  createConnectorRegistry,
+  runConnectorSync,
   resolveConnectorSyncOutcome,
+  type RegisteredConnector,
+  type SyncCursor,
   type VaultStore,
 } from '@memory-os/connector-sdk';
 
@@ -25,6 +29,8 @@ const PROJECT_ID =
 const OWNER_ID =
   process.env.MEMORY_OS_OWNER_SUBJECT_ID ??
   '33333333-3333-4333-8333-333333333301';
+
+const sdkConnectorRegistry = createConnectorRegistry([githubConnector]);
 
 export type SyncPlanItem = {
   connectionId: string;
@@ -57,7 +63,7 @@ function requireGateway(
   return new SupabaseMemoryGateway(createMemoryOsClient(env), env.apiSecret);
 }
 
-async function pullConnectorDelta(item: SyncPlanItem, vault: VaultStore) {
+async function pullLegacyConnectorDelta(item: SyncPlanItem, vault: VaultStore) {
   const common = {
     connectionId: item.connectionId,
     displayName: item.displayName ?? item.connectorId,
@@ -65,8 +71,6 @@ async function pullConnectorDelta(item: SyncPlanItem, vault: VaultStore) {
     vault,
   };
   switch (item.connectorId) {
-    case 'github':
-      return pullGithubDelta(common);
     case 'google-drive':
       return pullGoogleDriveDelta(common);
     case 'gmail':
@@ -76,6 +80,87 @@ async function pullConnectorDelta(item: SyncPlanItem, vault: VaultStore) {
     default:
       return null;
   }
+}
+
+function toSyncCursor(
+  row:
+    | {
+        stream: string;
+        cursor: Record<string, unknown>;
+        schemaVersion: string;
+        updatedAt: string;
+      }
+    | null,
+): SyncCursor | null {
+  if (!row) return null;
+  return {
+    stream: row.stream,
+    opaque: row.cursor,
+    schemaVersion: row.schemaVersion,
+    updatedAt: row.updatedAt,
+  };
+}
+
+async function ingestSdkConnectorDelta(
+  gateway: SupabaseMemoryGateway,
+  subjectId: string,
+  workspaceId: string,
+  item: SyncPlanItem,
+  vault: VaultStore,
+  connector: RegisteredConnector<any>,
+) {
+  const stream = connector.manifest.default_stream ?? connector.manifest.id;
+  const cursor = toSyncCursor(
+    await gateway.getConnectorCursor({
+      subjectId,
+      accountId: item.connectionId,
+      stream,
+    }),
+  );
+  const syncRun = await runConnectorSync({
+    connector,
+    context: {
+      account: {
+        connectionId: item.connectionId,
+        connectorId: item.connectorId,
+        displayName: item.displayName ?? item.connectorId,
+        vaultRef: item.vaultRef ?? undefined,
+      },
+      workspaceId,
+      vault,
+      cursor,
+    },
+  });
+  let captured = 0;
+  for (const record of syncRun.records) {
+    const captureResult = await gateway.captureText({
+      subjectId,
+      workspaceId,
+      projectId: PROJECT_ID,
+      title: record.capture.title,
+      text: record.capture.text,
+      idempotencyKey: record.capture.idempotencyKey,
+      processNow: true,
+      filename: record.capture.filename,
+      mimeType: record.capture.mimeType,
+    });
+    await maybeEmbed(gateway, subjectId, record.capture.title, record.capture.text, captureResult);
+    captured += 1;
+  }
+  if (syncRun.nextCursor) {
+    await gateway.upsertConnectorCursor({
+      subjectId,
+      accountId: item.connectionId,
+      stream: syncRun.nextCursor.stream,
+      cursor: syncRun.nextCursor.opaque,
+      schemaVersion: syncRun.nextCursor.schemaVersion,
+    });
+  }
+  return {
+    captured,
+    pullMode: syncRun.page.pullMode ?? 'stub',
+    note: syncRun.page.note ?? `${syncRun.manifest.id} connector sync completed`,
+  };
 }
 
 async function maybeEmbed(
@@ -112,10 +197,19 @@ async function ingestConnectorDelta(
   item: SyncPlanItem,
   vault: VaultStore,
 ): Promise<{ captured: number; pullMode: string; note: string }> {
-  const delta = await pullConnectorDelta(item, vault);
-  if (!delta) {
-    return { captured: 0, pullMode: 'none', note: 'unsupported connector' };
+  const sdkConnector = sdkConnectorRegistry.get(item.connectorId);
+  if (sdkConnector) {
+    return ingestSdkConnectorDelta(
+      gateway,
+      subjectId,
+      workspaceId,
+      item,
+      vault,
+      sdkConnector,
+    );
   }
+  const delta = await pullLegacyConnectorDelta(item, vault);
+  if (!delta) return { captured: 0, pullMode: 'none', note: 'unsupported connector' };
   let captured = 0;
   for (const event of delta.items) {
     const captureResult = await gateway.captureText({

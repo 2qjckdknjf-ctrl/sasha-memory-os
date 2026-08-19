@@ -440,6 +440,100 @@ export class SupabaseMemoryGateway {
     return data;
   }
 
+  async listConnectors(subjectId: string) {
+    const { data, error } = await this.client.rpc('api_list_connectors', {
+      p_secret: this.apiSecret,
+      p_subject_id: subjectId,
+    });
+    if (error) throw error;
+    return data as Array<{
+      id: string;
+      version: string;
+      displayName: string;
+      authType: string;
+      capabilities: string[];
+      supports: Record<string, unknown>;
+      storageModes: string[];
+    }>;
+  }
+
+  async getConnection(subjectId: string, connectionId: string) {
+    const { data, error } = await this.client.rpc('api_get_connection', {
+      p_secret: this.apiSecret,
+      p_subject_id: subjectId,
+      p_connection_id: connectionId,
+    });
+    if (error) throw error;
+    return data as {
+      id: string;
+      workspaceId: string;
+      connectorId: string;
+      displayName: string;
+      status: string;
+      scopes: string[];
+      lastSyncAt: string | null;
+      lastError: string | null;
+      vaultRef?: string | null;
+      definition?: {
+        id: string;
+        version: string;
+        displayName: string;
+        authType: string;
+        capabilities: string[];
+        supports: Record<string, unknown>;
+        storageModes: string[];
+      };
+    };
+  }
+
+  async getConnectorCursor(input: {
+    subjectId: string;
+    accountId: string;
+    stream: string;
+  }) {
+    const { data, error } = await this.client.rpc('api_get_connector_cursor', {
+      p_secret: this.apiSecret,
+      p_subject_id: input.subjectId,
+      p_account_id: input.accountId,
+      p_stream: input.stream,
+    });
+    if (error) throw error;
+    return (data as
+      | {
+          accountId: string;
+          stream: string;
+          cursor: Record<string, unknown>;
+          schemaVersion: string;
+          updatedAt: string;
+        }
+      | null);
+  }
+
+  async upsertConnectorCursor(input: {
+    subjectId: string;
+    accountId: string;
+    stream: string;
+    cursor: Record<string, unknown>;
+    schemaVersion?: string;
+  }) {
+    const { data, error } = await this.client.rpc('api_upsert_connector_cursor', {
+      p_secret: this.apiSecret,
+      p_subject_id: input.subjectId,
+      p_account_id: input.accountId,
+      p_stream: input.stream,
+      p_cursor: input.cursor,
+      p_schema_version: input.schemaVersion ?? '1.0',
+    });
+    if (error) throw error;
+    return data as {
+      accountId: string;
+      stream: string;
+      cursor: Record<string, unknown>;
+      schemaVersion: string;
+      updatedAt: string;
+    };
+  }
+
   async resolveSubject(input: {
     workspaceId: string;
     subjectId?: string | null;

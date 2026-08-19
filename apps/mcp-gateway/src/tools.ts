@@ -6,15 +6,19 @@ import {
   createConfiguredVaultStore,
   type SupabaseMemoryGateway,
 } from '@memory-os/db';
-import { pullGithubDelta } from '@memory-os/connector-github';
+import { githubConnector } from '@memory-os/connector-github';
 import { pullGmailDelta } from '@memory-os/connector-gmail';
 import { pullGoogleCalendarDelta } from '@memory-os/connector-google-calendar';
 import { pullGoogleDriveDelta } from '@memory-os/connector-google-drive';
 import {
+  createConnectorRegistry,
   exchangeAuthorizationCode,
   fingerprintAuthorizationCode,
   resolveAuthorizeBase,
   resolveConnectorSyncOutcome,
+  runConnectorSync,
+  type RegisteredConnector,
+  type SyncCursor,
   type VaultStore,
 } from '@memory-os/connector-sdk';
 import {
@@ -58,7 +62,101 @@ import {
 
 const DEFAULT_PROJECT_ID = '44444444-4444-4444-8444-444444444401';
 
-async function pullMcpConnectorDelta(
+const sdkConnectorRegistry = createConnectorRegistry([githubConnector]);
+
+function toSyncCursor(
+  row:
+    | {
+        stream: string;
+        cursor: Record<string, unknown>;
+        schemaVersion: string;
+        updatedAt: string;
+      }
+    | null,
+): SyncCursor | null {
+  if (!row) return null;
+  return {
+    stream: row.stream,
+    opaque: row.cursor,
+    schemaVersion: row.schemaVersion,
+    updatedAt: row.updatedAt,
+  };
+}
+
+async function ingestSdkConnectorDelta(
+  gateway: SupabaseMemoryGateway,
+  item: {
+    connectorId: string;
+    connectionId: string;
+    displayName?: string;
+    vaultRef?: string | null;
+  },
+  subjectId: string,
+  workspaceId: string,
+  projectId: string,
+  connector: RegisteredConnector<any>,
+) {
+  const stream = connector.manifest.default_stream ?? connector.manifest.id;
+  const vault = createConfiguredVaultStore({ gateway });
+  const cursor = toSyncCursor(
+    await gateway.getConnectorCursor({
+      subjectId,
+      accountId: item.connectionId,
+      stream,
+    }),
+  );
+  const syncRun = await runConnectorSync({
+    connector,
+    context: {
+      account: {
+        connectionId: item.connectionId,
+        connectorId: item.connectorId,
+        displayName: item.displayName ?? item.connectorId,
+        vaultRef: item.vaultRef ?? undefined,
+      },
+      workspaceId,
+      vault,
+      cursor,
+    },
+  });
+  let captured = 0;
+  for (const record of syncRun.records) {
+    const captureResult = await gateway.captureText({
+      subjectId,
+      workspaceId,
+      projectId,
+      title: record.capture.title,
+      text: record.capture.text,
+      idempotencyKey: record.capture.idempotencyKey,
+      processNow: true,
+      filename: record.capture.filename,
+      mimeType: record.capture.mimeType,
+    });
+    await maybeEmbedMcpCapture(gateway, {
+      subjectId,
+      title: record.capture.title,
+      text: record.capture.text,
+      captureResult,
+    });
+    captured += 1;
+  }
+  if (syncRun.nextCursor) {
+    await gateway.upsertConnectorCursor({
+      subjectId,
+      accountId: item.connectionId,
+      stream: syncRun.nextCursor.stream,
+      cursor: syncRun.nextCursor.opaque,
+      schemaVersion: syncRun.nextCursor.schemaVersion,
+    });
+  }
+  return {
+    captured,
+    pullMode: syncRun.page.pullMode ?? 'stub',
+    note: syncRun.page.note ?? `${syncRun.manifest.id} connector sync completed`,
+  };
+}
+
+async function pullMcpLegacyConnectorDelta(
   item: {
     connectorId: string;
     connectionId: string;
@@ -74,8 +172,6 @@ async function pullMcpConnectorDelta(
     vault,
   };
   switch (item.connectorId) {
-    case 'github':
-      return pullGithubDelta(common);
     case 'google-drive':
       return pullGoogleDriveDelta(common);
     case 'gmail':
@@ -1056,39 +1152,56 @@ export function createMcpHandlers(options?: {
             for (const item of result.enqueued ?? []) {
               if (!item.jobId) continue;
               try {
-                const delta = await pullMcpConnectorDelta(item, vault);
-                if (delta) {
-                  for (const event of delta.items) {
-                    const captureResult = await gateway.captureText({
-                      subjectId,
-                      workspaceId,
-                      projectId,
-                      title: event.title,
-                      text: event.text,
-                      idempotencyKey: `connector-sync/${item.connectionId}/${event.externalId}`,
-                      processNow: true,
-                      filename: `${item.connectorId}://${event.externalId}`,
-                      mimeType: 'text/plain',
-                    });
-                    await maybeEmbedMcpCapture(gateway, {
-                      subjectId,
-                      title: event.title,
-                      text: event.text,
-                      captureResult,
-                    });
-                    captured += 1;
+                const sdkConnector = sdkConnectorRegistry.get(item.connectorId);
+                let pullMode = 'none';
+                let note: string | undefined;
+                if (sdkConnector) {
+                  const ingested = await ingestSdkConnectorDelta(
+                    gateway,
+                    item,
+                    subjectId,
+                    workspaceId,
+                    projectId,
+                    sdkConnector,
+                  );
+                  captured += ingested.captured;
+                  pullMode = ingested.pullMode;
+                  note = ingested.note;
+                } else {
+                  const delta = await pullMcpLegacyConnectorDelta(item, vault);
+                  if (delta) {
+                    for (const event of delta.items) {
+                      const captureResult = await gateway.captureText({
+                        subjectId,
+                        workspaceId,
+                        projectId,
+                        title: event.title,
+                        text: event.text,
+                        idempotencyKey: `connector-sync/${item.connectionId}/${event.externalId}`,
+                        processNow: true,
+                        filename: `${item.connectorId}://${event.externalId}`,
+                        mimeType: 'text/plain',
+                      });
+                      await maybeEmbedMcpCapture(gateway, {
+                        subjectId,
+                        title: event.title,
+                        text: event.text,
+                        captureResult,
+                      });
+                      captured += 1;
+                    }
                   }
+                  pullMode =
+                    delta && 'mode' in delta && typeof delta.mode === 'string'
+                      ? delta.mode
+                      : 'none';
+                  note =
+                    delta && 'note' in delta && typeof delta.note === 'string'
+                      ? delta.note
+                      : delta
+                        ? undefined
+                        : 'unsupported connector';
                 }
-                const pullMode =
-                  delta && 'mode' in delta && typeof delta.mode === 'string'
-                    ? delta.mode
-                    : 'none';
-                const note =
-                  delta && 'note' in delta && typeof delta.note === 'string'
-                    ? delta.note
-                    : delta
-                      ? undefined
-                      : 'unsupported connector';
                 const outcome = resolveConnectorSyncOutcome({ pullMode, note });
                 completed.push({
                   ...(await gateway.completeConnectorSync({
