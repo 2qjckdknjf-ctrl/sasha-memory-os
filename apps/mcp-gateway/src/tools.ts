@@ -1204,17 +1204,20 @@ export function createMcpHandlers(options?: {
           const resolvedProjectId = await resolveProjectForArgs({
             gateway: gateway ?? undefined,
             args,
-            requireProject: false,
+            requireProject: true,
           });
+          if (!resolvedProjectId) {
+            throw new Error('project reference is required; pass project UUID or slug');
+          }
           const input = createDecisionSchema.parse({
             ...args,
-            project_id: resolvedProjectId ?? undefined,
+            project_id: resolvedProjectId,
           });
           if (gateway) {
             return gateway.createDecision({
               subjectId: input.actor_subject_id,
               workspaceId: input.workspace_id,
-              projectId: input.project_id ?? null,
+              projectId: input.project_id,
               title: input.title,
               content: input.content,
               idempotencyKey: input.idempotency_key,
@@ -1225,7 +1228,7 @@ export function createMcpHandlers(options?: {
           }
           return store.createDecision({
             workspaceId: input.workspace_id,
-            projectId: input.project_id ?? null,
+            projectId: input.project_id,
             title: input.title,
             content: input.content,
             actorSubjectId: input.actor_subject_id,
@@ -1239,24 +1242,27 @@ export function createMcpHandlers(options?: {
           const resolvedProjectId = await resolveProjectForArgs({
             gateway: gateway ?? undefined,
             args,
-            requireProject: false,
+            requireProject: true,
           });
+          if (!resolvedProjectId) {
+            throw new Error('project reference is required; pass project UUID or slug');
+          }
           const input = createHandoffSchema.parse({
             ...args,
-            project_id: resolvedProjectId ?? undefined,
+            project_id: resolvedProjectId,
           });
           if (gateway) {
             return gateway.createHandoff({
               subjectId: input.from_subject_id,
               workspaceId: input.workspace_id,
-              projectId: input.project_id ?? null,
+              projectId: input.project_id,
               toSubjectId: input.to_subject_id,
               payload: input.payload,
             });
           }
           return store.createHandoff({
             workspaceId: input.workspace_id,
-            projectId: input.project_id ?? null,
+            projectId: input.project_id,
             fromSubjectId: input.from_subject_id,
             toSubjectId: input.to_subject_id,
             sessionId: input.session_id,
@@ -1327,17 +1333,20 @@ export function createMcpHandlers(options?: {
           const resolvedProjectId = await resolveProjectForArgs({
             gateway: gateway ?? undefined,
             args,
-            requireProject: false,
+            requireProject: true,
           });
+          if (!resolvedProjectId) {
+            throw new Error('project reference is required; pass project UUID or slug');
+          }
           const input = captureTextSchema.parse({
             ...args,
-            project_id: resolvedProjectId ?? undefined,
+            project_id: resolvedProjectId,
           });
           if (gateway) {
             const result = await gateway.captureText({
               subjectId: input.actor_subject_id,
               workspaceId: input.workspace_id,
-              projectId: input.project_id ?? null,
+              projectId: input.project_id,
               title: input.title,
               text: input.text,
               idempotencyKey: input.idempotency_key,
@@ -1354,7 +1363,7 @@ export function createMcpHandlers(options?: {
           }
           return store.captureText({
             workspaceId: input.workspace_id,
-            projectId: input.project_id ?? null,
+            projectId: input.project_id,
             title: input.title,
             text: input.text,
             actorSubjectId: input.actor_subject_id,
