@@ -69,6 +69,7 @@ export function App() {
   const [reviewQueue, setReviewQueue] = useState<ReviewQueueItem[]>([]);
   const [reviewQueueLoading, setReviewQueueLoading] = useState(false);
   const [outboxPending, setOutboxPending] = useState<OutboxPendingItem[]>([]);
+  const [taskMemories, setTaskMemories] = useState<Array<Record<string, unknown>>>([]);
   const [jobLookupId, setJobLookupId] = useState('');
   const [jobLookup, setJobLookup] = useState<Record<string, unknown> | null>(null);
   const [extractionPreview, setExtractionPreview] = useState<string | null>(null);
@@ -81,6 +82,10 @@ export function App() {
   const [sessionHandoffs, setSessionHandoffs] = useState<HandoffLike[]>([]);
 
   const subjectId = ACTOR_IDS[actor];
+
+  function isVisibleTaskStatus(status: unknown): boolean {
+    return status !== 'deleted' && status !== 'retracted' && status !== 'superseded';
+  }
 
   const onAuthBound = useCallback((authUserId: string, subjectIdBound: string) => {
     setBoundAuthUserId(authUserId);
@@ -187,12 +192,48 @@ export function App() {
     }
   }
 
+  async function refreshTaskMemories() {
+    if (backend === 'local') {
+      setTaskMemories(
+        [...localStore.memories.values()]
+          .filter(
+            (memory) =>
+              memory.projectId === PROJECT_ID &&
+              memory.memoryType === 'task' &&
+              isVisibleTaskStatus(memory.status),
+          )
+          .map((memory) => ({ ...memory })),
+      );
+      return;
+    }
+
+    try {
+      const result = await apiGet<{ memories?: Array<Record<string, unknown>> }>(
+        `/v1/memories?workspace_id=${WORKSPACE_ID}&project_id=${PROJECT_ID}&limit=100`,
+        subjectId,
+        actor,
+      );
+      setTaskMemories(
+        (result.memories ?? []).filter((memory) => {
+          const memoryType = String(memory.memoryType ?? memory.type ?? '');
+          return memoryType === 'task' && isVisibleTaskStatus(memory.status);
+        }),
+      );
+    } catch {
+      setTaskMemories([]);
+    }
+  }
+
   useEffect(() => {
     void refreshRemote().catch((err: Error) => setError(err.message));
   }, [actor, tick]);
 
   useEffect(() => {
     void refreshReviewQueue().catch((err: Error) => setError(err.message));
+  }, [actor, backend, tick]);
+
+  useEffect(() => {
+    void refreshTaskMemories().catch((err: Error) => setError(err.message));
   }, [actor, backend, tick]);
 
   const timeline = useMemo(() => {
@@ -307,14 +348,10 @@ export function App() {
   const taskSurface = useMemo(
     () =>
       deriveTaskSurface({
-        taskMemories:
-          remote?.tasks ??
-          localStore
-            .listCurrentMemories(WORKSPACE_ID, PROJECT_ID)
-            .filter((memory) => memory.memoryType === 'task'),
+        taskMemories: [...taskMemories, ...(remote?.tasks ?? [])],
         projectState: remote?.state ?? localStore.getProjectState(PROJECT_ID),
       }),
-    [localStore, remote, tick],
+    [localStore, remote, taskMemories, tick],
   );
 
   const handoffSurface = useMemo(
