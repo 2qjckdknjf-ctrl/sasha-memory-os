@@ -82,6 +82,57 @@ const seedProject = '44444444-4444-4444-8444-444444444401';
 const owner = '33333333-3333-4333-8333-333333333301';
 const chatgpt = '33333333-3333-4333-8333-333333333302';
 const cursor = '33333333-3333-4333-8333-333333333303';
+const roma = '33333333-3333-4333-8333-333333333304';
+
+type LocalAgentDescriptor = {
+  purpose?: string;
+  allowedTools?: string[];
+  capabilities?: string[];
+};
+
+const LOCAL_AGENT_DETAILS: Record<string, LocalAgentDescriptor> = {
+  [owner]: {
+    purpose: 'Владелец рабочей области и политики доступа.',
+    capabilities: ['workspace.owner', 'memory.export', 'connections.manage'],
+  },
+  [chatgpt]: {
+    purpose: 'Стратегия, анализ, планирование и запись решений в разрешенной памяти.',
+    allowedTools: [
+      'memory.search',
+      'memory.get',
+      'context.project',
+      'capture.text',
+      'memory.store_decision',
+      'handoff.create',
+      'memory.set_status',
+    ],
+    capabilities: ['memory.read', 'memory.write.decision', 'memory.write.summary'],
+  },
+  [cursor]: {
+    purpose: 'Инженерный контекст, repository/project state и handoff без доступа к личным данным.',
+    allowedTools: [
+      'memory.search',
+      'memory.get',
+      'context.project',
+      'handoff.create',
+      'memory.set_status',
+    ],
+    capabilities: ['memory.read.project', 'session.write', 'handoff.write'],
+  },
+  [roma]: {
+    purpose:
+      'Аудит, QA и findings по явно разрешенным проектам без наследования owner-прав.',
+    allowedTools: [
+      'memory.search',
+      'memory.get',
+      'context.project',
+      'capture.text',
+      'handoff.create',
+      'memory.set_status',
+    ],
+    capabilities: ['memory.read.project', 'memory.write.findings', 'qa.read', 'handoff.write'],
+  },
+};
 
 function seedAuthz(subjectId: string): AuthzContext {
   const isOwner = subjectId === owner;
@@ -130,6 +181,38 @@ function seedAuthz(subjectId: string): AuthzContext {
         actions: ['read', 'write'],
         sensitivityMax: 'internal',
       },
+      {
+        subjectId: roma,
+        effect: 'allow',
+        resourceType: 'memory',
+        projectId: seedProject,
+        actions: ['read', 'write'],
+        sensitivityMax: 'internal',
+      },
+      {
+        subjectId: roma,
+        effect: 'allow',
+        resourceType: 'project',
+        projectId: seedProject,
+        actions: ['read'],
+        sensitivityMax: 'internal',
+      },
+      {
+        subjectId: roma,
+        effect: 'allow',
+        resourceType: 'project_state',
+        projectId: seedProject,
+        actions: ['read'],
+        sensitivityMax: 'internal',
+      },
+      {
+        subjectId: roma,
+        effect: 'allow',
+        resourceType: 'handoff',
+        projectId: seedProject,
+        actions: ['read', 'write'],
+        sensitivityMax: 'internal',
+      },
     ],
   };
 }
@@ -161,6 +244,7 @@ function formatAclScope(entry: AclEntry): string {
 function buildLocalAgentRow(subjectId: string) {
   const actor = resolveSeedActor(subjectId);
   const authz = seedAuthz(subjectId);
+  const details = LOCAL_AGENT_DETAILS[subjectId];
   const rights = authz.isOwner
     ? [
         {
@@ -194,8 +278,13 @@ function buildLocalAgentRow(subjectId: string) {
     displayName: actor?.displayName ?? subjectId,
     kind: actor?.kind ?? 'unknown',
     isOwner: authz.isOwner,
+    purpose: details?.purpose ?? null,
+    allowedTools: details?.allowedTools ?? null,
     scopes,
-    capabilities: scopes,
+    capabilities:
+      authz.isOwner
+        ? (LOCAL_AGENT_DETAILS[owner]?.capabilities ?? scopes)
+        : (details?.capabilities ?? scopes),
     rights,
   };
 }
@@ -514,7 +603,7 @@ export function createApp(options?: {
         isOwner: authz.isOwner,
         actor,
       },
-      actors: [owner, chatgpt, cursor].map(buildLocalAgentRow),
+      actors: [owner, chatgpt, cursor, roma].map(buildLocalAgentRow),
       backend: 'memory-store',
     });
   });

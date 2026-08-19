@@ -71,7 +71,7 @@ type Props = {
   ) => void | Promise<void>;
 };
 
-const actorOptions: Actor[] = ['owner', 'chatgpt', 'cursor'];
+const actorOptions: Actor[] = ['owner', 'chatgpt', 'cursor', 'roma'];
 
 export function OpsPage({
   actor,

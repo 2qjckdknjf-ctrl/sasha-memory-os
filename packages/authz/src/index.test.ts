@@ -3,6 +3,7 @@ import { authorize, type AuthzContext } from './index.js';
 
 const projectId = '44444444-4444-4444-8444-444444444401';
 const cursor = '33333333-3333-4333-8333-333333333303';
+const roma = '33333333-3333-4333-8333-333333333304';
 
 const cursorCtx: AuthzContext = {
   subjectId: cursor,
@@ -15,6 +16,30 @@ const cursorCtx: AuthzContext = {
       resourceType: 'memory',
       projectId,
       actions: ['read'],
+      sensitivityMax: 'internal',
+    },
+  ],
+};
+
+const romaCtx: AuthzContext = {
+  subjectId: roma,
+  workspaceId: '11111111-1111-4111-8111-111111111111',
+  isOwner: false,
+  entries: [
+    {
+      subjectId: roma,
+      effect: 'allow',
+      resourceType: 'memory',
+      projectId,
+      actions: ['read', 'write'],
+      sensitivityMax: 'internal',
+    },
+    {
+      subjectId: roma,
+      effect: 'allow',
+      resourceType: 'handoff',
+      projectId,
+      actions: ['read', 'write'],
       sensitivityMax: 'internal',
     },
   ],
@@ -46,6 +71,47 @@ describe('authorize', () => {
   it('denies wrong project', () => {
     expect(
       authorize(cursorCtx, {
+        resourceType: 'memory',
+        action: 'read',
+        projectId: '00000000-0000-4000-8000-000000000099',
+        sensitivity: 'internal',
+      }),
+    ).toBe(false);
+  });
+
+  it('lets roma read assigned project memory', () => {
+    expect(
+      authorize(romaCtx, {
+        resourceType: 'memory',
+        action: 'read',
+        projectId,
+        sensitivity: 'internal',
+      }),
+    ).toBe(true);
+  });
+
+  it('denies roma personal and restricted memory', () => {
+    expect(
+      authorize(romaCtx, {
+        resourceType: 'memory',
+        action: 'read',
+        projectId,
+        sensitivity: 'personal',
+      }),
+    ).toBe(false);
+    expect(
+      authorize(romaCtx, {
+        resourceType: 'memory',
+        action: 'read',
+        projectId,
+        sensitivity: 'restricted',
+      }),
+    ).toBe(false);
+  });
+
+  it('denies roma on unrelated project', () => {
+    expect(
+      authorize(romaCtx, {
         resourceType: 'memory',
         action: 'read',
         projectId: '00000000-0000-4000-8000-000000000099',

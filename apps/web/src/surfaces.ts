@@ -1,5 +1,5 @@
 import type { Handoff, MemoryRecord, ProjectStateVersion } from '@memory-os/domain';
-import { ACTOR_IDS, CHATGPT, CURSOR } from './controlCenter';
+import { ACTOR_IDS, CHATGPT, CURSOR, ROMA } from './controlCenter';
 
 export type TaskSurfaceLane = 'memory' | 'in_progress' | 'blocked' | 'next' | 'completed';
 
@@ -316,6 +316,8 @@ export function describeSubject(subjectId: string | null | undefined, fallback =
       return 'ChatGPT';
     case CURSOR:
       return 'Cursor';
+    case ROMA:
+      return 'ROMA';
     default:
       return `Субъект ${subjectId.slice(0, 8)}…`;
   }

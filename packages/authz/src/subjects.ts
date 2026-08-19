@@ -1,4 +1,5 @@
 const SEED_WORKSPACE = '11111111-1111-4111-8111-111111111111';
+const ROMA_SUBJECT_ID = '33333333-3333-4333-8333-333333333304';
 
 const DEMO_SUBJECTS: Record<
   string,
@@ -22,6 +23,12 @@ const DEMO_SUBJECTS: Record<
     displayName: 'Cursor',
     kind: 'agent',
   },
+  [ROMA_SUBJECT_ID]: {
+    id: ROMA_SUBJECT_ID,
+    externalKey: 'roma',
+    displayName: 'ROMA',
+    kind: 'agent',
+  },
   owner: {
     id: '33333333-3333-4333-8333-333333333301',
     externalKey: 'owner',
@@ -40,6 +47,12 @@ const DEMO_SUBJECTS: Record<
     displayName: 'Cursor',
     kind: 'agent',
   },
+  roma: {
+    id: ROMA_SUBJECT_ID,
+    externalKey: 'roma',
+    displayName: 'ROMA',
+    kind: 'agent',
+  },
   'demo-owner': {
     id: '33333333-3333-4333-8333-333333333301',
     externalKey: 'owner',
@@ -56,6 +69,12 @@ const DEMO_SUBJECTS: Record<
     id: '33333333-3333-4333-8333-333333333303',
     externalKey: 'cursor',
     displayName: 'Cursor',
+    kind: 'agent',
+  },
+  'demo-roma': {
+    id: ROMA_SUBJECT_ID,
+    externalKey: 'roma',
+    displayName: 'ROMA',
     kind: 'agent',
   },
 };

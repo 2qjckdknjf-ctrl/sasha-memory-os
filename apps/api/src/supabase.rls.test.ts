@@ -17,6 +17,7 @@ const describeRemote = env ? describe : describe.skip;
 const projectId = '44444444-4444-4444-8444-444444444401';
 const chatgpt = '33333333-3333-4333-8333-333333333302';
 const cursor = '33333333-3333-4333-8333-333333333303';
+const roma = '33333333-3333-4333-8333-333333333304';
 const stranger = '99999999-9999-4999-8999-999999999999';
 
 describeRemote('remote Supabase RLS via API RPCs', () => {
@@ -69,6 +70,16 @@ describeRemote('remote Supabase RLS via API RPCs', () => {
       sensitivity: 'personal',
     })) as { canReadMemory: boolean };
     expect(probe.canReadMemory).toBe(false);
+  });
+
+  it('denies roma personal sensitivity', async () => {
+    const probe = (await gateway().rlsProbe({
+      subjectId: roma,
+      projectId,
+      sensitivity: 'personal',
+    })) as { canReadMemory: boolean; canWriteHandoff: boolean };
+    expect(probe.canReadMemory).toBe(false);
+    expect(probe.canWriteHandoff).toBe(true);
   });
 
   it('denies stranger subject', async () => {

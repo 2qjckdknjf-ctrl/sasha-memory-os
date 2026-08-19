@@ -378,6 +378,8 @@ export class SupabaseMemoryGateway {
         displayName: string | null;
         kind: string | null;
         isOwner: boolean;
+        purpose?: string | null;
+        allowedTools?: string[] | null;
         scopes: string[];
         capabilities: string[];
         rights: Array<{

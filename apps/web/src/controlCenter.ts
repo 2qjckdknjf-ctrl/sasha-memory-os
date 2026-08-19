@@ -3,19 +3,23 @@ export const PROJECT_NAME = 'AISTROYKA';
 export const WORKSPACE_ID = '11111111-1111-4111-8111-111111111111';
 export const CURSOR = '33333333-3333-4333-8333-333333333303';
 export const CHATGPT = '33333333-3333-4333-8333-333333333302';
+export const ROMA = '33333333-3333-4333-8333-333333333304';
 
-export type Actor = 'owner' | 'chatgpt' | 'cursor';
+export type Actor = 'owner' | 'chatgpt' | 'cursor' | 'roma';
+export type AgentActor = Exclude<Actor, 'owner'>;
 
 export const ACTOR_IDS: Record<Actor, string> = {
   owner: '33333333-3333-4333-8333-333333333301',
   chatgpt: CHATGPT,
   cursor: CURSOR,
+  roma: ROMA,
 };
 
 export const ACTOR_LABELS: Record<Actor, string> = {
   owner: 'Owner',
   chatgpt: 'ChatGPT',
   cursor: 'Cursor',
+  roma: 'ROMA',
 };
 
 export type TimelineEntry =
@@ -165,6 +169,8 @@ export type AgentRightsActor = {
   displayName?: string | null;
   kind?: string | null;
   isOwner: boolean;
+  purpose?: string | null;
+  allowedTools?: string[] | null;
   scopes: string[];
   capabilities: string[];
   rights: AgentRight[];

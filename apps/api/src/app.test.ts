@@ -6,6 +6,7 @@ const workspaceId = '11111111-1111-4111-8111-111111111111';
 const owner = '33333333-3333-4333-8333-333333333301';
 const cursor = '33333333-3333-4333-8333-333333333303';
 const chatgpt = '33333333-3333-4333-8333-333333333302';
+const roma = '33333333-3333-4333-8333-333333333304';
 
 describe('memory api demo slice', () => {
   it('starts oauth stub offline', async () => {
@@ -92,6 +93,34 @@ describe('memory api demo slice', () => {
           open_items: ['WP-02 apply to remote supabase'],
           blockers: [],
           recommended_next: ['continue MCP wiring'],
+        },
+      }),
+    });
+    expect(res.status).toBe(201);
+  });
+
+  it('creates handoff from roma', async () => {
+    const app = createApp({});
+    const res = await app.request('/v1/handoffs', {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'x-subject-id': roma,
+        'x-actor-key': 'roma',
+      },
+      body: JSON.stringify({
+        workspace_id: workspaceId,
+        project_id: projectId,
+        from_subject_id: roma,
+        to_subject_id: cursor,
+        idempotency_key: 'handoff-roma-1',
+        payload: {
+          completed: ['ran QA checks'],
+          artifacts: [{ type: 'report', ref: 'qa/report-1' }],
+          validation: ['handoff api'],
+          open_items: ['owner review'],
+          blockers: [],
+          recommended_next: ['continue remediation'],
         },
       }),
     });
@@ -572,6 +601,37 @@ describe('memory api demo slice', () => {
     expect(hit?.content?.length).toBe(600);
   });
 
+  it('denies roma reading personal memory', async () => {
+    const app = createApp({});
+    const created = await app.request('/v1/memories', {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'x-subject-id': owner,
+        'x-actor-key': 'owner',
+      },
+      body: JSON.stringify({
+        workspace_id: workspaceId,
+        project_id: projectId,
+        memory_type: 'fact',
+        title: 'Personal note',
+        content: 'Private email summary that ROMA must not read.',
+        actor_subject_id: owner,
+        idempotency_key: `roma-personal-${Date.now()}`,
+        sensitivity: 'personal',
+      }),
+    });
+    expect(created.status).toBe(201);
+    const body = (await created.json()) as { id: string };
+    const denied = await app.request(`/v1/memories/${body.id}`, {
+      headers: {
+        'x-subject-id': roma,
+        'x-actor-key': 'roma',
+      },
+    });
+    expect(denied.status).toBe(403);
+  });
+
   it('gets memory offline with full content', async () => {
     const app = createApp({});
     const ownerId = '33333333-3333-4333-8333-333333333301';
@@ -983,11 +1043,33 @@ describe('memory api demo slice', () => {
     expect(res.status).toBe(200);
     const body = await res.json();
     expect(body.currentActor.subjectId).toBe(cursor);
-    expect(body.actors).toHaveLength(3);
+    expect(body.actors).toHaveLength(4);
     expect(
       body.actors.some(
         (row: { externalKey?: string; rights?: unknown[] }) =>
           row.externalKey === 'cursor' && Array.isArray(row.rights) && row.rights.length > 0,
+      ),
+    ).toBe(true);
+    expect(
+      body.actors.some(
+        (row: {
+          externalKey?: string;
+          purpose?: string;
+          allowedTools?: string[];
+          rights?: Array<{ resourceType?: string; actions?: string[] }>;
+        }) =>
+          row.externalKey === 'roma' &&
+          typeof row.purpose === 'string' &&
+          row.purpose.includes('QA') &&
+          Array.isArray(row.allowedTools) &&
+          row.allowedTools.includes('handoff.create') &&
+          Array.isArray(row.rights) &&
+          row.rights.some(
+            (right) =>
+              right.resourceType === 'handoff' &&
+              Array.isArray(right.actions) &&
+              right.actions.includes('write'),
+          ),
       ),
     ).toBe(true);
   });
