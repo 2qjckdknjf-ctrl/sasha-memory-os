@@ -7,6 +7,7 @@ import {
 } from '@memory-os/connector-sdk';
 import {
   appleBridgeConnector,
+  buildAppleFilesSelectionDelta,
   buildApplePhotoLibrarySelectionDelta,
   filterAppleBridgeRawObjectsForCurrentSelection,
   normalizeAppleBridgeRawObject,
@@ -50,6 +51,44 @@ function buildPhotoAsset(input: {
     },
     permissions: {
       photo_library: 'limited',
+    },
+  };
+}
+
+function buildFileAsset(input: {
+  itemId: string;
+  title: string;
+  observedAt: string;
+  providerItemIdentifier: string;
+  filename?: string;
+}): AppleBridgeRawObject {
+  return {
+    workspace_id: '11111111-1111-4111-8111-111111111111',
+    project_id: '44444444-4444-4444-8444-444444444401',
+    actor_subject_id: '33333333-3333-4333-8333-333333333301',
+    device_id: 'fixture-mac',
+    connection_id: '88888888-8888-4888-8888-888888888899',
+    item_id: input.itemId,
+    kind: 'file',
+    title: input.title,
+    filename: input.filename ?? `${input.itemId}.md`,
+    mime_type: 'text/markdown',
+    observed_at: input.observedAt,
+    external_version: input.observedAt,
+    storage_mode: 'reference',
+    sensitivity: 'internal',
+    idempotency_key: `apple-document/${input.itemId}`,
+    delete_local_after_ack: false,
+    process_now: false,
+    source: 'document_picker',
+    identifiers: {
+      provider_item_identifier: input.providerItemIdentifier,
+    },
+    metadata: {
+      provider: 'icloud-drive',
+    },
+    permissions: {
+      files: 'limited',
     },
   };
 }
@@ -267,6 +306,192 @@ describe('appleBridgeConnector limited-library contract', () => {
     );
     expect(secondIncrementalRun.page.rawObjects).toEqual([]);
     expect(secondIncrementalRun.records).toEqual([]);
+  });
+});
+
+describe('appleBridgeConnector files bookmark contract', () => {
+  it('ingests only children under the selected folder and rejects sibling folders', async () => {
+    const checkpoint = {
+      permission_state: 'limited' as const,
+      selected_bookmarks: [
+        {
+          bookmark_id: 'bookmark-projects-a',
+          display_name: 'Projects/A',
+          is_directory: true,
+          provider_item_identifier: '/Projects/A',
+          security_scoped_bookmark: 'opaque-bookmark-projects-a',
+          last_accessed_at: '2026-08-19T22:00:00.000Z',
+          stale: false,
+        },
+      ],
+      folder_checkpoints: [
+        {
+          bookmark_id: 'bookmark-projects-a',
+          provider_item_identifier: '/Projects/A',
+          change_token: 'nsfileprovider-page-1',
+        },
+      ],
+    };
+    const rawObjects = [
+      {
+        ...buildFileAsset({
+          itemId: 'file-1',
+          title: 'Allowed child',
+          observedAt: '2026-08-19T22:10:00.000Z',
+          providerItemIdentifier: '/Projects/A/specs/roadmap.md',
+        }),
+        files_checkpoint: checkpoint,
+      },
+      {
+        ...buildFileAsset({
+          itemId: 'file-2',
+          title: 'Rejected sibling',
+          observedAt: '2026-08-19T22:11:00.000Z',
+          providerItemIdentifier: '/Projects/B/specs/roadmap.md',
+        }),
+        files_checkpoint: checkpoint,
+      },
+    ];
+
+    const filtered = filterAppleBridgeRawObjectsForCurrentSelection(rawObjects);
+    const normalized = await Promise.all(
+      filtered.map((rawObject) =>
+        normalizeAppleBridgeRawObject({
+          ...buildConnectorContext(),
+          rawObject,
+        }),
+      ),
+    );
+
+    expect(filtered.map((rawObject) => rawObject.item_id)).toEqual(['file-1']);
+    expect(normalized[0]?.externalObject.externalId).toBe('/Projects/A/specs/roadmap.md');
+  });
+
+  it('allows only the exact selected file for single-file bookmarks', () => {
+    const delta = buildAppleFilesSelectionDelta({
+      previousCheckpoint: null,
+      nextCheckpoint: {
+        permission_state: 'limited',
+        selected_bookmarks: [
+          {
+            bookmark_id: 'bookmark-todo',
+            display_name: 'todo.md',
+            is_directory: false,
+            provider_item_identifier: '/Inbox/todo.md',
+            security_scoped_bookmark: 'opaque-bookmark-todo',
+            last_accessed_at: '2026-08-19T22:12:00.000Z',
+            stale: false,
+          },
+        ],
+        folder_checkpoints: [],
+      },
+      knownFiles: [],
+      currentFiles: [
+        buildFileAsset({
+          itemId: 'file-3',
+          title: 'Selected todo',
+          observedAt: '2026-08-19T22:12:00.000Z',
+          providerItemIdentifier: '/Inbox/todo.md',
+        }),
+        buildFileAsset({
+          itemId: 'file-4',
+          title: 'Neighbor todo',
+          observedAt: '2026-08-19T22:13:00.000Z',
+          providerItemIdentifier: '/Inbox/todo-2.md',
+        }),
+      ],
+    });
+
+    expect(delta.status).toBe('ready');
+    expect(delta.rawObjects.map((rawObject) => rawObject.item_id)).toEqual(['file-3']);
+  });
+
+  it('returns reselect_required for stale bookmarks without emitting ingest records', () => {
+    const delta = buildAppleFilesSelectionDelta({
+      previousCheckpoint: null,
+      nextCheckpoint: {
+        permission_state: 'limited',
+        selected_bookmarks: [
+          {
+            bookmark_id: 'bookmark-projects-a',
+            display_name: 'Projects/A',
+            is_directory: true,
+            provider_item_identifier: '/Projects/A',
+            security_scoped_bookmark: 'opaque-bookmark-projects-a',
+            last_accessed_at: '2026-08-19T22:14:00.000Z',
+            stale: true,
+          },
+        ],
+        folder_checkpoints: [
+          {
+            bookmark_id: 'bookmark-projects-a',
+            provider_item_identifier: '/Projects/A',
+            change_token: 'nsfileprovider-page-2',
+          },
+        ],
+      },
+      knownFiles: [],
+      currentFiles: [
+        buildFileAsset({
+          itemId: 'file-5',
+          title: 'Stale bookmark child',
+          observedAt: '2026-08-19T22:14:30.000Z',
+          providerItemIdentifier: '/Projects/A/specs/roadmap.md',
+        }),
+      ],
+    });
+
+    expect(delta).toEqual({
+      status: 'reselect_required',
+      error_code: 'reselect_required',
+      stale_bookmark_ids: ['bookmark-projects-a'],
+      rawObjects: [],
+    });
+  });
+
+  it('tombstones prior files when a bookmark is removed', () => {
+    const priorFile = buildFileAsset({
+      itemId: 'file-6',
+      title: 'Old selected child',
+      observedAt: '2026-08-19T22:15:00.000Z',
+      providerItemIdentifier: '/Projects/A/specs/roadmap.md',
+    });
+
+    const delta = buildAppleFilesSelectionDelta({
+      previousCheckpoint: {
+        permission_state: 'limited',
+        selected_bookmarks: [
+          {
+            bookmark_id: 'bookmark-projects-a',
+            display_name: 'Projects/A',
+            is_directory: true,
+            provider_item_identifier: '/Projects/A',
+            security_scoped_bookmark: 'opaque-bookmark-projects-a',
+            last_accessed_at: '2026-08-19T22:15:00.000Z',
+            stale: false,
+          },
+        ],
+        folder_checkpoints: [
+          {
+            bookmark_id: 'bookmark-projects-a',
+            provider_item_identifier: '/Projects/A',
+            change_token: 'nsfileprovider-page-2',
+          },
+        ],
+      },
+      nextCheckpoint: {
+        permission_state: 'limited',
+        selected_bookmarks: [],
+        folder_checkpoints: [],
+      },
+      knownFiles: [priorFile],
+      currentFiles: [],
+    });
+
+    expect(delta.status).toBe('ready');
+    expect(delta.rawObjects).toHaveLength(1);
+    expect(delta.rawObjects[0]?.deleted).toBe(true);
+    expect(delta.rawObjects[0]?.metadata.filesSelectionDeltaReason).toBe('bookmark_removed');
   });
 });
 
