@@ -6,7 +6,7 @@ import {
   type ConnectorSyncRun,
   type RegisteredConnector,
 } from './contract.js';
-import { runConnectorHealthcheck, runConnectorSync } from './runtime.js';
+import { runConnectorDiscover, runConnectorHealthcheck, runConnectorSync } from './runtime.js';
 
 export async function runConnectorCertificationSmoke<TRaw>(input: {
   connector: RegisteredConnector<TRaw>;
@@ -17,6 +17,9 @@ export async function runConnectorCertificationSmoke<TRaw>(input: {
 
   if (manifest.supports.validate_scope && !lifecycle.validateScope) {
     throw new Error(`connector ${manifest.id} is missing validateScope()`);
+  }
+  if (manifest.supports.discover && !lifecycle.discover) {
+    throw new Error(`connector ${manifest.id} is missing discover()`);
   }
   if (manifest.supports.initial_sync && !lifecycle.initialSync) {
     throw new Error(`connector ${manifest.id} is missing initialSync()`);
@@ -35,6 +38,13 @@ export async function runConnectorCertificationSmoke<TRaw>(input: {
         `connector ${manifest.id} scope validation failed: ${(validation.missing ?? []).join(', ')}`,
       );
     }
+  }
+
+  if (lifecycle.discover) {
+    await runConnectorDiscover({
+      connector: input.connector,
+      context: { ...input.context, cursor: null },
+    });
   }
 
   const initialRun = await runConnectorSync({

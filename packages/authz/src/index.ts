@@ -21,6 +21,16 @@ export interface AuthzContext {
   entries: AclEntry[];
 }
 
+function projectScopeMatches(
+  aclProjectId: string | null,
+  requestProjectId: string | null,
+): boolean {
+  if (requestProjectId === null) {
+    return aclProjectId === null;
+  }
+  return aclProjectId === requestProjectId;
+}
+
 export function authorize(
   ctx: AuthzContext,
   input: {
@@ -38,7 +48,7 @@ export function authorize(
       e.subjectId === ctx.subjectId &&
       e.effect === 'deny' &&
       (e.resourceType === input.resourceType || e.resourceType === '*') &&
-      (e.projectId === null || e.projectId === projectId) &&
+      projectScopeMatches(e.projectId, projectId) &&
       (e.actions.length === 0 || e.actions.includes(input.action)),
   );
   if (denied) return false;
@@ -50,7 +60,7 @@ export function authorize(
     if (e.resourceType !== input.resourceType && e.resourceType !== '*') {
       return false;
     }
-    if (e.projectId !== null && e.projectId !== projectId) return false;
+    if (!projectScopeMatches(e.projectId, projectId)) return false;
     if (e.actions.length > 0 && !e.actions.includes(input.action)) return false;
     if (
       e.sensitivityMax &&

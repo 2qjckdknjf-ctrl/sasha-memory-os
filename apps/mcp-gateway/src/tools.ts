@@ -17,7 +17,9 @@ import {
   fingerprintAuthorizationCode,
   resolveAuthorizeBase,
   resolveConnectorSyncOutcome,
+  runConnectorDiscover,
   runConnectorSync,
+  type ConnectorCollection,
   type RegisteredConnector,
   type SyncCursor,
 } from '@memory-os/connector-sdk';
@@ -43,8 +45,10 @@ import {
   captureTextSchema,
   createDecisionSchema,
   createHandoffSchema,
+  normalizeConnectionMetadata,
   oauthCompleteSchema,
   oauthStartSchema,
+  selectedConnectionCollections,
   setConnectionStatusSchema,
   setMemoryStatusSchema,
   upsertConnectionSchema,
@@ -54,13 +58,13 @@ import { randomUUID } from 'node:crypto';
 import {
   adaptToolSchemaForProfile,
   applyProfileDefaults,
+  DEFAULT_PROJECT_ID,
+  DEFAULT_WORKSPACE_ID,
   getMcpProfile,
   isToolAllowed,
   toolAnnotations,
   type McpProfileName,
 } from './profile.js';
-
-const DEFAULT_PROJECT_ID = '44444444-4444-4444-8444-444444444401';
 
 const defaultSdkConnectorRegistry = createConnectorRegistry([
   githubConnector,
@@ -88,6 +92,273 @@ function toSyncCursor(
   };
 }
 
+function collectionDisplayName(collection: ConnectorCollection): string {
+  const fullName = collection.metadata?.full_name;
+  return typeof fullName === 'string' && fullName.trim().length > 0
+    ? fullName
+    : (collection.title ?? collection.name);
+}
+
+type ProjectCandidate = {
+  id: string;
+  slug: string;
+  name: string;
+  url?: string | null;
+};
+
+type ProjectResolution = {
+  projectId: string | null;
+  matchCount: number;
+  candidates: ProjectCandidate[];
+};
+
+type LocalProjectCandidate = ProjectCandidate & {
+  aliases?: string[];
+};
+
+const LOCAL_PROJECT_CATALOG: LocalProjectCandidate[] = [
+  {
+    id: DEFAULT_PROJECT_ID,
+    slug: 'aistroyka',
+    name: 'AISTROYKA',
+    url: 'https://github.com/aistroyka/core',
+    aliases: ['aistroyka', 'ais'],
+  },
+];
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function localResolveProjectRef(projectRef: string | null | undefined): ProjectResolution {
+  const normalizedRef = String(projectRef ?? '').trim().toLowerCase();
+  if (!normalizedRef) {
+    return { projectId: null, matchCount: 0, candidates: [] };
+  }
+  const candidates = LOCAL_PROJECT_CATALOG.filter((project) => {
+    return (
+      project.id.toLowerCase() === normalizedRef ||
+      project.slug.toLowerCase() === normalizedRef ||
+      project.name.toLowerCase() === normalizedRef ||
+      (project.url?.toLowerCase() ?? '') === normalizedRef ||
+      (project.aliases ?? []).some((alias) => alias.toLowerCase() === normalizedRef)
+    );
+  }).map(({ aliases: _aliases, ...project }) => project);
+  return {
+    projectId: candidates.length === 1 ? candidates[0]?.id ?? null : null,
+    matchCount: candidates.length,
+    candidates,
+  };
+}
+
+function resolveActorSubjectId(args: Record<string, unknown>): string {
+  const actorSubjectId = args.actor_subject_id ?? args.from_subject_id;
+  return String(actorSubjectId ?? '');
+}
+
+function resolveWorkspaceId(args: Record<string, unknown>): string {
+  return String(args.workspace_id ?? DEFAULT_WORKSPACE_ID);
+}
+
+async function loadProjectHints(
+  gateway: SupabaseMemoryGateway | undefined,
+  subjectId: string,
+  workspaceId: string,
+): Promise<ProjectCandidate[]> {
+  if (!gateway) {
+    return LOCAL_PROJECT_CATALOG.map(({ aliases: _aliases, ...project }) => project);
+  }
+  return gateway.listProjectHints(subjectId, workspaceId);
+}
+
+function extractProjectRefsFromArgs(
+  args: Record<string, unknown>,
+  projectHints: ProjectCandidate[],
+): string[] {
+  const refs = new Set<string>();
+  const explicitRef = typeof args.project_id === 'string' ? args.project_id.trim() : '';
+  if (explicitRef) refs.add(explicitRef);
+
+  const textBits = [
+    typeof args.title === 'string' ? args.title : null,
+    typeof args.text === 'string' ? args.text : null,
+    typeof args.content === 'string' ? args.content : null,
+    typeof args.query === 'string' ? args.query : null,
+    args.payload ? JSON.stringify(args.payload) : null,
+  ]
+    .filter((value): value is string => Boolean(value))
+    .join('\n');
+
+  if (!textBits.trim()) {
+    return [...refs];
+  }
+
+  for (const match of textBits.matchAll(/https?:\/\/[^\s)]+/g)) {
+    refs.add(match[0]);
+  }
+  for (const match of textBits.matchAll(/\b[\w.-]+\/[\w.-]+\b/g)) {
+    refs.add(match[0]);
+  }
+
+  const lowered = textBits.toLowerCase();
+  for (const project of projectHints) {
+    const slugPattern = new RegExp(`(^|[^a-z0-9_-])${escapeRegExp(project.slug.toLowerCase())}([^a-z0-9_-]|$)`, 'i');
+    if (slugPattern.test(lowered)) {
+      refs.add(project.slug);
+    }
+    const projectName = project.name.trim().toLowerCase();
+    if (projectName && lowered.includes(projectName)) {
+      refs.add(project.name);
+    }
+  }
+
+  return [...refs];
+}
+
+function formatProjectCandidates(candidates: ProjectCandidate[]): string {
+  return candidates.map((candidate) => `${candidate.slug} (${candidate.name})`).join(', ');
+}
+
+async function resolveProjectForArgs(input: {
+  gateway?: SupabaseMemoryGateway;
+  args: Record<string, unknown>;
+  requireProject: boolean;
+}): Promise<string | null> {
+  const subjectId = resolveActorSubjectId(input.args);
+  const workspaceId = resolveWorkspaceId(input.args);
+  const projectHints = await loadProjectHints(input.gateway, subjectId, workspaceId);
+  const refs = extractProjectRefsFromArgs(input.args, projectHints);
+  if (refs.length === 0) {
+    if (input.requireProject) {
+      throw new Error('project reference is required; pass project UUID or slug');
+    }
+    return null;
+  }
+
+  const matchedProjectIds = new Set<string>();
+  const candidateMap = new Map<string, ProjectCandidate>();
+  for (const ref of refs) {
+    const resolution = input.gateway
+      ? await input.gateway.resolveProjectRef({
+          subjectId,
+          workspaceId,
+          projectRef: ref,
+        })
+      : localResolveProjectRef(ref);
+    for (const candidate of resolution.candidates) {
+      candidateMap.set(candidate.id, candidate);
+    }
+    if (resolution.matchCount > 1) {
+      throw new Error(
+        `project reference "${ref}" is ambiguous. Candidates: ${formatProjectCandidates(
+          resolution.candidates,
+        )}`,
+      );
+    }
+    if (resolution.projectId) {
+      matchedProjectIds.add(resolution.projectId);
+    }
+  }
+
+  if (matchedProjectIds.size > 1) {
+    throw new Error(
+      `project reference is ambiguous. Candidates: ${formatProjectCandidates(
+        [...candidateMap.values()],
+      )}`,
+    );
+  }
+  if (matchedProjectIds.size === 1) {
+    return [...matchedProjectIds][0] ?? null;
+  }
+  if (input.requireProject) {
+    throw new Error('project not found; pass a valid project UUID or slug from /projects');
+  }
+  return null;
+}
+
+function resolveCollectionProjectId(
+  metadata: Record<string, unknown> | undefined,
+  collectionId: string | undefined,
+): string | null {
+  const normalized = normalizeConnectionMetadata(metadata);
+  if (!collectionId) return null;
+  return normalized.collections?.project_bindings?.[collectionId] ?? null;
+}
+
+async function discoverAndSeedConnectionProjects(
+  gateway: SupabaseMemoryGateway,
+  item: {
+    id: string;
+    connectorId: string;
+    displayName?: string;
+    vaultRef?: string | null;
+    scopes?: string[];
+    metadata?: Record<string, unknown>;
+  },
+  subjectId: string,
+  workspaceId: string,
+  connector: RegisteredConnector<any>,
+) {
+  if (typeof connector.lifecycle.discover !== 'function') {
+    return item;
+  }
+
+  const vault = createConfiguredVaultStore({ gateway });
+  const discovered = await runConnectorDiscover({
+    connector,
+    context: {
+      account: {
+        connectionId: item.id,
+        connectorId: item.connectorId,
+        displayName: item.displayName ?? item.connectorId,
+        vaultRef: item.vaultRef ?? undefined,
+        scopes: item.scopes ?? [],
+        metadata: item.metadata,
+      },
+      workspaceId,
+      vault,
+    },
+  });
+
+  if (!discovered) return item;
+
+  const refreshed = await gateway.refreshConnectionCollections({
+    subjectId,
+    connectionId: item.id,
+    items: discovered.collections,
+  });
+  const selected = selectedConnectionCollections(refreshed.metadata);
+  const projectBindings: Record<string, string> = {};
+  for (const collection of selected) {
+    const project = await gateway.upsertProjectFromConnector({
+      subjectId,
+      workspaceId,
+      provider: item.connectorId,
+      connectionId: item.id,
+      collectionId: collection.id,
+      externalId: collection.external_id ?? null,
+      name: collectionDisplayName(collection),
+      url: collection.url ?? null,
+      description: collection.description ?? null,
+      defaultBranch: collection.default_branch ?? null,
+      metadata: collection.metadata,
+    });
+    projectBindings[collection.id] = project.projectId;
+  }
+
+  if (Object.keys(projectBindings).length === 0) {
+    return { ...item, metadata: refreshed.metadata };
+  }
+
+  const updated = await gateway.refreshConnectionCollections({
+    subjectId,
+    connectionId: item.id,
+    items: discovered.collections,
+    projectBindings,
+  });
+  return { ...item, metadata: updated.metadata };
+}
+
 async function ingestSdkConnectorDelta(
   gateway: SupabaseMemoryGateway,
   item: {
@@ -98,15 +369,30 @@ async function ingestSdkConnectorDelta(
   },
   subjectId: string,
   workspaceId: string,
-  projectId: string,
+  projectId: string | null,
   connector: RegisteredConnector<any>,
 ) {
+  const connection = await gateway.getConnection(subjectId, item.connectionId);
+  const syncedConnection = await discoverAndSeedConnectionProjects(
+    gateway,
+    {
+      id: connection.id,
+      connectorId: connection.connectorId,
+      displayName: connection.displayName,
+      vaultRef: connection.vaultRef ?? undefined,
+      scopes: connection.scopes ?? [],
+      metadata: connection.metadata,
+    },
+    subjectId,
+    workspaceId,
+    connector,
+  );
   const stream = connector.manifest.default_stream ?? connector.manifest.id;
   const vault = createConfiguredVaultStore({ gateway });
   const cursor = toSyncCursor(
     await gateway.getConnectorCursor({
       subjectId,
-      accountId: item.connectionId,
+      accountId: syncedConnection.id,
       stream,
     }),
   );
@@ -114,10 +400,12 @@ async function ingestSdkConnectorDelta(
     connector,
     context: {
       account: {
-        connectionId: item.connectionId,
-        connectorId: item.connectorId,
-        displayName: item.displayName ?? item.connectorId,
-        vaultRef: item.vaultRef ?? undefined,
+        connectionId: syncedConnection.id,
+        connectorId: syncedConnection.connectorId,
+        displayName: syncedConnection.displayName ?? syncedConnection.connectorId,
+        vaultRef: syncedConnection.vaultRef ?? undefined,
+        scopes: syncedConnection.scopes ?? [],
+        metadata: syncedConnection.metadata,
       },
       workspaceId,
       vault,
@@ -126,10 +414,15 @@ async function ingestSdkConnectorDelta(
   });
   let captured = 0;
   for (const record of syncRun.records) {
+    const resolvedProjectId =
+      resolveCollectionProjectId(
+        syncedConnection.metadata,
+        record.externalObject.collectionId,
+      ) ?? projectId;
     const captureResult = await gateway.captureText({
       subjectId,
       workspaceId,
-      projectId,
+      projectId: resolvedProjectId,
       title: record.capture.title,
       text: record.capture.text,
       idempotencyKey: record.capture.idempotencyKey,
@@ -148,7 +441,7 @@ async function ingestSdkConnectorDelta(
   if (syncRun.nextCursor) {
     await gateway.upsertConnectorCursor({
       subjectId,
-      accountId: item.connectionId,
+      accountId: syncedConnection.id,
       stream: syncRun.nextCursor.stream,
       cursor: syncRun.nextCursor.opaque,
       schemaVersion: syncRun.nextCursor.schemaVersion,
@@ -250,7 +543,6 @@ export const mcpTools: McpTool[] = [
       },
       required: [
         'workspace_id',
-        'project_id',
         'title',
         'content',
         'actor_subject_id',
@@ -273,7 +565,6 @@ export const mcpTools: McpTool[] = [
       },
       required: [
         'workspace_id',
-        'project_id',
         'from_subject_id',
         'idempotency_key',
         'payload',
@@ -343,7 +634,6 @@ export const mcpTools: McpTool[] = [
       },
       required: [
         'workspace_id',
-        'project_id',
         'title',
         'text',
         'actor_subject_id',
@@ -806,10 +1096,15 @@ export function createMcpHandlers(options?: {
           `Tool ${name} is not available on MCP profile '${profile.name}'`,
         );
       }
-      const args = applyProfileDefaults(profile, rawArgs);
+      const args = applyProfileDefaults(profile, rawArgs, name);
       switch (name) {
         case 'memory.search': {
           const query = String(args.query ?? '');
+          const resolvedProjectId = await resolveProjectForArgs({
+            gateway: gateway ?? undefined,
+            args,
+            requireProject: false,
+          });
           const recordedAfter = args.recorded_after
             ? String(args.recorded_after)
             : undefined;
@@ -835,7 +1130,7 @@ export function createMcpHandlers(options?: {
             const raw = await gateway.search({
               subjectId: String(args.actor_subject_id),
               query,
-              projectId: args.project_id ? String(args.project_id) : undefined,
+              projectId: resolvedProjectId ?? undefined,
               includeHistory: Boolean(args.include_history),
               queryEmbedding,
               recordedAfter,
@@ -871,7 +1166,7 @@ export function createMcpHandlers(options?: {
             [...store.memories.values()],
             query,
             {
-              projectId: args.project_id ? String(args.project_id) : undefined,
+              projectId: resolvedProjectId ?? undefined,
               includeHistory: Boolean(args.include_history),
               recordedAfter,
               recordedBefore,
@@ -886,7 +1181,14 @@ export function createMcpHandlers(options?: {
           };
         }
         case 'context.project': {
-          const projectId = String(args.project_id);
+          const projectId = await resolveProjectForArgs({
+            gateway: gateway ?? undefined,
+            args,
+            requireProject: true,
+          });
+          if (!projectId) {
+            throw new Error('project reference is required; pass project UUID or slug');
+          }
           if (gateway) {
             return gateway.projectContext(String(args.actor_subject_id), projectId);
           }
@@ -897,12 +1199,20 @@ export function createMcpHandlers(options?: {
           };
         }
         case 'memory.store_decision': {
-          const input = createDecisionSchema.parse(args);
+          const resolvedProjectId = await resolveProjectForArgs({
+            gateway: gateway ?? undefined,
+            args,
+            requireProject: false,
+          });
+          const input = createDecisionSchema.parse({
+            ...args,
+            project_id: resolvedProjectId ?? undefined,
+          });
           if (gateway) {
             return gateway.createDecision({
               subjectId: input.actor_subject_id,
               workspaceId: input.workspace_id,
-              projectId: input.project_id,
+              projectId: input.project_id ?? null,
               title: input.title,
               content: input.content,
               idempotencyKey: input.idempotency_key,
@@ -913,7 +1223,7 @@ export function createMcpHandlers(options?: {
           }
           return store.createDecision({
             workspaceId: input.workspace_id,
-            projectId: input.project_id,
+            projectId: input.project_id ?? null,
             title: input.title,
             content: input.content,
             actorSubjectId: input.actor_subject_id,
@@ -924,19 +1234,27 @@ export function createMcpHandlers(options?: {
           });
         }
         case 'handoff.create': {
-          const input = createHandoffSchema.parse(args);
+          const resolvedProjectId = await resolveProjectForArgs({
+            gateway: gateway ?? undefined,
+            args,
+            requireProject: false,
+          });
+          const input = createHandoffSchema.parse({
+            ...args,
+            project_id: resolvedProjectId ?? undefined,
+          });
           if (gateway) {
             return gateway.createHandoff({
               subjectId: input.from_subject_id,
               workspaceId: input.workspace_id,
-              projectId: input.project_id,
+              projectId: input.project_id ?? null,
               toSubjectId: input.to_subject_id,
               payload: input.payload,
             });
           }
           return store.createHandoff({
             workspaceId: input.workspace_id,
-            projectId: input.project_id,
+            projectId: input.project_id ?? null,
             fromSubjectId: input.from_subject_id,
             toSubjectId: input.to_subject_id,
             sessionId: input.session_id,
@@ -980,6 +1298,7 @@ export function createMcpHandlers(options?: {
             displayName: input.display_name,
             scopes: input.scopes,
             status: input.status,
+            metadata: input.metadata,
           });
         }
         case 'connections.set_status': {
@@ -1003,12 +1322,20 @@ export function createMcpHandlers(options?: {
           });
         }
         case 'capture.text': {
-          const input = captureTextSchema.parse(args);
+          const resolvedProjectId = await resolveProjectForArgs({
+            gateway: gateway ?? undefined,
+            args,
+            requireProject: false,
+          });
+          const input = captureTextSchema.parse({
+            ...args,
+            project_id: resolvedProjectId ?? undefined,
+          });
           if (gateway) {
             const result = await gateway.captureText({
               subjectId: input.actor_subject_id,
               workspaceId: input.workspace_id,
-              projectId: input.project_id,
+              projectId: input.project_id ?? null,
               title: input.title,
               text: input.text,
               idempotencyKey: input.idempotency_key,
@@ -1025,7 +1352,7 @@ export function createMcpHandlers(options?: {
           }
           return store.captureText({
             workspaceId: input.workspace_id,
-            projectId: input.project_id,
+            projectId: input.project_id ?? null,
             title: input.title,
             text: input.text,
             actorSubjectId: input.actor_subject_id,
@@ -1116,7 +1443,7 @@ export function createMcpHandlers(options?: {
           const workspaceId = String(args.workspace_id);
           const projectId = args.project_id
             ? String(args.project_id)
-            : DEFAULT_PROJECT_ID;
+            : null;
           const completeNow = args.complete_now !== false;
           const result = await gateway.enqueueConnectorSync({
             subjectId,

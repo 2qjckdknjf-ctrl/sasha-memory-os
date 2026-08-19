@@ -91,9 +91,13 @@ export class MemoryStore {
       .slice(0, Math.max(1, limit));
   }
 
+  private handoffBucket(projectId?: string | null): string {
+    return projectId ?? '__workspace__';
+  }
+
   createDecision(input: {
     workspaceId: string;
-    projectId: string;
+    projectId?: string | null;
     title: string;
     content: string;
     actorSubjectId: string;
@@ -104,7 +108,7 @@ export class MemoryStore {
   }): MemoryRecord {
     const event = this.ingestEvent({
       workspaceId: input.workspaceId,
-      projectId: input.projectId,
+      projectId: input.projectId ?? null,
       provider: 'manual',
       eventType: 'memory.decision.created',
       idempotencyKey: input.idempotencyKey,
@@ -122,7 +126,7 @@ export class MemoryStore {
     const record: MemoryRecord = {
       id: newId(),
       workspaceId: input.workspaceId,
-      projectId: input.projectId,
+      projectId: input.projectId ?? null,
       memoryType: 'decision',
       title: input.title,
       content: input.content,
@@ -199,7 +203,7 @@ export class MemoryStore {
 
   captureText(input: {
     workspaceId: string;
-    projectId: string;
+    projectId?: string | null;
     title: string;
     text: string;
     actorSubjectId: string;
@@ -213,7 +217,7 @@ export class MemoryStore {
   } {
     const event = this.ingestEvent({
       workspaceId: input.workspaceId,
-      projectId: input.projectId,
+      projectId: input.projectId ?? null,
       provider: 'manual',
       eventType: 'capture.text.created',
       idempotencyKey: input.idempotencyKey,
@@ -242,7 +246,7 @@ export class MemoryStore {
     const record: MemoryRecord = {
       id: newId(),
       workspaceId: input.workspaceId,
-      projectId: input.projectId,
+      projectId: input.projectId ?? null,
       memoryType: 'fact',
       title: input.title,
       content: input.text,
@@ -294,7 +298,7 @@ export class MemoryStore {
 
   createHandoff(input: {
     workspaceId: string;
-    projectId: string;
+    projectId?: string | null;
     fromSubjectId: string;
     toSubjectId?: string;
     sessionId?: string;
@@ -303,16 +307,17 @@ export class MemoryStore {
     const handoff: Handoff = {
       id: newId(),
       workspaceId: input.workspaceId,
-      projectId: input.projectId,
+      projectId: input.projectId ?? null,
       fromSubjectId: input.fromSubjectId,
       toSubjectId: input.toSubjectId ?? null,
       sessionId: input.sessionId ?? null,
       payload: input.payload,
       createdAt: new Date().toISOString(),
     };
-    const list = this.handoffs.get(input.projectId) ?? [];
+    const bucket = this.handoffBucket(input.projectId);
+    const list = this.handoffs.get(bucket) ?? [];
     list.push(handoff);
-    this.handoffs.set(input.projectId, list);
+    this.handoffs.set(bucket, list);
     this.createAuditEvent({
       workspaceId: input.workspaceId,
       actorSubjectId: input.fromSubjectId,
@@ -330,7 +335,7 @@ export class MemoryStore {
   }
 
   latestHandoff(projectId: string): Handoff | null {
-    const list = this.handoffs.get(projectId) ?? [];
+    const list = this.handoffs.get(this.handoffBucket(projectId)) ?? [];
     return list[list.length - 1] ?? null;
   }
 

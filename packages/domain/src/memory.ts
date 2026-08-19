@@ -49,7 +49,7 @@ export interface ProjectStateVersion {
 export interface Handoff {
   id: string;
   workspaceId: string;
-  projectId: string;
+  projectId: string | null;
   fromSubjectId: string | null;
   toSubjectId: string | null;
   sessionId: string | null;

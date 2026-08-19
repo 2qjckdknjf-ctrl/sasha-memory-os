@@ -110,6 +110,33 @@ export type ConnectionRecord = {
   lastSyncAt?: string | null;
   lastError?: string | null;
   vaultRef?: string | null;
+  metadata?: ConnectionMetadataRecord;
+};
+
+export type ConnectionCollectionRecord = {
+  id: string;
+  external_id?: string;
+  kind?: string;
+  name: string;
+  title?: string;
+  url?: string;
+  description?: string | null;
+  default_branch?: string | null;
+  metadata?: Record<string, unknown>;
+};
+
+export type ConnectionCollectionsStateRecord = {
+  selection_mode?: 'all';
+  excluded_ids?: string[];
+  items?: ConnectionCollectionRecord[];
+  discovered_at?: string;
+  synced_at?: string;
+  project_bindings?: Record<string, string>;
+};
+
+export type ConnectionMetadataRecord = Record<string, unknown> & {
+  collections?: ConnectionCollectionsStateRecord;
+  default_project_id?: string;
 };
 
 export type ConnectorDefinitionRecord = {
@@ -215,6 +242,14 @@ export type ReviewQueueItem = {
   title: string;
   content: string;
   status: string;
+};
+
+export type ProjectRecord = {
+  id: string;
+  slug: string;
+  name: string;
+  status: string;
+  url?: string | null;
 };
 
 export type OutboxPendingItem = {

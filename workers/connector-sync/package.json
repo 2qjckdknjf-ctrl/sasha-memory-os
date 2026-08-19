@@ -22,6 +22,7 @@
     "@memory-os/connector-sdk": "workspace:*",
     "@memory-os/db": "workspace:*",
     "@memory-os/domain": "workspace:*",
-    "@memory-os/retrieval": "workspace:*"
+    "@memory-os/retrieval": "workspace:*",
+    "@memory-os/schemas": "workspace:*"
   }
 }

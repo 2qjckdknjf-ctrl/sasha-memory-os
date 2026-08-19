@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  CHATGPT_PILOT_TOOLS,
   applyProfileDefaults,
   getMcpProfile,
   isToolAllowed,
@@ -18,15 +19,7 @@ describe('mcp profile', () => {
   it('limits chatgpt pilot tools and blocks owner ops', async () => {
     const mcp = createMcpHandlers({ profile: 'chatgpt' });
     expect(mcp.profile).toBe('chatgpt');
-    expect(mcp.tools.map((t) => t.name)).toEqual(
-      expect.arrayContaining([
-        'memory.search',
-        'capture.text',
-        'memory.store_decision',
-      ]),
-    );
-    expect(mcp.tools.map((t) => t.name)).not.toContain('oauth.start');
-    expect(mcp.tools.map((t) => t.name)).not.toContain('consolidation.run');
+    expect([...mcp.tools.map((t) => t.name)].sort()).toEqual([...CHATGPT_PILOT_TOOLS].sort());
 
     await expect(
       mcp.call('oauth.start', {
@@ -87,9 +80,11 @@ describe('mcp profile', () => {
     const profile = getMcpProfile('chatgpt');
     expect(isToolAllowed(profile, 'memory.search')).toBe(true);
     expect(isToolAllowed(profile, 'oauth.start')).toBe(false);
-    const filled = applyProfileDefaults(profile, { query: 'x' });
+    const filled = applyProfileDefaults(profile, { query: 'x' }, 'memory.search');
     expect(filled.actor_subject_id).toBeTruthy();
     expect(filled.workspace_id).toBeTruthy();
-    expect(filled.project_id).toBeTruthy();
+    expect(filled.project_id).toBeUndefined();
+    const context = applyProfileDefaults(profile, {}, 'context.project');
+    expect(context.project_id).toBeUndefined();
   });
 });

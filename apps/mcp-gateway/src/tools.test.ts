@@ -1,9 +1,73 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { createMcpHandlers } from './tools.js';
 
 const projectId = '44444444-4444-4444-8444-444444444401';
 const workspaceId = '11111111-1111-4111-8111-111111111111';
 const cursor = '33333333-3333-4333-8333-333333333303';
+const otherProjectId = '44444444-4444-4444-8444-444444444430';
+
+function createTwoProjectGateway() {
+  return {
+    listProjects: vi.fn(async () => [
+      {
+        id: projectId,
+        slug: 'aistroyka',
+        name: 'AISTROYKA',
+        status: 'active',
+        url: 'https://github.com/aistroyka/core',
+      },
+    ]),
+    listProjectHints: vi.fn(async () => [
+      {
+        id: projectId,
+        slug: 'aistroyka',
+        name: 'AISTROYKA',
+        status: 'active',
+        url: 'https://github.com/aistroyka/core',
+      },
+      {
+        id: otherProjectId,
+        slug: 'repo-b',
+        name: 'Repo B',
+        status: 'active',
+        url: 'https://github.com/team/repo-b',
+      },
+    ]),
+    resolveProjectRef: vi.fn(async ({ projectRef }: { projectRef?: string | null }) => {
+      if (projectRef === 'repo-b' || projectRef === otherProjectId) {
+        return {
+          projectId: otherProjectId,
+          matchCount: 1,
+          candidates: [
+            {
+              id: otherProjectId,
+              slug: 'repo-b',
+              name: 'Repo B',
+              url: 'https://github.com/team/repo-b',
+            },
+          ],
+        };
+      }
+      if (projectRef === 'aistroyka' || projectRef === projectId) {
+        return {
+          projectId,
+          matchCount: 1,
+          candidates: [
+            {
+              id: projectId,
+              slug: 'aistroyka',
+              name: 'AISTROYKA',
+              url: 'https://github.com/aistroyka/core',
+            },
+          ],
+        };
+      }
+      return { projectId: null, matchCount: 0, candidates: [] };
+    }),
+    captureText: vi.fn(async () => ({ process: null })),
+    createHandoff: vi.fn(async () => ({ id: 'handoff-1' })),
+  };
+}
 
 describe('mcp gateway alpha', () => {
   it('lists core tools', () => {
@@ -267,6 +331,177 @@ describe('mcp gateway alpha', () => {
     expect(result.memoryId).toBeTruthy();
   });
 
+  it('keeps omitted ChatGPT project_id at workspace scope', async () => {
+    const mcp = createMcpHandlers({ profile: 'chatgpt' });
+    const captured = (await mcp.call('capture.text', {
+      title: 'Workspace capture',
+      text: 'No explicit project id here.',
+      idempotency_key: 'mcp-chatgpt-workspace-1',
+    })) as { memoryId: string };
+    const memory = (await mcp.call('memory.get', {
+      memory_id: captured.memoryId,
+    })) as { memory?: { projectId?: string | null } };
+    expect(memory.memory?.projectId ?? null).toBeNull();
+  });
+
+  it('routes ChatGPT capture to AISTROYKA when slug is mentioned', async () => {
+    const mcp = createMcpHandlers({ profile: 'chatgpt' });
+    const captured = (await mcp.call('capture.text', {
+      title: 'aistroyka follow-up',
+      text: 'Note about aistroyka backlog',
+      idempotency_key: 'mcp-chatgpt-aistroyka-1',
+    })) as { memoryId: string };
+    const memory = (await mcp.call('memory.get', {
+      memory_id: captured.memoryId,
+    })) as { memory?: { projectId?: string | null } };
+    expect(memory.memory?.projectId).toBe(projectId);
+  });
+
+  it('routes Cursor capture to a non-AISTROYKA ingested project by slug', async () => {
+    const gateway = createTwoProjectGateway();
+    const mcp = createMcpHandlers({ gateway: gateway as any });
+    await mcp.call('capture.text', {
+      workspace_id: workspaceId,
+      title: 'repo-b note',
+      text: 'Cursor mentioned repo-b explicitly.',
+      actor_subject_id: cursor,
+      idempotency_key: 'mcp-cursor-repo-b-1',
+    });
+    expect(gateway.captureText).toHaveBeenCalledWith(
+      expect.objectContaining({ projectId: otherProjectId }),
+    );
+  });
+
+  it('routes both ChatGPT and Cursor writes 1:1 across two named projects', async () => {
+    const gateway = createTwoProjectGateway();
+    const chatgptMcp = createMcpHandlers({ gateway: gateway as any, profile: 'chatgpt' });
+    const cursorMcp = createMcpHandlers({ gateway: gateway as any });
+
+    await chatgptMcp.call('capture.text', {
+      title: 'aistroyka note',
+      text: 'ChatGPT talked about aistroyka',
+      idempotency_key: 'mcp-chatgpt-aistroyka-2',
+    });
+    await chatgptMcp.call('capture.text', {
+      title: 'repo-b note',
+      text: 'ChatGPT talked about repo-b',
+      idempotency_key: 'mcp-chatgpt-repo-b-2',
+    });
+    await cursorMcp.call('capture.text', {
+      workspace_id: workspaceId,
+      actor_subject_id: cursor,
+      title: 'aistroyka task',
+      text: 'Cursor worked on aistroyka',
+      idempotency_key: 'mcp-cursor-aistroyka-2',
+    });
+    await cursorMcp.call('capture.text', {
+      workspace_id: workspaceId,
+      actor_subject_id: cursor,
+      title: 'repo-b task',
+      text: 'Cursor worked on repo-b',
+      idempotency_key: 'mcp-cursor-repo-b-2',
+    });
+
+    const resolvedProjectIds = gateway.captureText.mock.calls.map(
+      ([input]: [{ projectId?: string | null }]) => input.projectId ?? null,
+    );
+    expect(resolvedProjectIds).toEqual([
+      projectId,
+      otherProjectId,
+      projectId,
+      otherProjectId,
+    ]);
+  });
+
+  it('keeps omitted Cursor/full project at workspace scope when there is no hint', async () => {
+    const gateway = createTwoProjectGateway();
+    const mcp = createMcpHandlers({ gateway: gateway as any });
+    await mcp.call('capture.text', {
+      workspace_id: workspaceId,
+      actor_subject_id: cursor,
+      title: 'General note',
+      text: 'No project name here.',
+      idempotency_key: 'mcp-cursor-workspace-1',
+    });
+    expect(gateway.captureText).toHaveBeenCalledWith(
+      expect.objectContaining({ projectId: null }),
+    );
+  });
+
+  it('routes ChatGPT handoff.create to an ingested project by shared name', async () => {
+    const gateway = createTwoProjectGateway();
+    const mcp = createMcpHandlers({ gateway: gateway as any, profile: 'chatgpt' });
+    await mcp.call('handoff.create', {
+      workspace_id: workspaceId,
+      from_subject_id: '33333333-3333-4333-8333-333333333302',
+      idempotency_key: 'mcp-chatgpt-handoff-repo-b-1',
+      payload: {
+        completed: ['routed handoff'],
+        artifacts: [],
+        validation: [],
+        open_items: ['repo-b'],
+        blockers: [],
+        recommended_next: ['continue repo-b'],
+      },
+    });
+    expect(gateway.createHandoff).toHaveBeenCalledWith(
+      expect.objectContaining({ projectId: otherProjectId }),
+    );
+  });
+
+  it('errors on ambiguous project refs instead of defaulting to AISTROYKA', async () => {
+    const gateway = {
+      listProjects: vi.fn(async () => [
+        {
+          id: projectId,
+          slug: 'aistroyka',
+          name: 'AISTROYKA',
+          status: 'active',
+          url: 'https://github.com/aistroyka/core',
+        },
+      ]),
+      listProjectHints: vi.fn(async () => [
+        {
+          id: projectId,
+          slug: 'aistroyka',
+          name: 'AISTROYKA',
+          status: 'active',
+          url: 'https://github.com/aistroyka/core',
+        },
+      ]),
+      resolveProjectRef: vi.fn(async () => ({
+        projectId: null,
+        matchCount: 2,
+        candidates: [
+          {
+            id: projectId,
+            slug: 'aistroyka',
+            name: 'AISTROYKA',
+            url: 'https://github.com/aistroyka/core',
+          },
+          {
+            id: '44444444-4444-4444-8444-444444444430',
+            slug: 'repo-b',
+            name: 'Repo B',
+            url: 'https://github.com/team/repo-b',
+          },
+        ],
+      })),
+      captureText: vi.fn(async () => ({ process: null })),
+    };
+    const mcp = createMcpHandlers({ gateway: gateway as any, profile: 'chatgpt' });
+    await expect(
+      mcp.call('capture.text', {
+        workspace_id: workspaceId,
+        project_id: 'shared-ref',
+        title: 'Shared ref',
+        text: 'This ref is ambiguous.',
+        idempotency_key: 'mcp-chatgpt-ambiguous-1',
+      }),
+    ).rejects.toThrow(/ambiguous/i);
+    expect(gateway.captureText).not.toHaveBeenCalled();
+  });
+
   it('returns project context with seeded decision', async () => {
     const mcp = createMcpHandlers();
     const result = (await mcp.call('context.project', {
@@ -275,6 +510,14 @@ describe('mcp gateway alpha', () => {
     })) as { decisions: unknown[]; state: { version: number } | null };
     expect(result.decisions.length).toBe(1);
     expect(result.state?.version).toBe(1);
+  });
+
+  it('accepts context.project by slug', async () => {
+    const mcp = createMcpHandlers({ profile: 'chatgpt' });
+    const result = (await mcp.call('context.project', {
+      project_id: 'aistroyka',
+    })) as { decisions: unknown[] };
+    expect(result.decisions.length).toBe(1);
   });
 
   it('lists connections stub offline', async () => {

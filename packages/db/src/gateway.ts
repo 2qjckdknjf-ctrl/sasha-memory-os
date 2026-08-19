@@ -42,7 +42,7 @@ export class SupabaseMemoryGateway {
   async createDecision(input: {
     subjectId: string;
     workspaceId: string;
-    projectId: string;
+    projectId?: string | null;
     title: string;
     content: string;
     idempotencyKey: string;
@@ -55,7 +55,7 @@ export class SupabaseMemoryGateway {
       p_secret: this.apiSecret,
       p_subject_id: input.subjectId,
       p_workspace_id: input.workspaceId,
-      p_project_id: input.projectId,
+      p_project_id: input.projectId ?? null,
       p_title: input.title,
       p_content: input.content,
       p_idempotency_key: input.idempotencyKey,
@@ -71,7 +71,7 @@ export class SupabaseMemoryGateway {
   async createHandoff(input: {
     subjectId: string;
     workspaceId: string;
-    projectId: string;
+    projectId?: string | null;
     toSubjectId?: string;
     payload: Record<string, unknown>;
   }) {
@@ -79,7 +79,7 @@ export class SupabaseMemoryGateway {
       p_secret: this.apiSecret,
       p_subject_id: input.subjectId,
       p_workspace_id: input.workspaceId,
-      p_project_id: input.projectId,
+      p_project_id: input.projectId ?? null,
       p_to_subject_id: input.toSubjectId ?? null,
       p_payload: input.payload,
     });
@@ -105,7 +105,7 @@ export class SupabaseMemoryGateway {
       handoffs: Array<{
         id: string;
         workspaceId: string;
-        projectId: string;
+        projectId: string | null;
         fromSubjectId: string | null;
         toSubjectId: string | null;
         sessionId: string | null;
@@ -437,7 +437,83 @@ export class SupabaseMemoryGateway {
       p_workspace_id: workspaceId,
     });
     if (error) throw error;
-    return data;
+    return data as Array<{
+      id: string;
+      workspaceId?: string;
+      connectorId: string;
+      displayName: string;
+      status: string;
+      scopes: string[];
+      lastSyncAt: string | null;
+      lastError: string | null;
+      vaultRef?: string | null;
+      metadata?: Record<string, unknown>;
+      definition?: {
+        id: string;
+        version?: string;
+        displayName: string;
+        authType?: string;
+        capabilities: string[];
+        supports?: Record<string, unknown>;
+        storageModes?: string[];
+      };
+    }>;
+  }
+
+  async listProjects(subjectId: string, workspaceId: string) {
+    const { data, error } = await this.client.rpc('api_list_projects', {
+      p_secret: this.apiSecret,
+      p_subject_id: subjectId,
+      p_workspace_id: workspaceId,
+    });
+    if (error) throw error;
+    return data as Array<{
+      id: string;
+      slug: string;
+      name: string;
+      status: string;
+      url?: string | null;
+    }>;
+  }
+
+  async listProjectHints(subjectId: string, workspaceId: string) {
+    const { data, error } = await this.client.rpc('api_list_project_hints', {
+      p_secret: this.apiSecret,
+      p_subject_id: subjectId,
+      p_workspace_id: workspaceId,
+    });
+    if (error) throw error;
+    return data as Array<{
+      id: string;
+      slug: string;
+      name: string;
+      status: string;
+      url?: string | null;
+    }>;
+  }
+
+  async resolveProjectRef(input: {
+    subjectId: string;
+    workspaceId: string;
+    projectRef?: string | null;
+  }) {
+    const { data, error } = await this.client.rpc('api_resolve_project_ref', {
+      p_secret: this.apiSecret,
+      p_subject_id: input.subjectId,
+      p_workspace_id: input.workspaceId,
+      p_project_ref: input.projectRef ?? null,
+    });
+    if (error) throw error;
+    return data as {
+      projectId: string | null;
+      matchCount: number;
+      candidates: Array<{
+        id: string;
+        slug: string;
+        name: string;
+        url?: string | null;
+      }>;
+    };
   }
 
   async listConnectors(subjectId: string) {
@@ -474,6 +550,7 @@ export class SupabaseMemoryGateway {
       lastSyncAt: string | null;
       lastError: string | null;
       vaultRef?: string | null;
+      metadata?: Record<string, unknown>;
       definition?: {
         id: string;
         version: string;
@@ -483,6 +560,43 @@ export class SupabaseMemoryGateway {
         supports: Record<string, unknown>;
         storageModes: string[];
       };
+    };
+  }
+
+  async upsertProjectFromConnector(input: {
+    subjectId: string;
+    workspaceId: string;
+    provider: string;
+    connectionId: string;
+    collectionId: string;
+    externalId?: string | null;
+    name?: string | null;
+    url?: string | null;
+    description?: string | null;
+    defaultBranch?: string | null;
+    metadata?: Record<string, unknown>;
+  }) {
+    const { data, error } = await this.client.rpc('api_upsert_project_from_connector', {
+      p_secret: this.apiSecret,
+      p_subject_id: input.subjectId,
+      p_workspace_id: input.workspaceId,
+      p_provider: input.provider,
+      p_connection_id: input.connectionId,
+      p_collection_id: input.collectionId,
+      p_external_id: input.externalId ?? null,
+      p_name: input.name ?? null,
+      p_url: input.url ?? null,
+      p_description: input.description ?? null,
+      p_default_branch: input.defaultBranch ?? null,
+      p_metadata: input.metadata ?? {},
+    });
+    if (error) throw error;
+    return data as {
+      projectId: string;
+      slug: string;
+      name: string;
+      memoryId: string;
+      collectionId: string;
     };
   }
 
@@ -656,6 +770,7 @@ export class SupabaseMemoryGateway {
     displayName: string;
     scopes?: string[];
     status?: string;
+    metadata?: Record<string, unknown>;
   }) {
     const { data, error } = await this.client.rpc('api_upsert_connection', {
       p_secret: this.apiSecret,
@@ -665,9 +780,92 @@ export class SupabaseMemoryGateway {
       p_display_name: input.displayName,
       p_scopes: input.scopes ?? [],
       p_status: input.status ?? 'connected',
+      p_metadata: input.metadata ?? null,
     });
     if (error) throw error;
     return data;
+  }
+
+  async setConnectionMetadata(input: {
+    subjectId: string;
+    connectionId: string;
+    metadata: Record<string, unknown>;
+  }) {
+    const { data, error } = await this.client.rpc('api_set_connection_metadata', {
+      p_secret: this.apiSecret,
+      p_subject_id: input.subjectId,
+      p_connection_id: input.connectionId,
+      p_metadata: input.metadata,
+    });
+    if (error) throw error;
+    return data as {
+      id: string;
+      workspaceId: string;
+      connectorId: string;
+      displayName: string;
+      status: string;
+      scopes: string[];
+      lastSyncAt: string | null;
+      lastError: string | null;
+      vaultRef?: string | null;
+      metadata?: Record<string, unknown>;
+    };
+  }
+
+  async refreshConnectionCollections(input: {
+    subjectId: string;
+    connectionId: string;
+    items: unknown[];
+    projectBindings?: Record<string, string>;
+    discoveredAt?: string;
+  }) {
+    const { data, error } = await this.client.rpc('api_refresh_connection_collections', {
+      p_secret: this.apiSecret,
+      p_subject_id: input.subjectId,
+      p_connection_id: input.connectionId,
+      p_items: input.items,
+      p_project_bindings: input.projectBindings ?? {},
+      p_discovered_at: input.discoveredAt ?? new Date().toISOString(),
+    });
+    if (error) throw error;
+    return data as {
+      id: string;
+      workspaceId: string;
+      connectorId: string;
+      displayName: string;
+      status: string;
+      scopes: string[];
+      lastSyncAt: string | null;
+      lastError: string | null;
+      vaultRef?: string | null;
+      metadata?: Record<string, unknown>;
+    };
+  }
+
+  async setConnectionCollectionExclusions(input: {
+    subjectId: string;
+    connectionId: string;
+    excludedIds: string[];
+  }) {
+    const { data, error } = await this.client.rpc('api_set_connection_collection_exclusions', {
+      p_secret: this.apiSecret,
+      p_subject_id: input.subjectId,
+      p_connection_id: input.connectionId,
+      p_excluded_ids: input.excludedIds,
+    });
+    if (error) throw error;
+    return data as {
+      id: string;
+      workspaceId: string;
+      connectorId: string;
+      displayName: string;
+      status: string;
+      scopes: string[];
+      lastSyncAt: string | null;
+      lastError: string | null;
+      vaultRef?: string | null;
+      metadata?: Record<string, unknown>;
+    };
   }
 
   async setConnectionStatus(input: {
@@ -690,7 +888,7 @@ export class SupabaseMemoryGateway {
   async captureText(input: {
     subjectId: string;
     workspaceId: string;
-    projectId: string;
+    projectId?: string | null;
     title: string;
     text: string;
     idempotencyKey: string;
@@ -703,7 +901,7 @@ export class SupabaseMemoryGateway {
       p_secret: this.apiSecret,
       p_subject_id: input.subjectId,
       p_workspace_id: input.workspaceId,
-      p_project_id: input.projectId,
+      p_project_id: input.projectId ?? null,
       p_title: input.title,
       p_text: input.text,
       p_idempotency_key: input.idempotencyKey,

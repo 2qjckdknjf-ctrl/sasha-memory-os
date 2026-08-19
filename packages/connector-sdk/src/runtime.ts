@@ -1,9 +1,11 @@
 import {
   parseConnectionHealthReport,
+  parseConnectorDiscoverResult,
   parseConnectorManifest,
   parseNormalizedConnectorRecord,
   parseSyncCursor,
   type ConnectionHealthReport,
+  type ConnectorDiscoverResult,
   type ConnectorSyncContext,
   type ConnectorSyncRun,
   type RegisteredConnector,
@@ -75,6 +77,14 @@ export async function runConnectorHealthcheck<TRaw>(input: {
 }): Promise<ConnectionHealthReport | null> {
   if (typeof input.connector.lifecycle.healthcheck !== 'function') return null;
   return parseConnectionHealthReport(await input.connector.lifecycle.healthcheck(input.context));
+}
+
+export async function runConnectorDiscover<TRaw>(input: {
+  connector: RegisteredConnector<TRaw>;
+  context: ConnectorSyncContext;
+}): Promise<ConnectorDiscoverResult | null> {
+  if (typeof input.connector.lifecycle.discover !== 'function') return null;
+  return parseConnectorDiscoverResult(await input.connector.lifecycle.discover(input.context));
 }
 
 export function buildDefaultCursor(

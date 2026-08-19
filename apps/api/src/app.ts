@@ -22,8 +22,10 @@ import {
   fingerprintAuthorizationCode,
   resolveAuthorizeBase,
   resolveConnectorSyncOutcome,
+  runConnectorDiscover,
   runConnectorHealthcheck,
   runConnectorSync,
+  type ConnectorCollection,
   type RegisteredConnector,
   type SyncCursor,
 } from '@memory-os/connector-sdk';
@@ -38,13 +40,16 @@ import {
   createHandoffSchema,
   createPrivacyRequestSchema,
   ingestionEnvelopeSchema,
+  normalizeConnectionMetadata,
   oauthCompleteSchema,
   oauthStartSchema,
   revokeConnectionSchema,
+  selectedConnectionCollections,
   setConnectionStatusSchema,
   setMemoryStatusSchema,
   upsertConnectionSchema,
   upsertProjectStateSchema,
+  updateConnectionSchema,
 } from '@memory-os/schemas';
 import {
   decodeBase64Document,
@@ -169,7 +174,7 @@ function seedAuthz(subjectId: string): AuthzContext {
         effect: 'allow',
         resourceType: 'memory',
         projectId: seedProject,
-        actions: ['read'],
+        actions: ['read', 'write'],
         sensitivityMax: 'internal',
       },
       {
@@ -217,6 +222,38 @@ function seedAuthz(subjectId: string): AuthzContext {
         effect: 'allow',
         resourceType: 'handoff',
         projectId: seedProject,
+        actions: ['read', 'write'],
+        sensitivityMax: 'internal',
+      },
+      {
+        subjectId: chatgpt,
+        effect: 'allow',
+        resourceType: 'memory',
+        projectId: null,
+        actions: ['read', 'write'],
+        sensitivityMax: 'internal',
+      },
+      {
+        subjectId: chatgpt,
+        effect: 'allow',
+        resourceType: 'handoff',
+        projectId: null,
+        actions: ['read', 'write'],
+        sensitivityMax: 'internal',
+      },
+      {
+        subjectId: cursor,
+        effect: 'allow',
+        resourceType: 'memory',
+        projectId: null,
+        actions: ['read', 'write'],
+        sensitivityMax: 'internal',
+      },
+      {
+        subjectId: cursor,
+        effect: 'allow',
+        resourceType: 'handoff',
+        projectId: null,
         actions: ['read', 'write'],
         sensitivityMax: 'internal',
       },
@@ -413,7 +450,94 @@ type ConnectionLike = {
   lastError?: string | null;
   vaultRef?: string | null;
   workspaceId?: string;
+  metadata?: Record<string, unknown>;
 };
+
+function collectionDisplayName(collection: ConnectorCollection): string {
+  const fullName = collection.metadata?.full_name;
+  return typeof fullName === 'string' && fullName.trim().length > 0
+    ? fullName
+    : (collection.title ?? collection.name);
+}
+
+function resolveCollectionProjectId(
+  metadata: Record<string, unknown> | undefined,
+  collectionId: string | undefined,
+): string | null {
+  const normalized = normalizeConnectionMetadata(metadata);
+  if (!collectionId) return null;
+  return normalized.collections?.project_bindings?.[collectionId] ?? null;
+}
+
+async function discoverAndSeedConnectionProjects(
+  gateway: SupabaseMemoryGateway,
+  subjectId: string,
+  workspaceId: string,
+  item: ConnectionLike,
+  connector: RegisteredConnector<any>,
+): Promise<ConnectionLike> {
+  if (typeof connector.lifecycle.discover !== 'function') {
+    return item;
+  }
+
+  const baseConnection =
+    item.metadata === undefined ? await gateway.getConnection(subjectId, item.id) : item;
+
+  const vault = createConfiguredVaultStore({ gateway });
+  const discovered = await runConnectorDiscover({
+    connector,
+    context: {
+      account: {
+        connectionId: baseConnection.id,
+        connectorId: baseConnection.connectorId,
+        displayName: baseConnection.displayName ?? baseConnection.connectorId,
+        vaultRef: baseConnection.vaultRef ?? undefined,
+        scopes: baseConnection.scopes ?? [],
+        metadata: baseConnection.metadata,
+      },
+      workspaceId,
+      vault,
+    },
+  });
+
+  if (!discovered) return item;
+
+  const refreshed = await gateway.refreshConnectionCollections({
+    subjectId,
+    connectionId: baseConnection.id,
+    items: discovered.collections,
+  });
+  const selected = selectedConnectionCollections(refreshed.metadata);
+  const projectBindings: Record<string, string> = {};
+  for (const collection of selected) {
+    const project = await gateway.upsertProjectFromConnector({
+      subjectId,
+      workspaceId,
+      provider: baseConnection.connectorId,
+      connectionId: baseConnection.id,
+      collectionId: collection.id,
+      externalId: collection.external_id ?? null,
+      name: collectionDisplayName(collection),
+      url: collection.url ?? null,
+      description: collection.description ?? null,
+      defaultBranch: collection.default_branch ?? null,
+      metadata: collection.metadata,
+    });
+    projectBindings[collection.id] = project.projectId;
+  }
+
+  if (Object.keys(projectBindings).length === 0) {
+    return { ...baseConnection, metadata: refreshed.metadata };
+  }
+
+  const updated = await gateway.refreshConnectionCollections({
+    subjectId,
+    connectionId: baseConnection.id,
+    items: discovered.collections,
+    projectBindings,
+  });
+  return { ...baseConnection, metadata: updated.metadata };
+}
 
 function toSyncCursor(
   row:
@@ -573,16 +697,22 @@ async function ingestSdkConnectorDelta(
   gateway: SupabaseMemoryGateway,
   subjectId: string,
   workspaceId: string,
-  projectId: string,
   item: ConnectionLike,
   connector: RegisteredConnector<any>,
 ) {
+  const syncedConnection = await discoverAndSeedConnectionProjects(
+    gateway,
+    subjectId,
+    workspaceId,
+    item,
+    connector,
+  );
   const stream = connector.manifest.default_stream ?? connector.manifest.id;
   const vault = createConfiguredVaultStore({ gateway });
   const cursor = toSyncCursor(
     await gateway.getConnectorCursor({
       subjectId,
-      accountId: item.id,
+      accountId: syncedConnection.id,
       stream,
     }),
   );
@@ -590,11 +720,12 @@ async function ingestSdkConnectorDelta(
     connector,
     context: {
       account: {
-        connectionId: item.id,
-        connectorId: item.connectorId,
-        displayName: item.displayName ?? item.connectorId,
-        vaultRef: item.vaultRef ?? undefined,
-        scopes: item.scopes ?? [],
+        connectionId: syncedConnection.id,
+        connectorId: syncedConnection.connectorId,
+        displayName: syncedConnection.displayName ?? syncedConnection.connectorId,
+        vaultRef: syncedConnection.vaultRef ?? undefined,
+        scopes: syncedConnection.scopes ?? [],
+        metadata: syncedConnection.metadata,
       },
       workspaceId,
       vault,
@@ -603,6 +734,11 @@ async function ingestSdkConnectorDelta(
   });
   let captured = 0;
   for (const record of syncRun.records) {
+    const projectId =
+      resolveCollectionProjectId(
+        syncedConnection.metadata,
+        record.externalObject.collectionId,
+      ) ?? null;
     const captureResult = await gateway.captureText({
       subjectId,
       workspaceId,
@@ -625,7 +761,7 @@ async function ingestSdkConnectorDelta(
   if (syncRun.nextCursor) {
     await gateway.upsertConnectorCursor({
       subjectId,
-      accountId: item.id,
+      accountId: syncedConnection.id,
       stream: syncRun.nextCursor.stream,
       cursor: syncRun.nextCursor.opaque,
       schemaVersion: syncRun.nextCursor.schemaVersion,
@@ -925,6 +1061,32 @@ export function createApp(options?: {
             displayName: 'AISTROYKA repos',
             status: 'connected',
             scopes: ['repositories.read'],
+            metadata: {
+              collections: {
+                selection_mode: 'all',
+                excluded_ids: [],
+                items: [
+                  {
+                    id: 'aistroyka/core',
+                    kind: 'repository',
+                    name: 'core',
+                    title: 'aistroyka/core',
+                    url: 'https://github.com/aistroyka/core',
+                    description: 'Основной продуктовый репозиторий AISTROYKA.',
+                    default_branch: 'main',
+                  },
+                  {
+                    id: 'sasha-memory-os/platform',
+                    kind: 'repository',
+                    name: 'platform',
+                    title: 'sasha-memory-os/platform',
+                    url: 'https://github.com/sasha-memory-os/platform',
+                    description: 'Пилотная монорепа Sasha Memory OS.',
+                    default_branch: 'main',
+                  },
+                ],
+              },
+            },
           },
         ],
       });
@@ -968,6 +1130,80 @@ export function createApp(options?: {
         connectorRegistry,
       );
       return c.json(health);
+    } catch (err) {
+      if (isForbiddenError(err)) return c.json({ error: 'forbidden' }, 403);
+      return c.json({ error: (err as Error).message }, 500);
+    }
+  });
+
+  app.post('/v1/connections/:id/discover', async (c) => {
+    const connectionId = c.req.param('id');
+    const body = (await c.req.json().catch(() => ({}))) as {
+      workspace_id?: string;
+      actor_subject_id?: string;
+    };
+    const authz = c.get('authz');
+    const actorSubjectId = body.actor_subject_id ?? authz.subjectId;
+    if (!authz.isOwner && authz.subjectId !== actorSubjectId) {
+      return c.json({ error: 'forbidden' }, 403);
+    }
+    const gw = c.get('gateway');
+    if (!gw) {
+      return c.json({
+        connectionId,
+        collections: selectedConnectionCollections({
+          collections: {
+            selection_mode: 'all',
+            excluded_ids: [],
+            items: [
+              {
+                id: 'aistroyka/core',
+                kind: 'repository',
+                name: 'core',
+                title: 'aistroyka/core',
+                url: 'https://github.com/aistroyka/core',
+                description: 'Основной продуктовый репозиторий AISTROYKA.',
+                default_branch: 'main',
+                metadata: {},
+              },
+              {
+                id: 'sasha-memory-os/platform',
+                kind: 'repository',
+                name: 'platform',
+                title: 'sasha-memory-os/platform',
+                url: 'https://github.com/sasha-memory-os/platform',
+                description: 'Пилотная монорепа Sasha Memory OS.',
+                default_branch: 'main',
+                metadata: {},
+              },
+            ],
+          },
+        }),
+        backend: 'memory-store',
+      });
+    }
+    try {
+      const connection = await gw.getConnection(actorSubjectId, connectionId);
+      const connector = connectorRegistry.get(connection.connectorId);
+      if (!connector || typeof connector.lifecycle.discover !== 'function') {
+        return c.json({
+          connectionId,
+          collections: [],
+          note: 'connector does not support discover',
+        });
+      }
+      const updated = await discoverAndSeedConnectionProjects(
+        gw,
+        actorSubjectId,
+        connection.workspaceId,
+        connection,
+        connector,
+      );
+      return c.json({
+        connectionId,
+        collections: selectedConnectionCollections(updated.metadata),
+        metadata: updated.metadata ?? {},
+      });
     } catch (err) {
       if (isForbiddenError(err)) return c.json({ error: 'forbidden' }, 403);
       return c.json({ error: (err as Error).message }, 500);
@@ -1028,7 +1264,6 @@ export function createApp(options?: {
                 gw,
                 actorSubjectId,
                 workspaceId,
-                seedProject,
                 {
                   id: item.connectionId,
                   connectorId: item.connectorId,
@@ -1163,6 +1398,7 @@ export function createApp(options?: {
         displayName: body.display_name,
         scopes: body.scopes,
         status: body.status,
+        metadata: body.metadata,
       });
       return c.json(connection, 201);
     } catch (err) {
@@ -1246,6 +1482,18 @@ export function createApp(options?: {
         codeFingerprint: exchange.codeFingerprint ?? codeFingerprint,
         exchangeMode: exchange.exchangeMode,
       });
+      const connection = await gw.getConnection(body.actor_subject_id, result.connectionId);
+      const connector = connectorRegistry.get(connection.connectorId);
+      const discovered =
+        connector && typeof connector.lifecycle.discover === 'function'
+          ? await discoverAndSeedConnectionProjects(
+              gw,
+              body.actor_subject_id,
+              connection.workspaceId,
+              connection,
+              connector,
+            )
+          : connection;
       return c.json({
         ...result,
         vaultRef: exchange.vaultRef,
@@ -1256,6 +1504,7 @@ export function createApp(options?: {
         clientSecretConfigured: exchange.clientSecretConfigured,
         tokensInVault: exchange.exchangeMode === 'exchanged',
         note: exchange.note,
+        discoveredCollections: selectedConnectionCollections(discovered.metadata).length,
       });
     } catch (err) {
       if (isForbiddenError(err)) return c.json({ error: 'forbidden' }, 403);
@@ -1316,6 +1565,50 @@ export function createApp(options?: {
         status: body.status,
         lastError: body.last_error,
       });
+      return c.json(connection);
+    } catch (err) {
+      if (isForbiddenError(err)) return c.json({ error: 'forbidden' }, 403);
+      return c.json({ error: (err as Error).message }, 500);
+    }
+  });
+
+  app.patch('/v1/connections/:id', async (c) => {
+    const connectionId = c.req.param('id');
+    const body = updateConnectionSchema.parse(await c.req.json());
+    const authz = c.get('authz');
+    if (!authz.isOwner && authz.subjectId !== body.actor_subject_id) {
+      return c.json({ error: 'forbidden' }, 403);
+    }
+    const gw = c.get('gateway');
+    if (!gw) {
+      return c.json({
+        id: connectionId,
+        metadata: body.metadata,
+        backend: 'memory-store',
+      });
+    }
+    try {
+      const collections =
+        typeof body.metadata.collections === 'object' &&
+        body.metadata.collections !== null &&
+        !Array.isArray(body.metadata.collections)
+          ? (body.metadata.collections as { excluded_ids?: unknown })
+          : null;
+      const excludedIdsRaw = collections?.excluded_ids;
+      const excludedIds = Array.isArray(excludedIdsRaw)
+        ? excludedIdsRaw.filter((value): value is string => typeof value === 'string')
+        : null;
+      const connection = excludedIds
+        ? await gw.setConnectionCollectionExclusions({
+            subjectId: body.actor_subject_id,
+            connectionId,
+            excludedIds,
+          })
+        : await gw.setConnectionMetadata({
+            subjectId: body.actor_subject_id,
+            connectionId,
+            metadata: body.metadata,
+          });
       return c.json(connection);
     } catch (err) {
       if (isForbiddenError(err)) return c.json({ error: 'forbidden' }, 403);
@@ -2439,6 +2732,33 @@ export function createApp(options?: {
         engine: embedded.engine,
       });
       return c.json({ ...result, backend: 'supabase' });
+    } catch (err) {
+      if (isForbiddenError(err)) return c.json({ error: 'forbidden' }, 403);
+      return c.json({ error: (err as Error).message }, 500);
+    }
+  });
+
+  app.get('/v1/projects', async (c) => {
+    const authz = c.get('authz');
+    const workspaceId = c.req.query('workspace_id') ?? seedWorkspace;
+    const gw = c.get('gateway');
+    if (!gw) {
+      return c.json({
+        projects: [
+          {
+            id: seedProject,
+            slug: 'aistroyka',
+            name: 'AISTROYKA',
+            status: 'active',
+            url: 'https://github.com/aistroyka/core',
+          },
+        ],
+        backend: 'memory-store',
+      });
+    }
+    try {
+      const projects = await gw.listProjects(authz.subjectId, workspaceId);
+      return c.json({ projects });
     } catch (err) {
       if (isForbiddenError(err)) return c.json({ error: 'forbidden' }, 403);
       return c.json({ error: (err as Error).message }, 500);

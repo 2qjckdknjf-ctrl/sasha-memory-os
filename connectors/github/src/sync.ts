@@ -1,5 +1,7 @@
 import {
   buildConnectionHealthReport,
+  type ConnectorCollection,
+  type ConnectorDiscoverResult,
   buildDefaultCursor,
   resolvePullCredentials,
   runConnectorSync,
@@ -43,10 +45,23 @@ type GithubEvent = {
   __mode?: 'stub' | 'vault';
 };
 
+type GithubRepo = {
+  id?: string | number;
+  name?: string;
+  full_name?: string;
+  html_url?: string;
+  description?: string | null;
+  default_branch?: string;
+  private?: boolean;
+  archived?: boolean;
+  owner?: { login?: string };
+};
+
 const DEFAULT_WORKSPACE_ID = '11111111-1111-4111-8111-111111111111';
 const GITHUB_CURSOR_STREAM = 'github:user-events';
 const GITHUB_CURSOR_SCHEMA_VERSION = '1.0';
 const GITHUB_PAGE_SIZE = 20;
+const GITHUB_DISCOVER_PAGE_SIZE = 100;
 
 function labelForGithubAccount(input: {
   displayName?: string;
@@ -85,6 +100,124 @@ function buildStubGithubEvents(input: {
       __mode: 'stub',
     },
   ];
+}
+
+function buildStubGithubRepos(): GithubRepo[] {
+  return [
+    {
+      id: 215001,
+      name: 'aistroyka',
+      full_name: 'aistroyka/core',
+      html_url: 'https://github.com/aistroyka/core',
+      description: 'Основной продуктовый репозиторий AISTROYKA.',
+      default_branch: 'main',
+      private: false,
+      archived: false,
+      owner: { login: 'aistroyka' },
+    },
+    {
+      id: 215002,
+      name: 'memory-os',
+      full_name: 'sasha-memory-os/platform',
+      html_url: 'https://github.com/sasha-memory-os/platform',
+      description: 'Пилотная монорепа Sasha Memory OS.',
+      default_branch: 'main',
+      private: false,
+      archived: false,
+      owner: { login: 'sasha-memory-os' },
+    },
+  ];
+}
+
+function repoCollectionId(repo: Pick<GithubRepo, 'full_name' | 'name'>): string {
+  return repo.full_name ?? repo.name ?? 'unknown-repo';
+}
+
+function toGithubCollection(repo: GithubRepo): ConnectorCollection {
+  const collectionId = repoCollectionId(repo);
+  return {
+    id: collectionId,
+    external_id: repo.id != null ? String(repo.id) : collectionId,
+    kind: 'repository',
+    name: repo.name ?? collectionId,
+    title: collectionId,
+    url: repo.html_url,
+    description: repo.description ?? null,
+    default_branch: repo.default_branch ?? null,
+    metadata: {
+      owner: repo.owner?.login ?? null,
+      full_name: repo.full_name ?? collectionId,
+      private: repo.private ?? false,
+      archived: repo.archived ?? false,
+    },
+  };
+}
+
+function selectedGithubRepoIds(metadata: Record<string, unknown> | undefined): Set<string> | null {
+  const collections = metadata?.collections;
+  if (!collections || typeof collections !== 'object' || Array.isArray(collections)) return null;
+  const items = Array.isArray((collections as { items?: unknown[] }).items)
+    ? ((collections as { items: unknown[] }).items ?? [])
+    : [];
+  if (items.length === 0) return null;
+  const excluded = new Set(
+    Array.isArray((collections as { excluded_ids?: unknown[] }).excluded_ids)
+      ? (collections as { excluded_ids: unknown[] }).excluded_ids
+          .filter((value): value is string => typeof value === 'string')
+      : [],
+  );
+  return new Set(
+    items
+      .map((item) =>
+        typeof item === 'object' && item !== null && typeof (item as { id?: unknown }).id === 'string'
+          ? (item as { id: string }).id
+          : null,
+      )
+      .filter((value): value is string => value !== null && !excluded.has(value)),
+  );
+}
+
+function filterSelectedGithubEvents(
+  events: GithubEvent[],
+  metadata: Record<string, unknown> | undefined,
+): GithubEvent[] {
+  const selectedRepos = selectedGithubRepoIds(metadata);
+  if (!selectedRepos) return events;
+  return events.filter((event) => {
+    const repo = event.repo?.name ?? 'unknown-repo';
+    return selectedRepos.has(repo);
+  });
+}
+
+function nextGithubPageUrl(linkHeader: string | null): string | null {
+  if (!linkHeader) return null;
+  const segments = linkHeader.split(',');
+  for (const segment of segments) {
+    const match = segment.match(/<([^>]+)>;\s*rel="([^"]+)"/);
+    if (match?.[2] === 'next') {
+      return match[1] ?? null;
+    }
+  }
+  return null;
+}
+
+async function resolveGithubCredentials(context: ConnectorSyncContext) {
+  const processEnv = context.processEnv ?? process.env;
+  const envName = context.processEnv?.MEMORY_OS_ENV ?? processEnv.MEMORY_OS_ENV ?? 'local';
+  const vaultRef =
+    context.account.vaultRef ??
+    vaultRefForAccount({
+      env: envName,
+      connectorId: 'github',
+      accountId: context.account.connectionId,
+    });
+  const creds = await resolvePullCredentials({
+    vaultRef,
+    processEnv,
+    vault: context.vault,
+    fetchImpl: context.fetchImpl,
+  });
+  return { creds, vaultRef };
 }
 
 function eventExternalId(event: GithubEvent): string {
@@ -141,6 +274,7 @@ function normalizeGithubEvent(input: {
   const object: ExternalObject = {
     provider: 'github',
     accountId: input.connectionId,
+    collectionId: repo,
     externalId,
     externalVersion: input.event.created_at,
     objectType,
@@ -242,33 +376,23 @@ async function syncGithubEvents(
   context: ConnectorSyncContext,
   mode: 'initial' | 'incremental',
 ): Promise<ConnectorSyncPage<GithubEvent>> {
-  const processEnv = context.processEnv ?? process.env;
-  const envName = context.processEnv?.MEMORY_OS_ENV ?? processEnv.MEMORY_OS_ENV ?? 'local';
-  const vaultRef =
-    context.account.vaultRef ??
-    vaultRefForAccount({
-      env: envName,
-      connectorId: 'github',
-      accountId: context.account.connectionId,
-    });
-  const creds = await resolvePullCredentials({
-    vaultRef,
-    processEnv,
-    vault: context.vault,
-    fetchImpl: context.fetchImpl,
-  });
+  const { creds } = await resolveGithubCredentials(context);
 
   if (creds.mode === 'stub') {
+    const stubEvents = filterSelectedGithubEvents(
+      buildStubGithubEvents({
+        connectionId: context.account.connectionId,
+        displayName: context.account.displayName,
+      }),
+      context.account.metadata,
+    );
     return {
       stream: GITHUB_CURSOR_STREAM,
       mode,
       rawObjects:
         mode === 'incremental'
           ? []
-          : buildStubGithubEvents({
-              connectionId: context.account.connectionId,
-              displayName: context.account.displayName,
-            }),
+          : stubEvents,
       pullMode: 'stub',
       note: 'synthetic GitHub sync; vault credentials not read',
       nextCursor:
@@ -304,8 +428,11 @@ async function syncGithubEvents(
   const fetched = ((await response.json()) as GithubEvent[])
     .filter((event) => event.id && event.type)
     .map((event) => ({ ...event, __mode: 'vault' as const }));
+  const selectedEvents = filterSelectedGithubEvents(fetched, context.account.metadata);
   const rawObjects =
-    mode === 'incremental' ? filterIncrementalGithubEvents(fetched, context.cursor) : fetched;
+    mode === 'incremental'
+      ? filterIncrementalGithubEvents(selectedEvents, context.cursor)
+      : selectedEvents;
 
   return {
     stream: GITHUB_CURSOR_STREAM,
@@ -316,6 +443,49 @@ async function syncGithubEvents(
       rawObjects.length > 0
         ? 'vault-backed GitHub user events ingested'
         : 'vault-backed GitHub sync found no new user events',
+  };
+}
+
+async function discoverGithubRepositories(
+  context: ConnectorSyncContext,
+): Promise<ConnectorDiscoverResult> {
+  const { creds } = await resolveGithubCredentials(context);
+
+  if (creds.mode === 'stub') {
+    return {
+      collections: buildStubGithubRepos().map(toGithubCollection),
+      note: 'synthetic GitHub discover; vault credentials not read',
+    };
+  }
+
+  const headers = {
+    Accept: 'application/vnd.github+json',
+    Authorization: `Bearer ${creds.accessToken}`,
+    'User-Agent': 'sasha-memory-os-connector',
+    'X-GitHub-Api-Version': '2022-11-28',
+  };
+  const repositories: GithubRepo[] = [];
+  let pageUrl: string | null =
+    `https://api.github.com/user/repos?sort=updated&per_page=${GITHUB_DISCOVER_PAGE_SIZE}`;
+
+  while (pageUrl) {
+    const response = await (context.fetchImpl ?? fetch)(pageUrl, { headers });
+    if (!response.ok) {
+      throw new Error(`GitHub repositories API failed: HTTP ${response.status}`);
+    }
+    repositories.push(...((await response.json()) as GithubRepo[]));
+    pageUrl = nextGithubPageUrl(response.headers.get('link'));
+  }
+
+  const collections = repositories
+    .filter((repo) => Boolean(repo.full_name ?? repo.name))
+    .map(toGithubCollection);
+  return {
+    collections,
+    note:
+      collections.length > 0
+        ? 'vault-backed GitHub repositories discovered'
+        : 'vault-backed GitHub discover found no repositories',
   };
 }
 
@@ -336,21 +506,7 @@ async function checkpointGithubEvents(input: {
 }
 
 async function healthcheckGithub(context: ConnectorSyncContext): Promise<ConnectionHealthReport> {
-  const processEnv = context.processEnv ?? process.env;
-  const envName = context.processEnv?.MEMORY_OS_ENV ?? processEnv.MEMORY_OS_ENV ?? 'local';
-  const vaultRef =
-    context.account.vaultRef ??
-    vaultRefForAccount({
-      env: envName,
-      connectorId: 'github',
-      accountId: context.account.connectionId,
-    });
-  const creds = await resolvePullCredentials({
-    vaultRef,
-    processEnv,
-    vault: context.vault,
-    fetchImpl: context.fetchImpl,
-  });
+  const { creds, vaultRef } = await resolveGithubCredentials(context);
 
   if (creds.mode === 'stub') {
     return buildConnectionHealthReport({
@@ -442,7 +598,7 @@ export const githubConnector: RegisteredConnector<GithubEvent> = {
     auth: 'oauth2',
     capabilities: ['repositories.read', 'pull_requests.read', 'issues.read'],
     supports: {
-      discover: false,
+      discover: true,
       validate_scope: true,
       initial_sync: true,
       incremental_sync: true,
@@ -455,6 +611,9 @@ export const githubConnector: RegisteredConnector<GithubEvent> = {
     data_classes: ['internal'],
   },
   lifecycle: {
+    async discover(context) {
+      return discoverGithubRepositories(context);
+    },
     async validateScope() {
       return { ok: true };
     },

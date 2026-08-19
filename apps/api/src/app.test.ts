@@ -1,4 +1,5 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
+import { createConnectorRegistry } from '@memory-os/connector-sdk';
 import { createApp } from './app.js';
 
 const projectId = '44444444-4444-4444-8444-444444444401';
@@ -90,6 +91,282 @@ describe('memory api demo slice', () => {
     expect(body.status).toBe('healthy');
   });
 
+  it('discovers GitHub repositories offline', async () => {
+    const app = createApp({});
+    const res = await app.request('/v1/connections/88888888-8888-4888-8888-888888888801/discover', {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'x-subject-id': owner,
+      },
+      body: JSON.stringify({
+        workspace_id: workspaceId,
+        actor_subject_id: owner,
+      }),
+    });
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.collections).toHaveLength(2);
+    expect(body.collections[0].id).toBe('aistroyka/core');
+  });
+
+  it('preserves unchecked collections across API sync', async () => {
+    const connectorRegistry = createConnectorRegistry([
+      {
+        manifest: {
+          id: 'github',
+          version: '1.0.0',
+          sdk_version: '^1.0',
+          default_stream: 'github:user-events',
+          auth: 'oauth2',
+          capabilities: ['repositories.read'],
+          supports: {
+            discover: true,
+            validate_scope: false,
+            initial_sync: true,
+            incremental_sync: false,
+            live_fetch: false,
+            webhooks: false,
+            write: false,
+          },
+          storage_modes: ['reference'],
+          data_classes: ['internal'],
+        },
+        lifecycle: {
+          async discover() {
+            return {
+              collections: [
+                {
+                  id: 'team/repo-a',
+                  kind: 'repository' as const,
+                  name: 'repo-a',
+                  title: 'team/repo-a',
+                  url: 'https://github.com/team/repo-a',
+                  default_branch: 'main',
+                  metadata: {},
+                },
+                {
+                  id: 'team/repo-b',
+                  kind: 'repository' as const,
+                  name: 'repo-b',
+                  title: 'team/repo-b',
+                  url: 'https://github.com/team/repo-b',
+                  default_branch: 'main',
+                  metadata: {},
+                },
+              ],
+            };
+          },
+          async initialSync() {
+            return {
+              stream: 'github:user-events',
+              mode: 'initial' as const,
+              rawObjects: [{ id: 'evt-1', repo: 'team/repo-a' }],
+              pullMode: 'stub',
+              note: 'fixture sync',
+            };
+          },
+          async normalize(context) {
+            return {
+              externalObject: {
+                provider: 'github',
+                accountId: context.account.connectionId,
+                collectionId: context.rawObject.repo,
+                externalId: context.rawObject.id,
+                objectType: 'fixture',
+                title: context.rawObject.repo,
+                createdAt: '2026-08-19T16:00:00.000Z',
+                modifiedAt: '2026-08-19T16:00:00.000Z',
+                deleted: false,
+                attachments: [],
+                permissionsSnapshot: {},
+                metadata: {},
+              },
+              envelope: {
+                schema_version: '1.0',
+                workspace_id: workspaceId,
+                source: {
+                  provider: 'github',
+                  account_id: context.account.connectionId,
+                  external_id: context.rawObject.id,
+                },
+                event_type: 'github.fixture',
+                observed_at: '2026-08-19T16:00:00.000Z',
+                idempotency_key: `fixture/${context.rawObject.id}`,
+                scope: {
+                  sensitivity: 'internal',
+                  storage_mode: 'reference',
+                },
+                provenance: {},
+              },
+              capture: {
+                title: 'Fixture event',
+                text: 'Fixture text',
+                filename: 'fixture://evt-1',
+                mimeType: 'text/plain',
+                idempotencyKey: `fixture/${context.rawObject.id}`,
+              },
+            };
+          },
+        },
+      },
+    ]);
+
+    let metadataState: Record<string, unknown> = {
+      collections: {
+        selection_mode: 'all',
+        excluded_ids: ['team/repo-b'],
+        items: [
+          {
+            id: 'team/repo-a',
+            kind: 'repository',
+            name: 'repo-a',
+            title: 'team/repo-a',
+            url: 'https://github.com/team/repo-a',
+            default_branch: 'main',
+            metadata: {},
+          },
+          {
+            id: 'team/repo-b',
+            kind: 'repository',
+            name: 'repo-b',
+            title: 'team/repo-b',
+            url: 'https://github.com/team/repo-b',
+            default_branch: 'main',
+            metadata: {},
+          },
+        ],
+        project_bindings: {},
+      },
+    };
+    const refreshConnectionCollections = vi.fn(async ({
+      items,
+      projectBindings,
+    }: {
+      items: unknown[];
+      projectBindings?: Record<string, string>;
+    }) => {
+      const currentCollections = (metadataState.collections ?? {}) as Record<string, unknown>;
+      metadataState = {
+        ...metadataState,
+        collections: {
+          selection_mode: 'all',
+          excluded_ids: currentCollections.excluded_ids ?? [],
+          items,
+          project_bindings: {
+            ...((currentCollections.project_bindings ?? {}) as Record<string, string>),
+            ...(projectBindings ?? {}),
+          },
+        },
+      };
+      return {
+        id: 'conn-1',
+        workspaceId: workspaceId,
+        connectorId: 'github',
+        displayName: 'Fixture GitHub',
+        status: 'connected',
+        scopes: ['repositories.read'],
+        lastSyncAt: null,
+        lastError: null,
+        metadata: metadataState,
+      };
+    });
+    const projectIds: Record<string, string> = {
+      'team/repo-a': '44444444-4444-4444-8444-444444444420',
+      'team/repo-b': '44444444-4444-4444-8444-444444444421',
+    };
+    const upsertProjectFromConnector = vi.fn(async ({ collectionId }: { collectionId: string }) => ({
+      projectId: projectIds[collectionId] ?? '44444444-4444-4444-8444-444444444499',
+      slug: collectionId.replace('/', '-'),
+      name: collectionId,
+      memoryId: `memory-${collectionId}`,
+      collectionId,
+    }));
+    const gateway = {
+      enqueueConnectorSync: vi.fn(async () => ({
+        count: 1,
+        enqueued: [
+          {
+            connectionId: 'conn-1',
+            connectorId: 'github',
+            displayName: 'Fixture GitHub',
+            vaultRef: null,
+            jobId: 'job-1',
+          },
+        ],
+      })),
+      getConnection: vi.fn(async () => ({
+        id: 'conn-1',
+        workspaceId: workspaceId,
+        connectorId: 'github',
+        displayName: 'Fixture GitHub',
+        status: 'connected',
+        scopes: ['repositories.read'],
+        lastSyncAt: null,
+        lastError: null,
+        metadata: metadataState,
+      })),
+      refreshConnectionCollections,
+      upsertProjectFromConnector,
+      getConnectorCursor: vi.fn(async () => null),
+      captureText: vi.fn(async () => ({ process: null })),
+      upsertConnectorCursor: vi.fn(async () => null),
+      completeConnectorSync: vi.fn(async () => ({
+        jobId: 'job-1',
+        status: 'succeeded',
+        connectionId: 'conn-1',
+      })),
+      appendAuditEvent: vi.fn(async () => ({})),
+    };
+
+    const app = createApp({
+      gateway: gateway as any,
+      connectorRegistry,
+    });
+    const res = await app.request('/v1/connections/sync', {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'x-subject-id': owner,
+      },
+      body: JSON.stringify({
+        workspace_id: workspaceId,
+        actor_subject_id: owner,
+      }),
+    });
+
+    expect(res.status).toBe(202);
+    expect(refreshConnectionCollections).toHaveBeenCalled();
+    expect(metadataState.collections.excluded_ids).toContain('team/repo-b');
+    expect(upsertProjectFromConnector.mock.calls.map(([input]) => input.collectionId)).toEqual([
+      'team/repo-a',
+    ]);
+  });
+
+  it('patches connection metadata offline', async () => {
+    const app = createApp({});
+    const res = await app.request('/v1/connections/88888888-8888-4888-8888-888888888801', {
+      method: 'PATCH',
+      headers: {
+        'content-type': 'application/json',
+        'x-subject-id': owner,
+      },
+      body: JSON.stringify({
+        actor_subject_id: owner,
+        metadata: {
+          collections: {
+            selection_mode: 'all',
+            excluded_ids: ['aistroyka/core'],
+            items: [],
+          },
+        },
+      }),
+    });
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.metadata.collections.excluded_ids).toContain('aistroyka/core');
+  });
+
   it('revokes a connection offline via revoke alias', async () => {
     const app = createApp({});
     const res = await app.request('/v1/connections/88888888-8888-4888-8888-888888888801/revoke', {
@@ -116,6 +393,22 @@ describe('memory api demo slice', () => {
     expect(res.status).toBe(200);
     const body = await res.json();
     expect(body.decisions.length).toBeGreaterThan(0);
+  });
+
+  it('lists projects offline', async () => {
+    const app = createApp({});
+    const res = await app.request(`/v1/projects?workspace_id=${workspaceId}`, {
+      headers: { 'x-subject-id': owner },
+    });
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.projects).toEqual([
+      expect.objectContaining({
+        id: projectId,
+        slug: 'aistroyka',
+        name: 'AISTROYKA',
+      }),
+    ]);
   });
 
   it('creates handoff from cursor', async () => {
@@ -303,6 +596,45 @@ describe('memory api demo slice', () => {
     expect(body.memoryId).toBeTruthy();
   });
 
+  it('allows workspace-level capture from chatgpt without widening project access', async () => {
+    const app = createApp({});
+    const res = await app.request('/v1/capture/text', {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'x-subject-id': chatgpt,
+      },
+      body: JSON.stringify({
+        workspace_id: workspaceId,
+        title: 'Workspace only',
+        text: 'This should not widen access.',
+        actor_subject_id: chatgpt,
+        idempotency_key: 'manual/workspace-capture-1',
+      }),
+    });
+    expect(res.status).toBe(201);
+  });
+
+  it('still rejects chatgpt capture into an ungranted concrete project', async () => {
+    const app = createApp({});
+    const res = await app.request('/v1/capture/text', {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'x-subject-id': chatgpt,
+      },
+      body: JSON.stringify({
+        workspace_id: workspaceId,
+        project_id: '00000000-0000-4000-8000-000000000099',
+        title: 'Wrong project',
+        text: 'This should stay forbidden.',
+        actor_subject_id: chatgpt,
+        idempotency_key: 'manual/workspace-capture-2',
+      }),
+    });
+    expect(res.status).toBe(403);
+  });
+
   it('requires api secret on consolidation when auth enforced', async () => {
     const prevRequire = process.env.MEMORY_OS_REQUIRE_API_AUTH;
     const prevSecret = process.env.MEMORY_OS_API_SECRET;
@@ -409,15 +741,15 @@ describe('memory api demo slice', () => {
       const names = (
         body.result.tools as Array<{ name: string }>
       ).map((t) => t.name);
-      expect(names).toEqual(
-        expect.arrayContaining([
-          'memory.search',
-          'capture.text',
-          'memory.store_decision',
-        ]),
-      );
-      expect(names).not.toContain('oauth.start');
-      expect(names).not.toContain('consolidation.run');
+      expect([...names].sort()).toEqual([
+        'memory.search',
+        'memory.get',
+        'context.project',
+        'capture.text',
+        'memory.store_decision',
+        'handoff.create',
+        'memory.set_status',
+      ].sort());
 
       const blocked = await app.request('/mcp', {
         method: 'POST',
