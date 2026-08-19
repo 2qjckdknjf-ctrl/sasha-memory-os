@@ -33,6 +33,8 @@ const secondaryLinks: PrimaryLink[] = [
   { to: '/privacy', label: 'Приватность' },
 ];
 
+const mainContentId = 'main-content';
+
 export function AppShell({
   backend,
   boundSubjectId,
@@ -42,92 +44,103 @@ export function AppShell({
   children,
 }: Props) {
   return (
-    <div className="shell">
-      <aside className="shell__sidebar">
-        <div className="shell__brand">
-          <p className="eyebrow">Sasha Memory OS</p>
-          <p className="shell__brand-title">Control Center</p>
-          <p className="lede">
-            Управление памятью проекта без служебной операционки в основном интерфейсе.
-          </p>
-        </div>
-
-        <nav aria-label="Основная навигация" className="shell-nav">
-          <div className="shell-nav__group">
-            {primaryLinks.map((link) => (
-              <NavLink
-                key={link.to}
-                to={link.to}
-                end={link.end}
-                className={({ isActive }) =>
-                  isActive ? 'shell-nav__link shell-nav__link--active' : 'shell-nav__link'
-                }
-              >
-                {link.label}
-              </NavLink>
-            ))}
+    <>
+      <a className="skip-link" href={`#${mainContentId}`}>
+        Перейти к основному содержимому
+      </a>
+      <div className="shell">
+        <aside className="shell__sidebar">
+          <div className="shell__brand">
+            <p className="eyebrow">Sasha Memory OS</p>
+            <p className="shell__brand-title">Control Center</p>
+            <p className="lede">
+              Управление памятью проекта без служебной операционки в основном интерфейсе.
+            </p>
           </div>
 
-          <div className="shell-nav__group shell-nav__group--secondary" aria-label="Дополнительная навигация">
-            {secondaryLinks.map((link) => (
-              <NavLink
-                key={link.to}
-                to={link.to}
-                end={link.end}
-                className={({ isActive }) =>
-                  isActive ? 'shell-nav__link shell-nav__link--active' : 'shell-nav__link'
-                }
-              >
-                {link.label}
-              </NavLink>
-            ))}
-          </div>
-        </nav>
-      </aside>
-
-      <div className="shell__content">
-        <header className="shell__header">
-          <div>
-            <p className="eyebrow">Статус</p>
-            <div className="status-line">
-              <span className="status-pill">{describeBackend(backend)}</span>
-              {boundSubjectId ? (
-                <span className="meta">Сессия владельца подключена</span>
-              ) : (
-                <span className="meta">Можно войти для привязки веб-сессии</span>
-              )}
+          <nav aria-label="Основная навигация" className="shell-nav">
+            <div className="shell-nav__group">
+              {primaryLinks.map((link) => (
+                <NavLink
+                  key={link.to}
+                  to={link.to}
+                  end={link.end}
+                  className={({ isActive }) =>
+                    isActive ? 'shell-nav__link shell-nav__link--active' : 'shell-nav__link'
+                  }
+                >
+                  {link.label}
+                </NavLink>
+              ))}
             </div>
-          </div>
 
-          <div className="shell__header-actions">
-            <details className="session-panel">
-              <summary>Сессия и вход</summary>
-              <div className="session-panel__body">
+            <div className="shell-nav__group shell-nav__group--secondary">
+              {secondaryLinks.map((link) => (
+                <NavLink
+                  key={link.to}
+                  to={link.to}
+                  end={link.end}
+                  className={({ isActive }) =>
+                    isActive ? 'shell-nav__link shell-nav__link--active' : 'shell-nav__link'
+                  }
+                >
+                  {link.label}
+                </NavLink>
+              ))}
+            </div>
+          </nav>
+        </aside>
+
+        <div className="shell__content">
+          <header className="shell__header">
+            <div>
+              <p className="eyebrow">Статус</p>
+              <div className="status-line">
+                <span className="status-pill">{describeBackend(backend)}</span>
                 {boundSubjectId ? (
-                  <p className="meta">
-                    Привязанный субъект: {boundSubjectId.slice(0, 8)}
-                    …
-                  </p>
-                ) : null}
-                {authPanel}
+                  <span className="meta">Сессия владельца подключена</span>
+                ) : (
+                  <span className="meta">Можно войти для привязки веб-сессии</span>
+                )}
               </div>
-            </details>
-            <NavLink to="/ops" className="dev-link">
-              Для разработчика
-            </NavLink>
-          </div>
-        </header>
+            </div>
 
-        {error ? (
-          <div className="banner banner--warn" role="alert">
-            {error}
-          </div>
-        ) : null}
+            <div className="shell__header-actions">
+              <details className="session-panel">
+                <summary>Сессия и вход</summary>
+                <div className="session-panel__body">
+                  {boundSubjectId ? (
+                    <p className="meta">
+                      Привязанный субъект: {boundSubjectId.slice(0, 8)}
+                      …
+                    </p>
+                  ) : null}
+                  {authPanel}
+                </div>
+              </details>
+              <NavLink to="/ops" className="dev-link">
+                Для разработчика
+              </NavLink>
+            </div>
+          </header>
 
-        {notice ? <div className="banner">{notice}</div> : null}
+          {error ? (
+            <div className="banner banner--warn" role="alert">
+              {error}
+            </div>
+          ) : null}
 
-        <main className="shell__main">{children}</main>
+          {notice ? (
+            <div className="banner" role="status" aria-live="polite">
+              {notice}
+            </div>
+          ) : null}
+
+          <main className="shell__main" id={mainContentId} tabIndex={-1}>
+            {children}
+          </main>
+        </div>
       </div>
-    </div>
+    </>
   );
 }
