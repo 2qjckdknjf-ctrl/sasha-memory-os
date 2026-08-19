@@ -435,6 +435,35 @@ describe('github webhook api', () => {
     );
   });
 
+  it('does not enqueue sync on push when the pushed repository is excluded', async () => {
+    await withEnv(
+      {
+        MEMORY_OS_ENV: 'test',
+        MEMORY_OS_GITHUB_WEBHOOK_SECRET: 'webhook-secret',
+        MEMORY_OS_OWNER_SUBJECT_ID: ownerId,
+      },
+      async () => {
+        const state = createGatewayMock({ excludedIds: ['team/repo-existing'] });
+        const app = createApp({ gateway: state.gateway as any });
+        const { rawBody, signature } = signGitHubWebhook(pushFixture, 'webhook-secret');
+        const res = await app.request(`/v1/webhooks/github?connection_id=${connectionId}`, {
+          method: 'POST',
+          headers: {
+            'content-type': 'application/json',
+            'x-github-event': 'push',
+            'x-github-delivery': 'delivery-push-excluded-1',
+            'x-hub-signature-256': signature,
+          },
+          body: rawBody,
+        });
+        expect(res.status).toBe(202);
+        const body = await res.json();
+        expect(state.gateway.enqueueConnectorSync).not.toHaveBeenCalled();
+        expect(String(body.note)).toContain('excluded');
+      },
+    );
+  });
+
   it('returns 401 for a bad signature', async () => {
     await withEnv(
       {

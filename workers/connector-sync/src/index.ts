@@ -21,6 +21,8 @@ import {
   type VaultStore,
 } from '@memory-os/connector-sdk';
 import {
+  connectionCollectionExclusionSet,
+  connectionCollectionItems,
   normalizeConnectionMetadata,
   selectedConnectionCollections,
 } from '@memory-os/schemas';
@@ -120,8 +122,10 @@ async function discoverAndSeedConnectionProjects(
     connectionId: item.id,
     items: discovered.collections,
   });
+  const excludedIds = connectionCollectionExclusionSet(refreshed.metadata);
   const projectBindings: Record<string, string> = {};
-  for (const collection of selectedConnectionCollections(refreshed.metadata)) {
+  for (const collection of connectionCollectionItems(refreshed.metadata)) {
+    if (excludedIds.has(collection.id)) continue;
     const project = await gateway.upsertProjectFromConnector({
       subjectId,
       workspaceId,

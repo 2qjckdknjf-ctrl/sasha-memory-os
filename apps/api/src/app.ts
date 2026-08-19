@@ -34,6 +34,8 @@ import {
   bindAuthUserSchema,
   captureDocumentSchema,
   captureLinkSchema,
+  connectionCollectionExclusionSet,
+  connectionCollectionItems,
   captureTextSchema,
   correctMemorySchema,
   createDecisionSchema,
@@ -513,8 +515,10 @@ async function refreshAndSeedDiscoveredConnectionProjects(
     connectionId: item.id,
     items: collections,
   });
+  const excludedIds = connectionCollectionExclusionSet(refreshed.metadata);
   const projectBindings: Record<string, string> = {};
-  for (const collection of selectedConnectionCollections(refreshed.metadata)) {
+  for (const collection of connectionCollectionItems(refreshed.metadata)) {
+    if (excludedIds.has(collection.id)) continue;
     const project = await gateway.upsertProjectFromConnector({
       subjectId,
       workspaceId,
@@ -556,10 +560,7 @@ async function upsertAndSeedConnectionCollection(
     item: collection,
   });
   const refreshed = await gateway.getConnection(subjectId, item.id);
-  const selectedIds = new Set(
-    selectedConnectionCollections(refreshed.metadata).map((candidate) => candidate.id),
-  );
-  if (!selectedIds.has(collection.id)) {
+  if (connectionCollectionExclusionSet(refreshed.metadata).has(collection.id)) {
     return refreshed;
   }
 
@@ -1135,6 +1136,14 @@ export function createApp(options?: {
           note = 'github webhook ping acknowledged';
           break;
         case 'push': {
+          const pushCollection = resolveGitHubWebhookRepositoryCollection(payload);
+          if (
+            pushCollection &&
+            connectionCollectionExclusionSet(connection.metadata).has(pushCollection.id)
+          ) {
+            note = 'github push acknowledged for excluded repository; sync enqueue skipped';
+            break;
+          }
           const sync = await gw.enqueueConnectorSync({
             subjectId,
             workspaceId: connection.workspaceId,
