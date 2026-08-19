@@ -558,6 +558,7 @@ export const mcpTools: McpTool[] = [
       },
       required: [
         'workspace_id',
+        'project_id',
         'title',
         'content',
         'actor_subject_id',
@@ -580,6 +581,7 @@ export const mcpTools: McpTool[] = [
       },
       required: [
         'workspace_id',
+        'project_id',
         'from_subject_id',
         'idempotency_key',
         'payload',
@@ -649,6 +651,7 @@ export const mcpTools: McpTool[] = [
       },
       required: [
         'workspace_id',
+        'project_id',
         'title',
         'text',
         'actor_subject_id',

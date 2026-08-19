@@ -581,6 +581,33 @@ describe('mcp gateway alpha', () => {
     );
   });
 
+  it('rejects ChatGPT memory.store_decision without project_id', async () => {
+    const gateway = createTwoProjectGateway();
+    const mcp = createMcpHandlers({ gateway: gateway as any, profile: 'chatgpt' });
+    await expect(
+      mcp.call('memory.store_decision', {
+        title: 'ChatGPT decision',
+        content: 'No project id is present here.',
+        idempotency_key: 'mcp-chatgpt-decision-no-project-1',
+      }),
+    ).rejects.toThrow(/project reference is required/i);
+    expect(gateway.createDecision).not.toHaveBeenCalled();
+  });
+
+  it('accepts ChatGPT memory.store_decision with the seed UUID', async () => {
+    const gateway = createTwoProjectGateway();
+    const mcp = createMcpHandlers({ gateway: gateway as any, profile: 'chatgpt' });
+    await mcp.call('memory.store_decision', {
+      project_id: projectId,
+      title: 'ChatGPT decision',
+      content: 'Seed project is explicit here.',
+      idempotency_key: 'mcp-chatgpt-decision-seed-1',
+    });
+    expect(gateway.createDecision).toHaveBeenCalledWith(
+      expect.objectContaining({ projectId }),
+    );
+  });
+
   it('still resolves an explicit short slug without any text hint', async () => {
     const gateway = createShortTokenGateway();
     const mcp = createMcpHandlers({ gateway: gateway as any });
