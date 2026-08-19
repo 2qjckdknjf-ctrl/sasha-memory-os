@@ -1313,6 +1313,68 @@ export function App() {
     }
   }
 
+  async function onDiscoverConnection(connectionId: string) {
+    setError(null);
+    try {
+      if (backend === 'local') {
+        setLastCapture('В локальном preview список репозиториев синтетический и уже показан.');
+        setTick((current) => current + 1);
+        return;
+      }
+      const result = await apiPost<{
+        collections?: Array<{ id: string }>;
+      }>(
+        `/v1/connections/${connectionId}/discover`,
+        subjectId,
+        {
+          workspace_id: WORKSPACE_ID,
+          actor_subject_id: subjectId,
+        },
+        actor,
+      );
+      setLastCapture(`discover: найдено репозиториев ${result.collections?.length ?? 0}`);
+      setTick((current) => current + 1);
+    } catch (err) {
+      setError((err as Error).message);
+    }
+  }
+
+  async function onUpdateConnectionCollections(
+    connection: ConnectionRecord,
+    excludedIds: string[],
+  ) {
+    if (!connection.id) return;
+    setError(null);
+    try {
+      if (backend === 'local') {
+        setLastCapture('В локальном preview выбор коллекций не сохраняется.');
+        return;
+      }
+      const metadata = {
+        ...(connection.metadata ?? {}),
+        collections: {
+          ...(connection.metadata?.collections ?? {}),
+          selection_mode: 'all' as const,
+          excluded_ids: excludedIds,
+          items: connection.metadata?.collections?.items ?? [],
+          project_bindings: connection.metadata?.collections?.project_bindings ?? {},
+        },
+      };
+      await apiPatch(
+        `/v1/connections/${connection.id}`,
+        subjectId,
+        {
+          actor_subject_id: subjectId,
+          metadata,
+        },
+        actor,
+      );
+      setTick((current) => current + 1);
+    } catch (err) {
+      setError((err as Error).message);
+    }
+  }
+
   async function onExportMemories() {
     setError(null);
     try {
@@ -1467,7 +1529,9 @@ export function App() {
               onRefresh={onRefresh}
               onConnectGmailStub={onConnectGmailStub}
               onStartOAuth={onStartOAuth}
+              onDiscoverConnection={onDiscoverConnection}
               onSyncConnections={onSyncConnections}
+              onUpdateConnectionCollections={onUpdateConnectionCollections}
               onRevokeConnection={onRevokeConnection}
             />
           }

@@ -90,6 +90,49 @@ describe('memory api demo slice', () => {
     expect(body.status).toBe('healthy');
   });
 
+  it('discovers GitHub repositories offline', async () => {
+    const app = createApp({});
+    const res = await app.request('/v1/connections/88888888-8888-4888-8888-888888888801/discover', {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'x-subject-id': owner,
+      },
+      body: JSON.stringify({
+        workspace_id: workspaceId,
+        actor_subject_id: owner,
+      }),
+    });
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.collections).toHaveLength(2);
+    expect(body.collections[0].id).toBe('aistroyka/core');
+  });
+
+  it('patches connection metadata offline', async () => {
+    const app = createApp({});
+    const res = await app.request('/v1/connections/88888888-8888-4888-8888-888888888801', {
+      method: 'PATCH',
+      headers: {
+        'content-type': 'application/json',
+        'x-subject-id': owner,
+      },
+      body: JSON.stringify({
+        actor_subject_id: owner,
+        metadata: {
+          collections: {
+            selection_mode: 'all',
+            excluded_ids: ['aistroyka/core'],
+            items: [],
+          },
+        },
+      }),
+    });
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.metadata.collections.excluded_ids).toContain('aistroyka/core');
+  });
+
   it('revokes a connection offline via revoke alias', async () => {
     const app = createApp({});
     const res = await app.request('/v1/connections/88888888-8888-4888-8888-888888888801/revoke', {

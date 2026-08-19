@@ -1,4 +1,10 @@
-import { ingestionEnvelopeSchema, storageModeSchema, type IngestionEnvelope } from '@memory-os/schemas';
+import {
+  connectorCollectionSchema,
+  ingestionEnvelopeSchema,
+  storageModeSchema,
+  type ConnectorCollection,
+  type IngestionEnvelope,
+} from '@memory-os/schemas';
 import { z } from 'zod';
 import type { VaultStore } from './vault.js';
 
@@ -90,12 +96,20 @@ export const normalizedConnectorRecordSchema = z.object({
 
 export type NormalizedConnectorRecord = z.infer<typeof normalizedConnectorRecordSchema>;
 
+export const connectorDiscoverResultSchema = z.object({
+  collections: z.array(connectorCollectionSchema).default([]),
+  note: z.string().optional(),
+});
+
+export type ConnectorDiscoverResult = z.infer<typeof connectorDiscoverResultSchema>;
+
 export type ConnectorAccount = {
   connectionId: string;
   connectorId: string;
   displayName?: string;
   vaultRef?: string;
   scopes?: string[];
+  metadata?: Record<string, unknown>;
 };
 
 export type ConnectorSyncContext = {
@@ -146,7 +160,7 @@ export type ConnectorCheckpointInput<TRaw> = {
 };
 
 export type ConnectorLifecycle<TRaw = unknown> = {
-  discover?: (context: ConnectorSyncContext) => Promise<unknown>;
+  discover?: (context: ConnectorSyncContext) => Promise<ConnectorDiscoverResult>;
   validateScope?: (context: ConnectorSyncContext) => Promise<{ ok: boolean; missing?: string[] }>;
   initialSync?: (context: ConnectorSyncContext) => Promise<ConnectorSyncPage<TRaw>>;
   incrementalSync?: (context: ConnectorSyncContext) => Promise<ConnectorSyncPage<TRaw>>;
@@ -187,10 +201,16 @@ export function parseNormalizedConnectorRecord(
   return normalizedConnectorRecordSchema.parse(record);
 }
 
+export function parseConnectorDiscoverResult(
+  result: ConnectorDiscoverResult,
+): ConnectorDiscoverResult {
+  return connectorDiscoverResultSchema.parse(result);
+}
+
 export function parseConnectionHealthReport(
   report: ConnectionHealthReport,
 ): ConnectionHealthReport {
   return connectionHealthReportSchema.parse(report);
 }
 
-export type { IngestionEnvelope };
+export type { ConnectorCollection, IngestionEnvelope };

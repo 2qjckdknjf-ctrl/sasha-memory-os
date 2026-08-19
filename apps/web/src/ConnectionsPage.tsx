@@ -22,7 +22,12 @@ type Props = {
   onRefresh: () => void;
   onConnectGmailStub: () => void | Promise<void>;
   onStartOAuth: (options?: OAuthStartOptions) => void | Promise<void>;
+  onDiscoverConnection: (connectionId: string) => void | Promise<void>;
   onSyncConnections: (connectionId?: string) => void | Promise<void>;
+  onUpdateConnectionCollections: (
+    connection: ConnectionRecord,
+    excludedIds: string[],
+  ) => void | Promise<void>;
   onRevokeConnection: (id: string) => void | Promise<void>;
 };
 
@@ -89,7 +94,9 @@ export function ConnectionsPage({
   onRefresh,
   onConnectGmailStub,
   onStartOAuth,
+  onDiscoverConnection,
   onSyncConnections,
+  onUpdateConnectionCollections,
   onRevokeConnection,
 }: Props) {
   const actionsDisabled = backend === 'local';
@@ -108,8 +115,9 @@ export function ConnectionsPage({
         <p className="eyebrow">Подключения</p>
         <h1>Подключения и синхронизация</h1>
         <p className="lede">
-          Статус коннекторов доступен прямо в Control Center. Здесь показываются существующие
-          подключения, ошибки синхронизации и действия, которые уже поддерживают текущие API.
+          Все найденные GitHub-репозитории попадают в память автоматически. Здесь показываются
+          подключения, ошибки синхронизации и выбранные коллекции, которые будут синхронизироваться
+          без ручного add-flow.
         </p>
       </header>
 
@@ -257,6 +265,9 @@ export function ConnectionsPage({
                 : undefined;
               const supportsOAuth = Boolean(oauthConfig);
               const health = connection.id ? connectionHealth[connection.id] : undefined;
+              const collections = connection.metadata?.collections?.items ?? [];
+              const excluded = new Set(connection.metadata?.collections?.excluded_ids ?? []);
+              const selectedCount = collections.filter((collection) => !excluded.has(collection.id)).length;
               const actionLabel =
                 connection.status === 'reauth_required' || connection.status === 'revoked'
                   ? oauthConfig?.connectLabel ?? 'Авторизовать заново'
@@ -287,6 +298,51 @@ export function ConnectionsPage({
                   {connection.vaultRef ? (
                     <p className="hint">Vault ref: {connection.vaultRef}</p>
                   ) : null}
+                  {collections.length > 0 ? (
+                    <div className="surface-stack">
+                      <p className="hint">
+                        Коллекции: выбрано {selectedCount} из {collections.length}. Новые
+                        репозитории подключаются автоматически, пока вы не снимете галочку.
+                      </p>
+                      <ul className="timeline" aria-label={`Коллекции ${connection.displayName ?? connectorLabel}`}>
+                        {collections.map((collection) => {
+                          const checked = !excluded.has(collection.id);
+                          const label = collection.title ?? collection.name;
+                          return (
+                            <li className="item" key={collection.id}>
+                              <label style={{ display: 'grid', gap: '0.35rem' }}>
+                                <span style={{ display: 'flex', gap: '0.6rem', alignItems: 'center' }}>
+                                  <input
+                                    type="checkbox"
+                                    checked={checked}
+                                    disabled={actionsDisabled || !connection.id}
+                                    onChange={() => {
+                                      const nextExcluded = checked
+                                        ? [...excluded, collection.id]
+                                        : [...excluded].filter((id) => id !== collection.id);
+                                      void onUpdateConnectionCollections(connection, nextExcluded);
+                                    }}
+                                  />
+                                  <strong>{label}</strong>
+                                </span>
+                                {collection.url ? <span className="hint">{collection.url}</span> : null}
+                                {collection.description ? (
+                                  <span className="hint">{collection.description}</span>
+                                ) : null}
+                                {collection.default_branch ? (
+                                  <span className="hint">Основная ветка: {collection.default_branch}</span>
+                                ) : null}
+                              </label>
+                            </li>
+                          );
+                        })}
+                      </ul>
+                    </div>
+                  ) : connection.connectorId === 'github' ? (
+                    <p className="hint">
+                      Список репозиториев ещё не загружен. Нажмите «Обновить список репозиториев».
+                    </p>
+                  ) : null}
                   <div className="actions">
                     {connection.id ? (
                       <button
@@ -298,6 +354,18 @@ export function ConnectionsPage({
                         }}
                       >
                         Синхронизировать
+                      </button>
+                    ) : null}
+                    {connection.id && connection.connectorId === 'github' ? (
+                      <button
+                        type="button"
+                        className="button-secondary"
+                        disabled={actionsDisabled}
+                        onClick={() => {
+                          void onDiscoverConnection(connection.id!);
+                        }}
+                      >
+                        Обновить список репозиториев
                       </button>
                     ) : null}
                     {supportsOAuth ? (

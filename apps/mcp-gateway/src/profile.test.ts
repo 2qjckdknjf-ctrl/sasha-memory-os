@@ -90,6 +90,6 @@ describe('mcp profile', () => {
     const filled = applyProfileDefaults(profile, { query: 'x' });
     expect(filled.actor_subject_id).toBeTruthy();
     expect(filled.workspace_id).toBeTruthy();
-    expect(filled.project_id).toBeTruthy();
+    expect(filled.project_id).toBeUndefined();
   });
 });

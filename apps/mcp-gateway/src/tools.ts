@@ -17,7 +17,9 @@ import {
   fingerprintAuthorizationCode,
   resolveAuthorizeBase,
   resolveConnectorSyncOutcome,
+  runConnectorDiscover,
   runConnectorSync,
+  type ConnectorCollection,
   type RegisteredConnector,
   type SyncCursor,
 } from '@memory-os/connector-sdk';
@@ -43,11 +45,15 @@ import {
   captureTextSchema,
   createDecisionSchema,
   createHandoffSchema,
+  normalizeConnectionMetadata,
   oauthCompleteSchema,
   oauthStartSchema,
+  selectedConnectionCollections,
   setConnectionStatusSchema,
   setMemoryStatusSchema,
   upsertConnectionSchema,
+  withConnectionProjectBinding,
+  withDiscoveredCollections,
   type ApplyExtractionInput,
 } from '@memory-os/schemas';
 import { randomUUID } from 'node:crypto';
@@ -88,6 +94,92 @@ function toSyncCursor(
   };
 }
 
+function collectionDisplayName(collection: ConnectorCollection): string {
+  const fullName = collection.metadata?.full_name;
+  return typeof fullName === 'string' && fullName.trim().length > 0
+    ? fullName
+    : (collection.title ?? collection.name);
+}
+
+function resolveCollectionProjectId(
+  metadata: Record<string, unknown> | undefined,
+  collectionId: string | undefined,
+): string | null {
+  const normalized = normalizeConnectionMetadata(metadata);
+  if (!collectionId) return normalized.default_project_id ?? null;
+  return normalized.collections?.project_bindings?.[collectionId] ?? normalized.default_project_id ?? null;
+}
+
+async function discoverAndSeedConnectionProjects(
+  gateway: SupabaseMemoryGateway,
+  item: {
+    id: string;
+    connectorId: string;
+    displayName?: string;
+    vaultRef?: string | null;
+    scopes?: string[];
+    metadata?: Record<string, unknown>;
+  },
+  subjectId: string,
+  workspaceId: string,
+  connector: RegisteredConnector<any>,
+) {
+  if (typeof connector.lifecycle.discover !== 'function') {
+    return item;
+  }
+
+  const vault = createConfiguredVaultStore({ gateway });
+  const discovered = await runConnectorDiscover({
+    connector,
+    context: {
+      account: {
+        connectionId: item.id,
+        connectorId: item.connectorId,
+        displayName: item.displayName ?? item.connectorId,
+        vaultRef: item.vaultRef ?? undefined,
+        scopes: item.scopes ?? [],
+        metadata: item.metadata,
+      },
+      workspaceId,
+      vault,
+    },
+  });
+
+  if (!discovered) return item;
+
+  let metadata = withDiscoveredCollections(item.metadata, discovered.collections);
+  const selected = selectedConnectionCollections(metadata);
+  for (const collection of selected) {
+    const project = await gateway.upsertProjectFromConnector({
+      subjectId,
+      workspaceId,
+      provider: item.connectorId,
+      connectionId: item.id,
+      collectionId: collection.id,
+      externalId: collection.external_id ?? null,
+      name: collectionDisplayName(collection),
+      url: collection.url ?? null,
+      description: collection.description ?? null,
+      defaultBranch: collection.default_branch ?? null,
+      metadata: collection.metadata,
+    });
+    metadata = withConnectionProjectBinding(metadata, {
+      collectionId: collection.id,
+      projectId: project.projectId,
+    });
+    if (!metadata.default_project_id) {
+      metadata.default_project_id = project.projectId;
+    }
+  }
+
+  const updated = await gateway.setConnectionMetadata({
+    subjectId,
+    connectionId: item.id,
+    metadata,
+  });
+  return { ...item, metadata: updated.metadata };
+}
+
 async function ingestSdkConnectorDelta(
   gateway: SupabaseMemoryGateway,
   item: {
@@ -101,12 +193,27 @@ async function ingestSdkConnectorDelta(
   projectId: string,
   connector: RegisteredConnector<any>,
 ) {
+  const connection = await gateway.getConnection(subjectId, item.connectionId);
+  const syncedConnection = await discoverAndSeedConnectionProjects(
+    gateway,
+    {
+      id: connection.id,
+      connectorId: connection.connectorId,
+      displayName: connection.displayName,
+      vaultRef: connection.vaultRef ?? undefined,
+      scopes: connection.scopes ?? [],
+      metadata: connection.metadata,
+    },
+    subjectId,
+    workspaceId,
+    connector,
+  );
   const stream = connector.manifest.default_stream ?? connector.manifest.id;
   const vault = createConfiguredVaultStore({ gateway });
   const cursor = toSyncCursor(
     await gateway.getConnectorCursor({
       subjectId,
-      accountId: item.connectionId,
+      accountId: syncedConnection.id,
       stream,
     }),
   );
@@ -114,10 +221,12 @@ async function ingestSdkConnectorDelta(
     connector,
     context: {
       account: {
-        connectionId: item.connectionId,
-        connectorId: item.connectorId,
-        displayName: item.displayName ?? item.connectorId,
-        vaultRef: item.vaultRef ?? undefined,
+        connectionId: syncedConnection.id,
+        connectorId: syncedConnection.connectorId,
+        displayName: syncedConnection.displayName ?? syncedConnection.connectorId,
+        vaultRef: syncedConnection.vaultRef ?? undefined,
+        scopes: syncedConnection.scopes ?? [],
+        metadata: syncedConnection.metadata,
       },
       workspaceId,
       vault,
@@ -126,10 +235,15 @@ async function ingestSdkConnectorDelta(
   });
   let captured = 0;
   for (const record of syncRun.records) {
+    const resolvedProjectId =
+      resolveCollectionProjectId(
+        syncedConnection.metadata,
+        record.externalObject.collectionId,
+      ) ?? projectId;
     const captureResult = await gateway.captureText({
       subjectId,
       workspaceId,
-      projectId,
+      projectId: resolvedProjectId,
       title: record.capture.title,
       text: record.capture.text,
       idempotencyKey: record.capture.idempotencyKey,
@@ -148,7 +262,7 @@ async function ingestSdkConnectorDelta(
   if (syncRun.nextCursor) {
     await gateway.upsertConnectorCursor({
       subjectId,
-      accountId: item.connectionId,
+      accountId: syncedConnection.id,
       stream: syncRun.nextCursor.stream,
       cursor: syncRun.nextCursor.opaque,
       schemaVersion: syncRun.nextCursor.schemaVersion,
@@ -980,6 +1094,7 @@ export function createMcpHandlers(options?: {
             displayName: input.display_name,
             scopes: input.scopes,
             status: input.status,
+            metadata: input.metadata,
           });
         }
         case 'connections.set_status': {

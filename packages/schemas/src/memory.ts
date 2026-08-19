@@ -46,7 +46,7 @@ export const memoryRecordSchema = z.object({
 
 export const createDecisionSchema = z.object({
   workspace_id: z.string().uuid(),
-  project_id: z.string().uuid(),
+  project_id: z.string().uuid().optional(),
   title: z.string().min(1),
   content: z.string().min(1),
   rationale: z.string().optional(),
@@ -81,7 +81,7 @@ export const upsertProjectStateSchema = z.object({
 
 export const createHandoffSchema = z.object({
   workspace_id: z.string().uuid(),
-  project_id: z.string().uuid(),
+  project_id: z.string().uuid().optional(),
   from_subject_id: z.string().uuid(),
   to_subject_id: z.string().uuid().optional(),
   session_id: z.string().uuid().optional(),
@@ -159,7 +159,7 @@ export const extractionCandidateSchema = z.object({
 /** Persist extraction preview candidates as memories (decisions or capture→candidate). */
 export const applyExtractionSchema = z.object({
   workspace_id: z.string().uuid(),
-  project_id: z.string().uuid(),
+  project_id: z.string().uuid().optional(),
   actor_subject_id: z.string().uuid(),
   sensitivity: sensitivitySchema.default('internal'),
   idempotency_prefix: z.string().min(1).max(200),

@@ -44,7 +44,7 @@ export type IngestionEnvelope = z.infer<typeof ingestionEnvelopeSchema>;
 
 export const captureTextSchema = z.object({
   workspace_id: z.string().uuid(),
-  project_id: z.string().uuid(),
+  project_id: z.string().uuid().optional(),
   title: z.string().min(1),
   text: z.string().min(1),
   sensitivity: sensitivitySchema.default('internal'),
@@ -57,7 +57,7 @@ export type CaptureTextInput = z.infer<typeof captureTextSchema>;
 
 export const captureDocumentSchema = z.object({
   workspace_id: z.string().uuid(),
-  project_id: z.string().uuid(),
+  project_id: z.string().uuid().optional(),
   title: z.string().min(1),
   filename: z.string().min(1),
   mime_type: z.string().optional(),
@@ -72,7 +72,7 @@ export type CaptureDocumentInput = z.infer<typeof captureDocumentSchema>;
 
 export const captureLinkSchema = z.object({
   workspace_id: z.string().uuid(),
-  project_id: z.string().uuid(),
+  project_id: z.string().uuid().optional(),
   url: z.string().url(),
   title: z.string().min(1).optional(),
   sensitivity: sensitivitySchema.default('internal'),

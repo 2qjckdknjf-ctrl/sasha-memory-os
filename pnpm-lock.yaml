@@ -287,6 +287,9 @@ importers:
       '@memory-os/retrieval':
         specifier: workspace:*
         version: link:../../packages/retrieval
+      '@memory-os/schemas':
+        specifier: workspace:*
+        version: link:../../packages/schemas
 
   workers/consolidation:
     dependencies:
