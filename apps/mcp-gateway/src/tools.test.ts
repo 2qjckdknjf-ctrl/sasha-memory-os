@@ -581,6 +581,25 @@ describe('mcp gateway alpha', () => {
     );
   });
 
+  it('still resolves an explicit short slug without any text hint', async () => {
+    const gateway = createShortTokenGateway();
+    const mcp = createMcpHandlers({ gateway: gateway as any });
+    await mcp.call('memory.store_decision', {
+      workspace_id: workspaceId,
+      actor_subject_id: cursor,
+      project_id: 'core',
+      title: 'General note',
+      content: 'No textual project reference is needed here.',
+      idempotency_key: 'mcp-decision-explicit-core-1',
+      importance: 0.7,
+      confidence: 0.9,
+      sensitivity: 'internal',
+    });
+    expect(gateway.createDecision).toHaveBeenCalledWith(
+      expect.objectContaining({ projectId: coreProjectId }),
+    );
+  });
+
   it('rejects memory.store_decision without a project hint', async () => {
     const gateway = createTwoProjectGateway();
     const mcp = createMcpHandlers({ gateway: gateway as any });

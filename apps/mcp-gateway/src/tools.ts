@@ -118,7 +118,7 @@ type LocalProjectCandidate = ProjectCandidate & {
   aliases?: string[];
 };
 
-const MIN_INFERRED_PROJECT_TOKEN_LENGTH = 4;
+const MIN_INFERRED_PROJECT_TOKEN_LENGTH = 5;
 
 const LOCAL_PROJECT_CATALOG: LocalProjectCandidate[] = [
   {
