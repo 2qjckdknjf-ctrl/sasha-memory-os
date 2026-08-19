@@ -28,7 +28,10 @@ const primaryLinks: PrimaryLink[] = [
   { to: `/projects/${PROJECT_ID}`, label: 'Проект AISTROYKA' },
 ];
 
-const secondaryLabels = ['Audit', 'Privacy'];
+const secondaryLinks: PrimaryLink[] = [
+  { to: '/audit', label: 'Аудит' },
+  { to: '/privacy', label: 'Приватность' },
+];
 
 export function AppShell({
   backend,
@@ -65,12 +68,18 @@ export function AppShell({
             ))}
           </div>
 
-          <div className="shell-nav__group shell-nav__group--secondary" aria-label="Скоро">
-            {secondaryLabels.map((label) => (
-              <span key={label} className="shell-nav__soon">
-                {label}
-                <small>скоро</small>
-              </span>
+          <div className="shell-nav__group shell-nav__group--secondary" aria-label="Дополнительная навигация">
+            {secondaryLinks.map((link) => (
+              <NavLink
+                key={link.to}
+                to={link.to}
+                end={link.end}
+                className={({ isActive }) =>
+                  isActive ? 'shell-nav__link shell-nav__link--active' : 'shell-nav__link'
+                }
+              >
+                {link.label}
+              </NavLink>
             ))}
           </div>
         </nav>
