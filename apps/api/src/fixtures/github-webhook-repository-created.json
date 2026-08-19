@@ -1,0 +1,16 @@
+{
+  "action": "created",
+  "repository": {
+    "id": 902,
+    "name": "repo-new",
+    "full_name": "team/repo-new",
+    "html_url": "https://github.com/team/repo-new",
+    "description": "New repository webhook fixture.",
+    "default_branch": "main",
+    "private": false,
+    "archived": false,
+    "owner": {
+      "login": "team"
+    }
+  }
+}
