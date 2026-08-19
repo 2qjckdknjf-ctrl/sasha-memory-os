@@ -52,6 +52,9 @@ export function HomePage({
         <Link to="/connections" className="button-link button-link--secondary">
           Подключения
         </Link>
+        <Link to="/projects" className="button-link button-link--secondary">
+          Все проекты
+        </Link>
         <Link to={`/projects/${PROJECT_ID}`} className="button-link button-link--secondary">
           Открыть проект
         </Link>
