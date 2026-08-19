@@ -8,10 +8,14 @@ const migrationPath = fileURLToPath(
 const aclScopeMigrationPath = fileURLToPath(
   new URL('../../../supabase/migrations/20260819172929_m8_slice_03_acl_scope_and_project_list.sql', import.meta.url),
 );
+const projectRefFixMigrationPath = fileURLToPath(
+  new URL('../../../supabase/migrations/20260819224721_fix_project_ref_uuid_aggregate.sql', import.meta.url),
+);
 
 describe('m8 slice 03 migration guards', () => {
   const sql = readFileSync(migrationPath, 'utf8');
   const aclScopeSql = readFileSync(aclScopeMigrationPath, 'utf8');
+  const projectRefFixSql = readFileSync(projectRefFixMigrationPath, 'utf8');
 
   it('matches connector projects only by unique repository identity', () => {
     expect(sql).toContain(`repo->>'url' = v_repo_url`);
@@ -38,5 +42,10 @@ describe('m8 slice 03 migration guards', () => {
     expect(aclScopeSql).toContain(`WHEN p_requested_project_id IS NULL THEN p_acl_project_id IS NULL`);
     expect(aclScopeSql).toContain(`ELSE p_acl_project_id = p_requested_project_id`);
     expect(aclScopeSql).not.toContain(`unnest(coalesce(p.aliases`);
+  });
+
+  it('fixes project ref single-match resolution without invalid uuid aggregates', () => {
+    expect(projectRefFixSql).toContain(`(array_agg(id ORDER BY name, slug))[1]::text`);
+    expect(projectRefFixSql).not.toContain(`min(id)::text`);
   });
 });
