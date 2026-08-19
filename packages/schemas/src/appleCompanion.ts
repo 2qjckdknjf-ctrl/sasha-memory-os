@@ -57,6 +57,49 @@ export const appleCompanionPhotoLibrarySelectionDeltaSchema = z.object({
   updated: z.array(appleCompanionSelectedAssetSchema).default([]),
 });
 
+export const appleCompanionSelectionErrorCodeSchema = z.enum([
+  'out_of_scope',
+  'reselect_required',
+]);
+
+export const appleCompanionFileBookmarkSchema = z.object({
+  bookmark_id: z.string().min(1),
+  display_name: z.string().min(1),
+  is_directory: z.boolean(),
+  provider_item_identifier: z.string().min(1),
+  security_scoped_bookmark: z.string().min(1),
+  last_accessed_at: z.string().datetime().nullable().default(null),
+  stale: z.boolean().default(false),
+});
+
+export const appleCompanionFolderMonitorCheckpointSchema = z.object({
+  bookmark_id: z.string().min(1),
+  provider_item_identifier: z.string().min(1),
+  change_token: z.string().min(1).nullable().default(null),
+});
+
+export const appleCompanionFilesCheckpointSchema = z.object({
+  permission_state: applePermissionStateSchema.default('not_determined'),
+  selected_bookmarks: z.array(appleCompanionFileBookmarkSchema).default([]),
+  folder_checkpoints: z.array(appleCompanionFolderMonitorCheckpointSchema).default([]),
+});
+
+export const appleCompanionFileBookmarkResolutionSchema = z.discriminatedUnion('status', [
+  z.object({
+    status: z.literal('granted'),
+    bookmark: appleCompanionFileBookmarkSchema,
+  }),
+  z.object({
+    status: z.literal('out_of_scope'),
+    error_code: z.literal('out_of_scope'),
+  }),
+  z.object({
+    status: z.literal('reselect_required'),
+    error_code: z.literal('reselect_required'),
+    stale_bookmark_ids: z.array(z.string().min(1)).min(1),
+  }),
+]);
+
 export const appleCompanionProjectRefSchema = z.string().min(1);
 
 export const appleCompanionIngestRequestSchema = z
@@ -115,6 +158,8 @@ export const appleCompanionQueueStateSchema = z.enum([
   'done',
 ]);
 
+export const appleCompanionQueueErrorCodeSchema = z.enum(['reselect_required']);
+
 export const appleCompanionQueueItemSchema = z.object({
   id: z.string().uuid(),
   state: appleCompanionQueueStateSchema.default('pending'),
@@ -122,6 +167,7 @@ export const appleCompanionQueueItemSchema = z.object({
   payload: appleCompanionIngestRequestSchema,
   delete_local_after_ack: z.boolean().default(false),
   last_error: z.string().nullable().default(null),
+  last_error_code: appleCompanionQueueErrorCodeSchema.nullable().default(null),
   queued_at: z.string().datetime(),
   updated_at: z.string().datetime(),
   last_attempt_at: z.string().datetime().nullable().default(null),
@@ -133,6 +179,7 @@ export const appleCompanionQueueSchema = z.array(appleCompanionQueueItemSchema);
 
 export const appleCompanionDeviceQueueCursorSchema = z.object({
   photo_library: appleCompanionPhotoLibraryCheckpointSchema.optional(),
+  files: appleCompanionFilesCheckpointSchema.optional(),
 });
 
 export const appleCompanionQueueSnapshotSchema = z.object({
@@ -154,16 +201,42 @@ export type AppleCompanionPhotoLibraryCheckpoint = z.infer<
 export type AppleCompanionPhotoLibrarySelectionDelta = z.infer<
   typeof appleCompanionPhotoLibrarySelectionDeltaSchema
 >;
+export type AppleCompanionSelectionErrorCode = z.infer<
+  typeof appleCompanionSelectionErrorCodeSchema
+>;
+export type AppleCompanionFileBookmark = z.infer<typeof appleCompanionFileBookmarkSchema>;
+export type AppleCompanionFolderMonitorCheckpoint = z.infer<
+  typeof appleCompanionFolderMonitorCheckpointSchema
+>;
+export type AppleCompanionFilesCheckpoint = z.infer<typeof appleCompanionFilesCheckpointSchema>;
+export type AppleCompanionFileBookmarkResolution = z.infer<
+  typeof appleCompanionFileBookmarkResolutionSchema
+>;
 export type AppleCompanionIngestRequest = z.infer<typeof appleCompanionIngestRequestSchema>;
 export type AppleCompanionQueueState = z.infer<typeof appleCompanionQueueStateSchema>;
+export type AppleCompanionQueueErrorCode = z.infer<typeof appleCompanionQueueErrorCodeSchema>;
 export type AppleCompanionQueueItem = z.infer<typeof appleCompanionQueueItemSchema>;
 export type AppleCompanionDeviceQueueCursor = z.infer<
   typeof appleCompanionDeviceQueueCursorSchema
 >;
 export type AppleCompanionQueueSnapshot = z.infer<typeof appleCompanionQueueSnapshotSchema>;
 
+export type AppleCompanionSecurityScopedLease = {
+  bookmark_id: string;
+  stopAccessing: () => void;
+};
+
+export type AppleCompanionSecurityScopedLeaseStarter = (
+  bookmark: AppleCompanionFileBookmark,
+) => AppleCompanionSecurityScopedLease;
+
 function uniqueNonEmptyStrings(values: Array<string | undefined>): string[] {
   return [...new Set(values.filter((value): value is string => Boolean(value && value.trim())))];
+}
+
+function normalizeAppleCompanionProviderItemIdentifier(value: string): string {
+  if (value === '/') return value;
+  return value.replace(/\/+$/, '');
 }
 
 export function listAppleCompanionIdentifierCandidates(
@@ -196,6 +269,75 @@ export function matchesAppleCompanionSelectedAsset(input: {
   return listAppleCompanionIdentifierCandidates(input.identifiers).some((key) =>
     selectedAssetIndex.has(key),
   );
+}
+
+export function matchesAppleCompanionFileBookmarkScope(input: {
+  providerItemIdentifier: string;
+  bookmark: AppleCompanionFileBookmark;
+}): boolean {
+  const bookmarkIdentifier = normalizeAppleCompanionProviderItemIdentifier(
+    input.bookmark.provider_item_identifier,
+  );
+  const itemIdentifier = normalizeAppleCompanionProviderItemIdentifier(input.providerItemIdentifier);
+  if (bookmarkIdentifier === itemIdentifier) {
+    return true;
+  }
+  if (!input.bookmark.is_directory) {
+    return false;
+  }
+  if (bookmarkIdentifier === '/') {
+    return itemIdentifier.startsWith('/');
+  }
+  return itemIdentifier.startsWith(`${bookmarkIdentifier}/`);
+}
+
+export function resolveAppleCompanionFileBookmark(input: {
+  identifiers: AppleCompanionIdentifier;
+  selectedBookmarks: AppleCompanionFileBookmark[];
+}): AppleCompanionFileBookmarkResolution {
+  const providerItemIdentifier = input.identifiers.provider_item_identifier?.trim();
+  if (!providerItemIdentifier) {
+    return appleCompanionFileBookmarkResolutionSchema.parse({
+      status: 'out_of_scope',
+      error_code: 'out_of_scope',
+    });
+  }
+
+  const matchingBookmarks = input.selectedBookmarks.filter((bookmark) =>
+    matchesAppleCompanionFileBookmarkScope({
+      providerItemIdentifier,
+      bookmark,
+    }),
+  );
+  const grantedBookmark = matchingBookmarks.find((bookmark) => !bookmark.stale);
+  if (grantedBookmark) {
+    return appleCompanionFileBookmarkResolutionSchema.parse({
+      status: 'granted',
+      bookmark: grantedBookmark,
+    });
+  }
+  if (matchingBookmarks.length > 0) {
+    return appleCompanionFileBookmarkResolutionSchema.parse({
+      status: 'reselect_required',
+      error_code: 'reselect_required',
+      stale_bookmark_ids: matchingBookmarks.map((bookmark) => bookmark.bookmark_id),
+    });
+  }
+  return appleCompanionFileBookmarkResolutionSchema.parse({
+    status: 'out_of_scope',
+    error_code: 'out_of_scope',
+  });
+}
+
+export function canIngestAppleCompanionFile(input: {
+  identifiers: AppleCompanionIdentifier;
+  selectedBookmarks?: AppleCompanionFileBookmark[];
+}): boolean {
+  const selectedBookmarks = input.selectedBookmarks ?? [];
+  return resolveAppleCompanionFileBookmark({
+    identifiers: input.identifiers,
+    selectedBookmarks,
+  }).status === 'granted';
 }
 
 export function canIngestApplePhotoLibraryAsset(input: {
@@ -235,6 +377,7 @@ export function createAppleCompanionQueueItem(input: {
     payload: input.payload,
     delete_local_after_ack: input.payload.delete_local_after_ack,
     last_error: null,
+    last_error_code: null,
     queued_at: queuedAt,
     updated_at: queuedAt,
     last_attempt_at: null,
@@ -257,6 +400,7 @@ export function markAppleCompanionQueueItemUploading(
             updated_at: attemptedAt,
             last_attempt_at: attemptedAt,
             last_error: null,
+            last_error_code: null,
           }
         : item,
     ),
@@ -269,6 +413,7 @@ export function markAppleCompanionQueueItemFailed(
   errorMessage: string,
   failedAt = new Date().toISOString(),
   retryDelayMs = 60_000,
+  errorCode: AppleCompanionQueueErrorCode | null = null,
 ): AppleCompanionQueueItem[] {
   return appleCompanionQueueSchema.parse(
     queue.map((item) =>
@@ -280,7 +425,31 @@ export function markAppleCompanionQueueItemFailed(
             updated_at: failedAt,
             last_attempt_at: failedAt,
             last_error: errorMessage,
+            last_error_code: errorCode,
             next_retry_at: new Date(Date.parse(failedAt) + retryDelayMs).toISOString(),
+          }
+        : item,
+    ),
+  );
+}
+
+export function markAppleCompanionQueueItemReselectRequired(
+  queue: AppleCompanionQueueItem[],
+  itemId: string,
+  failedAt = new Date().toISOString(),
+): AppleCompanionQueueItem[] {
+  return appleCompanionQueueSchema.parse(
+    queue.map((item) =>
+      item.id === itemId
+        ? {
+            ...item,
+            state: 'failed',
+            attempt_count: item.attempt_count + 1,
+            updated_at: failedAt,
+            last_attempt_at: failedAt,
+            last_error: 'reselect_required',
+            last_error_code: 'reselect_required',
+            next_retry_at: null,
           }
         : item,
     ),
@@ -302,6 +471,7 @@ export function markAppleCompanionQueueItemDone(
             completed_at: completedAt,
             next_retry_at: null,
             last_error: null,
+            last_error_code: null,
           }
         : item,
     ),
@@ -313,4 +483,17 @@ export function acknowledgeAppleCompanionQueueItem(
   itemId: string,
 ): AppleCompanionQueueItem[] {
   return appleCompanionQueueSchema.parse(queue.filter((item) => item.id !== itemId));
+}
+
+export async function withAppleCompanionSecurityScopedLease<T>(input: {
+  bookmark: AppleCompanionFileBookmark;
+  startAccessing: AppleCompanionSecurityScopedLeaseStarter;
+  read: (lease: AppleCompanionSecurityScopedLease) => Promise<T> | T;
+}): Promise<T> {
+  const lease = input.startAccessing(input.bookmark);
+  try {
+    return await input.read(lease);
+  } finally {
+    lease.stopAccessing();
+  }
 }

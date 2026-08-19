@@ -10,17 +10,23 @@ import {
   type RegisteredConnector,
 } from '@memory-os/connector-sdk';
 import {
+  canIngestAppleCompanionFile,
   canIngestApplePhotoLibraryAsset,
   listAppleCompanionIdentifierCandidates,
   matchesAppleCompanionSelectedAsset,
   type AppleCompanionIngestRequest,
+  type AppleCompanionFileBookmark,
+  type AppleCompanionFilesCheckpoint,
   type AppleCompanionPhotoLibraryCheckpoint,
   type ApplePermissionState,
+  resolveAppleCompanionFileBookmark,
 } from '@memory-os/schemas';
 
 export const APPLE_BRIDGE_CURSOR_STREAM = 'apple:device-items' as const;
 const APPLE_PHOTO_LIBRARY_CHANGE_TOKEN_KEY = 'photoLibraryChangeToken' as const;
 const APPLE_PHOTO_LIBRARY_DELTA_REASON_KEY = 'photoLibraryDeltaReason' as const;
+const APPLE_FILES_CHANGE_TOKEN_KEY = 'filesChangeToken' as const;
+const APPLE_FILES_DELTA_REASON_KEY = 'filesSelectionDeltaReason' as const;
 
 type AppleBridgeScenario = 'default' | 'rate_limit';
 
@@ -29,6 +35,7 @@ export type AppleBridgeRawObject = AppleCompanionIngestRequest & {
   permissions?: Record<string, unknown>;
   poison?: boolean;
   photo_library_checkpoint?: AppleCompanionPhotoLibraryCheckpoint;
+  files_checkpoint?: AppleCompanionFilesCheckpoint;
 };
 
 export type ApplePhotoLibrarySelectionDeltaInput = {
@@ -39,6 +46,26 @@ export type ApplePhotoLibrarySelectionDeltaInput = {
 };
 
 type ApplePhotoLibraryDeltaReason = 'selection_removed' | 'permission_revoked';
+type AppleFilesDeltaReason = 'bookmark_removed';
+
+export type AppleFilesSelectionDeltaInput = {
+  previousCheckpoint: AppleCompanionFilesCheckpoint | null;
+  nextCheckpoint: AppleCompanionFilesCheckpoint;
+  knownFiles: AppleBridgeRawObject[];
+  currentFiles: AppleBridgeRawObject[];
+};
+
+export type AppleFilesSelectionDeltaResult =
+  | {
+      status: 'ready';
+      rawObjects: AppleBridgeRawObject[];
+    }
+  | {
+      status: 'reselect_required';
+      error_code: 'reselect_required';
+      stale_bookmark_ids: string[];
+      rawObjects: [];
+    };
 
 function resolveAppleBridgeScenario(context: ConnectorSyncContext): AppleBridgeScenario {
   const scenario = context.account.metadata?.appleScenario;
@@ -95,10 +122,21 @@ function isPhotoLibraryAsset(rawObject: AppleBridgeRawObject): boolean {
   return rawObject.source === 'photo_library' && rawObject.kind === 'photo';
 }
 
+function isDocumentPickerFile(rawObject: AppleBridgeRawObject): boolean {
+  return rawObject.source === 'document_picker' && rawObject.kind === 'file';
+}
+
 function resolvePhotoLibraryPermissionState(rawObject: AppleBridgeRawObject): ApplePermissionState {
   const checkpointState = rawObject.photo_library_checkpoint?.permission_state;
   if (checkpointState) return checkpointState;
   const permissionState = rawObject.permissions?.photo_library;
+  return isApplePermissionState(permissionState) ? permissionState : 'not_determined';
+}
+
+function resolveFilesPermissionState(rawObject: AppleBridgeRawObject): ApplePermissionState {
+  const checkpointState = rawObject.files_checkpoint?.permission_state;
+  if (checkpointState) return checkpointState;
+  const permissionState = rawObject.permissions?.files;
   return isApplePermissionState(permissionState) ? permissionState : 'not_determined';
 }
 
@@ -121,6 +159,40 @@ function withPhotoLibraryCheckpoint(
   };
 }
 
+function findFolderMonitorCheckpoint(
+  checkpoint: AppleCompanionFilesCheckpoint,
+  bookmark: AppleCompanionFileBookmark,
+) {
+  return checkpoint.folder_checkpoints.find(
+    (folderCheckpoint) =>
+      folderCheckpoint.bookmark_id === bookmark.bookmark_id &&
+      folderCheckpoint.provider_item_identifier === bookmark.provider_item_identifier,
+  );
+}
+
+function withFilesCheckpoint(
+  rawObject: AppleBridgeRawObject,
+  checkpoint: AppleCompanionFilesCheckpoint,
+  bookmark: AppleCompanionFileBookmark,
+): AppleBridgeRawObject {
+  const folderCheckpoint = findFolderMonitorCheckpoint(checkpoint, bookmark);
+  return {
+    ...rawObject,
+    external_version:
+      rawObject.external_version ?? folderCheckpoint?.change_token ?? rawObject.observed_at,
+    permissions: {
+      ...rawObject.permissions,
+      files: checkpoint.permission_state,
+    },
+    files_checkpoint: checkpoint,
+    metadata: {
+      ...rawObject.metadata,
+      files_bookmark_id: bookmark.bookmark_id,
+      files_change_token: folderCheckpoint?.change_token ?? null,
+    },
+  };
+}
+
 function buildPhotoLibraryAssetIndex(
   assets: AppleBridgeRawObject[],
 ): Map<string, AppleBridgeRawObject> {
@@ -130,6 +202,21 @@ function buildPhotoLibraryAssetIndex(
       if (!index.has(key)) {
         index.set(key, asset);
       }
+    }
+  }
+  return index;
+}
+
+function resolveProviderItemIdentifier(rawObject: AppleBridgeRawObject): string | null {
+  return rawObject.identifiers.provider_item_identifier?.trim() || null;
+}
+
+function buildFilesIndex(rawObjects: AppleBridgeRawObject[]): Map<string, AppleBridgeRawObject> {
+  const index = new Map<string, AppleBridgeRawObject>();
+  for (const rawObject of rawObjects) {
+    const providerItemIdentifier = resolveProviderItemIdentifier(rawObject);
+    if (providerItemIdentifier && !index.has(providerItemIdentifier)) {
+      index.set(providerItemIdentifier, rawObject);
     }
   }
   return index;
@@ -178,6 +265,26 @@ function buildPhotoLibraryTombstone(
   };
 }
 
+function buildFilesTombstone(
+  rawObject: AppleBridgeRawObject,
+  checkpoint: AppleCompanionFilesCheckpoint,
+  bookmark: AppleCompanionFileBookmark,
+  reason: AppleFilesDeltaReason,
+): AppleBridgeRawObject {
+  const checkpointed = withFilesCheckpoint(rawObject, checkpoint, bookmark);
+  return {
+    ...checkpointed,
+    deleted: true,
+    external_version:
+      findFolderMonitorCheckpoint(checkpoint, bookmark)?.change_token ?? checkpointed.external_version,
+    idempotency_key: `${rawObject.idempotency_key}/${reason}/${bookmark.bookmark_id}`,
+    metadata: {
+      ...checkpointed.metadata,
+      [APPLE_FILES_DELTA_REASON_KEY]: reason,
+    },
+  };
+}
+
 function uniqueRawObjectsByItemId(rawObjects: AppleBridgeRawObject[]): AppleBridgeRawObject[] {
   const seen = new Set<string>();
   return rawObjects.filter((rawObject) => {
@@ -190,17 +297,45 @@ function uniqueRawObjectsByItemId(rawObjects: AppleBridgeRawObject[]): AppleBrid
 export function filterAppleBridgeRawObjectsForCurrentSelection(
   rawObjects: AppleBridgeRawObject[],
 ): AppleBridgeRawObject[] {
+  return filterAppleBridgeFileRawObjectsForCurrentSelection(
+    rawObjects.filter((rawObject) => {
+      if (!isPhotoLibraryAsset(rawObject)) return true;
+      if (rawObject.deleted) return true;
+
+      const permissionState = resolvePhotoLibraryPermissionState(rawObject);
+      switch (permissionState) {
+        case 'limited':
+          return canIngestApplePhotoLibraryAsset({
+            permissionState,
+            identifiers: rawObject.identifiers,
+            selectedAssets: rawObject.photo_library_checkpoint?.selected_assets ?? [],
+          });
+        case 'full':
+        case 'denied':
+        case 'not_determined':
+          return false;
+        default: {
+          const _exhaustive: never = permissionState;
+          return _exhaustive;
+        }
+      }
+    }),
+  );
+}
+
+export function filterAppleBridgeFileRawObjectsForCurrentSelection(
+  rawObjects: AppleBridgeRawObject[],
+): AppleBridgeRawObject[] {
   return rawObjects.filter((rawObject) => {
-    if (!isPhotoLibraryAsset(rawObject)) return true;
+    if (!isDocumentPickerFile(rawObject)) return true;
     if (rawObject.deleted) return true;
 
-    const permissionState = resolvePhotoLibraryPermissionState(rawObject);
+    const permissionState = resolveFilesPermissionState(rawObject);
     switch (permissionState) {
       case 'limited':
-        return canIngestApplePhotoLibraryAsset({
-          permissionState,
+        return canIngestAppleCompanionFile({
           identifiers: rawObject.identifiers,
-          selectedAssets: rawObject.photo_library_checkpoint?.selected_assets ?? [],
+          selectedBookmarks: rawObject.files_checkpoint?.selected_bookmarks ?? [],
         });
       case 'full':
       case 'denied':
@@ -212,6 +347,102 @@ export function filterAppleBridgeRawObjectsForCurrentSelection(
       }
     }
   });
+}
+
+export function buildAppleFilesSelectionDelta(
+  input: AppleFilesSelectionDeltaInput,
+): AppleFilesSelectionDeltaResult {
+  switch (input.nextCheckpoint.permission_state) {
+    case 'limited': {
+      const knownFilesIndex = buildFilesIndex(input.knownFiles);
+      const delta: AppleBridgeRawObject[] = [];
+      const staleBookmarkIds = new Set<string>();
+
+      for (const file of input.currentFiles) {
+        const resolution = resolveAppleCompanionFileBookmark({
+          identifiers: file.identifiers,
+          selectedBookmarks: input.nextCheckpoint.selected_bookmarks,
+        });
+        switch (resolution.status) {
+          case 'granted': {
+            const checkpointed = withFilesCheckpoint(file, input.nextCheckpoint, resolution.bookmark);
+            const providerItemIdentifier = resolveProviderItemIdentifier(checkpointed);
+            const knownFile = providerItemIdentifier
+              ? knownFilesIndex.get(providerItemIdentifier)
+              : null;
+            if (!knownFile || hasAppleBridgeRawObjectChanged(checkpointed, knownFile)) {
+              delta.push(checkpointed);
+            }
+            break;
+          }
+          case 'reselect_required':
+            for (const bookmarkId of resolution.stale_bookmark_ids) {
+              staleBookmarkIds.add(bookmarkId);
+            }
+            break;
+          case 'out_of_scope':
+            break;
+          default: {
+            const _exhaustive: never = resolution;
+            return _exhaustive;
+          }
+        }
+      }
+
+      if (staleBookmarkIds.size > 0) {
+        return {
+          status: 'reselect_required',
+          error_code: 'reselect_required',
+          stale_bookmark_ids: [...staleBookmarkIds],
+          rawObjects: [],
+        };
+      }
+
+      if (input.previousCheckpoint?.permission_state === 'limited') {
+        const nextBookmarkIds = new Set(
+          input.nextCheckpoint.selected_bookmarks.map((bookmark) => bookmark.bookmark_id),
+        );
+        const removedBookmarks = input.previousCheckpoint.selected_bookmarks.filter(
+          (bookmark) => !nextBookmarkIds.has(bookmark.bookmark_id),
+        );
+        for (const file of input.knownFiles) {
+          if (file.deleted) continue;
+          const previousResolution = resolveAppleCompanionFileBookmark({
+            identifiers: file.identifiers,
+            selectedBookmarks: input.previousCheckpoint.selected_bookmarks,
+          });
+          if (previousResolution.status !== 'granted') {
+            continue;
+          }
+          const removedBookmark = removedBookmarks.find(
+            (bookmark) => bookmark.bookmark_id === previousResolution.bookmark.bookmark_id,
+          );
+          if (!removedBookmark) {
+            continue;
+          }
+          delta.push(
+            buildFilesTombstone(file, input.nextCheckpoint, removedBookmark, 'bookmark_removed'),
+          );
+        }
+      }
+
+      return {
+        status: 'ready',
+        rawObjects: uniqueRawObjectsByItemId(filterAppleBridgeFileRawObjectsForCurrentSelection(delta)),
+      };
+    }
+    case 'denied':
+    case 'not_determined':
+    case 'full':
+      return {
+        status: 'ready',
+        rawObjects: [],
+      };
+    default: {
+      const _exhaustive: never = input.nextCheckpoint.permission_state;
+      return _exhaustive;
+    }
+  }
 }
 
 export function buildApplePhotoLibrarySelectionDelta(
@@ -392,6 +623,7 @@ export function buildAppleBridgeRecord(input: {
         itemId: input.rawObject.item_id,
         deleteLocalAfterAck: input.rawObject.delete_local_after_ack,
         photoLibraryCheckpoint: input.rawObject.photo_library_checkpoint ?? null,
+        filesCheckpoint: input.rawObject.files_checkpoint ?? null,
         ...input.rawObject.metadata,
       },
       canonicalReference,
@@ -691,6 +923,12 @@ export const appleBridgeConnector: RegisteredConnector<AppleBridgeRawObject> = {
           ? {
               [APPLE_PHOTO_LIBRARY_CHANGE_TOKEN_KEY]:
                 newestRawObject.photo_library_checkpoint.change_token,
+            }
+          : {}),
+        ...(newestRawObject.files_checkpoint?.folder_checkpoints[0]?.change_token
+          ? {
+              [APPLE_FILES_CHANGE_TOKEN_KEY]:
+                newestRawObject.files_checkpoint.folder_checkpoints[0].change_token,
             }
           : {}),
       });

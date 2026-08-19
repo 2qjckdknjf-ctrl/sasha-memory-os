@@ -1,6 +1,6 @@
 import Foundation
 
-// Mirrors packages/schemas/src/appleCompanion.ts for Slice 02.
+// Mirrors packages/schemas/src/appleCompanion.ts for Slice 03.
 public enum ApplePermissionState: String, Codable, CaseIterable, Sendable {
     case notDetermined = "not_determined"
     case limited
@@ -42,6 +42,15 @@ public enum AppleCompanionQueueState: String, Codable, CaseIterable, Sendable {
     case uploading
     case failed
     case done
+}
+
+public enum AppleCompanionSelectionErrorCode: String, Codable, CaseIterable, Sendable {
+    case outOfScope = "out_of_scope"
+    case reselectRequired = "reselect_required"
+}
+
+public enum AppleCompanionQueueErrorCode: String, Codable, CaseIterable, Sendable {
+    case reselectRequired = "reselect_required"
 }
 
 public enum JSONValue: Codable, Hashable, Sendable {
@@ -200,6 +209,120 @@ public struct AppleCompanionPhotoLibrarySelectionDelta: Codable, Hashable, Senda
     }
 }
 
+public struct AppleCompanionFileBookmark: Codable, Hashable, Sendable {
+    public var bookmarkID: String
+    public var displayName: String
+    public var isDirectory: Bool
+    public var providerItemIdentifier: String
+    public var securityScopedBookmark: String
+    public var lastAccessedAt: String?
+    public var stale: Bool
+
+    public init(
+        bookmarkID: String,
+        displayName: String,
+        isDirectory: Bool,
+        providerItemIdentifier: String,
+        securityScopedBookmark: String,
+        lastAccessedAt: String? = nil,
+        stale: Bool = false
+    ) {
+        self.bookmarkID = bookmarkID
+        self.displayName = displayName
+        self.isDirectory = isDirectory
+        self.providerItemIdentifier = providerItemIdentifier
+        self.securityScopedBookmark = securityScopedBookmark
+        self.lastAccessedAt = lastAccessedAt
+        self.stale = stale
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case bookmarkID = "bookmark_id"
+        case displayName = "display_name"
+        case isDirectory = "is_directory"
+        case providerItemIdentifier = "provider_item_identifier"
+        case securityScopedBookmark = "security_scoped_bookmark"
+        case lastAccessedAt = "last_accessed_at"
+        case stale
+    }
+}
+
+public struct AppleCompanionFolderMonitorCheckpoint: Codable, Hashable, Sendable {
+    public var bookmarkID: String
+    public var providerItemIdentifier: String
+    public var changeToken: String?
+
+    public init(
+        bookmarkID: String,
+        providerItemIdentifier: String,
+        changeToken: String? = nil
+    ) {
+        self.bookmarkID = bookmarkID
+        self.providerItemIdentifier = providerItemIdentifier
+        self.changeToken = changeToken
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case bookmarkID = "bookmark_id"
+        case providerItemIdentifier = "provider_item_identifier"
+        case changeToken = "change_token"
+    }
+}
+
+public struct AppleCompanionFilesCheckpoint: Codable, Hashable, Sendable {
+    public var permissionState: ApplePermissionState
+    public var selectedBookmarks: [AppleCompanionFileBookmark]
+    public var folderCheckpoints: [AppleCompanionFolderMonitorCheckpoint]
+
+    public init(
+        permissionState: ApplePermissionState = .notDetermined,
+        selectedBookmarks: [AppleCompanionFileBookmark] = [],
+        folderCheckpoints: [AppleCompanionFolderMonitorCheckpoint] = []
+    ) {
+        self.permissionState = permissionState
+        self.selectedBookmarks = selectedBookmarks
+        self.folderCheckpoints = folderCheckpoints
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case permissionState = "permission_state"
+        case selectedBookmarks = "selected_bookmarks"
+        case folderCheckpoints = "folder_checkpoints"
+    }
+}
+
+public enum AppleCompanionFileBookmarkResolutionStatus: String, Codable, CaseIterable, Sendable {
+    case granted
+    case outOfScope = "out_of_scope"
+    case reselectRequired = "reselect_required"
+}
+
+public struct AppleCompanionFileBookmarkResolution: Codable, Hashable, Sendable {
+    public var status: AppleCompanionFileBookmarkResolutionStatus
+    public var bookmark: AppleCompanionFileBookmark?
+    public var errorCode: AppleCompanionSelectionErrorCode?
+    public var staleBookmarkIDs: [String]
+
+    public init(
+        status: AppleCompanionFileBookmarkResolutionStatus,
+        bookmark: AppleCompanionFileBookmark? = nil,
+        errorCode: AppleCompanionSelectionErrorCode? = nil,
+        staleBookmarkIDs: [String] = []
+    ) {
+        self.status = status
+        self.bookmark = bookmark
+        self.errorCode = errorCode
+        self.staleBookmarkIDs = staleBookmarkIDs
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case status
+        case bookmark
+        case errorCode = "error_code"
+        case staleBookmarkIDs = "stale_bookmark_ids"
+    }
+}
+
 public struct AppleCompanionIngestRequest: Codable, Hashable, Identifiable, Sendable {
     public var workspaceID: String
     public var projectID: String
@@ -307,6 +430,7 @@ public struct AppleCompanionQueueItem: Codable, Hashable, Identifiable, Sendable
     public var payload: AppleCompanionIngestRequest
     public var deleteLocalAfterAck: Bool
     public var lastError: String?
+    public var lastErrorCode: AppleCompanionQueueErrorCode?
     public var queuedAt: String
     public var updatedAt: String
     public var lastAttemptAt: String?
@@ -320,6 +444,7 @@ public struct AppleCompanionQueueItem: Codable, Hashable, Identifiable, Sendable
         payload: AppleCompanionIngestRequest,
         deleteLocalAfterAck: Bool,
         lastError: String? = nil,
+        lastErrorCode: AppleCompanionQueueErrorCode? = nil,
         queuedAt: String,
         updatedAt: String,
         lastAttemptAt: String? = nil,
@@ -332,6 +457,7 @@ public struct AppleCompanionQueueItem: Codable, Hashable, Identifiable, Sendable
         self.payload = payload
         self.deleteLocalAfterAck = deleteLocalAfterAck
         self.lastError = lastError
+        self.lastErrorCode = lastErrorCode
         self.queuedAt = queuedAt
         self.updatedAt = updatedAt
         self.lastAttemptAt = lastAttemptAt
@@ -346,6 +472,7 @@ public struct AppleCompanionQueueItem: Codable, Hashable, Identifiable, Sendable
         case payload
         case deleteLocalAfterAck = "delete_local_after_ack"
         case lastError = "last_error"
+        case lastErrorCode = "last_error_code"
         case queuedAt = "queued_at"
         case updatedAt = "updated_at"
         case lastAttemptAt = "last_attempt_at"
@@ -356,13 +483,19 @@ public struct AppleCompanionQueueItem: Codable, Hashable, Identifiable, Sendable
 
 public struct AppleCompanionDeviceQueueCursor: Codable, Hashable, Sendable {
     public var photoLibrary: AppleCompanionPhotoLibraryCheckpoint?
+    public var files: AppleCompanionFilesCheckpoint?
 
-    public init(photoLibrary: AppleCompanionPhotoLibraryCheckpoint? = nil) {
+    public init(
+        photoLibrary: AppleCompanionPhotoLibraryCheckpoint? = nil,
+        files: AppleCompanionFilesCheckpoint? = nil
+    ) {
         self.photoLibrary = photoLibrary
+        self.files = files
     }
 
     enum CodingKeys: String, CodingKey {
         case photoLibrary = "photo_library"
+        case files
     }
 }
 

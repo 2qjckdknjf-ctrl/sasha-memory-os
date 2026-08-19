@@ -1,15 +1,20 @@
 import { describe, expect, it } from 'vitest';
 import {
   acknowledgeAppleCompanionQueueItem,
+  appleCompanionFilesCheckpointSchema,
   appleCompanionIngestRequestSchema,
   appleCompanionPhotoLibraryCheckpointSchema,
   appleCompanionQueueSchema,
+  canIngestAppleCompanionFile,
   canIngestApplePhotoLibraryAsset,
   createAppleCompanionQueueItem,
+  markAppleCompanionQueueItemReselectRequired,
   matchesAppleCompanionSelectedAsset,
   markAppleCompanionQueueItemDone,
   markAppleCompanionQueueItemFailed,
   markAppleCompanionQueueItemUploading,
+  resolveAppleCompanionFileBookmark,
+  withAppleCompanionSecurityScopedLease,
 } from './appleCompanion.js';
 
 const basePayload = {
@@ -74,6 +79,35 @@ describe('appleCompanionPhotoLibraryCheckpointSchema', () => {
   });
 });
 
+describe('appleCompanionFilesCheckpointSchema', () => {
+  it('round-trips selected files bookmarks and folder monitor checkpoints', () => {
+    const parsed = appleCompanionFilesCheckpointSchema.parse({
+      permission_state: 'limited',
+      selected_bookmarks: [
+        {
+          bookmark_id: 'bookmark-projects-a',
+          display_name: 'Projects/A',
+          is_directory: true,
+          provider_item_identifier: '/Projects/A',
+          security_scoped_bookmark: 'opaque-bookmark-a',
+          last_accessed_at: '2026-08-19T23:20:00.000Z',
+          stale: false,
+        },
+      ],
+      folder_checkpoints: [
+        {
+          bookmark_id: 'bookmark-projects-a',
+          provider_item_identifier: '/Projects/A',
+          change_token: 'nsfileprovider-page-2',
+        },
+      ],
+    });
+
+    expect(parsed.selected_bookmarks[0]?.display_name).toBe('Projects/A');
+    expect(parsed.folder_checkpoints[0]?.change_token).toBe('nsfileprovider-page-2');
+  });
+});
+
 describe('limited-library helpers', () => {
   const selectedAssets = [{ local_identifier: 'PHOTO-LOCAL-1' }, { cloud_identifier: 'PHOTO-CLOUD-2' }];
 
@@ -123,6 +157,77 @@ describe('limited-library helpers', () => {
         selectedAssets,
       }),
     ).toBe(false);
+  });
+});
+
+describe('selected-files bookmark helpers', () => {
+  const selectedBookmarks = [
+    {
+      bookmark_id: 'bookmark-projects-a',
+      display_name: 'Projects/A',
+      is_directory: true as const,
+      provider_item_identifier: '/Projects/A',
+      security_scoped_bookmark: 'opaque-bookmark-projects-a',
+      last_accessed_at: '2026-08-19T23:20:00.000Z',
+      stale: false,
+    },
+    {
+      bookmark_id: 'bookmark-exact-file',
+      display_name: 'todo.md',
+      is_directory: false as const,
+      provider_item_identifier: '/Inbox/todo.md',
+      security_scoped_bookmark: 'opaque-bookmark-todo',
+      last_accessed_at: '2026-08-19T23:21:00.000Z',
+      stale: false,
+    },
+  ];
+
+  it('allows a child of a selected folder and rejects a sibling folder', () => {
+    expect(
+      canIngestAppleCompanionFile({
+        identifiers: { provider_item_identifier: '/Projects/A/specs/roadmap.md' },
+        selectedBookmarks,
+      }),
+    ).toBe(true);
+    expect(
+      canIngestAppleCompanionFile({
+        identifiers: { provider_item_identifier: '/Projects/B/specs/roadmap.md' },
+        selectedBookmarks,
+      }),
+    ).toBe(false);
+  });
+
+  it('allows only the exact selected file when the bookmark is a file', () => {
+    expect(
+      canIngestAppleCompanionFile({
+        identifiers: { provider_item_identifier: '/Inbox/todo.md' },
+        selectedBookmarks,
+      }),
+    ).toBe(true);
+    expect(
+      canIngestAppleCompanionFile({
+        identifiers: { provider_item_identifier: '/Inbox/todo-2.md' },
+        selectedBookmarks,
+      }),
+    ).toBe(false);
+  });
+
+  it('requires a visible reselect when a matching bookmark is stale', () => {
+    const resolution = resolveAppleCompanionFileBookmark({
+      identifiers: { provider_item_identifier: '/Projects/A/specs/roadmap.md' },
+      selectedBookmarks: [
+        {
+          ...selectedBookmarks[0],
+          stale: true,
+        },
+      ],
+    });
+
+    expect(resolution).toEqual({
+      status: 'reselect_required',
+      error_code: 'reselect_required',
+      stale_bookmark_ids: ['bookmark-projects-a'],
+    });
   });
 });
 
@@ -194,5 +299,74 @@ describe('appleCompanionQueueSchema', () => {
     expect(failed[0]?.attempt_count).toBe(1);
     expect(failed[0]?.last_error).toBe('network timeout');
     expect(failed[0]?.next_retry_at).toBe('2026-08-19T23:19:30.000Z');
+  });
+
+  it('surfaces stale bookmark failures as reselect_required without a retry timer', () => {
+    const queue = [
+      createAppleCompanionQueueItem({
+        payload: {
+          ...basePayload,
+          item_id: 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee',
+          kind: 'file' as const,
+          title: 'Projects roadmap',
+          filename: 'roadmap.md',
+          mime_type: 'text/markdown',
+          source: 'document_picker' as const,
+          identifiers: {
+            provider_item_identifier: '/Projects/A/specs/roadmap.md',
+          },
+        },
+        queuedAt: '2026-08-19T23:16:00.000Z',
+      }),
+    ];
+
+    const failed = markAppleCompanionQueueItemReselectRequired(
+      queue,
+      'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee',
+      '2026-08-19T23:17:00.000Z',
+    );
+
+    expect(failed[0]?.state).toBe('failed');
+    expect(failed[0]?.last_error).toBe('reselect_required');
+    expect(failed[0]?.last_error_code).toBe('reselect_required');
+    expect(failed[0]?.next_retry_at).toBeNull();
+  });
+});
+
+describe('security-scoped lease helper', () => {
+  it('always stops access after read failures', async () => {
+    const events: string[] = [];
+    await expect(
+      withAppleCompanionSecurityScopedLease({
+        bookmark: {
+          bookmark_id: 'bookmark-projects-a',
+          display_name: 'Projects/A',
+          is_directory: true,
+          provider_item_identifier: '/Projects/A',
+          security_scoped_bookmark: 'opaque-bookmark-projects-a',
+          last_accessed_at: '2026-08-19T23:20:00.000Z',
+          stale: false,
+        },
+        startAccessing(bookmark) {
+          events.push(`start:${bookmark.bookmark_id}`);
+          return {
+            bookmark_id: bookmark.bookmark_id,
+            stopAccessing() {
+              events.push(`stop:${bookmark.bookmark_id}`);
+            },
+          };
+        },
+        async read() {
+          events.push('read');
+          throw new Error('poison');
+        },
+      }),
+    ).rejects.toThrow(/poison/i);
+
+    expect(events).toEqual([
+      'start:bookmark-projects-a',
+      'read',
+      'stop:bookmark-projects-a',
+    ]);
   });
 });
