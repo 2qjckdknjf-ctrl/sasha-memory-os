@@ -1,5 +1,6 @@
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
+import { BrowserRouter } from 'react-router-dom';
 import { App } from './App';
 import { OAuthCallback } from './OAuthCallback';
 import './styles.css';
@@ -9,6 +10,12 @@ const path = window.location.pathname.replace(/\/$/, '') || '/';
 
 createRoot(root).render(
   <StrictMode>
-    {path === '/oauth/callback' ? <OAuthCallback /> : <App />}
+    {path === '/oauth/callback' ? (
+      <OAuthCallback />
+    ) : (
+      <BrowserRouter>
+        <App />
+      </BrowserRouter>
+    )}
   </StrictMode>,
 );
