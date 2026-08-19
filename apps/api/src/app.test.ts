@@ -679,6 +679,195 @@ describe('memory api demo slice', () => {
     expect(body.requests[0].correctionText).toContain('updated date');
   });
 
+  it('corrects a memory by superseding it with an authoritative replacement', async () => {
+    const app = createApp({});
+    const ownerId = '33333333-3333-4333-8333-333333333301';
+    const captured = await app.request('/v1/capture/text', {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'x-subject-id': chatgpt,
+      },
+      body: JSON.stringify({
+        workspace_id: workspaceId,
+        project_id: projectId,
+        title: 'Correction target',
+        text: 'The launch date is August 15.',
+        actor_subject_id: chatgpt,
+        idempotency_key: 'memory-correct-1',
+      }),
+    });
+    expect(captured.status).toBe(201);
+    const created = (await captured.json()) as { memoryId: string };
+
+    const corrected = await app.request(`/v1/memories/${created.memoryId}`, {
+      method: 'PATCH',
+      headers: {
+        'content-type': 'application/json',
+        'x-subject-id': ownerId,
+        'x-actor-key': 'owner',
+      },
+      body: JSON.stringify({
+        title: 'Correction target',
+        content: 'The launch date is August 19.',
+        reason: 'Confirmed against the signed release note.',
+        actor_subject_id: ownerId,
+      }),
+    });
+    expect(corrected.status).toBe(200);
+    const correctedBody = (await corrected.json()) as {
+      supersededId: string;
+      authoritativeId: string;
+      supersededStatus: string;
+      authoritativeStatus: string;
+      reason: string;
+    };
+    expect(correctedBody.supersededId).toBe(created.memoryId);
+    expect(correctedBody.authoritativeId).not.toBe(created.memoryId);
+    expect(correctedBody.supersededStatus).toBe('superseded');
+    expect(correctedBody.authoritativeStatus).toBe('verified');
+    expect(correctedBody.reason).toContain('signed release note');
+
+    const superseded = await app.request(`/v1/memories/${created.memoryId}`, {
+      headers: {
+        'x-subject-id': ownerId,
+        'x-actor-key': 'owner',
+      },
+    });
+    expect(superseded.status).toBe(200);
+    const supersededBody = (await superseded.json()) as {
+      memory: {
+        status: string;
+        supersededBy?: string | null;
+        metadata?: Record<string, unknown>;
+      };
+    };
+    expect(supersededBody.memory.status).toBe('superseded');
+    expect(supersededBody.memory.supersededBy).toBe(correctedBody.authoritativeId);
+    expect(supersededBody.memory.metadata?.correction_reason).toBe(
+      'Confirmed against the signed release note.',
+    );
+
+    const authoritative = await app.request(`/v1/memories/${correctedBody.authoritativeId}`, {
+      headers: {
+        'x-subject-id': ownerId,
+        'x-actor-key': 'owner',
+      },
+    });
+    expect(authoritative.status).toBe(200);
+    const authoritativeBody = (await authoritative.json()) as {
+      memory: {
+        status: string;
+        content: string;
+        metadata?: Record<string, unknown>;
+      };
+    };
+    expect(authoritativeBody.memory.status).toBe('verified');
+    expect(authoritativeBody.memory.content).toContain('August 19');
+    expect(authoritativeBody.memory.metadata?.corrected_from).toBe(created.memoryId);
+    expect(authoritativeBody.memory.metadata?.correction_reason).toBe(
+      'Confirmed against the signed release note.',
+    );
+
+    const audit = await app.request(
+      `/v1/audit?workspace_id=${workspaceId}&project_id=${projectId}&limit=20`,
+      {
+        headers: {
+          'x-subject-id': ownerId,
+          'x-actor-key': 'owner',
+        },
+      },
+    );
+    expect(audit.status).toBe(200);
+    const auditBody = (await audit.json()) as {
+      events: Array<{ action: string; reason?: string | null; afterState?: Record<string, unknown> }>;
+    };
+    expect(auditBody.events).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          action: 'memory.correct',
+          reason: 'Confirmed against the signed release note.',
+          afterState: expect.objectContaining({
+            supersededId: created.memoryId,
+            authoritativeId: correctedBody.authoritativeId,
+          }),
+        }),
+      ]),
+    );
+  });
+
+  it('rejects memory correction without a reason', async () => {
+    const app = createApp({});
+    const ownerId = '33333333-3333-4333-8333-333333333301';
+    const captured = await app.request('/v1/capture/text', {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'x-subject-id': chatgpt,
+      },
+      body: JSON.stringify({
+        workspace_id: workspaceId,
+        project_id: projectId,
+        title: 'Missing reason target',
+        text: 'This note lacks a correction reason.',
+        actor_subject_id: chatgpt,
+        idempotency_key: 'memory-correct-missing-reason-1',
+      }),
+    });
+    const created = (await captured.json()) as { memoryId: string };
+
+    const corrected = await app.request(`/v1/memories/${created.memoryId}`, {
+      method: 'PATCH',
+      headers: {
+        'content-type': 'application/json',
+        'x-subject-id': ownerId,
+        'x-actor-key': 'owner',
+      },
+      body: JSON.stringify({
+        content: 'Updated body without an audit reason.',
+        actor_subject_id: ownerId,
+      }),
+    });
+    expect(corrected.status).toBe(400);
+    const body = await corrected.json();
+    expect(String(body.error)).toContain('reason');
+  });
+
+  it('forbids non-owner memory correction', async () => {
+    const app = createApp({});
+    const captured = await app.request('/v1/capture/text', {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'x-subject-id': chatgpt,
+      },
+      body: JSON.stringify({
+        workspace_id: workspaceId,
+        project_id: projectId,
+        title: 'Unauthorized correction target',
+        text: 'Only the owner may correct this note.',
+        actor_subject_id: chatgpt,
+        idempotency_key: 'memory-correct-forbidden-1',
+      }),
+    });
+    const created = (await captured.json()) as { memoryId: string };
+
+    const corrected = await app.request(`/v1/memories/${created.memoryId}`, {
+      method: 'PATCH',
+      headers: {
+        'content-type': 'application/json',
+        'x-subject-id': cursor,
+        'x-actor-key': 'cursor',
+      },
+      body: JSON.stringify({
+        content: 'Unauthorized rewrite attempt.',
+        reason: 'Cursor tried to correct an owner-only memory.',
+        actor_subject_id: cursor,
+      }),
+    });
+    expect(corrected.status).toBe(403);
+  });
+
   it('lists audit events after status changes, handoffs, privacy, and export', async () => {
     const app = createApp({});
     const ownerId = '33333333-3333-4333-8333-333333333301';

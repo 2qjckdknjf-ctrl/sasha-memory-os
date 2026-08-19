@@ -60,6 +60,13 @@ export type SearchHit = {
 
 export type MemoryStatusAction = 'verified' | 'disputed' | 'retracted';
 
+export type CorrectMemoryPayload = {
+  reason: string;
+  title?: string;
+  content?: string;
+  replacementMemoryId?: string;
+};
+
 export type AttentionItemSource = 'review' | 'conflicts';
 
 export type MemoryDetail = {
@@ -83,6 +90,9 @@ export type MemoryDetail = {
   confidence?: number;
   schemaVersion?: string;
   metadata?: Record<string, unknown>;
+  source?: Record<string, unknown> | null;
+  evidence?: Array<Record<string, unknown>> | null;
+  provenance?: Record<string, unknown> | null;
   embeddingEngine?: string | null;
   embeddingDims?: number | null;
 };

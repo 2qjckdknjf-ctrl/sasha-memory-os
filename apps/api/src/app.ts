@@ -27,6 +27,7 @@ import {
   captureDocumentSchema,
   captureLinkSchema,
   captureTextSchema,
+  correctMemorySchema,
   createDecisionSchema,
   createHandoffSchema,
   createPrivacyRequestSchema,
@@ -240,6 +241,11 @@ function auditProjectId(entry: {
 function isForbiddenError(err: unknown): boolean {
   const message = err instanceof Error ? err.message : String(err);
   return /forbidden|42501|unauthorized/i.test(message);
+}
+
+function isNotFoundError(err: unknown): boolean {
+  const message = err instanceof Error ? err.message : String(err);
+  return /not found|P0002/i.test(message);
 }
 
 async function maybeEmbedCapturedMemory(
@@ -1827,6 +1833,69 @@ export function createApp(options?: {
       });
     } catch (err) {
       return c.json({ error: (err as Error).message }, 404);
+    }
+  });
+
+  app.patch('/v1/memories/:id', async (c) => {
+    const memoryId = c.req.param('id');
+    const rawBody = (await c.req.json().catch(() => ({}))) as Record<string, unknown>;
+    if (typeof rawBody.reason !== 'string' || rawBody.reason.trim() === '') {
+      return c.json({ error: 'reason required' }, 400);
+    }
+    const parsed = correctMemorySchema.safeParse(rawBody);
+    if (!parsed.success) {
+      const firstIssue = parsed.error.issues[0]?.message ?? 'invalid request';
+      return c.json({ error: firstIssue }, 400);
+    }
+    const body = parsed.data;
+    const authz = c.get('authz');
+    if (!authz.isOwner) {
+      return c.json({ error: 'forbidden' }, 403);
+    }
+    if (authz.subjectId !== body.actor_subject_id) {
+      return c.json({ error: 'forbidden' }, 403);
+    }
+
+    const gw = c.get('gateway');
+    if (gw) {
+      try {
+        const result = await gw.correctMemory({
+          subjectId: body.actor_subject_id,
+          memoryId,
+          reason: body.reason,
+          title: body.title,
+          content: body.content,
+          replacementMemoryId: body.replacement_memory_id,
+        });
+        return c.json(result);
+      } catch (err) {
+        if (isForbiddenError(err)) return c.json({ error: 'forbidden' }, 403);
+        if (isNotFoundError(err)) return c.json({ error: (err as Error).message }, 404);
+        return c.json({ error: (err as Error).message }, 400);
+      }
+    }
+
+    try {
+      const result = c.get('store').correctMemory({
+        memoryId,
+        reason: body.reason,
+        actorSubjectId: body.actor_subject_id,
+        title: body.title,
+        content: body.content,
+        replacementMemoryId: body.replacement_memory_id,
+      });
+      return c.json({
+        supersededId: result.superseded.id,
+        authoritativeId: result.authoritative.id,
+        supersededStatus: result.superseded.status,
+        authoritativeStatus: result.authoritative.status,
+        reason: body.reason,
+        projectId: result.authoritative.projectId,
+        title: result.authoritative.title,
+      });
+    } catch (err) {
+      if (isNotFoundError(err)) return c.json({ error: (err as Error).message }, 404);
+      return c.json({ error: (err as Error).message }, 400);
     }
   });
 

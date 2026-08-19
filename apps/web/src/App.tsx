@@ -27,6 +27,7 @@ import {
   type Actor,
   type BackendMode,
   type ConnectionRecord,
+  type CorrectMemoryPayload,
   type ExtractionCandidate,
   type MeResponse,
   type MemoryStatusAction,
@@ -630,6 +631,54 @@ export function App() {
     setLastCapture(`bulk ${status}: ok=${ok} failed=${failed}`);
     await onSearch();
     await refreshReviewQueue();
+  }
+
+  async function onCorrectMemory(
+    memoryId: string,
+    payload: CorrectMemoryPayload,
+  ): Promise<boolean> {
+    setError(null);
+    try {
+      if (backend === 'local') {
+        localStore.correctMemory({
+          memoryId,
+          reason: payload.reason,
+          actorSubjectId: subjectId,
+          title: payload.title,
+          content: payload.content,
+          replacementMemoryId: payload.replacementMemoryId,
+        });
+      } else {
+        await apiPatch(
+          `/v1/memories/${memoryId}`,
+          subjectId,
+          {
+            reason: payload.reason,
+            title: payload.title,
+            content: payload.content,
+            replacement_memory_id: payload.replacementMemoryId,
+            actor_subject_id: subjectId,
+          },
+          actor,
+        );
+      }
+      setLastCapture(`исправлена память ${memoryId.slice(0, 8)}…`);
+      setTick((current) => current + 1);
+      await onSearch();
+      try {
+        await refreshReviewQueue();
+      } catch (refreshError) {
+        setError(
+          `Исправление сохранено, но не удалось обновить очередь на проверку: ${
+            (refreshError as Error).message
+          }`,
+        );
+      }
+      return true;
+    } catch (err) {
+      setError((err as Error).message);
+      return false;
+    }
   }
 
   async function onEmbedMemory(memoryId: string, options?: { title?: string; text?: string }) {
@@ -1407,6 +1456,7 @@ export function App() {
               subjectId={subjectId}
               localStore={localStore}
               onSetMemoryStatus={onSetHitStatus}
+              onCorrectMemory={onCorrectMemory}
             />
           }
         />
