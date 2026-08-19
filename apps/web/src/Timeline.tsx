@@ -1,3 +1,4 @@
+import { Link } from 'react-router-dom';
 import { formatTimestamp, type TimelineEntry } from './controlCenter';
 
 type Props = {
@@ -22,7 +23,18 @@ export function Timeline({ entries, emptyMessage }: Props) {
                   <span>{entry.status}</span>
                   <span>{formatTimestamp(entry.at)}</span>
                 </div>
-                <h3>{entry.title}</h3>
+                <h3>
+                  {entry.memoryId ? (
+                    <Link
+                      to={`/memories/${entry.memoryId}`}
+                      state={{ from: 'timeline' as const }}
+                    >
+                      {entry.title}
+                    </Link>
+                  ) : (
+                    entry.title
+                  )}
+                </h3>
                 <p>{entry.content}</p>
               </li>
             );

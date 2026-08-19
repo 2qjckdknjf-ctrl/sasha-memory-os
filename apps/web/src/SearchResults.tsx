@@ -1,10 +1,12 @@
+import { Link } from 'react-router-dom';
 import { type SearchHit } from './controlCenter';
 
 type Props = {
   hits: SearchHit[];
+  search: string;
 };
 
-export function SearchResults({ hits }: Props) {
+export function SearchResults({ hits, search }: Props) {
   if (hits.length === 0) {
     return <p className="hint">Поиск пока не вернул совпадений.</p>;
   }
@@ -24,8 +26,38 @@ export function SearchResults({ hits }: Props) {
                 <span>score {hit.score.toFixed(4)}</span>
               ) : null}
             </div>
-            <h3>{hit.memory?.title ?? 'Untitled memory'}</h3>
+            <h3>
+              {hit.memory?.id ? (
+                <Link
+                  to={`/memories/${hit.memory.id}`}
+                  state={{
+                    from: 'search' as const,
+                    searchTerm: search,
+                    projectId: hit.memory.projectId ?? null,
+                  }}
+                >
+                  {hit.memory?.title ?? 'Без названия'}
+                </Link>
+              ) : (
+                (hit.memory?.title ?? 'Без названия')
+              )}
+            </h3>
             <p>{hit.memory?.content ?? ''}</p>
+            {hit.memory?.id ? (
+              <div className="actions">
+                <Link
+                  to={`/memories/${hit.memory.id}`}
+                  state={{
+                    from: 'search' as const,
+                    searchTerm: search,
+                    projectId: hit.memory.projectId ?? null,
+                  }}
+                  className="button-link button-link--secondary"
+                >
+                  Открыть инспектор
+                </Link>
+              </div>
+            ) : null}
           </li>
         );
       })}

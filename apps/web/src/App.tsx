@@ -5,6 +5,7 @@ import { apiGet, apiHealth, apiPatch, apiPost, setBoundAuthUserId } from './api'
 import { AppShell } from './AppShell';
 import { AuthPanel } from './AuthPanel';
 import { HomePage } from './HomePage';
+import { MemoryInspectorPage } from './MemoryInspectorPage';
 import { OpsPage } from './OpsPage';
 import { ProjectPage } from './ProjectPage';
 import { SearchPage } from './SearchPage';
@@ -18,6 +19,7 @@ import {
   type BackendMode,
   type ConnectionRecord,
   type ExtractionCandidate,
+  type MemoryStatusAction,
   type OutboxPendingItem,
   type RemoteContext,
   type ReviewQueueItem,
@@ -183,6 +185,12 @@ export function App() {
       for (const decision of remote.decisions ?? []) {
         entries.push({
           kind: 'decision',
+          memoryId:
+            typeof decision.id === 'string'
+              ? decision.id
+              : typeof decision.memory_id === 'string'
+                ? decision.memory_id
+                : undefined,
           at: String(decision.recorded_at ?? decision.recordedAt ?? new Date().toISOString()),
           title: String(decision.title ?? 'decision'),
           content: String(decision.content ?? ''),
@@ -221,6 +229,7 @@ export function App() {
       if (memory.memoryType === 'decision') {
         entries.push({
           kind: 'decision',
+          memoryId: memory.id,
           at: memory.recordedAt,
           title: memory.title,
           content: memory.content,
@@ -410,7 +419,7 @@ export function App() {
 
   async function onSetHitStatus(
     memoryId: string,
-    status: 'verified' | 'disputed' | 'retracted',
+    status: MemoryStatusAction,
     options?: { quiet?: boolean },
   ): Promise<boolean> {
     if (!options?.quiet) {
@@ -450,7 +459,7 @@ export function App() {
     }
   }
 
-  async function onBulkReviewStatus(status: 'verified' | 'disputed' | 'retracted') {
+  async function onBulkReviewStatus(status: MemoryStatusAction) {
     setError(null);
     if (reviewQueue.length === 0) {
       setError('Review queue empty — candidates did not load yet');
@@ -1159,6 +1168,18 @@ export function App() {
           }
         />
         <Route path="/projects" element={<Navigate to={`/projects/${PROJECT_ID}`} replace />} />
+        <Route
+          path="/memories/:id"
+          element={
+            <MemoryInspectorPage
+              actor={actor}
+              backend={backend}
+              subjectId={subjectId}
+              localStore={localStore}
+              onSetMemoryStatus={onSetHitStatus}
+            />
+          }
+        />
         <Route
           path="/projects/:id"
           element={
