@@ -36,16 +36,13 @@ export function HomePage({
 
       <div className="cta-row">
         <Link to="/search" className="button-link">
-          Search
+          Поиск
         </Link>
         <Link to={`/projects/${PROJECT_ID}`} className="button-link button-link--secondary">
-          Open project
+          Открыть проект
         </Link>
-        <Link
-          to={`/projects/${PROJECT_ID}#review-queue`}
-          className="button-link button-link--secondary"
-        >
-          Review queue
+        <Link to="/conflicts" className="button-link button-link--secondary">
+          Разобрать очередь
         </Link>
       </div>
 
@@ -78,6 +75,7 @@ export function HomePage({
 
         <section className="panel">
           <h2>Очередь на проверку</h2>
+          <p className="hint">Кандидаты и спорные записи, которые ждут решения владельца.</p>
           {reviewQueueLoading ? (
             <p className="hint">Загружаю кандидаты на проверку…</p>
           ) : (
