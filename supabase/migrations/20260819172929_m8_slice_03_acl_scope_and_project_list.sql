@@ -504,7 +504,7 @@ JOIN (
     ('chatgpt', 'memory', ARRAY['read', 'write']::text[], 'internal'),
     ('chatgpt', 'handoff', ARRAY['read', 'write']::text[], 'internal'),
     ('cursor', 'memory', ARRAY['read', 'write']::text[], 'internal'),
-    ('cursor', 'handoff', ARRAY['read', 'write']::text[], 'internal'),
+    ('cursor', 'handoff', ARRAY['read', 'write']::text[], 'internal')
 ) AS t(actor_key, resource_type, actions, sensitivity_max)
   ON s.external_key = t.actor_key
 WHERE NOT EXISTS (
