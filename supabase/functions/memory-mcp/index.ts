@@ -4,7 +4,7 @@ import {
   applyEdgeDefaults,
   EDGE_INSTRUCTIONS,
   EDGE_TOOL_DEFS,
-  requireEdgeProjectId,
+  resolveEdgeProjectId,
 } from "./contract.ts";
 
 const SUBJECT = Deno.env.get("MEMORY_OS_CHATGPT_SUBJECT_ID") ??
@@ -402,10 +402,31 @@ async function callTool(
   const args = defaults(raw);
   const actor = String(args.actor_subject_id);
   const workspace = String(args.workspace_id);
-  const project = String(args.project_id ?? "").trim();
+  const resolveProjectId = (mode: "optional" | "required") =>
+    resolveEdgeProjectId({
+      args,
+      mode,
+      resolve: async (projectRef) =>
+        await rpc(client, "api_resolve_project_ref", {
+          p_secret: secret,
+          p_subject_id: actor,
+          p_workspace_id: workspace,
+          p_project_ref: projectRef,
+        }) as {
+          projectId?: string | null;
+          matchCount?: number | null;
+          candidates?: Array<{
+            id?: string | null;
+            slug?: string | null;
+            name?: string | null;
+            url?: string | null;
+          }> | null;
+        },
+    });
 
   switch (name) {
     case "memory.search": {
+      const project = await resolveProjectId("optional");
       const query = String(args.query ?? "").trim();
       if (!query) throw new Error("query is required");
       const embedded = await embedText(query);
@@ -445,15 +466,16 @@ async function callTool(
           : {}),
       };
     }
-    case "context.project":
-      requireEdgeProjectId(args);
+    case "context.project": {
+      const project = await resolveProjectId("required");
       return rpc(client, "api_project_context", {
         p_secret: secret,
         p_subject_id: actor,
         p_project_id: project,
       });
+    }
     case "memory.store_decision": {
-      requireEdgeProjectId(args);
+      const project = await resolveProjectId("required");
       const title = String(args.title ?? "").trim();
       const content = String(args.content ?? "").trim();
       const key = String(args.idempotency_key ?? "").trim();
@@ -475,7 +497,7 @@ async function callTool(
       });
     }
     case "handoff.create": {
-      requireEdgeProjectId(args);
+      const project = await resolveProjectId("required");
       const from = String(args.from_subject_id ?? "").trim();
       const key = String(args.idempotency_key ?? "").trim();
       const payload = args.payload;
@@ -497,7 +519,7 @@ async function callTool(
       });
     }
     case "capture.text": {
-      requireEdgeProjectId(args);
+      const project = await resolveProjectId("required");
       const title = String(args.title ?? "").trim();
       const text = String(args.text ?? "").trim();
       const key = String(args.idempotency_key ?? "").trim();

@@ -11,6 +11,17 @@ export type EdgeToolDef = {
   inputSchema: Record<string, unknown>;
 };
 
+export type EdgeProjectResolution = {
+  projectId?: string | null;
+  matchCount?: number | null;
+  candidates?: Array<{
+    id?: string | null;
+    slug?: string | null;
+    name?: string | null;
+    url?: string | null;
+  }> | null;
+};
+
 export const EDGE_TOOL_DEFS: EdgeToolDef[] = [
   {
     name: "memory.search",
@@ -137,4 +148,44 @@ export function requireEdgeProjectId(args: Record<string, unknown>): string {
     throw new Error("project reference is required; pass project UUID or slug");
   }
   return projectId;
+}
+
+function formatEdgeProjectCandidates(
+  candidates: NonNullable<EdgeProjectResolution["candidates"]>,
+): string {
+  return candidates.map((candidate) => {
+    const slug = String(candidate.slug ?? "").trim();
+    const name = String(candidate.name ?? "").trim();
+    if (slug && name) return `${slug} (${name})`;
+    return slug || name || String(candidate.id ?? "").trim() || "unknown";
+  }).join(", ");
+}
+
+export async function resolveEdgeProjectId(input: {
+  args: Record<string, unknown>;
+  mode: "optional" | "required";
+  resolve: (projectRef: string) => Promise<EdgeProjectResolution>;
+}): Promise<string | null> {
+  const projectRef = String(input.args.project_id ?? "").trim();
+  if (!projectRef) {
+    if (input.mode === "required") {
+      throw new Error("project reference is required; pass project UUID or slug");
+    }
+    return null;
+  }
+  const resolution = await input.resolve(projectRef);
+  const projectId = String(resolution.projectId ?? "").trim();
+  const matchCount = Number(resolution.matchCount ?? 0);
+  const candidates = Array.isArray(resolution.candidates) ? resolution.candidates : [];
+  if (matchCount > 1) {
+    throw new Error(
+      `project reference "${projectRef}" is ambiguous. Candidates: ${
+        formatEdgeProjectCandidates(candidates)
+      }`,
+    );
+  }
+  if (matchCount === 1 && projectId) {
+    return projectId;
+  }
+  throw new Error("project not found; pass a valid project UUID or slug from /projects");
 }
