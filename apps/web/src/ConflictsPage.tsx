@@ -105,17 +105,21 @@ export function ConflictsPage({
 
       <section className="panel">
         <h2>Очередь конфликтов</h2>
-        {reviewQueueLoading ? <p className="hint">Загружаю элементы, требующие решения…</p> : null}
-        {!reviewQueueLoading ? (
-          <ReviewQueueList
-            actor={actor}
-            items={reviewQueue}
-            source="conflicts"
-            projectId={PROJECT_ID}
-            emptyMessage="Сейчас нет кандидатов или спорных записей."
-            onSetStatus={onSetReviewStatus}
-          />
+        {reviewQueueLoading && reviewQueue.length > 0 ? (
+          <p className="hint">Обновляю элементы, требующие решения…</p>
         ) : null}
+        <ReviewQueueList
+          actor={actor}
+          items={reviewQueue}
+          source="conflicts"
+          projectId={PROJECT_ID}
+          emptyMessage={
+            reviewQueueLoading
+              ? 'Загружаю элементы, требующие решения…'
+              : 'Сейчас нет кандидатов или спорных записей.'
+          }
+          onSetStatus={onSetReviewStatus}
+        />
       </section>
     </section>
   );

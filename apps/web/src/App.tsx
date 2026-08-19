@@ -34,6 +34,7 @@ export function App() {
   const [localStore] = useState(() => createSeededStore());
   const [actor, setActor] = useState<Actor>('owner');
   const [backend, setBackend] = useState<BackendMode>('local');
+  const [backendResolved, setBackendResolved] = useState(false);
   const [remote, setRemote] = useState<RemoteContext | null>(null);
   const [search, setSearch] = useState('Slice');
   const [packContext, setPackContext] = useState(false);
@@ -99,33 +100,37 @@ export function App() {
   }
 
   async function refreshRemote() {
-    const health = await apiHealth();
-    if (!health) {
-      setBackend('local');
-      setRemote(null);
-      setConnections([
-        {
-          connectorId: 'github',
-          displayName: 'AISTROYKA repos',
-          status: 'connected',
-        },
-      ]);
-      setOutboxPending([]);
-      return;
+    try {
+      const health = await apiHealth();
+      if (!health) {
+        setBackend('local');
+        setRemote(null);
+        setConnections([
+          {
+            connectorId: 'github',
+            displayName: 'AISTROYKA repos',
+            status: 'connected',
+          },
+        ]);
+        setOutboxPending([]);
+        return;
+      }
+
+      const nextBackend = (health.backend as 'supabase' | 'memory-store') ?? 'memory-store';
+      setBackend(nextBackend);
+
+      const ctx = await apiGet<RemoteContext>(`/v1/projects/${PROJECT_ID}/context`, subjectId);
+      setRemote(ctx);
+
+      const conn = await apiGet<{ connections: ConnectionRecord[] }>(
+        `/v1/connections?workspace_id=${WORKSPACE_ID}`,
+        subjectId,
+      );
+      setConnections(conn.connections ?? []);
+      await refreshOutboxPending(nextBackend);
+    } finally {
+      setBackendResolved(true);
     }
-
-    const nextBackend = (health.backend as 'supabase' | 'memory-store') ?? 'memory-store';
-    setBackend(nextBackend);
-
-    const ctx = await apiGet<RemoteContext>(`/v1/projects/${PROJECT_ID}/context`, subjectId);
-    setRemote(ctx);
-
-    const conn = await apiGet<{ connections: ConnectionRecord[] }>(
-      `/v1/connections?workspace_id=${WORKSPACE_ID}`,
-      subjectId,
-    );
-    setConnections(conn.connections ?? []);
-    await refreshOutboxPending(nextBackend);
   }
 
   async function refreshReviewQueue() {
@@ -449,7 +454,15 @@ export function App() {
       if (!options?.quiet) {
         setLastCapture(`memory ${memoryId.slice(0, 8)}… → ${status}`);
         await onSearch();
-        await refreshReviewQueue();
+        try {
+          await refreshReviewQueue();
+        } catch (refreshError) {
+          setError(
+            `Статус сохранен, но не удалось обновить очередь на проверку: ${
+              (refreshError as Error).message
+            }`,
+          );
+        }
       }
       return true;
     } catch (err) {
@@ -1188,6 +1201,7 @@ export function App() {
             <MemoryInspectorPage
               actor={actor}
               backend={backend}
+              backendResolved={backendResolved}
               subjectId={subjectId}
               localStore={localStore}
               onSetMemoryStatus={onSetHitStatus}

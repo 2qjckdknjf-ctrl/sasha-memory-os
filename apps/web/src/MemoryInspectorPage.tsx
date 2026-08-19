@@ -14,6 +14,7 @@ import {
 type Props = {
   actor: Actor;
   backend: BackendMode;
+  backendResolved: boolean;
   subjectId: string;
   localStore: MemoryStore;
   onSetMemoryStatus: (memoryId: string, status: MemoryStatusAction) => Promise<boolean>;
@@ -75,6 +76,7 @@ function DisplayValue({ value }: DisplayValueProps) {
 export function MemoryInspectorPage({
   actor,
   backend,
+  backendResolved,
   subjectId,
   localStore,
   onSetMemoryStatus,
@@ -94,6 +96,12 @@ export function MemoryInspectorPage({
     let cancelled = false;
 
     async function loadMemory() {
+      if (!backendResolved) {
+        setLoading(true);
+        setLoadError(null);
+        return;
+      }
+
       if (!memoryId) {
         setMemory(null);
         setLoadError('Идентификатор записи памяти не указан.');
@@ -138,7 +146,7 @@ export function MemoryInspectorPage({
     return () => {
       cancelled = true;
     };
-  }, [actor, backend, localStore, memoryId, reloadToken, subjectId]);
+  }, [actor, backend, backendResolved, localStore, memoryId, reloadToken, subjectId]);
 
   useEffect(() => {
     if (memory) {
