@@ -287,6 +287,14 @@ describe('github webhook api', () => {
               .project_bindings as Record<string, string>
           )['team/repo-new'],
         ).toBe(newProjectId);
+        const newRepo = (
+          (state.metadataState.collections as Record<string, unknown>).items as Array<{
+            id: string;
+            metadata?: Record<string, unknown>;
+          }>
+        ).find((collection) => collection.id === 'team/repo-new');
+        expect(newRepo?.metadata?.added_via).toBe('webhook');
+        expect(typeof newRepo?.metadata?.added_at).toBe('string');
         expect(state.gateway.enqueueConnectorSync).toHaveBeenCalledOnce();
       },
     );
@@ -326,6 +334,13 @@ describe('github webhook api', () => {
             (collection) => collection.id,
           ),
         ).toEqual(expect.arrayContaining(['team/repo-existing', 'team/repo-new']));
+        const newRepo = (
+          (state.metadataState.collections as Record<string, unknown>).items as Array<{
+            id: string;
+            metadata?: Record<string, unknown>;
+          }>
+        ).find((collection) => collection.id === 'team/repo-new');
+        expect(newRepo?.metadata?.added_via).toBe('webhook');
       },
     );
   });

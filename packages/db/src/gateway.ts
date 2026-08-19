@@ -842,6 +842,32 @@ export class SupabaseMemoryGateway {
     };
   }
 
+  async mergeConnectionProjectBindings(input: {
+    subjectId: string;
+    connectionId: string;
+    projectBindings: Record<string, string>;
+  }) {
+    const { data, error } = await this.client.rpc('api_merge_connection_project_bindings', {
+      p_secret: this.apiSecret,
+      p_subject_id: input.subjectId,
+      p_connection_id: input.connectionId,
+      p_project_bindings: input.projectBindings,
+    });
+    if (error) throw error;
+    return data as {
+      id: string;
+      workspaceId: string;
+      connectorId: string;
+      displayName: string;
+      status: string;
+      scopes: string[];
+      lastSyncAt: string | null;
+      lastError: string | null;
+      vaultRef?: string | null;
+      metadata?: Record<string, unknown>;
+    };
+  }
+
   async refreshConnectionCollections(input: {
     subjectId: string;
     connectionId: string;
