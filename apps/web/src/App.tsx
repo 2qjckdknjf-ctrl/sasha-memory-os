@@ -2,18 +2,22 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Navigate, Route, Routes } from 'react-router-dom';
 import { createSeededStore } from '@memory-os/domain';
 import { apiGet, apiHealth, apiPatch, apiPost, setBoundAuthUserId } from './api';
+import { AgentScopesPage } from './AgentScopesPage';
 import { AppShell } from './AppShell';
 import { AuthPanel } from './AuthPanel';
 import { ConflictsPage } from './ConflictsPage';
+import { ConnectionsPage } from './ConnectionsPage';
 import { HandoffsPage } from './HandoffsPage';
 import { HomePage } from './HomePage';
 import { MemoryInspectorPage } from './MemoryInspectorPage';
 import { OpsPage } from './OpsPage';
+import { storePendingOAuthSession } from './oauthSession';
 import { ProjectPage } from './ProjectPage';
 import { SearchPage } from './SearchPage';
 import { TasksPage } from './TasksPage';
 import {
   ACTOR_IDS,
+  ACTOR_LABELS,
   CHATGPT,
   CURSOR,
   PROJECT_ID,
@@ -22,6 +26,7 @@ import {
   type BackendMode,
   type ConnectionRecord,
   type ExtractionCandidate,
+  type MeResponse,
   type MemoryStatusAction,
   type OutboxPendingItem,
   type RemoteContext,
@@ -80,8 +85,23 @@ export function App() {
     () => new Set(),
   );
   const [sessionHandoffs, setSessionHandoffs] = useState<HandoffLike[]>([]);
+  const [me, setMe] = useState<MeResponse | null>(null);
 
   const subjectId = ACTOR_IDS[actor];
+
+  function buildLocalMe(nextActor: Actor): MeResponse {
+    return {
+      subjectId: ACTOR_IDS[nextActor],
+      workspaceId: WORKSPACE_ID,
+      isOwner: nextActor === 'owner',
+      actor: {
+        id: ACTOR_IDS[nextActor],
+        externalKey: nextActor,
+        displayName: ACTOR_LABELS[nextActor],
+        kind: nextActor === 'owner' ? 'user' : 'agent',
+      },
+    };
+  }
 
   function isVisibleTaskStatus(status: unknown): boolean {
     return status !== 'deleted' && status !== 'retracted' && status !== 'superseded';
@@ -120,6 +140,7 @@ export function App() {
       if (!health) {
         setBackend('local');
         setRemote(null);
+        setMe(buildLocalMe(actor));
         setConnections([
           {
             connectorId: 'github',
@@ -133,6 +154,7 @@ export function App() {
 
       const nextBackend = (health.backend as 'supabase' | 'memory-store') ?? 'memory-store';
       setBackend(nextBackend);
+      setMe(buildLocalMe(actor));
 
       const ctx = await apiGet<RemoteContext>(`/v1/projects/${PROJECT_ID}/context`, subjectId);
       setRemote(ctx);
@@ -142,6 +164,12 @@ export function App() {
         subjectId,
       );
       setConnections(conn.connections ?? []);
+      try {
+        const currentMe = await apiGet<MeResponse>('/v1/me', subjectId, actor);
+        setMe(currentMe);
+      } catch {
+        setMe(buildLocalMe(actor));
+      }
       await refreshOutboxPending(nextBackend);
     } finally {
       setBackendResolved(true);
@@ -1029,13 +1057,20 @@ export function App() {
     }
   }
 
-  async function onStartOAuth() {
+  async function onStartOAuth(options?: {
+    connectorId?: string;
+    displayName?: string;
+    scopes?: string[];
+  }) {
     setError(null);
     try {
       if (backend === 'local') {
         setError('OAuth broker requires API backend');
         return;
       }
+      const connectorId = options?.connectorId ?? 'github';
+      const displayName = options?.displayName ?? 'OAuth pilot repos';
+      const scopes = options?.scopes ?? ['repositories.read'];
       const start = await apiPost<{
         state?: string;
         authorizeUrl?: string;
@@ -1044,9 +1079,9 @@ export function App() {
         subjectId,
         {
           workspace_id: WORKSPACE_ID,
-          connector_id: 'github',
-          display_name: 'OAuth pilot repos',
-          scopes: ['repositories.read'],
+          connector_id: connectorId,
+          display_name: displayName,
+          scopes,
           redirect_uri: `${window.location.origin}/oauth/callback`,
           actor_subject_id: subjectId,
         },
@@ -1054,6 +1089,7 @@ export function App() {
       );
       const authorizeUrl = start.authorizeUrl ?? '';
       if (authorizeUrl.startsWith('http')) {
+        storePendingOAuthSession({ subjectId, actorKey: actor });
         window.location.assign(authorizeUrl);
         return;
       }
@@ -1071,7 +1107,7 @@ export function App() {
         actor,
       );
       setLastCapture(
-        `oauth ${authorizeUrl || 'stub'} → mode=${done.exchangeMode ?? 'stub'} vault=${
+        `oauth ${connectorId}:${authorizeUrl || 'stub'} → mode=${done.exchangeMode ?? 'stub'} vault=${
           done.tokensInVault ? 'yes' : 'no'
         }`,
       );
@@ -1081,7 +1117,7 @@ export function App() {
     }
   }
 
-  async function onSyncConnections() {
+  async function onSyncConnections(connectionId?: string) {
     setError(null);
     try {
       if (backend === 'local') {
@@ -1096,6 +1132,7 @@ export function App() {
         '/v1/connections/sync',
         subjectId,
         {
+          connection_id: connectionId,
           workspace_id: WORKSPACE_ID,
           actor_subject_id: subjectId,
         },
@@ -1239,6 +1276,24 @@ export function App() {
               lastHandoff={handoffSurface.latest}
             />
           }
+        />
+        <Route
+          path="/connections"
+          element={
+            <ConnectionsPage
+              backend={backend}
+              connections={connections}
+              onRefresh={onRefresh}
+              onConnectGmailStub={onConnectGmailStub}
+              onStartOAuth={onStartOAuth}
+              onSyncConnections={onSyncConnections}
+              onUpdateConnectionStatus={onUpdateConnectionStatus}
+            />
+          }
+        />
+        <Route
+          path="/agents"
+          element={<AgentScopesPage backend={backend} me={me} />}
         />
         <Route path="/tasks" element={<TasksPage taskSurface={taskSurface} />} />
         <Route

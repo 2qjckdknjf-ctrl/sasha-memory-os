@@ -49,6 +49,9 @@ export function HomePage({
         <Link to="/search" className="button-link">
           Поиск
         </Link>
+        <Link to="/connections" className="button-link button-link--secondary">
+          Подключения
+        </Link>
         <Link to={`/projects/${PROJECT_ID}`} className="button-link button-link--secondary">
           Открыть проект
         </Link>
@@ -104,7 +107,11 @@ export function HomePage({
               <ul className="warning-list">
                 {connectionWarnings.map((warning, index) => (
                   <li key={warning.id ?? `${warning.connectorId}-${index}`}>
-                    <strong>{warning.displayName ?? warning.connectorId ?? 'Connection'}</strong>
+                    <strong>
+                      <Link to="/connections">
+                        {warning.displayName ?? warning.connectorId ?? 'Connection'}
+                      </Link>
+                    </strong>
                     <span>
                       {warning.status === 'reauth_required'
                         ? 'Требуется повторная авторизация.'
@@ -113,6 +120,11 @@ export function HomePage({
                   </li>
                 ))}
               </ul>
+              <div className="actions">
+                <Link to="/connections" className="button-link button-link--secondary">
+                  Открыть подключения
+                </Link>
+              </div>
             </>
           ) : (
             <p className="hint">Критичных ошибок синхронизации не найдено.</p>

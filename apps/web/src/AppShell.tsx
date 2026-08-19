@@ -19,6 +19,8 @@ type PrimaryLink = {
 
 const primaryLinks: PrimaryLink[] = [
   { to: '/', label: 'Главная', end: true },
+  { to: '/connections', label: 'Подключения' },
+  { to: '/agents', label: 'Агенты и права' },
   { to: '/tasks', label: 'Задачи' },
   { to: '/handoffs', label: 'Хэнд-оффы' },
   { to: '/conflicts', label: 'Конфликты' },
@@ -26,7 +28,7 @@ const primaryLinks: PrimaryLink[] = [
   { to: `/projects/${PROJECT_ID}`, label: 'Проект AISTROYKA' },
 ];
 
-const secondaryLabels = ['Connections', 'Audit', 'Privacy'];
+const secondaryLabels = ['Audit', 'Privacy'];
 
 export function AppShell({
   backend,
