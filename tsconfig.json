@@ -21,6 +21,7 @@
     { "path": "connectors/google-drive" },
     { "path": "connectors/gmail" },
     { "path": "connectors/google-calendar" },
+    { "path": "connectors/sample" },
     { "path": "connectors/apple-bridge" }
   ]
 }

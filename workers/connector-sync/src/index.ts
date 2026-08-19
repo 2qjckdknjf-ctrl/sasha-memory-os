@@ -10,6 +10,7 @@ import {
 } from '@memory-os/db';
 import { embedMemoryText } from '@memory-os/retrieval';
 import {
+  classifyConnectorError,
   ConnectorRegistry,
   createConnectorRegistry,
   runConnectorDiscover,
@@ -320,6 +321,19 @@ async function ingestConnectorDelta(
   return { captured: 0, pullMode: 'none', note: 'unsupported connector' };
 }
 
+type ClaimedConnectorSyncJob = {
+  jobId: string;
+  workspaceId: string;
+  status: string;
+  attempt: number;
+  error: string | null;
+  idempotencyKey: string;
+  connectionId: string;
+  connectorId: string;
+  displayName?: string;
+  vaultRef?: string | null;
+};
+
 export async function planConnectorSync(options?: {
   workspaceId?: string;
   subjectId?: string;
@@ -348,23 +362,41 @@ export async function planConnectorSync(options?: {
     workspaceId,
     connectionId: options?.connectionId ?? null,
   });
+  const claimed = await gateway.claimConnectorSyncJobs({
+    subjectId,
+    workspaceId,
+    connectionId: options?.connectionId ?? null,
+    limit: Number(process.env.MEMORY_OS_CONNECTOR_SYNC_CLAIM_LIMIT ?? 20),
+    retryBaseMs: Number(process.env.MEMORY_OS_CONNECTOR_SYNC_RETRY_BASE_MS ?? 30_000),
+    retryMaxMs: Number(process.env.MEMORY_OS_CONNECTOR_SYNC_RETRY_MAX_MS ?? 300_000),
+  });
+  const maxAttempts = Math.max(
+    1,
+    Number(process.env.MEMORY_OS_CONNECTOR_SYNC_MAX_ATTEMPTS ?? 3),
+  );
 
   const completed: SyncPlan['completed'] = [];
   let captured = 0;
   const ingest = options?.ingest !== false;
   const vault = createConfiguredVaultStore({ gateway });
 
-  for (const item of result.enqueued ?? []) {
-    if (!item.jobId) continue;
+  for (const item of claimed.jobs as ClaimedConnectorSyncJob[]) {
     try {
       let pullMode = 'stub';
       let note = 'connector delta ingested';
       if (ingest) {
+        const syncItem: SyncPlanItem = {
+          connectionId: item.connectionId,
+          connectorId: item.connectorId,
+          displayName: item.displayName,
+          vaultRef: item.vaultRef ?? undefined,
+          jobId: item.jobId,
+        };
         const ingested = await ingestConnectorDelta(
           gateway,
           subjectId,
           workspaceId,
-          item,
+          syncItem,
           vault,
           connectorRegistry,
         );
@@ -397,18 +429,45 @@ export async function planConnectorSync(options?: {
         }),
       );
     } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
-      const done = await gateway.completeConnectorSync({
-        subjectId,
-        jobId: item.jobId,
-        status: 'failed',
-        error: message,
-      });
-      completed.push({
-        jobId: done.jobId,
-        status: done.status,
-        connectionId: done.connectionId,
-      });
+      const classified = classifyConnectorError(err);
+      if (classified.retryable) {
+        if (item.attempt + 1 >= maxAttempts) {
+          const done = await gateway.completeConnectorSync({
+            subjectId,
+            jobId: item.jobId,
+            status: 'dead_letter',
+            error: classified.message,
+          });
+          completed.push({
+            jobId: done.jobId,
+            status: done.status,
+            connectionId: done.connectionId,
+          });
+        } else {
+          const queued = await gateway.retryConnectorSync({
+            subjectId,
+            jobId: item.jobId,
+            error: classified.message,
+          });
+          completed.push({
+            jobId: queued.jobId,
+            status: queued.status,
+            connectionId: queued.connectionId,
+          });
+        }
+      } else {
+        const done = await gateway.completeConnectorSync({
+          subjectId,
+          jobId: item.jobId,
+          status: 'failed',
+          error: classified.message,
+        });
+        completed.push({
+          jobId: done.jobId,
+          status: done.status,
+          connectionId: done.connectionId,
+        });
+      }
     }
   }
 

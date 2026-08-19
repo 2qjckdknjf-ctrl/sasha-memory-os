@@ -1,6 +1,7 @@
 import {
   buildConnectionHealthReport,
   buildDefaultCursor,
+  connectorRateLimitError,
   resolvePullCredentials,
   runConnectorSync,
   vaultRefForAccount,
@@ -247,6 +248,11 @@ async function syncGoogleDriveFiles(
     },
   );
   if (!response.ok) {
+    if (response.status === 429) {
+      throw connectorRateLimitError({
+        message: `Google Drive files API failed: HTTP ${response.status}`,
+      });
+    }
     throw new Error(`Google Drive files API failed: HTTP ${response.status}`);
   }
 

@@ -64,6 +64,10 @@ export const revokeConnectionSchema = z.object({
   actor_subject_id: z.string().uuid(),
 });
 
+export const resyncConnectionSchema = z.object({
+  actor_subject_id: z.string().uuid(),
+});
+
 export const updateConnectionSchema = z.object({
   actor_subject_id: z.string().uuid(),
   metadata: z.record(z.string(), z.unknown()),
@@ -191,4 +195,5 @@ export function withConnectionProjectBinding(
 export type UpsertConnectionInput = z.infer<typeof upsertConnectionSchema>;
 export type SetConnectionStatusInput = z.infer<typeof setConnectionStatusSchema>;
 export type RevokeConnectionInput = z.infer<typeof revokeConnectionSchema>;
+export type ResyncConnectionInput = z.infer<typeof resyncConnectionSchema>;
 export type UpdateConnectionInput = z.infer<typeof updateConnectionSchema>;

@@ -3,6 +3,7 @@ import {
   type ConnectorCollection,
   type ConnectorDiscoverResult,
   buildDefaultCursor,
+  connectorRateLimitError,
   resolvePullCredentials,
   runConnectorSync,
   vaultRefForAccount,
@@ -422,6 +423,11 @@ async function syncGithubEvents(
   );
 
   if (!response.ok) {
+    if (response.status === 429) {
+      throw connectorRateLimitError({
+        message: `GitHub events API failed: HTTP ${response.status}`,
+      });
+    }
     throw new Error(`GitHub events API failed: HTTP ${response.status}`);
   }
 
@@ -471,6 +477,11 @@ async function discoverGithubRepositories(
   while (pageUrl) {
     const response = await (context.fetchImpl ?? fetch)(pageUrl, { headers });
     if (!response.ok) {
+      if (response.status === 429) {
+        throw connectorRateLimitError({
+          message: `GitHub repositories API failed: HTTP ${response.status}`,
+        });
+      }
       throw new Error(`GitHub repositories API failed: HTTP ${response.status}`);
     }
     repositories.push(...((await response.json()) as GitHubRepositoryRecord[]));

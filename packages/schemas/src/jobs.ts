@@ -7,6 +7,7 @@ export const processingJobTypeSchema = z.enum([
   'extract',
   'consolidate',
   'ingest',
+  'connector_sync',
 ]);
 
 export const processingJobStatusSchema = z.enum([
@@ -30,4 +31,9 @@ export const enqueueJobSchema = z.object({
   job_type: processingJobTypeSchema,
   idempotency_key: z.string().min(1),
   source_event_id: z.string().uuid().optional(),
+});
+
+export const replayConnectorJobSchema = z.object({
+  actor_subject_id: z.string().uuid(),
+  resync: z.boolean().optional(),
 });

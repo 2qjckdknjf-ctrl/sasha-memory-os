@@ -45,6 +45,8 @@ import {
   normalizeConnectionMetadata,
   oauthCompleteSchema,
   oauthStartSchema,
+  replayConnectorJobSchema,
+  resyncConnectionSchema,
   revokeConnectionSchema,
   selectedConnectionCollections,
   setConnectionStatusSchema,
@@ -1034,7 +1036,9 @@ export function createApp(options?: {
   // Owner/cron ops — require HTTP API secret outside local/test (see httpAuth.ts).
   app.use('/v1/consolidation/*', requireHttpApiSecret);
   app.use('/v1/connections/sync', requireHttpApiSecret);
+  app.use('/v1/connections/*/resync', requireHttpApiSecret);
   app.use('/v1/jobs/dead-letter-stale', requireHttpApiSecret);
+  app.use('/v1/jobs/*/replay', requireHttpApiSecret);
   app.use('/v1/outbox/*', requireHttpApiSecret);
   app.use('/v1/memories/embed-missing', requireHttpApiSecret);
   app.use('/v1/export/*', requireHttpApiSecret);
@@ -1686,6 +1690,39 @@ export function createApp(options?: {
     }
   });
 
+  app.post('/v1/connections/:id/resync', async (c) => {
+    const connectionId = c.req.param('id');
+    const body = resyncConnectionSchema.parse(await c.req.json().catch(() => ({})));
+    const authz = c.get('authz');
+    if (!authz.isOwner && authz.subjectId !== body.actor_subject_id) {
+      return c.json({ error: 'forbidden' }, 403);
+    }
+    const gw = c.get('gateway');
+    if (!gw) {
+      return c.json(
+        {
+          connectionId,
+          clearedCursorCount: 0,
+          backend: 'memory-store',
+          note: 'connector resync requires supabase backend',
+        },
+        501,
+      );
+    }
+    try {
+      const connection = await gw.getConnection(body.actor_subject_id, connectionId);
+      const result = await gw.resyncConnector({
+        subjectId: body.actor_subject_id,
+        workspaceId: connection.workspaceId,
+        connectionId,
+      });
+      return c.json({ ...result, resync: true }, 202);
+    } catch (err) {
+      if (isForbiddenError(err)) return c.json({ error: 'forbidden' }, 403);
+      return c.json({ error: (err as Error).message }, 500);
+    }
+  });
+
   app.post('/v1/connections', async (c) => {
     const body = upsertConnectionSchema.parse(await c.req.json());
     const authz = c.get('authz');
@@ -2271,6 +2308,30 @@ export function createApp(options?: {
     try {
       const result = await gw.processIngestJob(authz.subjectId, jobId);
       return c.json(result);
+    } catch (err) {
+      if (isForbiddenError(err)) return c.json({ error: 'forbidden' }, 403);
+      return c.json({ error: (err as Error).message }, 500);
+    }
+  });
+
+  app.post('/v1/jobs/:id/replay', async (c) => {
+    const jobId = c.req.param('id');
+    const body = replayConnectorJobSchema.parse(await c.req.json().catch(() => ({})));
+    const authz = c.get('authz');
+    if (!authz.isOwner && authz.subjectId !== body.actor_subject_id) {
+      return c.json({ error: 'forbidden' }, 403);
+    }
+    const gw = c.get('gateway');
+    if (!gw) {
+      return c.json({ error: 'supabase gateway required' }, 501);
+    }
+    try {
+      const result = await gw.replayConnectorSync({
+        subjectId: body.actor_subject_id,
+        jobId,
+        resync: body.resync,
+      });
+      return c.json({ ...result, replayed: true }, 202);
     } catch (err) {
       if (isForbiddenError(err)) return c.json({ error: 'forbidden' }, 403);
       return c.json({ error: (err as Error).message }, 500);
