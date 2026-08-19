@@ -1,6 +1,7 @@
 export const packageName = 'connector-sdk' as const;
 export * from './certification.js';
 export * from './contract.js';
+export * from './errors.js';
 export * from './oauth.js';
 export * from './pullCredentials.js';
 export * from './pullMode.js';

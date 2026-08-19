@@ -1189,6 +1189,165 @@ describe('memory api demo slice', () => {
     expect(body.revoked).toBe(true);
   });
 
+  it('calls connector lifecycle revoke before marking the connection revoked', async () => {
+    const revokeSpy = vi.fn(async () => undefined);
+    const gateway = {
+      getConnection: vi.fn(async () => ({
+        id: 'conn-revoke',
+        workspaceId,
+        connectorId: 'sample-revoke',
+        displayName: 'Sample revoke connector',
+        status: 'connected',
+        scopes: ['fixtures.read'],
+        lastSyncAt: null,
+        lastError: null,
+        vaultRef: 'vault:test/revoke',
+        metadata: {},
+      })),
+      setConnectionStatus: vi.fn(async ({ connectionId, status }: { connectionId: string; status: string }) => ({
+        id: connectionId,
+        connectorId: 'sample-revoke',
+        status,
+      })),
+      vaultDelete: vi.fn(async () => ({ ok: true })),
+    };
+    const connectorRegistry = createConnectorRegistry([
+      {
+        manifest: {
+          id: 'sample-revoke',
+          version: '1.0.0',
+          sdk_version: '^1.0',
+          auth: 'none',
+          supports: {
+            discover: false,
+            validate_scope: false,
+            initial_sync: false,
+            incremental_sync: false,
+            live_fetch: false,
+            webhooks: false,
+            write: false,
+          },
+          capabilities: ['fixtures.read'],
+          storage_modes: ['reference'],
+          data_classes: ['internal'],
+        },
+        lifecycle: {
+          async normalize() {
+            throw new Error('normalize is not used in revoke test');
+          },
+          revoke: revokeSpy,
+        },
+      },
+    ]);
+
+    const app = createApp({
+      gateway: gateway as any,
+      connectorRegistry,
+    });
+    const res = await app.request('/v1/connections/conn-revoke/revoke', {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'x-subject-id': owner,
+      },
+      body: JSON.stringify({
+        actor_subject_id: owner,
+      }),
+    });
+
+    expect(res.status).toBe(200);
+    expect(revokeSpy).toHaveBeenCalledOnce();
+    expect(gateway.setConnectionStatus).toHaveBeenCalledWith(
+      expect.objectContaining({
+        connectionId: 'conn-revoke',
+        status: 'revoked',
+      }),
+    );
+  });
+
+  it('requests a connector resync through the gateway and returns the queued job', async () => {
+    const gateway = {
+      getConnection: vi.fn(async () => ({
+        id: 'conn-resync',
+        workspaceId,
+        connectorId: 'github',
+        displayName: 'Fixture GitHub',
+        status: 'degraded',
+        scopes: ['repositories.read'],
+        lastSyncAt: null,
+        lastError: 'cursor expired',
+        metadata: {},
+      })),
+      resyncConnector: vi.fn(async () => ({
+        jobId: 'job-resync',
+        eventId: 'event-resync',
+        connectionId: 'conn-resync',
+        connectorId: 'github',
+        clearedCursorCount: 1,
+        idempotencyKey: 'connector-sync/conn-resync/resync/1',
+      })),
+    };
+
+    const app = createApp({ gateway: gateway as any });
+    const res = await app.request('/v1/connections/conn-resync/resync', {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'x-subject-id': owner,
+      },
+      body: JSON.stringify({
+        actor_subject_id: owner,
+      }),
+    });
+
+    expect(res.status).toBe(202);
+    const body = await res.json();
+    expect(body.resync).toBe(true);
+    expect(body.jobId).toBe('job-resync');
+    expect(gateway.resyncConnector).toHaveBeenCalledWith({
+      subjectId: owner,
+      workspaceId,
+      connectionId: 'conn-resync',
+    });
+  });
+
+  it('replays a dead-letter connector job through the gateway', async () => {
+    const gateway = {
+      replayConnectorSync: vi.fn(async () => ({
+        jobId: 'job-dead-letter',
+        status: 'queued',
+        attempt: 3,
+        connectionId: 'conn-replay',
+        jobType: 'connector_sync',
+        resync: false,
+        clearedCursorCount: 0,
+      })),
+    };
+
+    const app = createApp({ gateway: gateway as any });
+    const res = await app.request('/v1/jobs/job-dead-letter/replay', {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'x-subject-id': owner,
+      },
+      body: JSON.stringify({
+        actor_subject_id: owner,
+      }),
+    });
+
+    expect(res.status).toBe(202);
+    const body = await res.json();
+    expect(body.replayed).toBe(true);
+    expect(body.status).toBe('queued');
+    expect(gateway.replayConnectorSync).toHaveBeenCalledWith(
+      expect.objectContaining({
+        subjectId: owner,
+        jobId: 'job-dead-letter',
+      }),
+    );
+  });
+
   it('serves project context to cursor', async () => {
     const app = createApp({});
     const res = await app.request(`/v1/projects/${projectId}/context`, {

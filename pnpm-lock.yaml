@@ -199,6 +199,12 @@ importers:
         specifier: workspace:*
         version: link:../../packages/connector-sdk
 
+  connectors/sample:
+    dependencies:
+      '@memory-os/connector-sdk':
+        specifier: workspace:*
+        version: link:../../packages/connector-sdk
+
   packages/authz:
     dependencies:
       '@memory-os/domain':

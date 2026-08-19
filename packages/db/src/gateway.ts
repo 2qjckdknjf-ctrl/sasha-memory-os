@@ -1019,6 +1019,41 @@ export class SupabaseMemoryGateway {
     return data;
   }
 
+  async claimConnectorSyncJobs(input: {
+    subjectId: string;
+    workspaceId: string;
+    limit?: number;
+    connectionId?: string | null;
+    retryBaseMs?: number;
+    retryMaxMs?: number;
+  }) {
+    const { data, error } = await this.client.rpc('api_claim_connector_sync_jobs', {
+      p_secret: this.apiSecret,
+      p_subject_id: input.subjectId,
+      p_workspace_id: input.workspaceId,
+      p_limit: input.limit ?? 20,
+      p_connection_id: input.connectionId ?? null,
+      p_retry_base_ms: input.retryBaseMs ?? 30_000,
+      p_retry_max_ms: input.retryMaxMs ?? 300_000,
+    });
+    if (error) throw error;
+    return data as {
+      count: number;
+      jobs: Array<{
+        jobId: string;
+        workspaceId: string;
+        status: string;
+        attempt: number;
+        error: string | null;
+        idempotencyKey: string;
+        connectionId: string;
+        connectorId: string;
+        displayName?: string | null;
+        vaultRef?: string | null;
+      }>;
+    };
+  }
+
   async enqueueConnectorSync(input: {
     subjectId: string;
     workspaceId: string;
@@ -1172,6 +1207,74 @@ export class SupabaseMemoryGateway {
       status: string;
       connectionId: string | null;
       jobType: string;
+      attempt?: number;
+    };
+  }
+
+  async retryConnectorSync(input: {
+    subjectId: string;
+    jobId: string;
+    error?: string | null;
+  }) {
+    const { data, error } = await this.client.rpc('api_retry_connector_sync', {
+      p_secret: this.apiSecret,
+      p_subject_id: input.subjectId,
+      p_job_id: input.jobId,
+      p_error: input.error ?? null,
+    });
+    if (error) throw error;
+    return data as {
+      jobId: string;
+      status: string;
+      attempt: number;
+      connectionId: string | null;
+      jobType: string;
+      error: string | null;
+    };
+  }
+
+  async replayConnectorSync(input: {
+    subjectId: string;
+    jobId: string;
+    resync?: boolean;
+  }) {
+    const { data, error } = await this.client.rpc('api_replay_connector_sync', {
+      p_secret: this.apiSecret,
+      p_subject_id: input.subjectId,
+      p_job_id: input.jobId,
+      p_resync: input.resync ?? false,
+    });
+    if (error) throw error;
+    return data as {
+      jobId: string;
+      status: string;
+      attempt: number;
+      connectionId: string | null;
+      jobType: string;
+      resync: boolean;
+      clearedCursorCount: number;
+    };
+  }
+
+  async resyncConnector(input: {
+    subjectId: string;
+    workspaceId: string;
+    connectionId: string;
+  }) {
+    const { data, error } = await this.client.rpc('api_resync_connector', {
+      p_secret: this.apiSecret,
+      p_subject_id: input.subjectId,
+      p_workspace_id: input.workspaceId,
+      p_connection_id: input.connectionId,
+    });
+    if (error) throw error;
+    return data as {
+      jobId: string;
+      eventId: string;
+      connectionId: string;
+      connectorId: string;
+      clearedCursorCount: number;
+      idempotencyKey: string;
     };
   }
 

@@ -170,16 +170,43 @@ export type ConnectorLifecycle<TRaw = unknown> = {
   revoke?: (context: ConnectorSyncContext) => Promise<void>;
 };
 
-export type RegisteredConnector<TRaw = unknown> = {
-  manifest: ConnectorManifest;
-  lifecycle: ConnectorLifecycle<TRaw>;
-};
-
 export type ConnectorSyncRun<TRaw = unknown> = {
   manifest: ConnectorManifest;
   page: ConnectorSyncPage<TRaw>;
   records: NormalizedConnectorRecord[];
   nextCursor: SyncCursor | null;
+};
+
+export type ConnectorCertificationScenarioInput<TRaw> = {
+  baseContext: ConnectorSyncContext;
+  initialRun: ConnectorSyncRun<TRaw>;
+};
+
+export type ConnectorCertificationSuite<TRaw = unknown> = {
+  buildReplayContext?: (
+    input: ConnectorCertificationScenarioInput<TRaw>,
+  ) => Promise<ConnectorSyncContext> | ConnectorSyncContext;
+  buildResyncContext?: (
+    input: ConnectorCertificationScenarioInput<TRaw>,
+  ) => Promise<ConnectorSyncContext> | ConnectorSyncContext;
+  buildCursorExpiredContext?: (
+    input: ConnectorCertificationScenarioInput<TRaw>,
+  ) => Promise<ConnectorSyncContext> | ConnectorSyncContext;
+  buildRateLimitContext?: (
+    input: ConnectorCertificationScenarioInput<TRaw>,
+  ) => Promise<ConnectorSyncContext> | ConnectorSyncContext;
+  buildRevokeContext?: (
+    context: ConnectorSyncContext,
+  ) => Promise<ConnectorSyncContext> | ConnectorSyncContext;
+  assertDeletionPropagation?: (run: ConnectorSyncRun<TRaw>) => boolean;
+  assertPermissionChangePropagation?: (run: ConnectorSyncRun<TRaw>) => boolean;
+  expectPoisonIsolation?: boolean;
+};
+
+export type RegisteredConnector<TRaw = unknown> = {
+  manifest: ConnectorManifest;
+  lifecycle: ConnectorLifecycle<TRaw>;
+  certification?: ConnectorCertificationSuite<TRaw>;
 };
 
 export function parseConnectorManifest(manifest: ConnectorManifest): ConnectorManifest {

@@ -11,6 +11,7 @@ import {
   type RegisteredConnector,
   type SyncCursor,
 } from './contract.js';
+import { classifyConnectorError } from './errors.js';
 
 export async function runConnectorSync<TRaw>(input: {
   connector: RegisteredConnector<TRaw>;
@@ -23,19 +24,43 @@ export async function runConnectorSync<TRaw>(input: {
     manifest.supports.incremental_sync &&
     typeof input.connector.lifecycle.incrementalSync === 'function';
 
-  const page = canIncremental
-    ? await input.connector.lifecycle.incrementalSync!(input.context)
-    : await resolveInitialPage(input.connector, input.context);
-
-  const records = await Promise.all(
-    page.rawObjects.map((rawObject) =>
-      input.connector.lifecycle.normalize({
+  let page;
+  let effectivePreviousCursor = previousCursor;
+  if (canIncremental) {
+    try {
+      page = await input.connector.lifecycle.incrementalSync!(input.context);
+    } catch (error) {
+      const classified = classifyConnectorError(error);
+      if (classified.kind !== 'cursor_expired') {
+        throw error;
+      }
+      effectivePreviousCursor = null;
+      page = await resolveInitialPage(input.connector, {
         ...input.context,
-        rawObject,
-        cursor: previousCursor,
-      }),
-    ),
-  );
+        cursor: null,
+      });
+    }
+  } else {
+    page = await resolveInitialPage(input.connector, input.context);
+  }
+
+  const records = [];
+  for (const rawObject of page.rawObjects) {
+    try {
+      records.push(
+        await input.connector.lifecycle.normalize({
+          ...input.context,
+          rawObject,
+          cursor: effectivePreviousCursor,
+        }),
+      );
+    } catch (error) {
+      const classified = classifyConnectorError(error);
+      if (classified.kind !== 'poison_object') {
+        throw error;
+      }
+    }
+  }
 
   for (const record of records) {
     parseNormalizedConnectorRecord(record);
@@ -46,9 +71,9 @@ export async function runConnectorSync<TRaw>(input: {
         context: input.context,
         page,
         records,
-        previousCursor,
+        previousCursor: effectivePreviousCursor,
       })
-    : page.nextCursor ?? previousCursor;
+    : page.nextCursor ?? effectivePreviousCursor;
 
   return {
     manifest,
