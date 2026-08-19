@@ -30,7 +30,11 @@ const APPLE_FILES_DELTA_REASON_KEY = 'filesSelectionDeltaReason' as const;
 
 type AppleBridgeScenario = 'default' | 'rate_limit';
 
-export type AppleBridgeRawObject = AppleCompanionIngestRequest & {
+export type AppleBridgeRawObject = Omit<
+  AppleCompanionIngestRequest,
+  'needs_companion_processing'
+> & {
+  needs_companion_processing?: boolean;
   deleted?: boolean;
   permissions?: Record<string, unknown>;
   poison?: boolean;
