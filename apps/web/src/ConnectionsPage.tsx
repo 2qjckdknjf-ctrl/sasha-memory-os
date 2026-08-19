@@ -1,5 +1,7 @@
 import { Link } from 'react-router-dom';
 import {
+  type ConnectionHealthRecord,
+  type ConnectorDefinitionRecord,
   describeConnectionStatus,
   formatTimestamp,
   type BackendMode,
@@ -14,16 +16,14 @@ type OAuthStartOptions = {
 
 type Props = {
   backend: BackendMode;
+  connectors: ConnectorDefinitionRecord[];
   connections: ConnectionRecord[];
+  connectionHealth: Record<string, ConnectionHealthRecord>;
   onRefresh: () => void;
   onConnectGmailStub: () => void | Promise<void>;
   onStartOAuth: (options?: OAuthStartOptions) => void | Promise<void>;
   onSyncConnections: (connectionId?: string) => void | Promise<void>;
-  onUpdateConnectionStatus: (
-    id: string,
-    status: 'reauth_required' | 'revoked' | 'connected',
-    lastError: string | null,
-  ) => void | Promise<void>;
+  onRevokeConnection: (id: string) => void | Promise<void>;
 };
 
 function describeConnector(connectorId?: string): string {
@@ -64,12 +64,14 @@ function describeConnectionMessage(connection: ConnectionRecord): string {
 
 export function ConnectionsPage({
   backend,
+  connectors,
   connections,
+  connectionHealth,
   onRefresh,
   onConnectGmailStub,
   onStartOAuth,
   onSyncConnections,
-  onUpdateConnectionStatus,
+  onRevokeConnection,
 }: Props) {
   const actionsDisabled = backend === 'local';
   const needsAttention = connections.filter(
@@ -79,7 +81,6 @@ export function ConnectionsPage({
       Boolean(connection.lastError),
   );
   const connectedCount = connections.filter((connection) => connection.status === 'connected').length;
-  const hasGithub = connections.some((connection) => connection.connectorId === 'github');
   const hasGmail = connections.some((connection) => connection.connectorId === 'gmail');
 
   return (
@@ -107,36 +108,82 @@ export function ConnectionsPage({
         >
           Синхронизировать все
         </button>
-        <button
-          type="button"
-          className="button-link button-link--secondary"
-          disabled={actionsDisabled}
-          onClick={() => {
-            void onStartOAuth({
-              connectorId: 'github',
-              displayName: hasGithub ? 'GitHub' : 'AISTROYKA repos',
-              scopes: ['repositories.read'],
-            });
-          }}
-        >
-          {hasGithub ? 'Повторно подключить GitHub' : 'Подключить GitHub'}
-        </button>
-        {!hasGmail ? (
-          <button
-            type="button"
-            className="button-link button-link--secondary"
-            disabled={actionsDisabled}
-            onClick={() => {
-              void onConnectGmailStub();
-            }}
-          >
-            Подключить Gmail (stub)
-          </button>
-        ) : null}
         <Link to="/agents" className="button-link button-link--secondary">
           Права агентов
         </Link>
       </div>
+
+      <section className="panel">
+        <h2>Каталог коннекторов</h2>
+        {connectors.length === 0 ? (
+          <p className="hint">Каталог пока недоступен.</p>
+        ) : (
+          <ul className="timeline" aria-label="Каталог коннекторов">
+            {connectors.map((connector) => {
+              const connectorLabel = connector.displayName ?? describeConnector(connector.id);
+              const supportsOauth = connector.id === 'github';
+              const isGmailStub = connector.id === 'gmail';
+              const isConnected = connections.some((connection) => connection.connectorId === connector.id);
+              return (
+                <li className="item" key={connector.id}>
+                  <div className="meta">
+                    <span className="badge state">{connector.authType ?? 'custom'}</span>
+                    <span>{connectorLabel}</span>
+                    {connector.version ? <span>v{connector.version}</span> : null}
+                  </div>
+                  <h3>{connectorLabel}</h3>
+                  <p>
+                    Capabilities:{' '}
+                    {connector.capabilities && connector.capabilities.length > 0
+                      ? connector.capabilities.join(', ')
+                      : 'not declared'}
+                  </p>
+                  <p className="hint">
+                    Storage modes:{' '}
+                    {connector.storageModes && connector.storageModes.length > 0
+                      ? connector.storageModes.join(', ')
+                      : 'reference'}
+                  </p>
+                  <div className="actions">
+                    {supportsOauth ? (
+                      <button
+                        type="button"
+                        disabled={actionsDisabled}
+                        onClick={() => {
+                          void onStartOAuth({
+                            connectorId: connector.id,
+                            displayName: isConnected ? connectorLabel : 'AISTROYKA repos',
+                            scopes: ['repositories.read'],
+                          });
+                        }}
+                      >
+                        {isConnected ? 'Переподключить GitHub' : 'Подключить GitHub'}
+                      </button>
+                    ) : null}
+                    {isGmailStub && !hasGmail ? (
+                      <button
+                        type="button"
+                        className="button-secondary"
+                        disabled={actionsDisabled}
+                        onClick={() => {
+                          void onConnectGmailStub();
+                        }}
+                      >
+                        Подключить Gmail (stub)
+                      </button>
+                    ) : null}
+                    {!supportsOauth && !isGmailStub ? (
+                      <button type="button" className="button-secondary" disabled>
+                        Скоро
+                      </button>
+                    ) : null}
+                  </div>
+                </li>
+              );
+            })}
+          </ul>
+        )}
+      </section>
 
       <section className="panel">
         <h2>Сводка по коннекторам</h2>
@@ -179,6 +226,7 @@ export function ConnectionsPage({
             {connections.map((connection, index) => {
               const connectorLabel = describeConnector(connection.connectorId);
               const supportsOAuth = connection.connectorId === 'github';
+              const health = connection.id ? connectionHealth[connection.id] : undefined;
               const actionLabel =
                 connection.status === 'reauth_required' || connection.status === 'revoked'
                   ? 'Авторизовать заново'
@@ -196,9 +244,15 @@ export function ConnectionsPage({
                     {connection.lastSyncAt ? <span>{formatTimestamp(connection.lastSyncAt)}</span> : null}
                   </div>
                   <h3>{connection.displayName ?? connectorLabel}</h3>
-                  <p>{describeConnectionMessage(connection)}</p>
+                  <p>{health?.note ?? describeConnectionMessage(connection)}</p>
                   {connection.scopes && connection.scopes.length > 0 ? (
                     <p className="hint">Scopes: {connection.scopes.join(', ')}</p>
+                  ) : null}
+                  {health ? (
+                    <p className="hint">
+                      Health: {health.status}
+                      {health.checkedAt ? ` · ${formatTimestamp(health.checkedAt)}` : ''}
+                    </p>
                   ) : null}
                   {connection.vaultRef ? (
                     <p className="hint">Vault ref: {connection.vaultRef}</p>
@@ -240,7 +294,7 @@ export function ConnectionsPage({
                         className="button-secondary"
                         disabled={actionsDisabled}
                         onClick={() => {
-                          void onUpdateConnectionStatus(connection.id!, 'revoked', null);
+                          void onRevokeConnection(connection.id!);
                         }}
                       >
                         Отозвать доступ

@@ -11,15 +11,20 @@ import {
   type MemoryRecord,
   type MemoryStore,
 } from '@memory-os/domain';
-import { pullGithubDelta } from '@memory-os/connector-github';
+import { githubConnector } from '@memory-os/connector-github';
 import { pullGmailDelta } from '@memory-os/connector-gmail';
 import { pullGoogleCalendarDelta } from '@memory-os/connector-google-calendar';
 import { pullGoogleDriveDelta } from '@memory-os/connector-google-drive';
 import {
+  createConnectorRegistry,
   exchangeAuthorizationCode,
   fingerprintAuthorizationCode,
   resolveAuthorizeBase,
   resolveConnectorSyncOutcome,
+  runConnectorHealthcheck,
+  runConnectorSync,
+  type RegisteredConnector,
+  type SyncCursor,
 } from '@memory-os/connector-sdk';
 import {
   applyExtractionSchema,
@@ -34,6 +39,7 @@ import {
   ingestionEnvelopeSchema,
   oauthCompleteSchema,
   oauthStartSchema,
+  revokeConnectionSchema,
   setConnectionStatusSchema,
   setMemoryStatusSchema,
   upsertConnectionSchema,
@@ -370,7 +376,300 @@ async function maybeEmbedCapturedMemory(
   }
 }
 
-async function pullConnectorDelta(
+const sdkConnectorRegistry = createConnectorRegistry([githubConnector]);
+
+const legacyConnectorCatalog = [
+  {
+    id: githubConnector.manifest.id,
+    version: githubConnector.manifest.version,
+    displayName: 'GitHub',
+    authType: githubConnector.manifest.auth,
+    capabilities: githubConnector.manifest.capabilities,
+    supports: githubConnector.manifest.supports,
+    storageModes: githubConnector.manifest.storage_modes,
+  },
+  {
+    id: 'gmail',
+    version: '1.0.0',
+    displayName: 'Gmail',
+    authType: 'oauth2',
+    capabilities: ['messages.metadata', 'labels.read'],
+    supports: {
+      initial_sync: true,
+      incremental_sync: true,
+      live_fetch: false,
+      webhooks: false,
+      write: false,
+    },
+    storageModes: ['reference', 'indexed'],
+  },
+  {
+    id: 'google-drive',
+    version: '1.0.0',
+    displayName: 'Google Drive',
+    authType: 'oauth2',
+    capabilities: ['files.read', 'changes.list'],
+    supports: {
+      initial_sync: true,
+      incremental_sync: true,
+      live_fetch: false,
+      webhooks: false,
+      write: false,
+    },
+    storageModes: ['reference', 'indexed'],
+  },
+  {
+    id: 'google-calendar',
+    version: '1.0.0',
+    displayName: 'Google Calendar',
+    authType: 'oauth2',
+    capabilities: ['events.read'],
+    supports: {
+      initial_sync: true,
+      incremental_sync: true,
+      live_fetch: false,
+      webhooks: false,
+      write: false,
+    },
+    storageModes: ['reference', 'indexed'],
+  },
+];
+
+type ConnectionLike = {
+  id: string;
+  connectorId: string;
+  displayName?: string;
+  status?: string;
+  scopes?: string[];
+  lastSyncAt?: string | null;
+  lastError?: string | null;
+  vaultRef?: string | null;
+  workspaceId?: string;
+};
+
+function toSyncCursor(
+  row:
+    | {
+        stream: string;
+        cursor: Record<string, unknown>;
+        schemaVersion: string;
+        updatedAt: string;
+      }
+    | null,
+): SyncCursor | null {
+  if (!row) return null;
+  return {
+    stream: row.stream,
+    opaque: row.cursor,
+    schemaVersion: row.schemaVersion,
+    updatedAt: row.updatedAt,
+  };
+}
+
+function describeDerivedHealth(connection: ConnectionLike) {
+  switch (connection.status) {
+    case 'revoked':
+      return {
+        status: 'revoked' as const,
+        note: 'Connection access was revoked and will no longer enqueue sync jobs.',
+        checks: [
+          {
+            name: 'connection_status',
+            status: 'fail' as const,
+            detail: 'Connector account status is revoked.',
+          },
+        ],
+      };
+    case 'disabled':
+      return {
+        status: 'disabled' as const,
+        note: 'Connector is disabled for this workspace.',
+        checks: [
+          {
+            name: 'connection_status',
+            status: 'warn' as const,
+            detail: 'Connector account status is disabled.',
+          },
+        ],
+      };
+    case 'reauth_required':
+      return {
+        status: 'reauth_required' as const,
+        note: connection.lastError ?? 'OAuth reconnect is required before the next sync.',
+        checks: [
+          {
+            name: 'connection_status',
+            status: 'fail' as const,
+            detail: connection.lastError ?? 'Connector account status is reauth_required.',
+          },
+        ],
+      };
+    case 'degraded':
+      return {
+        status: 'degraded' as const,
+        note: connection.lastError ?? 'Connector is degraded because the last sync failed.',
+        checks: [
+          {
+            name: 'connection_status',
+            status: 'warn' as const,
+            detail: connection.lastError ?? 'Connector account status is degraded.',
+          },
+        ],
+      };
+    default:
+      return {
+        status: 'healthy' as const,
+        note: connection.vaultRef
+          ? 'Connector account is connected and has a vault reference.'
+          : 'Connector account is connected.',
+        checks: [
+          {
+            name: 'connection_status',
+            status: 'pass' as const,
+            detail: 'Connector account status is connected.',
+          },
+        ],
+      };
+  }
+}
+
+async function buildConnectionHealth(
+  gateway: SupabaseMemoryGateway | null,
+  subjectId: string,
+  connection: ConnectionLike,
+) {
+  const derived = describeDerivedHealth(connection);
+  if (!gateway) {
+    return {
+      connectionId: connection.id,
+      connectorId: connection.connectorId,
+      status: derived.status,
+      note: derived.note,
+      vaultRef: connection.vaultRef ?? undefined,
+      checkedAt: new Date().toISOString(),
+      checks: derived.checks,
+    };
+  }
+  if (connection.status === 'revoked' || connection.status === 'disabled') {
+    return {
+      connectionId: connection.id,
+      connectorId: connection.connectorId,
+      status: derived.status,
+      note: derived.note,
+      vaultRef: connection.vaultRef ?? undefined,
+      checkedAt: new Date().toISOString(),
+      checks: derived.checks,
+    };
+  }
+  const connector = sdkConnectorRegistry.get(connection.connectorId);
+  if (!connector) {
+    return {
+      connectionId: connection.id,
+      connectorId: connection.connectorId,
+      status: derived.status,
+      note: derived.note,
+      vaultRef: connection.vaultRef ?? undefined,
+      checkedAt: new Date().toISOString(),
+      checks: derived.checks,
+    };
+  }
+  const vault = createConfiguredVaultStore({ gateway });
+  return (
+    (await runConnectorHealthcheck({
+      connector,
+      context: {
+        account: {
+          connectionId: connection.id,
+          connectorId: connection.connectorId,
+          displayName: connection.displayName,
+          vaultRef: connection.vaultRef ?? undefined,
+          scopes: connection.scopes ?? [],
+        },
+        workspaceId: connection.workspaceId ?? seedWorkspace,
+        vault,
+      },
+    })) ?? {
+      connectionId: connection.id,
+      connectorId: connection.connectorId,
+      status: derived.status,
+      note: derived.note,
+      vaultRef: connection.vaultRef ?? undefined,
+      checkedAt: new Date().toISOString(),
+      checks: derived.checks,
+    }
+  );
+}
+
+async function ingestSdkConnectorDelta(
+  gateway: SupabaseMemoryGateway,
+  subjectId: string,
+  workspaceId: string,
+  projectId: string,
+  item: ConnectionLike,
+  connector: RegisteredConnector<any>,
+) {
+  const stream = connector.manifest.default_stream ?? connector.manifest.id;
+  const vault = createConfiguredVaultStore({ gateway });
+  const cursor = toSyncCursor(
+    await gateway.getConnectorCursor({
+      subjectId,
+      accountId: item.id,
+      stream,
+    }),
+  );
+  const syncRun = await runConnectorSync({
+    connector,
+    context: {
+      account: {
+        connectionId: item.id,
+        connectorId: item.connectorId,
+        displayName: item.displayName ?? item.connectorId,
+        vaultRef: item.vaultRef ?? undefined,
+        scopes: item.scopes ?? [],
+      },
+      workspaceId,
+      vault,
+      cursor,
+    },
+  });
+  let captured = 0;
+  for (const record of syncRun.records) {
+    const captureResult = await gateway.captureText({
+      subjectId,
+      workspaceId,
+      projectId,
+      title: record.capture.title,
+      text: record.capture.text,
+      idempotencyKey: record.capture.idempotencyKey,
+      processNow: true,
+      filename: record.capture.filename,
+      mimeType: record.capture.mimeType,
+    });
+    await maybeEmbedCapturedMemory(gateway, {
+      subjectId,
+      title: record.capture.title,
+      text: record.capture.text,
+      captureResult,
+    });
+    captured += 1;
+  }
+  if (syncRun.nextCursor) {
+    await gateway.upsertConnectorCursor({
+      subjectId,
+      accountId: item.id,
+      stream: syncRun.nextCursor.stream,
+      cursor: syncRun.nextCursor.opaque,
+      schemaVersion: syncRun.nextCursor.schemaVersion,
+    });
+  }
+  return {
+    captured,
+    pullMode: syncRun.page.pullMode ?? 'stub',
+    note: syncRun.page.note ?? `${syncRun.manifest.id} connector sync completed`,
+  };
+}
+
+async function pullLegacyConnectorDelta(
   item: {
     connectorId: string;
     connectionId: string;
@@ -386,8 +685,6 @@ async function pullConnectorDelta(
     vault,
   };
   switch (item.connectorId) {
-    case 'github':
-      return pullGithubDelta(common);
     case 'google-drive':
       return pullGoogleDriveDelta(common);
     case 'gmail':
@@ -652,6 +949,21 @@ export function createApp(options?: {
     return c.json({ events, backend: 'memory-store' });
   });
 
+  app.get('/v1/connectors', async (c) => {
+    const authz = c.get('authz');
+    const gw = c.get('gateway');
+    if (!gw) {
+      return c.json({ connectors: legacyConnectorCatalog, backend: 'memory-store' });
+    }
+    try {
+      const connectors = await gw.listConnectors(authz.subjectId);
+      return c.json({ connectors });
+    } catch (err) {
+      if (isForbiddenError(err)) return c.json({ error: 'forbidden' }, 403);
+      return c.json({ error: (err as Error).message }, 500);
+    }
+  });
+
   app.get('/v1/connections', async (c) => {
     const authz = c.get('authz');
     const workspaceId = c.req.query('workspace_id') ?? seedWorkspace;
@@ -672,6 +984,37 @@ export function createApp(options?: {
     try {
       const connections = await gw.listConnections(authz.subjectId, workspaceId);
       return c.json({ connections });
+    } catch (err) {
+      if (isForbiddenError(err)) return c.json({ error: 'forbidden' }, 403);
+      return c.json({ error: (err as Error).message }, 500);
+    }
+  });
+
+  app.get('/v1/connections/:id/health', async (c) => {
+    const connectionId = c.req.param('id');
+    const authz = c.get('authz');
+    const gw = c.get('gateway');
+    if (!gw) {
+      return c.json({
+        connectionId,
+        connectorId: 'github',
+        status: 'healthy',
+        note: 'Local preview uses synthetic connector health.',
+        checkedAt: new Date().toISOString(),
+        checks: [
+          {
+            name: 'preview_mode',
+            status: 'pass',
+            detail: 'Local preview connection health is synthetic.',
+          },
+        ],
+        backend: 'memory-store',
+      });
+    }
+    try {
+      const connection = await gw.getConnection(authz.subjectId, connectionId);
+      const health = await buildConnectionHealth(gw, authz.subjectId, connection);
+      return c.json(health);
     } catch (err) {
       if (isForbiddenError(err)) return c.json({ error: 'forbidden' }, 403);
       return c.json({ error: (err as Error).message }, 500);
@@ -725,39 +1068,61 @@ export function createApp(options?: {
         for (const item of result.enqueued ?? []) {
           if (!item.jobId) continue;
           try {
-            const delta = await pullConnectorDelta(item, vault);
-            if (delta) {
-              for (const event of delta.items) {
-                const captureResult = await gw.captureText({
-                  subjectId: actorSubjectId,
-                  workspaceId,
-                  projectId: seedProject,
-                  title: event.title,
-                  text: event.text,
-                  idempotencyKey: `connector-sync/${item.connectionId}/${event.externalId}`,
-                  processNow: true,
-                  filename: `${item.connectorId}://${event.externalId}`,
-                  mimeType: 'text/plain',
-                });
-                await maybeEmbedCapturedMemory(gw, {
-                  subjectId: actorSubjectId,
-                  title: event.title,
-                  text: event.text,
-                  captureResult,
-                });
-                captured += 1;
+            const sdkConnector = sdkConnectorRegistry.get(item.connectorId);
+            let pullMode = 'none';
+            let note: string | undefined;
+            if (sdkConnector) {
+              const ingested = await ingestSdkConnectorDelta(
+                gw,
+                actorSubjectId,
+                workspaceId,
+                seedProject,
+                {
+                  id: item.connectionId,
+                  connectorId: item.connectorId,
+                  displayName: item.displayName,
+                  vaultRef: item.vaultRef,
+                },
+                sdkConnector,
+              );
+              captured += ingested.captured;
+              pullMode = ingested.pullMode;
+              note = ingested.note;
+            } else {
+              const delta = await pullLegacyConnectorDelta(item, vault);
+              if (delta) {
+                for (const event of delta.items) {
+                  const captureResult = await gw.captureText({
+                    subjectId: actorSubjectId,
+                    workspaceId,
+                    projectId: seedProject,
+                    title: event.title,
+                    text: event.text,
+                    idempotencyKey: `connector-sync/${item.connectionId}/${event.externalId}`,
+                    processNow: true,
+                    filename: `${item.connectorId}://${event.externalId}`,
+                    mimeType: 'text/plain',
+                  });
+                  await maybeEmbedCapturedMemory(gw, {
+                    subjectId: actorSubjectId,
+                    title: event.title,
+                    text: event.text,
+                    captureResult,
+                  });
+                  captured += 1;
+                }
               }
+              pullMode =
+                delta && 'mode' in delta && typeof delta.mode === 'string'
+                  ? delta.mode
+                  : 'none';
+              note =
+                delta && 'note' in delta && typeof delta.note === 'string'
+                  ? delta.note
+                  : delta
+                    ? undefined
+                    : 'unsupported connector';
             }
-            const pullMode =
-              delta && 'mode' in delta && typeof delta.mode === 'string'
-                ? delta.mode
-                : 'none';
-            const note =
-              delta && 'note' in delta && typeof delta.note === 'string'
-                ? delta.note
-                : delta
-                  ? undefined
-                  : 'unsupported connector';
             const outcome = resolveConnectorSyncOutcome({ pullMode, note });
             completed.push({
               ...(await gw.completeConnectorSync({
@@ -797,6 +1162,55 @@ export function createApp(options?: {
         },
       });
       return c.json({ ...result, completed, captured }, 202);
+    } catch (err) {
+      if (isForbiddenError(err)) return c.json({ error: 'forbidden' }, 403);
+      return c.json({ error: (err as Error).message }, 500);
+    }
+  });
+
+  app.post('/v1/connections/:id/revoke', async (c) => {
+    const connectionId = c.req.param('id');
+    const body = revokeConnectionSchema.parse(await c.req.json().catch(() => ({})));
+    const authz = c.get('authz');
+    if (!authz.isOwner && authz.subjectId !== body.actor_subject_id) {
+      return c.json({ error: 'forbidden' }, 403);
+    }
+    const gw = c.get('gateway');
+    if (!gw) {
+      return c.json({
+        id: connectionId,
+        connectorId: 'github',
+        status: 'revoked',
+        revoked: true,
+        backend: 'memory-store',
+      });
+    }
+    try {
+      const connection = await gw.getConnection(body.actor_subject_id, connectionId);
+      const connector = sdkConnectorRegistry.get(connection.connectorId);
+      const vault = createConfiguredVaultStore({ gateway: gw });
+      if (connector) {
+        await connector.lifecycle.revoke?.({
+          account: {
+            connectionId: connection.id,
+            connectorId: connection.connectorId,
+            displayName: connection.displayName,
+            vaultRef: connection.vaultRef ?? undefined,
+            scopes: connection.scopes ?? [],
+          },
+          workspaceId: connection.workspaceId,
+          vault,
+        });
+      } else if (connection.vaultRef) {
+        await vault.delete(connection.vaultRef);
+      }
+      const updated = await gw.setConnectionStatus({
+        subjectId: body.actor_subject_id,
+        connectionId,
+        status: 'revoked',
+        lastError: null,
+      });
+      return c.json({ ...updated, revoked: true });
     } catch (err) {
       if (isForbiddenError(err)) return c.json({ error: 'forbidden' }, 403);
       return c.json({ error: (err as Error).message }, 500);

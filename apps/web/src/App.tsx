@@ -26,7 +26,9 @@ import {
   WORKSPACE_ID,
   type Actor,
   type BackendMode,
+  type ConnectionHealthRecord,
   type ConnectionRecord,
+  type ConnectorDefinitionRecord,
   type CorrectMemoryPayload,
   type ExtractionCandidate,
   type MeResponse,
@@ -64,6 +66,10 @@ export function App() {
   const [error, setError] = useState<string | null>(null);
   const [tick, setTick] = useState(0);
   const [connections, setConnections] = useState<ConnectionRecord[]>([]);
+  const [connectorCatalog, setConnectorCatalog] = useState<ConnectorDefinitionRecord[]>([]);
+  const [connectionHealth, setConnectionHealth] = useState<Record<string, ConnectionHealthRecord>>(
+    {},
+  );
   const [captureTitle, setCaptureTitle] = useState('Meeting note');
   const [captureText, setCaptureText] = useState(
     'Manual capture alpha: quarantine → hash → chunks → candidate memory.',
@@ -108,6 +114,43 @@ export function App() {
         kind: nextActor === 'owner' ? 'user' : 'agent',
       },
     };
+  }
+
+  function buildLocalConnectorCatalog(): ConnectorDefinitionRecord[] {
+    return [
+      {
+        id: 'github',
+        version: '1.0.0',
+        displayName: 'GitHub',
+        authType: 'oauth2',
+        capabilities: ['repositories.read', 'pull_requests.read', 'issues.read'],
+        storageModes: ['reference', 'indexed'],
+      },
+      {
+        id: 'gmail',
+        version: '1.0.0',
+        displayName: 'Gmail',
+        authType: 'oauth2',
+        capabilities: ['messages.metadata', 'labels.read'],
+        storageModes: ['reference', 'indexed'],
+      },
+      {
+        id: 'google-drive',
+        version: '1.0.0',
+        displayName: 'Google Drive',
+        authType: 'oauth2',
+        capabilities: ['files.read', 'changes.list'],
+        storageModes: ['reference', 'indexed'],
+      },
+      {
+        id: 'google-calendar',
+        version: '1.0.0',
+        displayName: 'Google Calendar',
+        authType: 'oauth2',
+        capabilities: ['events.read'],
+        storageModes: ['reference', 'indexed'],
+      },
+    ];
   }
 
   function isVisibleTaskStatus(status: unknown): boolean {
@@ -175,6 +218,8 @@ export function App() {
             status: 'connected',
           },
         ]);
+        setConnectorCatalog(buildLocalConnectorCatalog());
+        setConnectionHealth({});
         setPersistedHandoffs(localStore.listHandoffs(PROJECT_ID));
         setHandoffHistoryAvailable(true);
         setOutboxPending([]);
@@ -193,6 +238,34 @@ export function App() {
         subjectId,
       );
       setConnections(conn.connections ?? []);
+      const catalog = await apiGet<{ connectors: ConnectorDefinitionRecord[] }>(
+        '/v1/connectors',
+        subjectId,
+      );
+      setConnectorCatalog(catalog.connectors ?? []);
+      const healthEntries = await Promise.all(
+        (conn.connections ?? [])
+          .filter((connection): connection is ConnectionRecord & { id: string } => Boolean(connection.id))
+          .map(async (connection) => {
+            try {
+              const healthResult = await apiGet<ConnectionHealthRecord>(
+                `/v1/connections/${connection.id}/health`,
+                subjectId,
+                actor,
+              );
+              return [connection.id, healthResult] as const;
+            } catch {
+              return null;
+            }
+          }),
+      );
+      setConnectionHealth(
+        Object.fromEntries(
+          healthEntries.filter(
+            (entry): entry is readonly [string, ConnectionHealthRecord] => entry !== null,
+          ),
+        ),
+      );
       try {
         const currentMe = await apiGet<MeResponse>('/v1/me', subjectId, actor);
         setMe(currentMe);
@@ -1325,6 +1398,23 @@ export function App() {
     }
   }
 
+  async function onRevokeConnection(id: string) {
+    setError(null);
+    try {
+      await apiPost(
+        `/v1/connections/${id}/revoke`,
+        subjectId,
+        {
+          actor_subject_id: subjectId,
+        },
+        actor,
+      );
+      setTick((current) => current + 1);
+    } catch (err) {
+      setError((err as Error).message);
+    }
+  }
+
   function onRefresh() {
     setTick((current) => current + 1);
   }
@@ -1371,12 +1461,14 @@ export function App() {
           element={
             <ConnectionsPage
               backend={backend}
+              connectors={connectorCatalog}
               connections={connections}
+              connectionHealth={connectionHealth}
               onRefresh={onRefresh}
               onConnectGmailStub={onConnectGmailStub}
               onStartOAuth={onStartOAuth}
               onSyncConnections={onSyncConnections}
-              onUpdateConnectionStatus={onUpdateConnectionStatus}
+              onRevokeConnection={onRevokeConnection}
             />
           }
         />

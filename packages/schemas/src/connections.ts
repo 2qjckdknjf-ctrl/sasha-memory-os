@@ -23,5 +23,10 @@ export const setConnectionStatusSchema = z.object({
   actor_subject_id: z.string().uuid(),
 });
 
+export const revokeConnectionSchema = z.object({
+  actor_subject_id: z.string().uuid(),
+});
+
 export type UpsertConnectionInput = z.infer<typeof upsertConnectionSchema>;
 export type SetConnectionStatusInput = z.infer<typeof setConnectionStatusSchema>;
+export type RevokeConnectionInput = z.infer<typeof revokeConnectionSchema>;

@@ -112,6 +112,30 @@ export type ConnectionRecord = {
   vaultRef?: string | null;
 };
 
+export type ConnectorDefinitionRecord = {
+  id: string;
+  version?: string;
+  displayName?: string;
+  authType?: string;
+  capabilities?: string[];
+  supports?: Record<string, unknown>;
+  storageModes?: string[];
+};
+
+export type ConnectionHealthRecord = {
+  connectionId: string;
+  connectorId: string;
+  status: 'healthy' | 'degraded' | 'reauth_required' | 'revoked' | 'disabled';
+  note: string;
+  vaultRef?: string;
+  checkedAt?: string;
+  checks?: Array<{
+    name: string;
+    status: 'pass' | 'warn' | 'fail';
+    detail: string;
+  }>;
+};
+
 export type ActorMeta = {
   id: string;
   externalKey?: string;

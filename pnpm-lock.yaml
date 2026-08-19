@@ -210,6 +210,9 @@ importers:
       '@memory-os/domain':
         specifier: workspace:*
         version: link:../domain
+      '@memory-os/schemas':
+        specifier: workspace:*
+        version: link:../schemas
       zod:
         specifier: ^4.4.3
         version: 4.4.3
