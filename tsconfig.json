@@ -17,6 +17,7 @@
     { "path": "workers/ingestion" },
     { "path": "workers/connector-sync" },
     { "path": "workers/consolidation" },
+    { "path": "workers/roma-project-health" },
     { "path": "connectors/github" },
     { "path": "connectors/google-drive" },
     { "path": "connectors/gmail" },
