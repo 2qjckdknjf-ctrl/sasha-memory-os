@@ -7,6 +7,22 @@ export const GITHUB_WEBHOOK_EVENT_HEADER = 'x-github-event';
 export const GITHUB_WEBHOOK_DELIVERY_HEADER = 'x-github-delivery';
 export const GITHUB_WEBHOOK_SIGNATURE_HEADER = 'x-hub-signature-256';
 
+export type GitHubWebhookAccountRecord = {
+  id?: number;
+  login?: string;
+  type?: string;
+  html_url?: string;
+};
+
+export type GitHubWebhookInstallationRecord = {
+  id?: number;
+  repository_selection?: 'all' | 'selected' | string;
+  target_type?: string;
+  target_id?: number;
+  suspended_at?: string | null;
+  account?: GitHubWebhookAccountRecord;
+};
+
 export type GitHubWebhookPayload = {
   action?: string;
   zen?: string;
@@ -15,6 +31,13 @@ export type GitHubWebhookPayload = {
   after?: string;
   repository?: GitHubRepositoryRecord;
   connection_id?: string;
+  installation?: GitHubWebhookInstallationRecord;
+  repository_selection?: 'all' | 'selected' | string;
+  repositories?: GitHubRepositoryRecord[];
+  repositories_added?: GitHubRepositoryRecord[];
+  repositories_removed?: GitHubRepositoryRecord[];
+  organization?: GitHubWebhookAccountRecord;
+  sender?: GitHubWebhookAccountRecord;
 };
 
 export type GitHubWebhookVerificationResult =
@@ -103,4 +126,35 @@ export function resolveGitHubWebhookRepositoryCollection(
   if (!payload.repository) return null;
   if (!(payload.repository.full_name ?? payload.repository.name)) return null;
   return githubRepositoryToCollection(payload.repository);
+}
+
+export function resolveGitHubWebhookRepositoryCollections(
+  repositories: GitHubRepositoryRecord[] | undefined,
+): ConnectorCollection[] {
+  return (repositories ?? [])
+    .filter((repository) => Boolean(repository.full_name ?? repository.name))
+    .map((repository) => githubRepositoryToCollection(repository));
+}
+
+export function resolveGitHubWebhookInstallationId(
+  payload: GitHubWebhookPayload,
+): number | null {
+  return typeof payload.installation?.id === 'number' ? payload.installation.id : null;
+}
+
+export function resolveGitHubWebhookRepositorySelection(
+  payload: GitHubWebhookPayload,
+): 'all' | 'selected' | null {
+  const selection = payload.repository_selection ?? payload.installation?.repository_selection;
+  return selection === 'all' || selection === 'selected' ? selection : null;
+}
+
+export function resolveGitHubWebhookInstallationAccount(
+  payload: GitHubWebhookPayload,
+): GitHubWebhookAccountRecord | null {
+  const account = payload.installation?.account ?? payload.organization ?? payload.sender;
+  if (!account) return null;
+  if (typeof account.id !== 'number') return null;
+  if (typeof account.login !== 'string' || account.login.trim().length === 0) return null;
+  return account;
 }
