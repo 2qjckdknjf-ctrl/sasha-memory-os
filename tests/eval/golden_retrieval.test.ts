@@ -314,7 +314,7 @@ describe('golden retrieval harness', () => {
       key: 'eval/authpanel',
     },
     {
-      title: 'Calendar standup stub note',
+      title: 'Calendar selected-calendar stub note',
       text: 'Google Calendar stub emits synthetic selected-calendar events when credentials are unavailable.',
       actor: chatgpt,
       key: 'eval/cal-standup',

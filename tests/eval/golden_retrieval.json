@@ -373,8 +373,8 @@
     },
     {
       "id": "gr-054",
-      "query": "calendar standup stub",
-      "expect_content_includes": "standup",
+      "query": "calendar selected-calendar stub",
+      "expect_content_includes": "selected-calendar",
       "actor": "chatgpt",
       "must_allow": true
     },
