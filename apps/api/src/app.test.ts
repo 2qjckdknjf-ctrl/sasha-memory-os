@@ -2044,6 +2044,53 @@ describe('memory api demo slice', () => {
     }
   });
 
+  it('requires api secret on /mcp when auth enforced', async () => {
+    const prevRequire = process.env.MEMORY_OS_REQUIRE_API_AUTH;
+    const prevSecret = process.env.MEMORY_OS_API_SECRET;
+    process.env.MEMORY_OS_REQUIRE_API_AUTH = '1';
+    process.env.MEMORY_OS_API_SECRET = 'test-http-secret';
+    try {
+      const app = createApp({});
+      const denied = await app.request('/mcp', {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+        },
+        body: JSON.stringify({
+          jsonrpc: '2.0',
+          id: 1,
+          method: 'initialize',
+          params: { protocolVersion: '2025-03-26' },
+        }),
+      });
+      expect(denied.status).toBe(401);
+      expect(await denied.json()).toEqual({ error: 'unauthorized' });
+
+      const allowed = await app.request('/mcp', {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          'x-memory-os-api-secret': 'test-http-secret',
+        },
+        body: JSON.stringify({
+          jsonrpc: '2.0',
+          id: 1,
+          method: 'initialize',
+          params: { protocolVersion: '2025-03-26' },
+        }),
+      });
+      expect(allowed.status).toBe(200);
+      await expect(allowed.json()).resolves.toMatchObject({
+        result: { protocolVersion: '2025-03-26' },
+      });
+    } finally {
+      if (prevRequire === undefined) delete process.env.MEMORY_OS_REQUIRE_API_AUTH;
+      else process.env.MEMORY_OS_REQUIRE_API_AUTH = prevRequire;
+      if (prevSecret === undefined) delete process.env.MEMORY_OS_API_SECRET;
+      else process.env.MEMORY_OS_API_SECRET = prevSecret;
+    }
+  });
+
   it('rejects ROMA project-health schedules without an explicit project_id', async () => {
     const gateway = {
       upsertRomaProjectHealthSchedule: vi.fn(),

@@ -11,6 +11,11 @@ import {
   loadMemoryOsEnv,
   SupabaseMemoryGateway,
 } from '@memory-os/db';
+import {
+  extractMcpHttpApiSecret,
+  isMcpHttpAuthRequired,
+  mcpHttpApiSecretMatches,
+} from './httpAuth.js';
 import { handleMcpJsonRpc, type JsonRpcReq } from './rpc.js';
 import { createMcpHandlers } from './tools.js';
 
@@ -27,25 +32,6 @@ const mcp = createMcpHandlers({
 });
 
 const port = Number(process.env.MEMORY_OS_MCP_HTTP_PORT ?? '8790');
-
-function isAuthRequired(): boolean {
-  const flag = (process.env.MEMORY_OS_REQUIRE_API_AUTH ?? '').trim().toLowerCase();
-  if (flag === '1' || flag === 'true') return true;
-  if (flag === '0' || flag === 'false') return false;
-  const name = (process.env.MEMORY_OS_ENV ?? 'local').trim().toLowerCase();
-  return name !== 'local' && name !== 'test';
-}
-
-function extractSecret(req: IncomingMessage): string | null {
-  const header = req.headers['x-memory-os-api-secret'];
-  if (typeof header === 'string' && header.trim()) return header.trim();
-  const auth = req.headers.authorization;
-  if (typeof auth === 'string' && auth.toLowerCase().startsWith('bearer ')) {
-    const token = auth.slice(7).trim();
-    return token || null;
-  }
-  return null;
-}
 
 function readBody(req: IncomingMessage): Promise<string> {
   return new Promise((resolveBody, reject) => {
@@ -97,10 +83,9 @@ const server = createServer(async (req, res) => {
     return;
   }
 
-  if (isAuthRequired()) {
-    const expected = process.env.MEMORY_OS_API_SECRET?.trim();
-    const provided = extractSecret(req);
-    if (!expected || provided !== expected) {
+  if (isMcpHttpAuthRequired()) {
+    const provided = extractMcpHttpApiSecret(req.headers);
+    if (!mcpHttpApiSecretMatches(provided)) {
       sendJson(res, 401, { error: 'unauthorized' });
       return;
     }

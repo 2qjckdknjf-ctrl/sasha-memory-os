@@ -42,3 +42,15 @@ Deny entries always win. Workspace `owner` membership grants broad access unless
 
 SQL fixtures: `tests/security/rls_policy_cases.sql`  
 Harness (no live DB yet): `tests/security/rls_matrix.test.ts`
+
+## M14 Slice 03 review reuse
+
+The official defensive review pack for roadmap `20.17` reuses this matrix
+alongside API/MCP negative tests to keep the current stack fail-closed:
+
+- unauthenticated MCP HTTP stays rejected when API auth is enforced
+- ChatGPT Mode A stays at exactly 7 tools
+- write/admin paths require explicit `project_id`
+- no owner-token bypass is introduced
+- no writes fall back to AISTROYKA
+- payload bodies and tokens stay out of logs and review outputs

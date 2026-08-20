@@ -24,6 +24,9 @@ describe('RLS matrix artifacts', () => {
     expect(doc).toMatch(/Wrong workspace/);
     expect(doc).toMatch(/personal/);
     expect(doc).toMatch(/idempotency/);
+    expect(doc).toMatch(/unauthenticated MCP HTTP/i);
+    expect(doc).toMatch(/exactly 7 tools/i);
+    expect(doc).toMatch(/AISTROYKA/i);
   });
 
   it('includes SQL policy cases fixture', () => {

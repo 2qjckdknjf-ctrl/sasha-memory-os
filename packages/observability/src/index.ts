@@ -4,6 +4,7 @@ export type LogFields = Record<string, unknown>;
 
 export const REDACTED_LOG_VALUE = '[REDACTED]' as const;
 export const OFFICIAL_M14_SLO_PACK_VERSION = 'm14-s01-v1' as const;
+export const OFFICIAL_M14_SECURITY_REVIEW_PACK_VERSION = 'm14-s03-v1' as const;
 
 const LATENCY_P95_ERROR_BUDGET_RATIO = 0.05;
 const MAX_SLO_SAMPLES_PER_TARGET = 1_024;
@@ -177,6 +178,114 @@ export const OFFICIAL_M14_SLO_PACK = {
       },
     },
   ] satisfies readonly SloTarget[],
+} as const;
+
+type SecurityReviewChecklistItemId =
+  | 'rls-matrix'
+  | 'acl-default-deny'
+  | 'mcp-unauthenticated-reject'
+  | 'mode-a-surface'
+  | 'no-owner-token-bypass'
+  | 'no-aistroyka-fallback'
+  | 'no-verified-write-or-payload-leak';
+
+type SecurityReviewChecklistItem = {
+  id: SecurityReviewChecklistItemId;
+  description: string;
+  defensiveOnly: true;
+  evidence: readonly string[];
+};
+
+export const OFFICIAL_M14_SECURITY_REVIEW_PACK = {
+  version: OFFICIAL_M14_SECURITY_REVIEW_PACK_VERSION,
+  sloPackVersion: OFFICIAL_M14_SLO_PACK_VERSION,
+  roadmapSections: ['20.17'],
+  checklist: [
+    {
+      id: 'rls-matrix',
+      description:
+        'RLS stays deny-first for wrong-workspace, cross-project, personal-sensitivity, and append-only cases.',
+      defensiveOnly: true,
+      evidence: [
+        'tests/security/rls_matrix.test.ts',
+        'tests/security/rls_policy_cases.sql',
+        'docs/engineering/RLS_MATRIX.md',
+        'apps/api/src/supabase.rls.test.ts',
+      ],
+    },
+    {
+      id: 'acl-default-deny',
+      description:
+        'ACL checks stay fail-closed: personal memory remains denied by default and unrelated projects stay unreadable.',
+      defensiveOnly: true,
+      evidence: [
+        'packages/authz/src/index.test.ts',
+        'apps/mcp-gateway/src/tools.test.ts',
+      ],
+    },
+    {
+      id: 'mcp-unauthenticated-reject',
+      description:
+        'Unauthenticated MCP HTTP transport stays rejected whenever API auth is enforced.',
+      defensiveOnly: true,
+      evidence: [
+        'apps/mcp-gateway/src/http.ts',
+        'apps/mcp-gateway/src/httpAuth.test.ts',
+      ],
+    },
+    {
+      id: 'mode-a-surface',
+      description: 'ChatGPT Mode A stays at exactly 7 tools with no new owner or ops surface.',
+      defensiveOnly: true,
+      evidence: [
+        'apps/mcp-gateway/src/profile.ts',
+        'apps/mcp-gateway/src/profile.test.ts',
+      ],
+    },
+    {
+      id: 'no-owner-token-bypass',
+      description:
+        'Review-only slices do not add owner-token bypasses or new privileged write paths.',
+      defensiveOnly: true,
+      evidence: [
+        'apps/api/src/soakHarness.test.ts',
+        'apps/mcp-gateway/src/profile.test.ts',
+      ],
+    },
+    {
+      id: 'no-aistroyka-fallback',
+      description:
+        'Writes and bounded agentic paths require explicit project scope and never fall back to AISTROYKA.',
+      defensiveOnly: true,
+      evidence: [
+        'apps/api/src/app.test.ts',
+        'apps/mcp-gateway/src/tools.test.ts',
+        'workers/consolidation/src/index.test.ts',
+      ],
+    },
+    {
+      id: 'no-verified-write-or-payload-leak',
+      description:
+        'Security review coverage adds no verified-memory writes and does not log memory bodies or tokens.',
+      defensiveOnly: true,
+      evidence: [
+        'packages/observability/src/index.test.ts',
+        'apps/api/src/app.test.ts',
+        'apps/mcp-gateway/src/tools.test.ts',
+      ],
+    },
+  ] satisfies readonly SecurityReviewChecklistItem[],
+  invariants: {
+    defensiveOnly: true,
+    modeAToolCount: 7,
+    requireExplicitProjectIdOnWrites: true,
+    rejectUnauthenticatedMcp: true,
+    allowOwnerTokenBypass: false,
+    allowAistroykaFallback: false,
+    allowVerifiedWrites: false,
+    logMemoryBodies: false,
+    logTokens: false,
+  },
 } as const;
 
 type RuntimeTargetState = {
