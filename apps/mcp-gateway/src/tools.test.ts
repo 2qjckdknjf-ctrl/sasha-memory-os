@@ -1,9 +1,13 @@
 import { describe, expect, it, vi } from 'vitest';
+import { createSeededStore } from '@memory-os/domain';
 import { createMcpHandlers } from './tools.js';
 
 const projectId = '44444444-4444-4444-8444-444444444401';
 const workspaceId = '11111111-1111-4111-8111-111111111111';
+const owner = '33333333-3333-4333-8333-333333333301';
+const chatgpt = '33333333-3333-4333-8333-333333333302';
 const cursor = '33333333-3333-4333-8333-333333333303';
+const roma = '33333333-3333-4333-8333-333333333304';
 const otherProjectId = '44444444-4444-4444-8444-444444444430';
 const coreProjectId = '44444444-4444-4444-8444-444444444431';
 const osProjectId = '44444444-4444-4444-8444-444444444432';
@@ -260,7 +264,6 @@ describe('mcp gateway alpha', () => {
 
   it('searches with RRF and packed context offline', async () => {
     const mcp = createMcpHandlers();
-    const cursor = '33333333-3333-4333-8333-333333333303';
     const result = (await mcp.call('memory.search', {
       query: 'Slice 01',
       project_id: projectId,
@@ -279,9 +282,117 @@ describe('mcp gateway alpha', () => {
     expect(result.context?.text).toContain('[1]');
   });
 
+  it('default-denies personal Gmail and Calendar memories for Cursor, ROMA, and ChatGPT offline', async () => {
+    const store = createSeededStore();
+    const ownerMcp = createMcpHandlers({ store });
+    const chatgptMcp = createMcpHandlers({ store, profile: 'chatgpt' });
+
+    const gmailCapture = (await ownerMcp.call('capture.text', {
+      workspace_id: workspaceId,
+      project_id: projectId,
+      title: 'Personal Gmail connector memory',
+      text: 'Personal Gmail connector memory about family travel must stay private.',
+      actor_subject_id: owner,
+      idempotency_key: 'mcp-personal-gmail-1',
+      sensitivity: 'personal',
+    })) as { memoryId: string };
+    await ownerMcp.call('capture.text', {
+      workspace_id: workspaceId,
+      project_id: projectId,
+      title: 'Personal Calendar connector memory',
+      text: 'Personal Calendar connector memory about a doctor appointment must stay private.',
+      actor_subject_id: owner,
+      idempotency_key: 'mcp-personal-calendar-1',
+      sensitivity: 'personal',
+    });
+
+    const ownerSearch = (await ownerMcp.call('memory.search', {
+      workspace_id: workspaceId,
+      project_id: projectId,
+      actor_subject_id: owner,
+      query: 'personal connector memory',
+    })) as { hits: Array<{ memory: { title: string } }> };
+    expect(
+      ownerSearch.hits.some((hit) => hit.memory.title === 'Personal Gmail connector memory'),
+    ).toBe(true);
+    expect(
+      ownerSearch.hits.some((hit) => hit.memory.title === 'Personal Calendar connector memory'),
+    ).toBe(true);
+
+    for (const subjectId of [cursor, roma]) {
+      const deniedSearch = (await ownerMcp.call('memory.search', {
+        workspace_id: workspaceId,
+        project_id: projectId,
+        actor_subject_id: subjectId,
+        query: 'personal connector memory',
+      })) as { hits: Array<{ memory: { title: string } }> };
+      expect(deniedSearch.hits).toEqual([]);
+      await expect(
+        ownerMcp.call('memory.get', {
+          workspace_id: workspaceId,
+          actor_subject_id: subjectId,
+          memory_id: gmailCapture.memoryId,
+        }),
+      ).rejects.toThrow(/forbidden/i);
+    }
+
+    const deniedChatgptSearch = (await chatgptMcp.call('memory.search', {
+      project_id: projectId,
+      query: 'personal connector memory',
+    })) as { hits: Array<{ memory: { title: string } }> };
+    expect(deniedChatgptSearch.hits).toEqual([]);
+    await expect(
+      chatgptMcp.call('memory.get', {
+        memory_id: gmailCapture.memoryId,
+      }),
+    ).rejects.toThrow(/forbidden/i);
+  });
+
+  it('keeps personal memories out of offline project context for agents but not owner', async () => {
+    const store = createSeededStore();
+    const ownerMcp = createMcpHandlers({ store });
+    const chatgptMcp = createMcpHandlers({ store, profile: 'chatgpt' });
+
+    await ownerMcp.call('capture.text', {
+      workspace_id: workspaceId,
+      project_id: projectId,
+      title: 'Personal Calendar standup note',
+      text: 'Personal Calendar standup note should stay owner-visible only.',
+      actor_subject_id: owner,
+      idempotency_key: 'mcp-personal-context-1',
+      sensitivity: 'personal',
+    });
+
+    const ownerContext = (await ownerMcp.call('context.project', {
+      workspace_id: workspaceId,
+      project_id: projectId,
+      actor_subject_id: owner,
+    })) as { facts: Array<{ title: string }> };
+    expect(
+      ownerContext.facts.some((memory) => memory.title === 'Personal Calendar standup note'),
+    ).toBe(true);
+
+    for (const subjectId of [cursor, roma]) {
+      const context = (await ownerMcp.call('context.project', {
+        workspace_id: workspaceId,
+        project_id: projectId,
+        actor_subject_id: subjectId,
+      })) as { facts: Array<{ title: string }> };
+      expect(
+        context.facts.some((memory) => memory.title === 'Personal Calendar standup note'),
+      ).toBe(false);
+    }
+
+    const chatgptContext = (await chatgptMcp.call('context.project', {
+      project_id: projectId,
+    })) as { facts: Array<{ title: string }> };
+    expect(
+      chatgptContext.facts.some((memory) => memory.title === 'Personal Calendar standup note'),
+    ).toBe(false);
+  });
+
   it('runs extract+apply offline', async () => {
     const mcp = createMcpHandlers();
-    const owner = '33333333-3333-4333-8333-333333333301';
     const result = (await mcp.call('extraction.run', {
       title: 'Run',
       text: 'Selected scopes for Drive sync.',
@@ -331,7 +442,6 @@ describe('mcp gateway alpha', () => {
 
   it('exports memories for owner offline', async () => {
     const mcp = createMcpHandlers();
-    const owner = '33333333-3333-4333-8333-333333333301';
     await mcp.call('capture.text', {
       workspace_id: workspaceId,
       project_id: projectId,
@@ -362,7 +472,6 @@ describe('mcp gateway alpha', () => {
 
   it('lists empty outbox offline', async () => {
     const mcp = createMcpHandlers();
-    const owner = '33333333-3333-4333-8333-333333333301';
     const result = (await mcp.call('outbox.list_pending', {
       workspace_id: workspaceId,
       actor_subject_id: owner,
@@ -373,7 +482,6 @@ describe('mcp gateway alpha', () => {
 
   it('starts oauth stub offline', async () => {
     const mcp = createMcpHandlers();
-    const owner = '33333333-3333-4333-8333-333333333301';
     const started = (await mcp.call('oauth.start', {
       workspace_id: workspaceId,
       connector_id: 'github',
@@ -394,8 +502,6 @@ describe('mcp gateway alpha', () => {
 
   it('runs offline consolidation for duplicate titles', async () => {
     const mcp = createMcpHandlers();
-    const owner = '33333333-3333-4333-8333-333333333301';
-    const chatgpt = '33333333-3333-4333-8333-333333333302';
     await mcp.call('capture.text', {
       workspace_id: workspaceId,
       project_id: projectId,

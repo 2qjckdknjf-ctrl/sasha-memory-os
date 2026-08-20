@@ -92,6 +92,31 @@ describe('authorize', () => {
     ).toBe(false);
   });
 
+  it('allows personal memory when cursor receives an explicit personal grant', () => {
+    const personalGrantCtx: AuthzContext = {
+      ...cursorCtx,
+      entries: [
+        ...cursorCtx.entries,
+        {
+          subjectId: cursor,
+          effect: 'allow',
+          resourceType: 'memory',
+          projectId,
+          actions: ['read'],
+          sensitivityMax: 'personal',
+        },
+      ],
+    };
+    expect(
+      authorize(personalGrantCtx, {
+        resourceType: 'memory',
+        action: 'read',
+        projectId,
+        sensitivity: 'personal',
+      }),
+    ).toBe(true);
+  });
+
   it('denies wrong project', () => {
     expect(
       authorize(cursorCtx, {
@@ -131,6 +156,31 @@ describe('authorize', () => {
         sensitivity: 'restricted',
       }),
     ).toBe(false);
+  });
+
+  it('allows roma personal memory when explicitly granted', () => {
+    const personalGrantCtx: AuthzContext = {
+      ...romaCtx,
+      entries: [
+        ...romaCtx.entries,
+        {
+          subjectId: roma,
+          effect: 'allow',
+          resourceType: 'memory',
+          projectId,
+          actions: ['read'],
+          sensitivityMax: 'personal',
+        },
+      ],
+    };
+    expect(
+      authorize(personalGrantCtx, {
+        resourceType: 'memory',
+        action: 'read',
+        projectId,
+        sensitivity: 'personal',
+      }),
+    ).toBe(true);
   });
 
   it('denies roma on unrelated project', () => {

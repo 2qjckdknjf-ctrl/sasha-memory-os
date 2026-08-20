@@ -4718,7 +4718,15 @@ export function createApp(options?: {
       }
     }
 
-    return c.json(projectContext([...c.get('store').memories.values()], projectId));
+    const readable = [...c.get('store').memories.values()].filter((memory) =>
+      authorize(authz, {
+        resourceType: 'memory',
+        action: 'read',
+        projectId: memory.projectId,
+        sensitivity: memory.sensitivity,
+      }),
+    );
+    return c.json(projectContext(readable, projectId));
   });
 
   app.get('/v1/projects/:id/state', async (c) => {

@@ -21,6 +21,7 @@ const projectId = '44444444-4444-4444-8444-444444444401';
 const owner = '33333333-3333-4333-8333-333333333301';
 const chatgpt = '33333333-3333-4333-8333-333333333302';
 const cursor = '33333333-3333-4333-8333-333333333303';
+const roma = '33333333-3333-4333-8333-333333333304';
 
 function authzFor(actorKey: string): AuthzContext {
   const subject = resolveLocalSubject({ actorKey });
@@ -41,6 +42,14 @@ function authzFor(actorKey: string): AuthzContext {
       },
       {
         subjectId: cursor,
+        effect: 'allow',
+        resourceType: 'memory',
+        projectId,
+        actions: ['read'],
+        sensitivityMax: 'internal',
+      },
+      {
+        subjectId: roma,
         effect: 'allow',
         resourceType: 'memory',
         projectId,
@@ -893,4 +902,65 @@ describe('golden retrieval harness', () => {
       }
     });
   }
+
+  it('keeps personal Gmail and Calendar memories out of default agent retrieval', async () => {
+    store.captureText({
+      workspaceId,
+      projectId,
+      title: 'Personal Gmail beta thread',
+      text: 'Personal Gmail beta thread about family travel receipts must stay private.',
+      actorSubjectId: owner,
+      idempotencyKey: 'eval/personal-gmail-beta',
+      sensitivity: 'personal',
+    });
+    store.captureText({
+      workspaceId,
+      projectId,
+      title: 'Personal Calendar beta event',
+      text: 'Personal Calendar beta event for a doctor appointment must stay private.',
+      actorSubjectId: owner,
+      idempotencyKey: 'eval/personal-calendar-beta',
+      sensitivity: 'personal',
+    });
+
+    const ownerHits = (
+      await searchMemoriesHybrid([...store.memories.values()], 'personal beta', {
+        projectId,
+      })
+    ).filter((hit) =>
+      authorize(authzFor('owner'), {
+        resourceType: 'memory',
+        action: 'read',
+        projectId: hit.memory.projectId,
+        sensitivity: hit.memory.sensitivity,
+      }),
+    );
+    expect(
+      ownerHits.some((hit) => hit.memory.title === 'Personal Gmail beta thread'),
+    ).toBe(true);
+    expect(
+      ownerHits.some((hit) => hit.memory.title === 'Personal Calendar beta event'),
+    ).toBe(true);
+
+    for (const actor of ['chatgpt', 'cursor', 'roma'] as const) {
+      const hits = (
+        await searchMemoriesHybrid([...store.memories.values()], 'personal beta', {
+          projectId,
+        })
+      ).filter((hit) =>
+        authorize(authzFor(actor), {
+          resourceType: 'memory',
+          action: 'read',
+          projectId: hit.memory.projectId,
+          sensitivity: hit.memory.sensitivity,
+        }),
+      );
+      expect(
+        hits.some((hit) => hit.memory.title === 'Personal Gmail beta thread'),
+      ).toBe(false);
+      expect(
+        hits.some((hit) => hit.memory.title === 'Personal Calendar beta event'),
+      ).toBe(false);
+    }
+  });
 });
