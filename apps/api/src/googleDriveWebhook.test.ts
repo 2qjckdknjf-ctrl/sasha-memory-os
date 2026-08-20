@@ -80,48 +80,168 @@ function createGatewayMock(options?: {
   };
 }
 
+async function withEnv<T>(
+  overrides: Record<string, string | undefined>,
+  fn: () => Promise<T> | T,
+): Promise<T> {
+  const previous = new Map<string, string | undefined>();
+  for (const [key, value] of Object.entries(overrides)) {
+    previous.set(key, process.env[key]);
+    if (value === undefined) delete process.env[key];
+    else process.env[key] = value;
+  }
+  try {
+    return await fn();
+  } finally {
+    for (const [key, value] of previous.entries()) {
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
+  }
+}
+
 describe('google drive webhook api', () => {
-  it('acknowledges a Drive watch signal and enqueues connector sync', async () => {
-    const state = createGatewayMock();
-    const app = createApp({ gateway: state.gateway as any });
-    const res = await app.request('/v1/webhooks/google-drive', {
-      method: 'POST',
-      headers: {
-        'x-goog-resource-state': 'update',
-        'x-goog-channel-id': 'drive-channel-1',
-        'x-goog-resource-id': 'drive-resource-1',
-        'x-goog-message-number': '7',
-        'x-goog-channel-token': `connection_id=${connectionId}`,
+  it('rejects production Drive watch deliveries without a valid token', async () => {
+    await withEnv(
+      {
+        MEMORY_OS_ENV: 'production',
+        MEMORY_OS_GOOGLE_DRIVE_WATCH_TOKEN: 'drive-watch-secret',
       },
-    });
-    expect(res.status).toBe(202);
-    const body = await res.json();
-    expect(body.accepted).toBe(true);
-    expect(body.enqueued).toBe(1);
-    expect(state.gateway.enqueueConnectorSync).toHaveBeenCalledOnce();
-    expect(state.gateway.upsertConnectorCursor).toHaveBeenCalledOnce();
+      async () => {
+        const state = createGatewayMock();
+        const app = createApp({ gateway: state.gateway as any });
+        const res = await app.request(`/v1/webhooks/google-drive?connection_id=${connectionId}`, {
+          method: 'POST',
+          headers: {
+            'x-goog-resource-state': 'update',
+            'x-goog-channel-id': 'drive-channel-1',
+            'x-goog-resource-id': 'drive-resource-1',
+            'x-goog-message-number': '7',
+          },
+        });
+        expect(res.status).toBe(401);
+        expect(await res.json()).toEqual({
+          error: 'unauthorized',
+          reason: 'token_required',
+        });
+        expect(state.gateway.enqueueConnectorSync).not.toHaveBeenCalled();
+      },
+    );
   });
 
-  it('deduplicates the same Drive watch message number for a channel', async () => {
-    const state = createGatewayMock({
-      initialCursor: {
-        lastMessageKey: 'drive-channel-1:7',
-        recentMessageKeys: ['drive-channel-1:7'],
+  it('allows unsigned local Drive watch deliveries when no secret is configured', async () => {
+    await withEnv(
+      {
+        MEMORY_OS_ENV: 'local',
+        MEMORY_OS_GOOGLE_DRIVE_WATCH_TOKEN: undefined,
       },
-    });
-    const app = createApp({ gateway: state.gateway as any });
-    const res = await app.request(`/v1/webhooks/google-drive?connection_id=${connectionId}`, {
-      method: 'POST',
-      headers: {
-        'x-goog-resource-state': 'update',
-        'x-goog-channel-id': 'drive-channel-1',
-        'x-goog-resource-id': 'drive-resource-1',
-        'x-goog-message-number': '7',
+      async () => {
+        const state = createGatewayMock();
+        const app = createApp({ gateway: state.gateway as any });
+        const res = await app.request(`/v1/webhooks/google-drive?connection_id=${connectionId}`, {
+          method: 'POST',
+          headers: {
+            'x-goog-resource-state': 'update',
+            'x-goog-channel-id': 'drive-channel-local',
+            'x-goog-resource-id': 'drive-resource-local',
+            'x-goog-message-number': '1',
+          },
+        });
+        expect(res.status).toBe(202);
+        const body = await res.json();
+        expect(body.accepted).toBe(true);
+        expect(body.enqueued).toBe(1);
       },
-    });
-    expect(res.status).toBe(200);
-    const body = await res.json();
-    expect(body.duplicate).toBe(true);
-    expect(state.gateway.enqueueConnectorSync).not.toHaveBeenCalled();
+    );
+  });
+
+  it('rejects production Drive watch deliveries with the wrong token', async () => {
+    await withEnv(
+      {
+        MEMORY_OS_ENV: 'production',
+        MEMORY_OS_GOOGLE_DRIVE_WATCH_TOKEN: 'drive-watch-secret',
+      },
+      async () => {
+        const state = createGatewayMock();
+        const app = createApp({ gateway: state.gateway as any });
+        const res = await app.request(`/v1/webhooks/google-drive?connection_id=${connectionId}`, {
+          method: 'POST',
+          headers: {
+            'x-goog-resource-state': 'update',
+            'x-goog-channel-id': 'drive-channel-1',
+            'x-goog-resource-id': 'drive-resource-1',
+            'x-goog-message-number': '7',
+            'x-goog-channel-token': 'wrong-secret',
+          },
+        });
+        expect(res.status).toBe(401);
+        expect(await res.json()).toEqual({
+          error: 'unauthorized',
+          reason: 'token_invalid',
+        });
+        expect(state.gateway.enqueueConnectorSync).not.toHaveBeenCalled();
+      },
+    );
+  });
+
+  it('acknowledges a Drive watch signal with a plain watch token and enqueues connector sync', async () => {
+    await withEnv(
+      {
+        MEMORY_OS_ENV: 'production',
+        MEMORY_OS_GOOGLE_DRIVE_WATCH_TOKEN: 'drive-watch-secret',
+      },
+      async () => {
+        const state = createGatewayMock();
+        const app = createApp({ gateway: state.gateway as any });
+        const res = await app.request(`/v1/webhooks/google-drive?connection_id=${connectionId}`, {
+          method: 'POST',
+          headers: {
+            'x-goog-resource-state': 'update',
+            'x-goog-channel-id': 'drive-channel-1',
+            'x-goog-resource-id': 'drive-resource-1',
+            'x-goog-message-number': '7',
+            'x-goog-channel-token': 'drive-watch-secret',
+          },
+        });
+        expect(res.status).toBe(202);
+        const body = await res.json();
+        expect(body.accepted).toBe(true);
+        expect(body.enqueued).toBe(1);
+        expect(state.gateway.enqueueConnectorSync).toHaveBeenCalledOnce();
+        expect(state.gateway.upsertConnectorCursor).toHaveBeenCalledOnce();
+      },
+    );
+  });
+
+  it('deduplicates a valid Drive watch querystring token for the same channel/message pair', async () => {
+    await withEnv(
+      {
+        MEMORY_OS_ENV: 'production',
+        MEMORY_OS_GOOGLE_DRIVE_WATCH_TOKEN: 'drive-watch-secret',
+      },
+      async () => {
+        const state = createGatewayMock({
+          initialCursor: {
+            lastMessageKey: 'drive-channel-1:7',
+            recentMessageKeys: ['drive-channel-1:7'],
+          },
+        });
+        const app = createApp({ gateway: state.gateway as any });
+        const res = await app.request('/v1/webhooks/google-drive', {
+          method: 'POST',
+          headers: {
+            'x-goog-resource-state': 'update',
+            'x-goog-channel-id': 'drive-channel-1',
+            'x-goog-resource-id': 'drive-resource-1',
+            'x-goog-message-number': '7',
+            'x-goog-channel-token': `connection_id=${connectionId}&watch_token=drive-watch-secret`,
+          },
+        });
+        expect(res.status).toBe(200);
+        const body = await res.json();
+        expect(body.duplicate).toBe(true);
+        expect(state.gateway.enqueueConnectorSync).not.toHaveBeenCalled();
+      },
+    );
   });
 });

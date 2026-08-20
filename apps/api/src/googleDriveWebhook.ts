@@ -1,3 +1,4 @@
+import { timingSafeEqual } from 'node:crypto';
 import type { SyncCursor } from '@memory-os/connector-sdk';
 
 export const GOOGLE_DRIVE_WATCH_CURSOR_STREAM = 'google-drive:watch';
@@ -14,9 +15,74 @@ type GoogleDriveWatchCursorState = {
   recentMessageKeys: string[];
 };
 
+export type GoogleDriveWatchVerificationResult =
+  | { ok: true; mode: 'token' | 'unsigned_local' }
+  | { ok: false; error: 'token_required' | 'token_invalid' | 'secret_missing' };
+
 function normalizeHeader(value: string | null | undefined): string | null {
   const next = value?.trim();
   return next ? next : null;
+}
+
+function isLocalOrTestEnv(
+  env: NodeJS.ProcessEnv = process.env,
+): boolean {
+  const name = (env.MEMORY_OS_ENV ?? '').trim().toLowerCase();
+  return name === 'local' || name === 'test';
+}
+
+function normalizeSecret(secret: string | null | undefined): string | null {
+  return normalizeHeader(secret);
+}
+
+function resolveGoogleDriveWatchTokenCandidate(channelToken: string | null): string | null {
+  const token = normalizeHeader(channelToken);
+  if (!token) return null;
+  if (!token.includes('=')) {
+    return token;
+  }
+  const params = new URLSearchParams(token);
+  return normalizeHeader(
+    params.get('watch_token') ?? params.get('token') ?? params.get('secret'),
+  );
+}
+
+export function isGoogleDriveWatchTokenRequired(
+  env: NodeJS.ProcessEnv = process.env,
+  secret = env.MEMORY_OS_GOOGLE_DRIVE_WATCH_TOKEN,
+): boolean {
+  return normalizeSecret(secret) !== null || !isLocalOrTestEnv(env);
+}
+
+export function verifyGoogleDriveWatchToken(input: {
+  channelToken?: string | null;
+  secret?: string | null;
+  env?: NodeJS.ProcessEnv;
+}): GoogleDriveWatchVerificationResult {
+  const env = input.env ?? process.env;
+  const secret = normalizeSecret(
+    input.secret ?? env.MEMORY_OS_GOOGLE_DRIVE_WATCH_TOKEN,
+  );
+  const provided = resolveGoogleDriveWatchTokenCandidate(input.channelToken ?? null);
+
+  if (!secret) {
+    if (isLocalOrTestEnv(env)) {
+      return { ok: true, mode: 'unsigned_local' };
+    }
+    return { ok: false, error: 'secret_missing' };
+  }
+  if (!provided) {
+    return { ok: false, error: 'token_required' };
+  }
+
+  const expectedBuffer = Buffer.from(secret);
+  const providedBuffer = Buffer.from(provided);
+  if (expectedBuffer.length !== providedBuffer.length) {
+    return { ok: false, error: 'token_invalid' };
+  }
+  return timingSafeEqual(expectedBuffer, providedBuffer)
+    ? { ok: true, mode: 'token' }
+    : { ok: false, error: 'token_invalid' };
 }
 
 export function resolveGoogleDriveWebhookConnectionId(input: {
@@ -28,7 +94,7 @@ export function resolveGoogleDriveWebhookConnectionId(input: {
   const token = normalizeHeader(input.channelToken);
   if (!token) return null;
   if (!token.includes('=')) {
-    return token;
+    return null;
   }
   const params = new URLSearchParams(token);
   return normalizeHeader(params.get('connection_id') ?? params.get('connectionId'));

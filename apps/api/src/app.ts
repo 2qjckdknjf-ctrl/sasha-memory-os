@@ -118,6 +118,7 @@ import {
   GOOGLE_DRIVE_WATCH_RESOURCE_STATE_HEADER,
   GOOGLE_DRIVE_WATCH_RESOURCE_URI_HEADER,
   hasSeenGoogleDriveWatchMessage,
+  verifyGoogleDriveWatchToken,
   resolveGoogleDriveWebhookConnectionId,
 } from './googleDriveWebhook.js';
 import { requireHttpApiSecret } from './httpAuth.js';
@@ -1988,9 +1989,16 @@ export function createApp(options?: {
       const resourceId = c.req.header(GOOGLE_DRIVE_WATCH_RESOURCE_ID_HEADER);
       const resourceUri = c.req.header(GOOGLE_DRIVE_WATCH_RESOURCE_URI_HEADER);
       const messageNumber = c.req.header(GOOGLE_DRIVE_WATCH_MESSAGE_NUMBER_HEADER);
+      const channelToken = c.req.header(GOOGLE_DRIVE_WATCH_CHANNEL_TOKEN_HEADER);
+      const verification = verifyGoogleDriveWatchToken({
+        channelToken,
+      });
+      if (!verification.ok) {
+        return c.json({ error: 'unauthorized', reason: verification.error }, 401);
+      }
       const connectionId = resolveGoogleDriveWebhookConnectionId({
         queryConnectionId: c.req.query('connection_id') ?? null,
-        channelToken: c.req.header(GOOGLE_DRIVE_WATCH_CHANNEL_TOKEN_HEADER),
+        channelToken,
       });
       if (!connectionId) {
         return c.json({ error: 'connection_id_required' }, 400);
