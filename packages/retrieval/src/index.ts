@@ -394,6 +394,479 @@ export async function searchMemoriesHybrid(
   });
 }
 
+export const AGENTIC_RETRIEVAL_TOOL_ALLOWLIST = ['memory.search'] as const;
+
+export type AgenticRetrievalTool =
+  (typeof AGENTIC_RETRIEVAL_TOOL_ALLOWLIST)[number];
+
+export type AgenticRetrievalOutcome =
+  | 'answered'
+  | 'not_enough_data'
+  | 'budget_exhausted';
+
+export type AgenticRetrievalStopReason =
+  | 'enough_evidence'
+  | 'not_enough_data'
+  | 'max_steps'
+  | 'max_time_ms'
+  | 'max_tokens'
+  | 'max_cost_usd';
+
+export type AgenticRetrievalPhase =
+  | 'initial'
+  | 'evidence'
+  | 'timeline'
+  | 'conflict_check';
+
+export type AgenticRetrievalBudget = {
+  maxSteps: number;
+  maxTimeMs: number;
+  maxTokens: number;
+  maxCostUsd: number;
+  minEvidenceHits: number;
+};
+
+export type AgenticRetrievalBudgetUsage = AgenticRetrievalBudget & {
+  usedSteps: number;
+  usedTimeMs: number;
+  usedTokens: number;
+  usedCostUsd: number;
+};
+
+export type AgenticRetrievalTraceHit = {
+  memoryId: string | null;
+  title: string;
+  status: string | null;
+  projectId: string | null;
+  score: number;
+};
+
+export type AgenticRetrievalTraceStep = {
+  step: number;
+  phase: AgenticRetrievalPhase;
+  tool: AgenticRetrievalTool;
+  query: string;
+  includeHistory: boolean;
+  recordedAfter?: string;
+  recordedBefore?: string;
+  hitCount: number;
+  scopeFilteredCount: number;
+  elapsedMs: number;
+  tokensEstimated: number;
+  costEstimatedUsd: number;
+  topHits: AgenticRetrievalTraceHit[];
+};
+
+export type AgenticRetrievalConflict = {
+  memoryId: string | null;
+  title: string;
+  status: string;
+  score: number;
+};
+
+export type AgenticRetrievalResult<T extends HybridHitLike = HybridHitLike> = {
+  hits: T[];
+  ranking: 'hybrid-rrf';
+  context: ReturnType<typeof packSearchContext>;
+  outcome: AgenticRetrievalOutcome;
+  stopReason: AgenticRetrievalStopReason;
+  writeActionsAttempted: 0;
+  toolAllowlist: readonly AgenticRetrievalTool[];
+  budget: AgenticRetrievalBudgetUsage;
+  trace: {
+    projectId: string;
+    query: string;
+    steps: AgenticRetrievalTraceStep[];
+  };
+  conflicts: AgenticRetrievalConflict[];
+};
+
+export type AgenticSearchRunner<T extends HybridHitLike> = (input: {
+  query: string;
+  projectId: string;
+  includeHistory: boolean;
+  recordedAfter?: string;
+  recordedBefore?: string;
+}) => Promise<T[]>;
+
+const DEFAULT_AGENTIC_RETRIEVAL_BUDGET: AgenticRetrievalBudget = {
+  maxSteps: 4,
+  maxTimeMs: 1_500,
+  maxTokens: 4_000,
+  maxCostUsd: 0.01,
+  minEvidenceHits: 2,
+};
+
+const AGENTIC_RETRIEVAL_STOPWORDS = new Set([
+  'a',
+  'an',
+  'and',
+  'for',
+  'from',
+  'in',
+  'is',
+  'of',
+  'on',
+  'or',
+  'the',
+  'to',
+  'with',
+]);
+
+const CONFLICTING_MEMORY_STATUSES = new Set([
+  'disputed',
+  'superseded',
+  'retracted',
+  'deleted',
+]);
+
+function clampInteger(value: unknown, fallback: number, min: number, max: number): number {
+  if (typeof value !== 'number' || !Number.isFinite(value)) {
+    return fallback;
+  }
+  return Math.min(max, Math.max(min, Math.round(value)));
+}
+
+function clampDecimal(value: unknown, fallback: number, min: number, max: number): number {
+  if (typeof value !== 'number' || !Number.isFinite(value)) {
+    return fallback;
+  }
+  return Math.min(max, Math.max(min, value));
+}
+
+export function normalizeAgenticRetrievalBudget(
+  budget?: Partial<{
+    maxSteps: number;
+    maxTimeMs: number;
+    maxTokens: number;
+    maxCostUsd: number;
+    minEvidenceHits: number;
+  }>,
+): AgenticRetrievalBudget {
+  return {
+    maxSteps: clampInteger(budget?.maxSteps, DEFAULT_AGENTIC_RETRIEVAL_BUDGET.maxSteps, 1, 4),
+    maxTimeMs: clampInteger(
+      budget?.maxTimeMs,
+      DEFAULT_AGENTIC_RETRIEVAL_BUDGET.maxTimeMs,
+      100,
+      10_000,
+    ),
+    maxTokens: clampInteger(
+      budget?.maxTokens,
+      DEFAULT_AGENTIC_RETRIEVAL_BUDGET.maxTokens,
+      128,
+      20_000,
+    ),
+    maxCostUsd: Number(
+      clampDecimal(
+        budget?.maxCostUsd,
+        DEFAULT_AGENTIC_RETRIEVAL_BUDGET.maxCostUsd,
+        0.0001,
+        1,
+      ).toFixed(6),
+    ),
+    minEvidenceHits: clampInteger(
+      budget?.minEvidenceHits,
+      DEFAULT_AGENTIC_RETRIEVAL_BUDGET.minEvidenceHits,
+      1,
+      5,
+    ),
+  };
+}
+
+function hitProjectIdOf(hit: HybridHitLike): string | null {
+  const memory = hit.memory as HybridHitLike['memory'] & {
+    projectId?: string | null;
+    project_id?: string | null;
+  };
+  return memory.projectId ?? memory.project_id ?? null;
+}
+
+function hitStatusOf(hit: HybridHitLike): string | null {
+  return typeof hit.memory.status === 'string' ? hit.memory.status : null;
+}
+
+function hitTitleOf(hit: HybridHitLike): string {
+  return String(hit.memory.title ?? 'untitled').trim() || 'untitled';
+}
+
+function hitIdOf(hit: HybridHitLike, index: number): string {
+  return String(hit.memory.id ?? `idx:${index}`);
+}
+
+function estimateTokens(text: string): number {
+  const trimmed = text.trim();
+  return trimmed.length === 0 ? 1 : Math.max(1, Math.ceil(trimmed.length / 4));
+}
+
+function estimateSearchCostUsd(tokensEstimated: number): number {
+  return Number((0.00005 + tokensEstimated * 0.0000005).toFixed(6));
+}
+
+function estimateHitTokens(hit: HybridHitLike): number {
+  const title = hitTitleOf(hit);
+  const content = String(hit.memory.content ?? '').slice(0, 320);
+  return estimateTokens(`${title}\n${content}`);
+}
+
+function buildTraceHits<T extends HybridHitLike>(hits: T[]): AgenticRetrievalTraceHit[] {
+  return hits.slice(0, 3).map((hit) => ({
+    memoryId: hit.memory.id ? String(hit.memory.id) : null,
+    title: hitTitleOf(hit),
+    status: hitStatusOf(hit),
+    projectId: hitProjectIdOf(hit),
+    score: Number(hit.score),
+  }));
+}
+
+function scopeHitsToProject<T extends HybridHitLike>(
+  hits: T[],
+  projectId: string,
+): { hits: T[]; filteredCount: number } {
+  const scoped = hits.filter((hit) => hitProjectIdOf(hit) === projectId);
+  return {
+    hits: scoped,
+    filteredCount: Math.max(0, hits.length - scoped.length),
+  };
+}
+
+function mergeHybridHits<T extends HybridHitLike>(lists: T[][]): T[] {
+  const merged = new Map<string, T>();
+  for (const list of lists) {
+    list.forEach((hit, index) => {
+      const id = hitIdOf(hit, index);
+      const existing = merged.get(id);
+      if (!existing || Number(hit.score) > Number(existing.score)) {
+        merged.set(id, hit);
+      }
+    });
+  }
+  return [...merged.values()].sort((a, b) => Number(b.score) - Number(a.score));
+}
+
+function buildEvidenceRefinementQuery<T extends HybridHitLike>(
+  query: string,
+  hits: T[],
+): string | null {
+  const queryTokens = new Set(tokenize(query));
+  for (const hit of hits.slice(0, 3)) {
+    const extraTokens = tokenize(hitTitleOf(hit)).filter(
+      (token) =>
+        !queryTokens.has(token) && !AGENTIC_RETRIEVAL_STOPWORDS.has(token),
+    );
+    if (extraTokens.length > 0) {
+      return `${query} ${extraTokens.slice(0, 3).join(' ')}`.trim();
+    }
+  }
+  const fallbackTitle = hits[0] ? hitTitleOf(hits[0]) : '';
+  if (
+    fallbackTitle &&
+    fallbackTitle.toLowerCase() !== query.trim().toLowerCase()
+  ) {
+    return `${query} ${fallbackTitle}`.trim();
+  }
+  return null;
+}
+
+function detectConflicts<T extends HybridHitLike>(hits: T[]): AgenticRetrievalConflict[] {
+  return hits
+    .filter((hit) => {
+      const status = hitStatusOf(hit);
+      return status ? CONFLICTING_MEMORY_STATUSES.has(status) : false;
+    })
+    .slice(0, 5)
+    .map((hit) => ({
+      memoryId: hit.memory.id ? String(hit.memory.id) : null,
+      title: hitTitleOf(hit),
+      status: hitStatusOf(hit) ?? 'unknown',
+      score: Number(hit.score),
+    }));
+}
+
+function hasEnoughEvidence<T extends HybridHitLike>(
+  hits: T[],
+  budget: AgenticRetrievalBudget,
+): boolean {
+  const eligible = hits.filter((hit) => !CONFLICTING_MEMORY_STATUSES.has(hitStatusOf(hit) ?? ''));
+  if (eligible.length >= budget.minEvidenceHits) {
+    return true;
+  }
+  return eligible.some((hit) => {
+    const status = hitStatusOf(hit);
+    return (status === 'verified' || status === 'active') && Number(hit.score) > 0;
+  });
+}
+
+export async function runBoundedAgenticRetrieval<T extends HybridHitLike>(input: {
+  query: string;
+  projectId: string;
+  search: AgenticSearchRunner<T>;
+  budget?: Partial<{
+    maxSteps: number;
+    maxTimeMs: number;
+    maxTokens: number;
+    maxCostUsd: number;
+    minEvidenceHits: number;
+  }>;
+  recordedAfter?: string;
+  recordedBefore?: string;
+  maxContextChars?: number;
+  now?: () => number;
+}): Promise<AgenticRetrievalResult<T>> {
+  const budget = normalizeAgenticRetrievalBudget(input.budget);
+  const now = input.now ?? (() => Date.now());
+  const startedAt = now();
+  const steps: AgenticRetrievalTraceStep[] = [];
+  const hitLists: T[][] = [];
+  const seenQueries = new Set<string>();
+  let usedTokens = 0;
+  let usedCostUsd = 0;
+  let stopReason: AgenticRetrievalStopReason = 'not_enough_data';
+  let outcome: AgenticRetrievalOutcome = 'not_enough_data';
+
+  const phasePlan: Array<{
+    phase: AgenticRetrievalPhase;
+    buildQuery: (mergedHits: T[]) => string | null;
+    includeHistory: boolean;
+  }> = [
+    {
+      phase: 'initial',
+      buildQuery: () => input.query.trim(),
+      includeHistory: false,
+    },
+    {
+      phase: 'evidence',
+      buildQuery: (mergedHits) => buildEvidenceRefinementQuery(input.query, mergedHits),
+      includeHistory: false,
+    },
+    {
+      phase: 'timeline',
+      buildQuery: () => input.query.trim(),
+      includeHistory: true,
+    },
+    {
+      phase: 'conflict_check',
+      buildQuery: () => `${input.query.trim()} disputed superseded corrected retracted`,
+      includeHistory: true,
+    },
+  ];
+  const plannedStepCount = Math.min(phasePlan.length, budget.maxSteps);
+
+  for (const phasePlanEntry of phasePlan) {
+    if (steps.length >= budget.maxSteps) {
+      stopReason = 'max_steps';
+      outcome = 'budget_exhausted';
+      break;
+    }
+    if (now() - startedAt >= budget.maxTimeMs) {
+      stopReason = 'max_time_ms';
+      outcome = 'budget_exhausted';
+      break;
+    }
+    if (usedTokens >= budget.maxTokens) {
+      stopReason = 'max_tokens';
+      outcome = 'budget_exhausted';
+      break;
+    }
+    if (usedCostUsd >= budget.maxCostUsd) {
+      stopReason = 'max_cost_usd';
+      outcome = 'budget_exhausted';
+      break;
+    }
+
+    const mergedHitsBeforeStep = mergeHybridHits(hitLists);
+    const query = phasePlanEntry.buildQuery(mergedHitsBeforeStep)?.trim() ?? '';
+    if (!query) {
+      continue;
+    }
+    const queryKey = `${phasePlanEntry.includeHistory ? 'history' : 'current'}:${query.toLowerCase()}`;
+    if (seenQueries.has(queryKey)) {
+      continue;
+    }
+    seenQueries.add(queryKey);
+
+    const stepStartedAt = now();
+    const rawHits = await input.search({
+      query,
+      projectId: input.projectId,
+      includeHistory: phasePlanEntry.includeHistory,
+      recordedAfter: input.recordedAfter,
+      recordedBefore: input.recordedBefore,
+    });
+    const elapsedMs = Math.max(0, now() - stepStartedAt);
+    const scoped = scopeHitsToProject(rawHits, input.projectId);
+    hitLists.push(scoped.hits);
+
+    const tokensEstimated =
+      estimateTokens(query) +
+      scoped.hits.slice(0, 3).reduce((sum, hit) => sum + estimateHitTokens(hit), 0);
+    const costEstimatedUsd = estimateSearchCostUsd(tokensEstimated);
+    usedTokens += tokensEstimated;
+    usedCostUsd = Number((usedCostUsd + costEstimatedUsd).toFixed(6));
+
+    steps.push({
+      step: steps.length + 1,
+      phase: phasePlanEntry.phase,
+      tool: 'memory.search',
+      query,
+      includeHistory: phasePlanEntry.includeHistory,
+      recordedAfter: input.recordedAfter,
+      recordedBefore: input.recordedBefore,
+      hitCount: scoped.hits.length,
+      scopeFilteredCount: scoped.filteredCount,
+      elapsedMs,
+      tokensEstimated,
+      costEstimatedUsd,
+      topHits: buildTraceHits(scoped.hits),
+    });
+
+    const mergedHitsAfterStep = mergeHybridHits(hitLists);
+    if (steps.length === 1 && mergedHitsAfterStep.length === 0) {
+      stopReason = 'not_enough_data';
+      outcome = 'not_enough_data';
+      break;
+    }
+  }
+
+  const hits = mergeHybridHits(hitLists);
+  const conflicts = detectConflicts(hits);
+  const enoughEvidence = hasEnoughEvidence(hits, budget);
+  const finishedAllPlannedWork = steps.length >= plannedStepCount;
+
+  if (enoughEvidence) {
+    stopReason = 'enough_evidence';
+    outcome = 'answered';
+  } else if (outcome !== 'budget_exhausted') {
+    if (stopReason !== 'not_enough_data' || steps.length > 0 || finishedAllPlannedWork) {
+      stopReason = 'not_enough_data';
+      outcome = 'not_enough_data';
+    }
+  }
+
+  return {
+    hits,
+    ranking: 'hybrid-rrf',
+    context: packSearchContext(hits, { maxChars: input.maxContextChars }),
+    outcome,
+    stopReason,
+    writeActionsAttempted: 0,
+    toolAllowlist: AGENTIC_RETRIEVAL_TOOL_ALLOWLIST,
+    budget: {
+      ...budget,
+      usedSteps: steps.length,
+      usedTimeMs: Math.max(0, now() - startedAt),
+      usedTokens,
+      usedCostUsd,
+    },
+    trace: {
+      projectId: input.projectId,
+      query: input.query,
+      steps,
+    },
+    conflicts,
+  };
+}
+
 export function projectContext(records: MemoryRecord[], projectId: string) {
   const current = filterCurrentMemories(
     records.filter((m) => m.projectId === projectId),
