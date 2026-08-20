@@ -5,6 +5,7 @@ export type LogFields = Record<string, unknown>;
 export const REDACTED_LOG_VALUE = '[REDACTED]' as const;
 export const OFFICIAL_M14_SLO_PACK_VERSION = 'm14-s01-v1' as const;
 export const OFFICIAL_M14_SECURITY_REVIEW_PACK_VERSION = 'm14-s03-v1' as const;
+export const OFFICIAL_M14_DR_RESTORE_DRILL_PACK_VERSION = 'm14-s04-v1' as const;
 
 const LATENCY_P95_ERROR_BUDGET_RATIO = 0.05;
 const MAX_SLO_SAMPLES_PER_TARGET = 1_024;
@@ -283,6 +284,169 @@ export const OFFICIAL_M14_SECURITY_REVIEW_PACK = {
     allowOwnerTokenBypass: false,
     allowAistroykaFallback: false,
     allowVerifiedWrites: false,
+    logMemoryBodies: false,
+    logTokens: false,
+  },
+} as const;
+
+type DrRestoreDrillTargetId =
+  | 'db-backup-contour'
+  | 'storage-backup-contour'
+  | 'rls-after-restore'
+  | 'checksum-verify'
+  | 'embedding-index-rebuild'
+  | 'provenance-sample';
+
+type DrRestoreDrillTarget = {
+  id: DrRestoreDrillTargetId;
+  contour: 'database' | 'storage' | 'restore';
+  description: string;
+};
+
+type DrRestoreDrillChecklistItem = {
+  id: DrRestoreDrillTargetId;
+  description: string;
+  defensiveOnly: true;
+  evidence: readonly string[];
+};
+
+export const OFFICIAL_M14_DR_RESTORE_DRILL_PACK = {
+  version: OFFICIAL_M14_DR_RESTORE_DRILL_PACK_VERSION,
+  sloPackVersion: OFFICIAL_M14_SLO_PACK_VERSION,
+  securityReviewPackVersion: OFFICIAL_M14_SECURITY_REVIEW_PACK_VERSION,
+  roadmapSections: ['7.5', '20.17'],
+  targets: [
+    {
+      id: 'db-backup-contour',
+      contour: 'database',
+      description:
+        'Database backup contour is present and explicitly separate from Storage object archival.',
+    },
+    {
+      id: 'storage-backup-contour',
+      contour: 'storage',
+      description:
+        'Archived-object Storage contour is versioned, off-site, and independent from database backup restore.',
+    },
+    {
+      id: 'rls-after-restore',
+      contour: 'restore',
+      description:
+        'Restore drills must verify deny-first RLS behavior after recovery, not just row presence.',
+    },
+    {
+      id: 'checksum-verify',
+      contour: 'restore',
+      description:
+        'Restore drills must verify archived object checksums after recovery.',
+    },
+    {
+      id: 'embedding-index-rebuild',
+      contour: 'restore',
+      description:
+        'Restore drills must verify embedding/index rebuild coverage after recovery.',
+    },
+    {
+      id: 'provenance-sample',
+      contour: 'restore',
+      description:
+        'Restore drills must verify selective provenance reproducibility for sampled recovered records.',
+    },
+  ] satisfies readonly DrRestoreDrillTarget[],
+  checklist: [
+    {
+      id: 'db-backup-contour',
+      description:
+        'Database backups stay a distinct contour: PITR may satisfy the 15-minute RPO, but they do not restore deleted Storage objects.',
+      defensiveOnly: true,
+      evidence: [
+        'docs/m0/DATA_CLASSES_AND_RETENTION.md',
+        'docs/adr/ADR-003-storage-modes.md',
+        'apps/api/src/restoreDrill.ts',
+        'apps/api/src/restoreDrill.test.ts',
+      ],
+    },
+    {
+      id: 'storage-backup-contour',
+      description:
+        'Archived-object copies stay versioned/off-site and independent from the database contour.',
+      defensiveOnly: true,
+      evidence: [
+        'docs/m0/DATA_CLASSES_AND_RETENTION.md',
+        'docs/adr/ADR-003-storage-modes.md',
+        'apps/api/fixtures/dr-restore-drill/m14-s04-v1/storage-archive-manifest.json',
+        'apps/api/src/restoreDrill.test.ts',
+      ],
+    },
+    {
+      id: 'rls-after-restore',
+      description:
+        'Restore drills must validate RLS deny paths after recovery instead of checking rows only.',
+      defensiveOnly: true,
+      evidence: [
+        'tests/security/rls_matrix.test.ts',
+        'docs/engineering/RLS_MATRIX.md',
+        'apps/api/src/restoreDrill.test.ts',
+      ],
+    },
+    {
+      id: 'checksum-verify',
+      description:
+        'Archived object verification includes checksum validation after recovery.',
+      defensiveOnly: true,
+      evidence: [
+        'docs/adr/ADR-003-storage-modes.md',
+        'apps/api/fixtures/dr-restore-drill/m14-s04-v1/restore-report.json',
+        'apps/api/src/restoreDrill.test.ts',
+      ],
+    },
+    {
+      id: 'embedding-index-rebuild',
+      description:
+        'Restore drills must record embedding/index rebuild status as part of recovery validation.',
+      defensiveOnly: true,
+      evidence: [
+        'docs/m0/DATA_CLASSES_AND_RETENTION.md',
+        'apps/api/fixtures/dr-restore-drill/m14-s04-v1/restore-report.json',
+        'apps/api/src/restoreDrill.test.ts',
+      ],
+    },
+    {
+      id: 'provenance-sample',
+      description:
+        'Restore drills must confirm selective provenance reproducibility for sampled recovered memories.',
+      defensiveOnly: true,
+      evidence: [
+        'docs/m0/DATA_CLASSES_AND_RETENTION.md',
+        'apps/api/fixtures/dr-restore-drill/m14-s04-v1/owner-export-metadata.json',
+        'apps/api/src/restoreDrill.test.ts',
+      ],
+    },
+  ] satisfies readonly DrRestoreDrillChecklistItem[],
+  invariants: {
+    defensiveOnly: true,
+    fixtureOnly: true,
+    modeAToolCount: 7,
+    requireIndependentDatabaseBackupContour: true,
+    requireIndependentStorageArchiveContour: true,
+    databaseBackupRestoresStorageObjects: false,
+    maxDatabaseRpoMinutesWithPitr: 15,
+    requireDocumentedDailyDatabaseRpoWithoutPitr: true,
+    maxArchivedObjectRpoHours: 24,
+    maxPrivateBetaRtoHours: 8,
+    requireQuarterlyRestoreDrill: true,
+    requirePreGaRestoreDrill: true,
+    checkRowsPresent: true,
+    checkRlsAfterRestore: true,
+    checkObjectChecksums: true,
+    checkEmbeddingIndexRebuild: true,
+    checkSelectiveProvenanceReproducibility: true,
+    requireExplicitProjectIdOnWriteOrExportInvocation: true,
+    allowOwnerTokenBypass: false,
+    allowAistroykaFallback: false,
+    allowVerifiedWrites: false,
+    allowLiveRestore: false,
+    allowProductionSqlApply: false,
     logMemoryBodies: false,
     logTokens: false,
   },

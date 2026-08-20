@@ -1,6 +1,8 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   createLogger,
+  OFFICIAL_M14_DR_RESTORE_DRILL_PACK,
+  OFFICIAL_M14_DR_RESTORE_DRILL_PACK_VERSION,
   getSloBudgetSnapshot,
   OFFICIAL_M14_SECURITY_REVIEW_PACK,
   OFFICIAL_M14_SECURITY_REVIEW_PACK_VERSION,
@@ -124,6 +126,61 @@ describe('observability package', () => {
         (item) => item.id === 'mcp-unauthenticated-reject',
       )?.evidence,
     ).toContain('apps/mcp-gateway/src/httpAuth.test.ts');
+  });
+
+  it('publishes the official M14 Slice 04 DR restore drill pack with bounded defensive invariants', () => {
+    expect(OFFICIAL_M14_DR_RESTORE_DRILL_PACK_VERSION).toBe('m14-s04-v1');
+    expect(OFFICIAL_M14_DR_RESTORE_DRILL_PACK.version).toBe('m14-s04-v1');
+    expect(OFFICIAL_M14_DR_RESTORE_DRILL_PACK.sloPackVersion).toBe('m14-s01-v1');
+    expect(OFFICIAL_M14_DR_RESTORE_DRILL_PACK.securityReviewPackVersion).toBe(
+      'm14-s03-v1',
+    );
+    expect(OFFICIAL_M14_DR_RESTORE_DRILL_PACK.roadmapSections).toEqual([
+      '7.5',
+      '20.17',
+    ]);
+    expect(OFFICIAL_M14_DR_RESTORE_DRILL_PACK.targets.map((item) => item.id)).toEqual(
+      expect.arrayContaining([
+        'db-backup-contour',
+        'storage-backup-contour',
+        'rls-after-restore',
+        'checksum-verify',
+        'embedding-index-rebuild',
+        'provenance-sample',
+      ]),
+    );
+    expect(OFFICIAL_M14_DR_RESTORE_DRILL_PACK.invariants).toMatchObject({
+      defensiveOnly: true,
+      fixtureOnly: true,
+      modeAToolCount: 7,
+      requireIndependentDatabaseBackupContour: true,
+      requireIndependentStorageArchiveContour: true,
+      databaseBackupRestoresStorageObjects: false,
+      maxDatabaseRpoMinutesWithPitr: 15,
+      requireDocumentedDailyDatabaseRpoWithoutPitr: true,
+      maxArchivedObjectRpoHours: 24,
+      maxPrivateBetaRtoHours: 8,
+      requireQuarterlyRestoreDrill: true,
+      requirePreGaRestoreDrill: true,
+      checkRowsPresent: true,
+      checkRlsAfterRestore: true,
+      checkObjectChecksums: true,
+      checkEmbeddingIndexRebuild: true,
+      checkSelectiveProvenanceReproducibility: true,
+      requireExplicitProjectIdOnWriteOrExportInvocation: true,
+      allowOwnerTokenBypass: false,
+      allowAistroykaFallback: false,
+      allowVerifiedWrites: false,
+      allowLiveRestore: false,
+      allowProductionSqlApply: false,
+      logMemoryBodies: false,
+      logTokens: false,
+    });
+    expect(
+      OFFICIAL_M14_DR_RESTORE_DRILL_PACK.checklist.find(
+        (item) => item.id === 'rls-after-restore',
+      )?.evidence,
+    ).toContain('tests/security/rls_matrix.test.ts');
   });
 
   it('redacts tokens, bodies, queries, and personal content from structured logs', () => {
