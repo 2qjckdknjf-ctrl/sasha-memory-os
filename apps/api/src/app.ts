@@ -613,6 +613,15 @@ function missingProjectReadResponse(c: { json: (body: { error: string }, status:
   return c.json({ error: 'project_id is required for this read' }, 400);
 }
 
+function missingProjectExportResponse(c: {
+  json: (body: { error: string }, status: 400) => Response;
+}) {
+  return c.json(
+    { error: 'project_id is required for export; never default to AISTROYKA' },
+    400,
+  );
+}
+
 function missingAgenticProjectResponse(c: {
   json: (body: { error: string }, status: 400) => Response;
 }) {
@@ -4189,6 +4198,7 @@ export function createApp(options?: {
     if (!authz.isOwner) return c.json({ error: 'forbidden' }, 403);
     const workspaceId = c.req.query('workspace_id') ?? seedWorkspace;
     const projectId = c.req.query('project_id') ?? undefined;
+    if (!projectId) return missingProjectExportResponse(c);
     const status = c.req.query('status') ?? undefined;
     const recordedAfter = c.req.query('recorded_after') ?? undefined;
     const recordedBefore = c.req.query('recorded_before') ?? undefined;
@@ -4333,6 +4343,7 @@ export function createApp(options?: {
 
   app.post('/v1/privacy/requests', async (c) => {
     const body = createPrivacyRequestSchema.parse(await c.req.json());
+    if (!body.project_id) return missingProjectResponse(c);
     const authz = c.get('authz');
     if (!authz.isOwner || authz.subjectId !== body.actor_subject_id) {
       return c.json({ error: 'forbidden' }, 403);

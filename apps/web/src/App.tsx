@@ -1594,8 +1594,9 @@ export function App() {
         setError('Export requires owner actor');
         return;
       }
+      const targetProjectId = resolveExplicitWriteProjectId();
       const dump = await apiGet<{ format?: string; count?: number }>(
-        `/v1/export/memories?workspace_id=${WORKSPACE_ID}&limit=200`,
+        `/v1/export/memories?workspace_id=${WORKSPACE_ID}&project_id=${encodeURIComponent(targetProjectId)}&limit=200`,
         subjectId,
         actor,
       );
@@ -1806,6 +1807,7 @@ export function App() {
               backend={backend}
               backendResolved={backendResolved}
               onExportMemories={onExportMemories}
+              projectId={writeProjectId}
               subjectId={subjectId}
             />
           }

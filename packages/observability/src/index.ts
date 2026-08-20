@@ -7,6 +7,7 @@ export const OFFICIAL_M14_SLO_PACK_VERSION = 'm14-s01-v1' as const;
 export const OFFICIAL_M14_SECURITY_REVIEW_PACK_VERSION = 'm14-s03-v1' as const;
 export const OFFICIAL_M14_DR_RESTORE_DRILL_PACK_VERSION = 'm14-s04-v1' as const;
 export const OFFICIAL_M14_INCIDENT_RUNBOOK_PACK_VERSION = 'm14-s05-v1' as const;
+export const OFFICIAL_M14_PRIVACY_SLA_PACK_VERSION = 'm14-s06-v1' as const;
 
 const LATENCY_P95_ERROR_BUDGET_RATIO = 0.05;
 const MAX_SLO_SAMPLES_PER_TARGET = 1_024;
@@ -742,6 +743,186 @@ export const OFFICIAL_M14_INCIDENT_RUNBOOK_PACK = {
     logMemoryBodies: false,
     logTokens: false,
     logAlertPayloads: false,
+  },
+} as const;
+
+type PrivacySlaPathId =
+  | 'owner-export'
+  | 'privacy-deletion'
+  | 'privacy-correction'
+  | 'privacy-retraction';
+
+type PrivacySlaOwnerRole = 'Privacy owner' | 'Connector on-call';
+
+type PrivacySlaPathSpec = {
+  id: PrivacySlaPathId;
+  route: 'GET /v1/export/memories' | 'POST /v1/privacy/requests';
+  requestType?: 'deletion' | 'correction' | 'retraction';
+  ownerRole: PrivacySlaOwnerRole;
+  deadline: string;
+  description: string;
+  connectorDerivedCoverage: boolean;
+  explicitProjectIdRequired: boolean;
+  metadataOnlyAudit: true;
+};
+
+type PrivacySlaChecklistItemId =
+  | 'owner-export-sla'
+  | 'deletion-forget-sla'
+  | 'correction-retraction-sla'
+  | 'connector-derived-coverage'
+  | 'no-payload-in-export-logs';
+
+type PrivacySlaChecklistItem = {
+  id: PrivacySlaChecklistItemId;
+  description: string;
+  defensiveOnly: true;
+  evidence: readonly string[];
+};
+
+export const OFFICIAL_M14_PRIVACY_SLA_PACK = {
+  version: OFFICIAL_M14_PRIVACY_SLA_PACK_VERSION,
+  sloPackVersion: OFFICIAL_M14_SLO_PACK_VERSION,
+  securityReviewPackVersion: OFFICIAL_M14_SECURITY_REVIEW_PACK_VERSION,
+  drRestoreDrillPackVersion: OFFICIAL_M14_DR_RESTORE_DRILL_PACK_VERSION,
+  incidentRunbookPackVersion: OFFICIAL_M14_INCIDENT_RUNBOOK_PACK_VERSION,
+  roadmapSections: ['16.6', '16.7', '20.17'],
+  slaPaths: [
+    {
+      id: 'owner-export',
+      route: 'GET /v1/export/memories',
+      ownerRole: 'Privacy owner',
+      deadline: '72h from validated owner request',
+      description:
+        'Owner export stays on the existing project-scoped GET /v1/export/memories path and covers canonical plus connector-derived memories.',
+      connectorDerivedCoverage: true,
+      explicitProjectIdRequired: true,
+      metadataOnlyAudit: true,
+    },
+    {
+      id: 'privacy-deletion',
+      route: 'POST /v1/privacy/requests',
+      requestType: 'deletion',
+      ownerRole: 'Privacy owner',
+      deadline: '30d from validated owner request',
+      description:
+        'Deletion / forget stays on the existing privacy-request path and must cover connector-derived records, tombstones, and retention handoff.',
+      connectorDerivedCoverage: true,
+      explicitProjectIdRequired: true,
+      metadataOnlyAudit: true,
+    },
+    {
+      id: 'privacy-correction',
+      route: 'POST /v1/privacy/requests',
+      requestType: 'correction',
+      ownerRole: 'Privacy owner',
+      deadline: '30d from validated owner request',
+      description:
+        'Correction requests stay on the existing privacy-request path and remain project-scoped with metadata-only audit trails.',
+      connectorDerivedCoverage: false,
+      explicitProjectIdRequired: true,
+      metadataOnlyAudit: true,
+    },
+    {
+      id: 'privacy-retraction',
+      route: 'POST /v1/privacy/requests',
+      requestType: 'retraction',
+      ownerRole: 'Privacy owner',
+      deadline: '30d from validated owner request',
+      description:
+        'Retraction requests stay on the existing privacy-request path and remain project-scoped with metadata-only audit trails.',
+      connectorDerivedCoverage: false,
+      explicitProjectIdRequired: true,
+      metadataOnlyAudit: true,
+    },
+  ] satisfies readonly PrivacySlaPathSpec[],
+  checklist: [
+    {
+      id: 'owner-export-sla',
+      description:
+        'The existing owner export path has a checked-in owner, deadline, explicit project scope, and no payload logging.',
+      defensiveOnly: true,
+      evidence: [
+        'docs/engineering/privacy/EXPORT_DELETION_SLAS.md',
+        'apps/api/src/app.ts',
+        'apps/api/src/app.test.ts',
+        'apps/mcp-gateway/src/tools.ts',
+        'apps/mcp-gateway/src/tools.test.ts',
+      ],
+    },
+    {
+      id: 'deletion-forget-sla',
+      description:
+        'The existing deletion / forget request path has a checked-in owner, deadline, explicit project scope, and metadata-only audit coverage.',
+      defensiveOnly: true,
+      evidence: [
+        'docs/engineering/privacy/EXPORT_DELETION_SLAS.md',
+        'packages/domain/src/store.ts',
+        'supabase/migrations/20260820065500_m14_slice_06_privacy_request_sla_guards.sql',
+        'apps/api/src/app.test.ts',
+      ],
+    },
+    {
+      id: 'correction-retraction-sla',
+      description:
+        'Correction and retraction requests stay on the current privacy-request surface with checked-in owners, deadlines, and explicit project scope.',
+      defensiveOnly: true,
+      evidence: [
+        'docs/engineering/privacy/EXPORT_DELETION_SLAS.md',
+        'apps/api/src/privacySlaDrill.ts',
+        'apps/api/src/privacySlaDrill.test.ts',
+      ],
+    },
+    {
+      id: 'connector-derived-coverage',
+      description:
+        'Export and deletion SLAs explicitly name connector-derived coverage and reuse the shared connector tombstone surfaces instead of inventing a parallel deletion product.',
+      defensiveOnly: true,
+      evidence: [
+        'docs/engineering/privacy/EXPORT_DELETION_SLAS.md',
+        'docs/m0/DATA_CLASSES_AND_RETENTION.md',
+        'workers/connector-sync/src/index.ts',
+        'workers/connector-sync/src/index.test.ts',
+        'docs/engineering/M10_DRIVE_SLICE_02.md',
+        'docs/engineering/M11_GMAIL_SLICE_01.md',
+        'docs/engineering/M11_CALENDAR_SLICE_02.md',
+        'apps/web/src/TransferredObjectsPage.tsx',
+      ],
+    },
+    {
+      id: 'no-payload-in-export-logs',
+      description:
+        'Export and privacy-request audit/log surfaces stay metadata-only and do not log memory bodies, tokens, correction text, or export payloads.',
+      defensiveOnly: true,
+      evidence: [
+        'packages/observability/src/index.test.ts',
+        'apps/api/src/app.test.ts',
+        'apps/api/src/privacySlaDrill.test.ts',
+        'packages/domain/src/store.ts',
+        'supabase/migrations/20260820065500_m14_slice_06_privacy_request_sla_guards.sql',
+      ],
+    },
+  ] satisfies readonly PrivacySlaChecklistItem[],
+  invariants: {
+    defensiveOnly: true,
+    fixtureOnly: true,
+    modeAToolCount: 7,
+    requireSlaOwner: true,
+    requireSlaDeadline: true,
+    requireConnectorDerivedCoverage: true,
+    requireCorrectionRetractionCoverage: true,
+    requireExplicitProjectIdOnExportOrDeleteInvocation: true,
+    requireExplicitProjectIdOnWriteAdminOrExportInvocation: true,
+    allowOwnerTokenBypass: false,
+    allowAistroykaFallback: false,
+    allowVerifiedWrites: false,
+    allowLiveExport: false,
+    allowLiveDelete: false,
+    allowProductionSqlApply: false,
+    logMemoryBodies: false,
+    logTokens: false,
+    logExportPayloads: false,
+    logPrivacyRequestReasons: false,
   },
 } as const;
 

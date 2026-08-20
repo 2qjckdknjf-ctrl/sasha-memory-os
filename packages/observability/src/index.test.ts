@@ -6,6 +6,8 @@ import {
   getSloBudgetSnapshot,
   OFFICIAL_M14_INCIDENT_RUNBOOK_PACK,
   OFFICIAL_M14_INCIDENT_RUNBOOK_PACK_VERSION,
+  OFFICIAL_M14_PRIVACY_SLA_PACK,
+  OFFICIAL_M14_PRIVACY_SLA_PACK_VERSION,
   OFFICIAL_M14_SECURITY_REVIEW_PACK,
   OFFICIAL_M14_SECURITY_REVIEW_PACK_VERSION,
   OFFICIAL_M14_SLO_PACK,
@@ -252,6 +254,62 @@ describe('observability package', () => {
         (item) => item.id === 'connector-revoke-stop-jobs',
       )?.evidence,
     ).toContain('docs/engineering/runbooks/connector-revoke-stop-sync.md');
+  });
+
+  it('publishes the official M14 Slice 06 privacy SLA pack with fail-closed defensive invariants', () => {
+    expect(OFFICIAL_M14_PRIVACY_SLA_PACK_VERSION).toBe('m14-s06-v1');
+    expect(OFFICIAL_M14_PRIVACY_SLA_PACK.version).toBe('m14-s06-v1');
+    expect(OFFICIAL_M14_PRIVACY_SLA_PACK.sloPackVersion).toBe('m14-s01-v1');
+    expect(OFFICIAL_M14_PRIVACY_SLA_PACK.securityReviewPackVersion).toBe(
+      'm14-s03-v1',
+    );
+    expect(OFFICIAL_M14_PRIVACY_SLA_PACK.drRestoreDrillPackVersion).toBe(
+      'm14-s04-v1',
+    );
+    expect(OFFICIAL_M14_PRIVACY_SLA_PACK.incidentRunbookPackVersion).toBe(
+      'm14-s05-v1',
+    );
+    expect(OFFICIAL_M14_PRIVACY_SLA_PACK.roadmapSections).toEqual([
+      '16.6',
+      '16.7',
+      '20.17',
+    ]);
+    expect(
+      OFFICIAL_M14_PRIVACY_SLA_PACK.slaPaths.map((item) => item.id),
+    ).toEqual(
+      expect.arrayContaining([
+        'owner-export',
+        'privacy-deletion',
+        'privacy-correction',
+        'privacy-retraction',
+      ]),
+    );
+    expect(OFFICIAL_M14_PRIVACY_SLA_PACK.invariants).toMatchObject({
+      defensiveOnly: true,
+      fixtureOnly: true,
+      modeAToolCount: 7,
+      requireSlaOwner: true,
+      requireSlaDeadline: true,
+      requireConnectorDerivedCoverage: true,
+      requireCorrectionRetractionCoverage: true,
+      requireExplicitProjectIdOnExportOrDeleteInvocation: true,
+      requireExplicitProjectIdOnWriteAdminOrExportInvocation: true,
+      allowOwnerTokenBypass: false,
+      allowAistroykaFallback: false,
+      allowVerifiedWrites: false,
+      allowLiveExport: false,
+      allowLiveDelete: false,
+      allowProductionSqlApply: false,
+      logMemoryBodies: false,
+      logTokens: false,
+      logExportPayloads: false,
+      logPrivacyRequestReasons: false,
+    });
+    expect(
+      OFFICIAL_M14_PRIVACY_SLA_PACK.checklist.find(
+        (item) => item.id === 'connector-derived-coverage',
+      )?.evidence,
+    ).toContain('workers/connector-sync/src/index.ts');
   });
 
   it('redacts tokens, bodies, queries, and personal content from structured logs', () => {

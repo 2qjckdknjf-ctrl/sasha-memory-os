@@ -505,10 +505,13 @@ export class MemoryStore {
       if (!existing) throw new Error('privacy request index corrupt');
       return existing;
     }
+    if (!input.projectId) {
+      throw new Error('project_id is required for privacy requests');
+    }
     const request: PrivacyRequest = {
       id: newId(),
       workspaceId: input.workspaceId,
-      projectId: input.projectId ?? null,
+      projectId: input.projectId,
       actorSubjectId: input.actorSubjectId,
       requestType: input.requestType,
       status: 'submitted',
@@ -525,7 +528,7 @@ export class MemoryStore {
       action: 'privacy.request.submitted',
       objectType: 'privacy_request',
       objectId: request.id,
-      reason: input.reason,
+      reason: 'privacy request submitted',
       afterState: {
         requestType: request.requestType,
         targetMemoryId: request.targetMemoryId,
