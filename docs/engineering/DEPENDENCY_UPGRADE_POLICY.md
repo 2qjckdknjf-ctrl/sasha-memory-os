@@ -15,8 +15,7 @@ Rollback: Revert the dependency change and `pnpm-lock.yaml`, rerun `pnpm typeche
 
 - Use the current pnpm workspace, existing `pnpm-lock.yaml`, and the current CI
   smoke path only.
-- No new vendor is added unless the vendor is already present and a pin is
-  required to encode policy.
+- No new vendor is added unless the vendor is already present and a pin is required to encode policy.
 - No live mass upgrade is allowed; ship one bounded PR at a time.
 - Dependency bumps do not imply production SQL apply.
 
@@ -36,7 +35,7 @@ Owner: Platform owner
 Owner: Platform owner
 
 - Do not silently bump `protocolVersion`.
-- MCP / protocol / SDK changes require ADR references before merge.
+- MCP / protocol / SDK changes requires ADR references before merge.
 - ADR evidence: `docs/adr/ADR-001-canonical-memory.md`,
   `docs/adr/ADR-005-secrets-and-environments.md`
 - Contract evidence: `apps/mcp-gateway/src/profile.test.ts`,
@@ -70,8 +69,7 @@ Owner: Platform owner
 
 Owner: Platform owner
 
-- Do not log tokens, secrets, memory bodies, or dependency-upgrade payloads in
-  CI output, upgrade notes, or validator output.
+- Do not log tokens, secrets, memory bodies, or dependency-upgrade payloads in CI output, upgrade notes, or validator output.
 - Use metadata-only upgrade notes and redacted examples.
 - Keep `service_role`, auth headers, connector tokens, and memory bodies out of
   upgrade logs and CI output.

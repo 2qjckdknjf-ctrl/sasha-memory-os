@@ -32,10 +32,10 @@ Roadmap section: `20.17`
   - every official upgrade policy names an owner
   - every official upgrade policy names a rollback note
   - contract tests and smoke remain required gates
-  - MCP / protocol / SDK changes require ADR references and contract evidence
+  - MCP / protocol / SDK changes requires ADR references and contract evidence
   - ChatGPT Mode A stays exactly 7 tools
   - write/admin/apply paths require explicit `project_id`
-  - `MEMORY_OS_DEFAULT_PROJECT_ID` is ignored
+  - MEMORY_OS_DEFAULT_PROJECT_ID is ignored
   - there is no AISTROYKA fallback
   - there is no owner-token bypass
   - there are no verified-memory writes
