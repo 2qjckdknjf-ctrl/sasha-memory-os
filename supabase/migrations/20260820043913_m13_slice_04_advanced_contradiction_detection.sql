@@ -32,6 +32,33 @@ CREATE TABLE memory_conflicts (
   CONSTRAINT memory_conflicts_distinct_pair CHECK (left_memory_id <> right_memory_id)
 );
 
+ALTER TABLE memory_conflicts ENABLE ROW LEVEL SECURITY;
+ALTER TABLE memory_conflicts FORCE ROW LEVEL SECURITY;
+
+CREATE POLICY memory_conflicts_select
+  ON memory_conflicts
+  FOR SELECT
+  USING (
+    app.is_workspace_member(workspace_id)
+    AND app.has_acl(workspace_id, 'project', 'read', project_id, 'internal')
+  );
+
+CREATE POLICY memory_conflicts_no_insert
+  ON memory_conflicts
+  FOR INSERT
+  WITH CHECK (false);
+
+CREATE POLICY memory_conflicts_no_update
+  ON memory_conflicts
+  FOR UPDATE
+  USING (false)
+  WITH CHECK (false);
+
+CREATE POLICY memory_conflicts_no_delete
+  ON memory_conflicts
+  FOR DELETE
+  USING (false);
+
 CREATE INDEX idx_memory_conflicts_project_detected
   ON memory_conflicts (project_id, last_detected_at DESC);
 CREATE INDEX idx_memory_conflicts_pair

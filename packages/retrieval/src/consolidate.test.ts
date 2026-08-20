@@ -185,6 +185,55 @@ describe('planProactiveConsolidation', () => {
     expect(plan.verifiedWrites).toBe(0);
   });
 
+  it('does not label two historical records as current-fact contradictions but still flags superseded vs active', async () => {
+    const historicalOnly = await planProactiveConsolidation([
+      {
+        id: 'historical-a',
+        projectId: 'project-a',
+        title: 'API hostname',
+        content: 'Use api-old.example.com.',
+        status: 'superseded',
+        recordedAt: '2026-08-20T01:00:00.000Z',
+      },
+      {
+        id: 'historical-b',
+        projectId: 'project-a',
+        title: 'api hostname',
+        content: 'Use api-older.example.com.',
+        status: 'superseded',
+        recordedAt: '2026-08-20T00:30:00.000Z',
+      },
+    ]);
+
+    expect(historicalOnly.detectedConflicts).toEqual([]);
+
+    const withCurrent = await planProactiveConsolidation([
+      {
+        id: 'historical-a',
+        projectId: 'project-a',
+        title: 'API hostname',
+        content: 'Use api-old.example.com.',
+        status: 'superseded',
+        recordedAt: '2026-08-20T01:00:00.000Z',
+      },
+      {
+        id: 'current-a',
+        projectId: 'project-a',
+        title: 'api hostname',
+        content: 'Use api.example.com.',
+        status: 'active',
+        recordedAt: '2026-08-20T02:00:00.000Z',
+      },
+    ]);
+
+    expect(withCurrent.detectedConflicts).toEqual([
+      expect.objectContaining({
+        reason: 'superseded-current-fact',
+        memoryIds: ['current-a', 'historical-a'],
+      }),
+    ]);
+  });
+
   it('stops on time budget with a partial plan', async () => {
     let ticks = 0;
     const now = () => {

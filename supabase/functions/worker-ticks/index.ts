@@ -129,20 +129,42 @@ function correctedByOf(row: MemoryRow): string | null {
     : null;
 }
 
+function isHistoricalConflictStatus(status: string): boolean {
+  return CONFLICTING_MEMORY_STATUSES.has(status) && !isCurrentishStatus(status);
+}
+
 function inferPairConflictReason(left: MemoryRow, right: MemoryRow): DetectedConflict["reason"] | null {
+  const leftCurrentish = isCurrentishStatus(left.status);
+  const rightCurrentish = isCurrentishStatus(right.status);
+  const leftHistorical = isHistoricalConflictStatus(left.status);
+  const rightHistorical = isHistoricalConflictStatus(right.status);
   const correctedRelation =
     correctedFromOf(left) === right.id ||
     correctedFromOf(right) === left.id ||
     correctedByOf(left) === right.id ||
     correctedByOf(right) === left.id;
-  if (correctedRelation) return "corrected-current-fact";
-  const statuses = [left.status, right.status];
-  if (statuses.some((status) => CONFLICTING_MEMORY_STATUSES.has(status))) {
-    if (statuses.includes("disputed")) return "disputed-current-fact";
-    if (statuses.includes("retracted")) return "retracted-current-fact";
-    if (statuses.includes("superseded")) return "superseded-current-fact";
+  if (correctedRelation && ((leftCurrentish && rightHistorical) || (rightCurrentish && leftHistorical))) {
+    return "corrected-current-fact";
   }
-  if (isCurrentishStatus(left.status) && isCurrentishStatus(right.status)) {
+  if (
+    (left.status === "disputed" && rightCurrentish && right.status !== "disputed") ||
+    (right.status === "disputed" && leftCurrentish && left.status !== "disputed")
+  ) {
+    return "disputed-current-fact";
+  }
+  if (
+    (left.status === "superseded" && rightCurrentish) ||
+    (right.status === "superseded" && leftCurrentish)
+  ) {
+    return "superseded-current-fact";
+  }
+  if (
+    (left.status === "retracted" && rightCurrentish) ||
+    (right.status === "retracted" && leftCurrentish)
+  ) {
+    return "retracted-current-fact";
+  }
+  if (leftCurrentish && rightCurrentish) {
     return normalizeContent(left.content) !== normalizeContent(right.content)
       ? "same-title-divergent-content"
       : null;

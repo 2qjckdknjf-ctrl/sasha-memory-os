@@ -286,6 +286,8 @@ describe('m8 slice 03 migration guards', () => {
 
   it('adds durable contradiction candidates without defaulting to AISTROYKA', () => {
     expect(contradictionDetectionSql).toContain(`CREATE TABLE memory_conflicts`);
+    expect(contradictionDetectionSql).toContain(`ALTER TABLE memory_conflicts ENABLE ROW LEVEL SECURITY;`);
+    expect(contradictionDetectionSql).toContain(`ALTER TABLE memory_conflicts FORCE ROW LEVEL SECURITY;`);
     expect(contradictionDetectionSql).toContain(`UNIQUE (workspace_id, project_id, conflict_key)`);
     expect(contradictionDetectionSql).toContain(`CREATE OR REPLACE FUNCTION app.api_upsert_memory_conflict`);
     expect(contradictionDetectionSql).toContain(`RAISE EXCEPTION 'project_id required'`);
@@ -301,6 +303,15 @@ describe('m8 slice 03 migration guards', () => {
     expect(contradictionDetectionSql).toContain(
       `CREATE OR REPLACE FUNCTION app.sanitize_memory_conflict_evidence_refs`,
     );
+    expect(contradictionDetectionSql).toContain(`CREATE POLICY memory_conflicts_select`);
+    expect(contradictionDetectionSql).toContain(
+      `app.has_acl(workspace_id, 'project', 'read', project_id, 'internal')`,
+    );
+    expect(contradictionDetectionSql).toContain(`CREATE POLICY memory_conflicts_no_insert`);
+    expect(contradictionDetectionSql).toContain(`WITH CHECK (false);`);
+    expect(contradictionDetectionSql).toContain(`CREATE POLICY memory_conflicts_no_update`);
+    expect(contradictionDetectionSql).toContain(`USING (false)`);
+    expect(contradictionDetectionSql).toContain(`CREATE POLICY memory_conflicts_no_delete`);
     expect(contradictionDetectionSql).toContain(`'memoryId'`);
     expect(contradictionDetectionSql).toContain(`'title'`);
     expect(contradictionDetectionSql).not.toContain(`'content'`);
