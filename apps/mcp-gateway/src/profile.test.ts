@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { OFFICIAL_M14_SUPPORT_OPS_PACK } from '@memory-os/observability';
 import {
   CHATGPT_PILOT_TOOLS,
   applyProfileDefaults,
@@ -19,7 +20,9 @@ describe('mcp profile', () => {
   it('limits chatgpt pilot tools and blocks owner ops', async () => {
     const mcp = createMcpHandlers({ profile: 'chatgpt' });
     expect(mcp.profile).toBe('chatgpt');
-    expect(CHATGPT_PILOT_TOOLS).toHaveLength(7);
+    expect(CHATGPT_PILOT_TOOLS).toHaveLength(
+      OFFICIAL_M14_SUPPORT_OPS_PACK.invariants.modeAToolCount,
+    );
     expect([...mcp.tools.map((t) => t.name)].sort()).toEqual([...CHATGPT_PILOT_TOOLS].sort());
 
     await expect(

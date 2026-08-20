@@ -1472,6 +1472,230 @@ export const OFFICIAL_M14_FIRST_HOUR_ONBOARDING_PACK = {
   },
 } as const;
 
+export const OFFICIAL_M14_SUPPORT_OPS_PACK_VERSION = 'm14-s10-v1' as const;
+
+type SupportOpsOwnerRole =
+  | 'Platform on-call'
+  | 'Security on-call'
+  | 'Connector on-call'
+  | 'Privacy owner';
+
+type SupportOpsLinkId =
+  | 'ops-route'
+  | 'slo-pack'
+  | 'alert-routing-runbook'
+  | 'emergency-revoke-runbook'
+  | 'connector-revoke-runbook'
+  | 'privacy-route'
+  | 'privacy-sla-doc'
+  | 'audit-route'
+  | 'connections-route'
+  | 'onboarding-guide';
+
+type SupportOpsLinkKind = 'route' | 'doc';
+
+type SupportOpsLinkSpec = {
+  id: SupportOpsLinkId;
+  label: string;
+  kind: SupportOpsLinkKind;
+  target: string;
+  ownerRole: SupportOpsOwnerRole;
+  description: string;
+  metadataOnly: true;
+  explicitProjectIdRequired: boolean;
+};
+
+type SupportOpsOwnershipAreaId =
+  | 'slo-and-error-budgets'
+  | 'revoke-and-rollback'
+  | 'export-and-privacy'
+  | 'on-call-routing';
+
+type SupportOpsOwnershipArea = {
+  id: SupportOpsOwnershipAreaId;
+  ownerRole: SupportOpsOwnerRole;
+  primaryLinkId: SupportOpsLinkId;
+  description: string;
+};
+
+export const OFFICIAL_M14_SUPPORT_OPS_PACK = {
+  version: OFFICIAL_M14_SUPPORT_OPS_PACK_VERSION,
+  sloPackVersion: OFFICIAL_M14_SLO_PACK_VERSION,
+  incidentRunbookPackVersion: OFFICIAL_M14_INCIDENT_RUNBOOK_PACK_VERSION,
+  privacySlaPackVersion: OFFICIAL_M14_PRIVACY_SLA_PACK_VERSION,
+  firstHourOnboardingPackVersion: OFFICIAL_M14_FIRST_HOUR_ONBOARDING_PACK_VERSION,
+  roadmapSections: ['20.17', 'RG5 support+ownership'],
+  entryRoute: '/ops',
+  supportLinks: [
+    {
+      id: 'ops-route',
+      label: 'Control Center /ops',
+      kind: 'route',
+      target: '/ops',
+      ownerRole: 'Platform on-call',
+      description:
+        'Official bounded support surface on the existing Control Center /ops page.',
+      metadataOnly: true,
+      explicitProjectIdRequired: false,
+    },
+    {
+      id: 'slo-pack',
+      label: 'SLO + error budgets',
+      kind: 'doc',
+      target: 'docs/engineering/M14_SLICE_01.md',
+      ownerRole: 'Platform on-call',
+      description:
+        'Current official SLO pack, error-budget targets, and bounded telemetry contract.',
+      metadataOnly: true,
+      explicitProjectIdRequired: false,
+    },
+    {
+      id: 'alert-routing-runbook',
+      label: 'Alert ownership + routing',
+      kind: 'doc',
+      target: 'docs/engineering/runbooks/alert-ownership-and-routing.md',
+      ownerRole: 'Platform on-call',
+      description:
+        'Maps official alerts to named owners and existing rollback / revoke references.',
+      metadataOnly: true,
+      explicitProjectIdRequired: false,
+    },
+    {
+      id: 'emergency-revoke-runbook',
+      label: 'Emergency revoke',
+      kind: 'doc',
+      target: 'docs/engineering/runbooks/emergency-revoke.md',
+      ownerRole: 'Security on-call',
+      description:
+        'Security containment path for revoke / rollback scenarios without live ops action.',
+      metadataOnly: true,
+      explicitProjectIdRequired: true,
+    },
+    {
+      id: 'connector-revoke-runbook',
+      label: 'Connector revoke + stop sync',
+      kind: 'doc',
+      target: 'docs/engineering/runbooks/connector-revoke-stop-sync.md',
+      ownerRole: 'Connector on-call',
+      description:
+        'Connector on-call revoke path with job / webhook stop requirements and retention handoff.',
+      metadataOnly: true,
+      explicitProjectIdRequired: true,
+    },
+    {
+      id: 'privacy-route',
+      label: 'Privacy page',
+      kind: 'route',
+      target: '/privacy',
+      ownerRole: 'Privacy owner',
+      description:
+        'Existing export and privacy request surface; no payload preview on /ops.',
+      metadataOnly: true,
+      explicitProjectIdRequired: true,
+    },
+    {
+      id: 'privacy-sla-doc',
+      label: 'Export + privacy SLAs',
+      kind: 'doc',
+      target: 'docs/engineering/privacy/EXPORT_DELETION_SLAS.md',
+      ownerRole: 'Privacy owner',
+      description:
+        'Checked-in SLA, ownership, and connector-derived coverage for export and privacy requests.',
+      metadataOnly: true,
+      explicitProjectIdRequired: true,
+    },
+    {
+      id: 'audit-route',
+      label: 'Audit log',
+      kind: 'route',
+      target: '/audit',
+      ownerRole: 'Security on-call',
+      description:
+        'Existing audit surface for metadata-only inspection; not a payload browser.',
+      metadataOnly: true,
+      explicitProjectIdRequired: false,
+    },
+    {
+      id: 'connections-route',
+      label: 'Connections',
+      kind: 'route',
+      target: '/connections',
+      ownerRole: 'Connector on-call',
+      description:
+        'Existing connections surface for health, reauth, and bounded connector ownership.',
+      metadataOnly: true,
+      explicitProjectIdRequired: true,
+    },
+    {
+      id: 'onboarding-guide',
+      label: 'First-hour onboarding',
+      kind: 'doc',
+      target: 'docs/engineering/ONBOARDING.md',
+      ownerRole: 'Platform on-call',
+      description:
+        'Current official first-hour guide for finding support, privacy, and runbook surfaces.',
+      metadataOnly: true,
+      explicitProjectIdRequired: false,
+    },
+  ] satisfies readonly SupportOpsLinkSpec[],
+  ownership: [
+    {
+      id: 'slo-and-error-budgets',
+      ownerRole: 'Platform on-call',
+      primaryLinkId: 'slo-pack',
+      description: 'Platform on-call owns the current SLO pack and error-budget review path.',
+    },
+    {
+      id: 'revoke-and-rollback',
+      ownerRole: 'Security on-call',
+      primaryLinkId: 'emergency-revoke-runbook',
+      description:
+        'Security on-call owns emergency revoke / rollback pointers and must stay metadata-only on /ops.',
+    },
+    {
+      id: 'export-and-privacy',
+      ownerRole: 'Privacy owner',
+      primaryLinkId: 'privacy-sla-doc',
+      description:
+        'Privacy owner owns export and privacy request SLAs plus the existing /privacy page.',
+    },
+    {
+      id: 'on-call-routing',
+      ownerRole: 'Connector on-call',
+      primaryLinkId: 'connector-revoke-runbook',
+      description:
+        'Connector on-call owns reauth, revoke, stop-sync, and connector incident routing.',
+    },
+  ] satisfies readonly SupportOpsOwnershipArea[],
+  summary: {
+    sloTargetCount: OFFICIAL_M14_SLO_PACK.targets.length,
+    incidentRunbookCount: OFFICIAL_M14_INCIDENT_RUNBOOK_PACK.runbooks.length,
+    modeAToolCount: OFFICIAL_M14_FIRST_HOUR_ONBOARDING_PACK.invariants.modeAToolCount,
+  },
+  invariants: {
+    defensiveOnly: true,
+    fixtureOnly: true,
+    reuseExistingOpsPage: true,
+    actorSwitchingDemoOnly: true,
+    requireExplicitProjectIdOnWriteAdminOrExportInvocation: true,
+    ignoreDefaultProjectIdEnv: true,
+    modeAToolCount: 7,
+    allowOwnerTokenBypass: false,
+    allowAistroykaFallback: false,
+    allowVerifiedWrites: false,
+    allowLiveRevoke: false,
+    allowLiveRollback: false,
+    allowProductionSqlApply: false,
+    allowParallelOpsApp: false,
+    allowNewPagerProduct: false,
+    allowNewVendor: false,
+    logMemoryBodies: false,
+    logTokens: false,
+    logPayloadBodies: false,
+    logExportPayloads: false,
+  },
+} as const;
+
 type RuntimeTargetState = {
   totalCount: number;
   successCount: number;

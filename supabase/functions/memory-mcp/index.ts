@@ -11,7 +11,7 @@ const SUBJECT = Deno.env.get("MEMORY_OS_CHATGPT_SUBJECT_ID") ??
   "33333333-3333-4333-8333-333333333302";
 const WORKSPACE = Deno.env.get("MEMORY_OS_DEFAULT_WORKSPACE_ID") ??
   "11111111-1111-4111-8111-111111111111";
-const PROJECT = Deno.env.get("MEMORY_OS_DEFAULT_PROJECT_ID") ??
+const RLS_PROBE_PROJECT_ID =
   "44444444-4444-4444-8444-444444444401";
 const SUPABASE_URL = (Deno.env.get("SUPABASE_URL") ??
   "https://vpxblcxsvlylqyldiuwr.supabase.co").replace(/\/$/, "");
@@ -195,7 +195,7 @@ async function authorize(
   const { error } = await client.rpc("api_rls_probe", {
     p_secret: secret,
     p_subject_id: SUBJECT,
-    p_project_id: PROJECT,
+    p_project_id: RLS_PROBE_PROJECT_ID,
     p_sensitivity: "internal",
   });
   return !error;
