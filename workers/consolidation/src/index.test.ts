@@ -138,6 +138,7 @@ describe('runProactiveConsolidationLocalStore', () => {
     expect(report.applied).toHaveLength(1);
     expect(report.verifiedWrites).toBe(0);
     expect(report.auditEventId).toBeTruthy();
+    expect(report.persistedConflictIds.length).toBeGreaterThanOrEqual(1);
     expect(store.memories.get(scopedA.memoryId)?.status).not.toBe('verified');
     expect(store.memories.get(scopedB.memoryId)?.status).not.toBe('verified');
     expect(store.memories.get(otherA.memoryId)?.status).toBe('candidate');
@@ -227,6 +228,71 @@ describe('runProactiveConsolidationLocalStore', () => {
         reason: 'same-title-divergent-content',
       }),
     ]);
+    expect(
+      report.detectedConflicts.some(
+        (conflict) => conflict.reason === 'same-title-divergent-content',
+      ),
+    ).toBe(true);
     expect(report.applied).toEqual([]);
+  });
+
+  it('persists durable contradiction candidates with evidence ids and titles only', async () => {
+    const store = new MemoryStore();
+    const workspaceId = '11111111-1111-4111-8111-111111111111';
+    const projectId = '44444444-4444-4444-8444-444444444401';
+    const owner = '33333333-3333-4333-8333-333333333301';
+
+    const corrected = store.createDecision({
+      workspaceId,
+      projectId,
+      title: 'API region',
+      content: 'Use eu-central-1.',
+      actorSubjectId: owner,
+      idempotencyKey: 'proactive-corrected-new',
+    });
+    const captured = store.captureText({
+      workspaceId,
+      projectId,
+      title: 'api region',
+      text: 'Use us-east-1.',
+      actorSubjectId: owner,
+      idempotencyKey: 'proactive-corrected-old',
+    });
+    store.correctMemory({
+      memoryId: captured.memoryId,
+      replacementMemoryId: corrected.id,
+      reason: 'Correct region.',
+      actorSubjectId: owner,
+    });
+
+    const report = await runProactiveConsolidationLocalStore({
+      store,
+      workspaceId,
+      subjectId: owner,
+      projectId,
+      apply: false,
+    });
+
+    expect(report.verifiedWrites).toBe(0);
+    expect(report.detectedConflicts).toEqual([
+      expect.objectContaining({
+        reason: 'corrected-current-fact',
+      }),
+    ]);
+    expect(report.persistedConflictIds).toHaveLength(1);
+    const conflicts = store.listMemoryConflicts(workspaceId, projectId);
+    expect(conflicts).toHaveLength(1);
+    expect(conflicts[0]?.reason).toBe('corrected-current-fact');
+    expect(conflicts[0]?.evidence).toEqual(
+      expect.arrayContaining([
+        { memoryId: corrected.id, title: 'API region' },
+        { memoryId: captured.memoryId, title: 'api region' },
+      ]),
+    );
+    expect(JSON.stringify(conflicts[0])).not.toContain('eu-central-1');
+    expect(JSON.stringify(conflicts[0])).not.toContain('us-east-1');
+    expect(
+      store.auditLog.some((entry) => entry.action === 'memory_conflict.detected'),
+    ).toBe(true);
   });
 });

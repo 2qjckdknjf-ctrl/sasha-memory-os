@@ -290,6 +290,52 @@ export class SupabaseMemoryGateway {
     };
   }
 
+  async upsertMemoryConflict(input: {
+    subjectId: string;
+    workspaceId: string;
+    projectId: string;
+    conflictKey: string;
+    title: string;
+    reason: string;
+    memoryIds: [string, string];
+    evidence: [
+      { memoryId: string; title: string },
+      { memoryId: string; title: string },
+    ];
+    detectorVersion: string;
+  }) {
+    const { data, error } = await this.client.rpc('api_upsert_memory_conflict', {
+      p_secret: this.apiSecret,
+      p_subject_id: input.subjectId,
+      p_workspace_id: input.workspaceId,
+      p_project_id: input.projectId,
+      p_conflict_key: input.conflictKey,
+      p_title: input.title,
+      p_reason: input.reason,
+      p_left_memory_id: input.memoryIds[0],
+      p_right_memory_id: input.memoryIds[1],
+      p_evidence_refs: input.evidence,
+      p_detector_version: input.detectorVersion,
+    });
+    if (error) throw error;
+    return data as {
+      id: string;
+      workspaceId: string;
+      projectId: string;
+      conflictKey: string;
+      status: string;
+      title: string;
+      reason: string;
+      memoryIds: [string, string];
+      evidence: [
+        { memoryId: string; title: string },
+        { memoryId: string; title: string },
+      ];
+      detectorVersion: string;
+      detectionCount: number;
+    };
+  }
+
   async createPrivacyRequest(input: {
     subjectId: string;
     workspaceId: string;

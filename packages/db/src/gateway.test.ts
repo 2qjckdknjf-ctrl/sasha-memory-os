@@ -170,6 +170,49 @@ describe('SupabaseMemoryGateway.enqueueConsolidation', () => {
   });
 });
 
+describe('SupabaseMemoryGateway.upsertMemoryConflict', () => {
+  it('passes explicit project-scoped contradiction args without raw content', async () => {
+    const rpc = vi.fn(async () => ({ data: { ok: true }, error: null }));
+    const gateway = new SupabaseMemoryGateway({ rpc } as any, 'test-secret');
+
+    await gateway.upsertMemoryConflict({
+      subjectId: '33333333-3333-4333-8333-333333333301',
+      workspaceId: '11111111-1111-4111-8111-111111111111',
+      projectId: '44444444-4444-4444-8444-444444444401',
+      conflictKey: 'memory-a::memory-b::disputed-current-fact',
+      title: 'API region',
+      reason: 'disputed-current-fact',
+      memoryIds: ['memory-a', 'memory-b'],
+      evidence: [
+        { memoryId: 'memory-a', title: 'API region' },
+        { memoryId: 'memory-b', title: 'api region' },
+      ],
+      detectorVersion: 'm13-s04-v1',
+    });
+
+    expect(rpc).toHaveBeenCalledWith(
+      'api_upsert_memory_conflict',
+      expect.objectContaining({
+        p_secret: 'test-secret',
+        p_subject_id: '33333333-3333-4333-8333-333333333301',
+        p_workspace_id: '11111111-1111-4111-8111-111111111111',
+        p_project_id: '44444444-4444-4444-8444-444444444401',
+        p_conflict_key: 'memory-a::memory-b::disputed-current-fact',
+        p_title: 'API region',
+        p_reason: 'disputed-current-fact',
+        p_left_memory_id: 'memory-a',
+        p_right_memory_id: 'memory-b',
+        p_evidence_refs: [
+          { memoryId: 'memory-a', title: 'API region' },
+          { memoryId: 'memory-b', title: 'api region' },
+        ],
+        p_detector_version: 'm13-s04-v1',
+      }),
+    );
+    expect(String(JSON.stringify(rpc.mock.calls[0]?.[1] ?? {}))).not.toContain('content');
+  });
+});
+
 describe('SupabaseMemoryGateway.requestRomaQaFindingApprovalCheckpoint', () => {
   it('passes bounded approval checkpoint request RPC args for one explicit project', async () => {
     const rpc = vi.fn(async () => ({ data: { ok: true }, error: null }));

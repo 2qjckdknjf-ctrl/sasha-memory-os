@@ -3360,6 +3360,21 @@ describe('memory api demo slice', () => {
   it('keeps proactive consolidation scoped to the explicit project and audits the run', async () => {
     const app = createApp({});
     const ownerId = '33333333-3333-4333-8333-333333333301';
+    await app.request('/v1/decisions', {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'x-subject-id': ownerId,
+      },
+      body: JSON.stringify({
+        workspace_id: workspaceId,
+        project_id: projectId,
+        actor_subject_id: ownerId,
+        title: 'API base URL',
+        content: 'Use https://api.example.com.',
+        idempotency_key: `api-proactive-decision-${Date.now()}`,
+      }),
+    });
     await app.request('/v1/capture/text', {
       method: 'POST',
       headers: {
@@ -3390,6 +3405,36 @@ describe('memory api demo slice', () => {
         idempotency_key: `api-proactive-b-${Date.now()}`,
       }),
     });
+    await app.request('/v1/capture/text', {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'x-subject-id': chatgpt,
+      },
+      body: JSON.stringify({
+        workspace_id: workspaceId,
+        project_id: projectId,
+        actor_subject_id: chatgpt,
+        title: 'api base url',
+        text: 'Use https://staging.example.com until cutover.',
+        idempotency_key: `api-proactive-conflict-${Date.now()}`,
+      }),
+    });
+    await app.request('/v1/capture/text', {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'x-subject-id': chatgpt,
+      },
+      body: JSON.stringify({
+        workspace_id: workspaceId,
+        project_id: otherProjectId,
+        actor_subject_id: chatgpt,
+        title: 'api base url',
+        text: 'Other project must not pair here.',
+        idempotency_key: `api-proactive-other-${Date.now()}`,
+      }),
+    });
 
     const res = await app.request('/v1/consolidation/run', {
       method: 'POST',
@@ -3413,6 +3458,17 @@ describe('memory api demo slice', () => {
     expect(body.projectId).toBe(projectId);
     expect(body.verifiedWrites).toBe(0);
     expect(body.auditEventId).toBeTruthy();
+    expect(body.detectedConflicts).toEqual([
+      expect.objectContaining({
+        reason: 'same-title-divergent-content',
+      }),
+    ]);
+    expect(body.persistedConflictIds).toHaveLength(1);
+    expect(
+      body.detectedConflicts.every(
+        (entry: { memoryIds: string[] }) => entry.memoryIds.length === 2,
+      ),
+    ).toBe(true);
   });
 
   it('idempotently ingests events', async () => {

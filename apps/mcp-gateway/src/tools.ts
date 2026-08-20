@@ -1983,6 +1983,7 @@ export function createMcpHandlers(options?: {
                   status: m.status,
                   recordedAt: m.recordedAt,
                   projectId: m.projectId,
+                  metadata: m.metadata,
                 }));
               const plan = await planProactiveConsolidation(candidates, {
                 scanLimit,
@@ -1995,6 +1996,39 @@ export function createMcpHandlers(options?: {
                 maxTimeMs:
                   typeof args.max_time_ms === 'number' ? args.max_time_ms : undefined,
               });
+              const persistedConflictIds: string[] = [];
+              for (const conflict of plan.detectedConflicts) {
+                const persisted = store.upsertMemoryConflict({
+                  workspaceId,
+                  projectId: resolvedProjectId,
+                  conflictKey: conflict.key,
+                  title: conflict.title,
+                  reason: conflict.reason,
+                  memoryIds: conflict.memoryIds,
+                  evidence: conflict.evidence,
+                  detectorVersion: PROACTIVE_CONSOLIDATION_RULES_VERSION,
+                  actorSubjectId: subjectId,
+                });
+                persistedConflictIds.push(persisted.id);
+                store.createAuditEvent({
+                  workspaceId,
+                  actorSubjectId: subjectId,
+                  action: 'memory_conflict.detected',
+                  objectType: 'memory_conflict',
+                  objectId: persisted.id,
+                  reason: conflict.reason,
+                  afterState: {
+                    runId,
+                    projectId: resolvedProjectId,
+                    rulesVersion: PROACTIVE_CONSOLIDATION_RULES_VERSION,
+                    conflictKey: conflict.key,
+                    title: conflict.title,
+                    reason: conflict.reason,
+                    memoryIds: conflict.memoryIds,
+                    evidence: conflict.evidence,
+                  },
+                });
+              }
               const applied = [];
               const failed = [];
               if (apply) {
@@ -2039,6 +2073,9 @@ export function createMcpHandlers(options?: {
                   mergeCandidatesTotal: plan.mergeCandidatesTotal,
                   candidateConflicts: plan.candidateConflicts,
                   candidateConflictsTotal: plan.candidateConflictsTotal,
+                  detectedConflicts: plan.detectedConflicts,
+                  detectedConflictsTotal: plan.detectedConflictsTotal,
+                  persistedConflictIds,
                   appliedPairs: applied,
                   failedPairs: failed,
                   stopReason: plan.stopReason,
@@ -2056,6 +2093,9 @@ export function createMcpHandlers(options?: {
                 mergeCandidatesTotal: plan.mergeCandidatesTotal,
                 candidateConflicts: plan.candidateConflicts,
                 candidateConflictsTotal: plan.candidateConflictsTotal,
+                detectedConflicts: plan.detectedConflicts,
+                detectedConflictsTotal: plan.detectedConflictsTotal,
+                persistedConflictIds,
                 applied,
                 failed,
                 stopReason: plan.stopReason,
@@ -2096,6 +2136,7 @@ export function createMcpHandlers(options?: {
                 recordedAt: row.recordedAt,
                 embedding: Array.isArray(row.embedding) ? row.embedding : null,
                 projectId: row.projectId,
+                metadata: row.metadata,
               })),
               {
                 scanLimit,
@@ -2109,6 +2150,39 @@ export function createMcpHandlers(options?: {
                   typeof args.max_time_ms === 'number' ? args.max_time_ms : undefined,
               },
             );
+            const persistedConflictIds: string[] = [];
+            for (const conflict of plan.detectedConflicts) {
+              const persisted = await gateway.upsertMemoryConflict({
+                subjectId,
+                workspaceId,
+                projectId: resolvedProjectId,
+                conflictKey: conflict.key,
+                title: conflict.title,
+                reason: conflict.reason,
+                memoryIds: conflict.memoryIds,
+                evidence: conflict.evidence,
+                detectorVersion: PROACTIVE_CONSOLIDATION_RULES_VERSION,
+              });
+              persistedConflictIds.push(persisted.id);
+              await gateway.appendAuditEvent({
+                subjectId,
+                workspaceId,
+                action: 'memory_conflict.detected',
+                objectType: 'memory_conflict',
+                objectId: persisted.id,
+                reason: conflict.reason,
+                afterState: {
+                  runId,
+                  projectId: resolvedProjectId,
+                  rulesVersion: PROACTIVE_CONSOLIDATION_RULES_VERSION,
+                  conflictKey: conflict.key,
+                  title: conflict.title,
+                  reason: conflict.reason,
+                  memoryIds: conflict.memoryIds,
+                  evidence: conflict.evidence,
+                },
+              });
+            }
             const applied = [];
             const failed = [];
             if (apply) {
@@ -2171,6 +2245,9 @@ export function createMcpHandlers(options?: {
                 mergeCandidatesTotal: plan.mergeCandidatesTotal,
                 candidateConflicts: plan.candidateConflicts,
                 candidateConflictsTotal: plan.candidateConflictsTotal,
+                detectedConflicts: plan.detectedConflicts,
+                detectedConflictsTotal: plan.detectedConflictsTotal,
+                persistedConflictIds,
                 appliedPairs: applied,
                 failedPairs: failed,
                 stopReason: plan.stopReason,
@@ -2188,6 +2265,9 @@ export function createMcpHandlers(options?: {
               mergeCandidatesTotal: plan.mergeCandidatesTotal,
               candidateConflicts: plan.candidateConflicts,
               candidateConflictsTotal: plan.candidateConflictsTotal,
+              detectedConflicts: plan.detectedConflicts,
+              detectedConflictsTotal: plan.detectedConflictsTotal,
+              persistedConflictIds,
               applied,
               failed,
               stopReason: plan.stopReason,
@@ -2207,6 +2287,7 @@ export function createMcpHandlers(options?: {
                 content: m.content,
                 status: m.status,
                 recordedAt: m.recordedAt,
+                projectId: m.projectId,
               }));
             const planned = await planCandidateConsolidations(candidates);
             const applied = [];
@@ -2255,6 +2336,7 @@ export function createMcpHandlers(options?: {
               status: row.status,
               recordedAt: row.recordedAt,
               embedding: Array.isArray(row.embedding) ? row.embedding : null,
+                projectId: row.projectId,
             })),
           );
           const applied = [];

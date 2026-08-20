@@ -1,3 +1,4 @@
+import { CONFLICTING_MEMORY_STATUSES } from './conflicts.js';
 import { cosineSimilarity, createEmbeddingAdapter } from './embeddings.js';
 
 export type ConsolidateCandidate = {
@@ -7,6 +8,8 @@ export type ConsolidateCandidate = {
   status: string;
   recordedAt?: string;
   embedding?: number[] | null;
+  projectId?: string | null;
+  metadata?: Record<string, unknown>;
 };
 
 export type ConsolidationPair = {
@@ -16,7 +19,7 @@ export type ConsolidationPair = {
   reason: string;
 };
 
-export const PROACTIVE_CONSOLIDATION_RULES_VERSION = 'm13-s03-v1';
+export const PROACTIVE_CONSOLIDATION_RULES_VERSION = 'm13-s04-v1';
 
 export type ProactiveConsolidationCandidate = ConsolidateCandidate & {
   projectId?: string | null;
@@ -30,6 +33,25 @@ export type ProactiveConsolidationConflict = {
   memoryIds: string[];
   statuses: string[];
   recordedAts: string[];
+};
+
+export type ProactiveDetectedConflictReason =
+  | 'same-title-divergent-content'
+  | 'disputed-current-fact'
+  | 'superseded-current-fact'
+  | 'retracted-current-fact'
+  | 'corrected-current-fact';
+
+export type ProactiveDetectedConflict = {
+  key: string;
+  title: string;
+  projectId: string | null;
+  reason: ProactiveDetectedConflictReason;
+  memoryIds: [string, string];
+  evidence: [
+    { memoryId: string; title: string },
+    { memoryId: string; title: string },
+  ];
 };
 
 export type ProactiveConsolidationStopReason =
@@ -47,6 +69,8 @@ export type ProactiveConsolidationPlan = {
   mergeCandidatesTotal: number;
   candidateConflicts: ProactiveConsolidationConflict[];
   candidateConflictsTotal: number;
+  detectedConflicts: ProactiveDetectedConflict[];
+  detectedConflictsTotal: number;
   stopReason: ProactiveConsolidationStopReason;
   exhausted: boolean;
   verifiedWrites: 0;
@@ -65,6 +89,95 @@ function normalizeContent(content: string): string {
     .toLowerCase()
     .replace(/\s+/g, ' ')
     .trim();
+}
+
+function projectScopeKey(projectId?: string | null): string {
+  return projectId?.trim() || '__workspace__';
+}
+
+function normalizeProjectScopedTitle(
+  projectId: string | null | undefined,
+  title: string,
+): string {
+  const normalizedTitle = normalizeTitle(title);
+  return normalizedTitle ? `${projectScopeKey(projectId)}::${normalizedTitle}` : '';
+}
+
+function asRecord(value: unknown): Record<string, unknown> | null {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : null;
+}
+
+function correctedFromOf(candidate: { metadata?: Record<string, unknown> }): string | null {
+  const metadata = asRecord(candidate.metadata);
+  const correctedFrom = metadata?.corrected_from;
+  return typeof correctedFrom === 'string' && correctedFrom.trim()
+    ? correctedFrom
+    : null;
+}
+
+function correctedByOf(candidate: { metadata?: Record<string, unknown> }): string | null {
+  const metadata = asRecord(candidate.metadata);
+  const correctedBy = metadata?.corrected_by;
+  return typeof correctedBy === 'string' && correctedBy.trim() ? correctedBy : null;
+}
+
+function isHistoricalConflictStatus(status: string): boolean {
+  return CONFLICTING_MEMORY_STATUSES.has(status) && !isCurrentishStatus(status);
+}
+
+function pairConflictKey(
+  leftId: string,
+  rightId: string,
+  reason: ProactiveDetectedConflictReason,
+): string {
+  return [...[leftId, rightId]].sort((a, b) => a.localeCompare(b)).join('::') + `::${reason}`;
+}
+
+function inferPairConflictReason(
+  left: ProactiveConsolidationCandidate,
+  right: ProactiveConsolidationCandidate,
+): ProactiveDetectedConflictReason | null {
+  const leftCurrentish = isCurrentishStatus(left.status);
+  const rightCurrentish = isCurrentishStatus(right.status);
+  const leftHistorical = isHistoricalConflictStatus(left.status);
+  const rightHistorical = isHistoricalConflictStatus(right.status);
+  const correctedRelation =
+    correctedFromOf(left) === right.id ||
+    correctedFromOf(right) === left.id ||
+    correctedByOf(left) === right.id ||
+    correctedByOf(right) === left.id;
+  if (correctedRelation && ((leftCurrentish && rightHistorical) || (rightCurrentish && leftHistorical))) {
+    return 'corrected-current-fact';
+  }
+
+  if (
+    (left.status === 'disputed' && rightCurrentish && right.status !== 'disputed') ||
+    (right.status === 'disputed' && leftCurrentish && left.status !== 'disputed')
+  ) {
+    return 'disputed-current-fact';
+  }
+  if (
+    (left.status === 'superseded' && rightCurrentish) ||
+    (right.status === 'superseded' && leftCurrentish)
+  ) {
+    return 'superseded-current-fact';
+  }
+  if (
+    (left.status === 'retracted' && rightCurrentish) ||
+    (right.status === 'retracted' && leftCurrentish)
+  ) {
+    return 'retracted-current-fact';
+  }
+
+  if (leftCurrentish && rightCurrentish) {
+    return normalizeContent(left.content) !== normalizeContent(right.content)
+      ? 'same-title-divergent-content'
+      : null;
+  }
+
+  return null;
 }
 
 function sortForProactiveConsolidation(
@@ -94,7 +207,7 @@ function buildConflictCandidates(
   const titleGroups = new Map<string, ProactiveConsolidationCandidate[]>();
   for (const candidate of candidates) {
     if (!isCurrentishStatus(candidate.status)) continue;
-    const key = normalizeTitle(candidate.title);
+    const key = normalizeProjectScopedTitle(candidate.projectId, candidate.title);
     if (!key) continue;
     const group = titleGroups.get(key) ?? [];
     group.push(candidate);
@@ -140,12 +253,87 @@ function buildConflictCandidates(
     });
 }
 
+function buildDetectedConflicts(
+  candidates: ProactiveConsolidationCandidate[],
+  mergePairs: ConsolidationPair[],
+): ProactiveDetectedConflict[] {
+  const mergeMemoryIds = new Set<string>();
+  for (const pair of mergePairs) {
+    mergeMemoryIds.add(pair.keeperId);
+    mergeMemoryIds.add(pair.duplicateId);
+  }
+
+  const titleGroups = new Map<string, ProactiveConsolidationCandidate[]>();
+  for (const candidate of candidates) {
+    const key = normalizeProjectScopedTitle(candidate.projectId, candidate.title);
+    if (!key) continue;
+    const group = titleGroups.get(key) ?? [];
+    group.push(candidate);
+    titleGroups.set(key, group);
+  }
+
+  const detected = new Map<string, ProactiveDetectedConflict>();
+  for (const group of titleGroups.values()) {
+    if (group.length < 2) continue;
+    const sorted = [...group].sort(sortForProactiveConsolidation);
+    for (let index = 0; index < sorted.length; index += 1) {
+      const left = sorted[index]!;
+      for (let nextIndex = index + 1; nextIndex < sorted.length; nextIndex += 1) {
+        const right = sorted[nextIndex]!;
+        const reason = inferPairConflictReason(left, right);
+        if (!reason) {
+          continue;
+        }
+        const bothCandidate = left.status === 'candidate' && right.status === 'candidate';
+        const sameBody = normalizeContent(left.content) === normalizeContent(right.content);
+        if (
+          bothCandidate &&
+          sameBody &&
+          mergeMemoryIds.has(left.id) &&
+          mergeMemoryIds.has(right.id)
+        ) {
+          continue;
+        }
+        const key = pairConflictKey(left.id, right.id, reason);
+        if (detected.has(key)) {
+          continue;
+        }
+        const pair = [left, right].sort((a, b) => a.id.localeCompare(b.id)) as [
+          ProactiveConsolidationCandidate,
+          ProactiveConsolidationCandidate,
+        ];
+        detected.set(key, {
+          key,
+          title: pair[0].title || pair[1].title || 'untitled',
+          projectId: pair[0].projectId ?? pair[1].projectId ?? null,
+          reason,
+          memoryIds: [pair[0].id, pair[1].id],
+          evidence: [
+            { memoryId: pair[0].id, title: pair[0].title || 'untitled' },
+            { memoryId: pair[1].id, title: pair[1].title || 'untitled' },
+          ],
+        });
+      }
+    }
+  }
+
+  return [...detected.values()].sort((left, right) => {
+    const byProject = projectScopeKey(left.projectId).localeCompare(projectScopeKey(right.projectId));
+    if (byProject !== 0) return byProject;
+    const byTitle = normalizeTitle(left.title).localeCompare(normalizeTitle(right.title));
+    if (byTitle !== 0) return byTitle;
+    return left.key.localeCompare(right.key);
+  });
+}
+
 function proactiveStopResult(input: {
   scannedPool: ProactiveConsolidationCandidate[];
   mergeCandidates?: ConsolidationPair[];
   mergeCandidatesTotal?: number;
   candidateConflicts?: ProactiveConsolidationConflict[];
   candidateConflictsTotal?: number;
+  detectedConflicts?: ProactiveDetectedConflict[];
+  detectedConflictsTotal?: number;
   stopReason: ProactiveConsolidationStopReason;
   exhausted: boolean;
 }): ProactiveConsolidationPlan {
@@ -158,6 +346,9 @@ function proactiveStopResult(input: {
     candidateConflicts: input.candidateConflicts ?? [],
     candidateConflictsTotal:
       input.candidateConflictsTotal ?? input.candidateConflicts?.length ?? 0,
+    detectedConflicts: input.detectedConflicts ?? [],
+    detectedConflictsTotal:
+      input.detectedConflictsTotal ?? input.detectedConflicts?.length ?? 0,
     stopReason: input.stopReason,
     exhausted: input.exhausted,
     verifiedWrites: 0,
@@ -178,7 +369,7 @@ export async function planCandidateConsolidations(
 
   const byTitle = new Map<string, ConsolidateCandidate[]>();
   for (const item of pool) {
-    const key = normalizeTitle(item.title);
+    const key = normalizeProjectScopedTitle(item.projectId, item.title);
     if (!key) continue;
     const list = byTitle.get(key) ?? [];
     list.push(item);
@@ -228,6 +419,9 @@ export async function planCandidateConsolidations(
     for (let j = i + 1; j < remaining.length; j += 1) {
       const right = remaining[j]!;
       if (used.has(right.id)) continue;
+      if (projectScopeKey(left.projectId) !== projectScopeKey(right.projectId)) {
+        continue;
+      }
       const score = cosineSimilarity(vectors[i] ?? [], vectors[j] ?? []);
       if (score < threshold) continue;
       const keeper =
@@ -304,6 +498,7 @@ export async function planProactiveConsolidation(
   }
 
   const candidateConflictsAll = buildConflictCandidates(scannedPool, mergeCandidatesAll);
+  const detectedConflictsAll = buildDetectedConflicts(scannedPool, mergeCandidatesAll);
 
   if (now() - startedAt > maxTimeMs) {
     return proactiveStopResult({
@@ -312,6 +507,8 @@ export async function planProactiveConsolidation(
       mergeCandidatesTotal: mergeCandidatesAll.length,
       candidateConflicts: candidateConflictsAll.slice(0, maxConflicts),
       candidateConflictsTotal: candidateConflictsAll.length,
+      detectedConflicts: detectedConflictsAll.slice(0, maxConflicts),
+      detectedConflictsTotal: detectedConflictsAll.length,
       stopReason: 'max_time_ms',
       exhausted: true,
     });
@@ -319,12 +516,14 @@ export async function planProactiveConsolidation(
 
   const mergeCandidates = mergeCandidatesAll.slice(0, maxMerges);
   const candidateConflicts = candidateConflictsAll.slice(0, maxConflicts);
+  const detectedConflicts = detectedConflictsAll.slice(0, maxConflicts);
   const stopReason: ProactiveConsolidationStopReason =
     sorted.length > scanLimit
       ? 'max_records'
       : mergeCandidatesAll.length > mergeCandidates.length
         ? 'max_merges'
-        : candidateConflictsAll.length > candidateConflicts.length
+        : candidateConflictsAll.length > candidateConflicts.length ||
+            detectedConflictsAll.length > detectedConflicts.length
           ? 'max_conflicts'
           : 'completed';
 
@@ -334,6 +533,8 @@ export async function planProactiveConsolidation(
     mergeCandidatesTotal: mergeCandidatesAll.length,
     candidateConflicts,
     candidateConflictsTotal: candidateConflictsAll.length,
+    detectedConflicts,
+    detectedConflictsTotal: detectedConflictsAll.length,
     stopReason,
     exhausted: stopReason !== 'completed',
   });
