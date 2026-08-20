@@ -16,7 +16,10 @@ import {
   buildAppleBridgeRecord,
   type AppleBridgeRawObject,
 } from '@memory-os/connector-apple-bridge';
-import { githubConnector } from '@memory-os/connector-github';
+import {
+  githubConnector,
+  reconcileGitHubAppWebhookDeliveries,
+} from '@memory-os/connector-github';
 import { gmailConnector } from '@memory-os/connector-gmail';
 import { googleCalendarConnector } from '@memory-os/connector-google-calendar';
 import { googleDriveConnector } from '@memory-os/connector-google-drive';
@@ -50,6 +53,9 @@ import {
   createDecisionSchema,
   createHandoffSchema,
   createPrivacyRequestSchema,
+  githubAppConnectionMetadata,
+  githubAppInstallationId,
+  githubAppReconcileRequestSchema,
   ingestionEnvelopeSchema,
   normalizeConnectionMetadata,
   oauthCompleteSchema,
@@ -94,6 +100,10 @@ import {
   GITHUB_WEBHOOK_SIGNATURE_HEADER,
   type GitHubWebhookPayload,
   parseGitHubWebhookPayload,
+  resolveGitHubWebhookInstallationAccount,
+  resolveGitHubWebhookInstallationId,
+  resolveGitHubWebhookRepositoryCollections,
+  resolveGitHubWebhookRepositorySelection,
   resolveGitHubWebhookRepositoryCollection,
   verifyGitHubWebhookSignature,
 } from './githubWebhook.js';
@@ -704,6 +714,261 @@ function resolveOwnerSubjectId(
   return explicit && explicit.length > 0 ? explicit : owner;
 }
 
+function resolveOwnerWorkspaceId(
+  env: NodeJS.ProcessEnv = process.env,
+): string {
+  const explicit = env.MEMORY_OS_WORKSPACE_ID?.trim();
+  return explicit && explicit.length > 0 ? explicit : seedWorkspace;
+}
+
+const GITHUB_WEBHOOK_RECENT_DELIVERY_LIMIT = 50;
+
+type GitHubWebhookRouteMode = 'manual' | 'app';
+
+type GitHubWebhookCursorState = {
+  deliveryId?: string | null;
+  recentDeliveryIds: string[];
+};
+
+function parseGitHubWebhookCursorState(cursor: SyncCursor | null): GitHubWebhookCursorState {
+  const recentDeliveryIds = Array.isArray(cursor?.opaque?.recentDeliveryIds)
+    ? cursor?.opaque?.recentDeliveryIds.filter(
+        (value): value is string => typeof value === 'string' && value.trim().length > 0,
+      )
+    : [];
+  return {
+    deliveryId:
+      typeof cursor?.opaque?.deliveryId === 'string' ? cursor.opaque.deliveryId : null,
+    recentDeliveryIds,
+  };
+}
+
+function hasSeenGitHubWebhookDelivery(
+  cursor: SyncCursor | null,
+  deliveryId: string | null,
+): boolean {
+  if (!deliveryId) return false;
+  const parsed = parseGitHubWebhookCursorState(cursor);
+  return parsed.deliveryId === deliveryId || parsed.recentDeliveryIds.includes(deliveryId);
+}
+
+function buildGitHubWebhookCursorPayload(input: {
+  previousCursor: SyncCursor | null;
+  deliveryId: string | null;
+  event: string;
+  action: string;
+  receivedAt: string;
+  routeMode: GitHubWebhookRouteMode;
+  repository?: GitHubRepositoryRecord;
+  installationId?: number | null;
+}): Record<string, unknown> {
+  const previous = parseGitHubWebhookCursorState(input.previousCursor);
+  const recentDeliveryIds = input.deliveryId
+    ? [input.deliveryId, ...previous.recentDeliveryIds.filter((value) => value !== input.deliveryId)].slice(
+        0,
+        GITHUB_WEBHOOK_RECENT_DELIVERY_LIMIT,
+      )
+    : previous.recentDeliveryIds.slice(0, GITHUB_WEBHOOK_RECENT_DELIVERY_LIMIT);
+  return {
+    deliveryId: input.deliveryId,
+    recentDeliveryIds,
+    event: input.event,
+    action: input.action,
+    receivedAt: input.receivedAt,
+    routeMode: input.routeMode,
+    installationId: input.installationId ?? null,
+    repositoryId: input.repository?.id != null ? String(input.repository.id) : null,
+    repositoryFullName: input.repository?.full_name ?? null,
+  };
+}
+
+function isConnectionSyncSuppressed(connection: ConnectionLike): boolean {
+  return connection.status === 'revoked' || connection.status === 'disabled';
+}
+
+function tagGitHubAppCollection(
+  collection: ConnectorCollection,
+  source: 'github_app_installation' | 'github_app_installation_repositories',
+  addedAt = new Date().toISOString(),
+): ConnectorCollection {
+  return {
+    ...collection,
+    metadata: {
+      ...(collection.metadata ?? {}),
+      added_via: source,
+      added_at: addedAt,
+      repository_id: collection.external_id ?? null,
+    },
+  };
+}
+
+function mergeConnectionCollections(input: {
+  current: ConnectorCollection[];
+  added?: ConnectorCollection[];
+  removedIds?: Set<string>;
+}): ConnectorCollection[] {
+  const removedIds = input.removedIds ?? new Set<string>();
+  const merged = new Map<string, ConnectorCollection>();
+  for (const collection of input.current) {
+    if (!removedIds.has(collection.id)) {
+      merged.set(collection.id, collection);
+    }
+  }
+  for (const collection of input.added ?? []) {
+    merged.set(collection.id, collection);
+  }
+  return Array.from(merged.values());
+}
+
+function selectedGitHubRepositoriesFromCollections(collections: ConnectorCollection[]) {
+  return collections.flatMap((collection) => {
+    const numericId = Number.parseInt(collection.external_id ?? '', 10);
+    if (!Number.isFinite(numericId)) return [];
+    const fullName =
+      typeof collection.metadata?.full_name === 'string' && collection.metadata.full_name.trim().length > 0
+        ? collection.metadata.full_name
+        : collection.id;
+    return [
+      {
+        id: numericId,
+        name: collection.name,
+        full_name: fullName,
+        html_url: collection.url,
+        default_branch: collection.default_branch ?? null,
+        private: collection.metadata?.private === true,
+        archived: collection.metadata?.archived === true,
+      },
+    ];
+  });
+}
+
+function buildGitHubAppMetadata(input: {
+  metadata: Record<string, unknown> | undefined;
+  installationId: number | null;
+  repositorySelection: 'all' | 'selected' | null;
+  account: ReturnType<typeof resolveGitHubWebhookInstallationAccount>;
+  collections: ConnectorCollection[];
+  receivedAt: string;
+  deliveryId: string | null;
+  event: string;
+  action: string;
+  bindInstallation?: boolean;
+  revokedAt?: string | null;
+  suspendedAt?: string | null;
+}): NonNullable<ReturnType<typeof githubAppConnectionMetadata>> {
+  const current = githubAppConnectionMetadata(input.metadata) ?? {
+    selected_repository_ids: [],
+    selected_repositories: [],
+  };
+  const selectedRepositories = selectedGitHubRepositoriesFromCollections(input.collections);
+  return {
+    ...current,
+    installation_id: input.installationId ?? current.installation_id,
+    repository_selection: input.repositorySelection ?? current.repository_selection,
+    account:
+      input.account && typeof input.account.id === 'number' && typeof input.account.login === 'string'
+        ? {
+            id: input.account.id,
+            login: input.account.login,
+            type: input.account.type,
+            html_url: input.account.html_url,
+          }
+        : current.account,
+    selected_repository_ids: selectedRepositories.map((repository) => repository.id),
+    selected_repositories: selectedRepositories,
+    binding: {
+      ...current.binding,
+      target_account_id: current.binding?.target_account_id ?? input.account?.id,
+      target_account_login: current.binding?.target_account_login ?? input.account?.login,
+      bound_at: input.bindInstallation ? input.receivedAt : current.binding?.bound_at,
+      bound_via: input.bindInstallation ? 'webhook_installation' : current.binding?.bound_via,
+    },
+    revoked_at: input.revokedAt === undefined ? (current.revoked_at ?? null) : input.revokedAt,
+    suspended_at:
+      input.suspendedAt === undefined ? (current.suspended_at ?? null) : input.suspendedAt,
+    last_delivery: input.deliveryId
+      ? {
+          id: input.deliveryId,
+          event: input.event,
+          action: input.action,
+          received_at: input.receivedAt,
+        }
+      : current.last_delivery,
+  };
+}
+
+function withGitHubAppMetadata(input: {
+  metadata: Record<string, unknown> | undefined;
+  githubApp: NonNullable<ReturnType<typeof githubAppConnectionMetadata>>;
+}): Record<string, unknown> {
+  return {
+    ...normalizeConnectionMetadata(input.metadata),
+    github_app: input.githubApp,
+  };
+}
+
+function isGitHubRepositorySelectedForRoute(input: {
+  connection: ConnectionLike;
+  payload: GitHubWebhookPayload;
+  routeMode: GitHubWebhookRouteMode;
+}): boolean {
+  const collection = resolveGitHubWebhookRepositoryCollection(input.payload);
+  if (!collection) return true;
+  if (connectionCollectionExclusionSet(input.connection.metadata).has(collection.id)) return false;
+  if (input.routeMode === 'manual') return true;
+  const selectedIds = new Set(connectionCollectionItems(input.connection.metadata).map((item) => item.id));
+  if (selectedIds.size === 0) return false;
+  return selectedIds.has(collection.id);
+}
+
+async function resolveGitHubAppConnection(input: {
+  gateway: SupabaseMemoryGateway;
+  subjectId: string;
+  payload: GitHubWebhookPayload;
+}): Promise<{
+  connection: ConnectionLike;
+  bindInstallation: boolean;
+}> {
+  const installationId = resolveGitHubWebhookInstallationId(input.payload);
+  if (installationId == null) {
+    throw new Error('connection_id_required');
+  }
+  const workspaceId = resolveOwnerWorkspaceId();
+  const connections = (await input.gateway.listConnections(input.subjectId, workspaceId)).filter(
+    (connection) => connection.connectorId === 'github',
+  );
+  const exactMatches = connections.filter(
+    (connection) => githubAppInstallationId(connection.metadata) === installationId,
+  );
+  if (exactMatches.length === 1) {
+    return { connection: exactMatches[0], bindInstallation: false };
+  }
+  if (exactMatches.length > 1) {
+    throw new Error('ambiguous_installation_binding');
+  }
+  const account = resolveGitHubWebhookInstallationAccount(input.payload);
+  const pendingMatches = connections.filter((connection) => {
+    const githubApp = githubAppConnectionMetadata(connection.metadata);
+    if (githubApp?.installation_id != null) return false;
+    if (
+      account?.id != null &&
+      githubApp?.binding?.target_account_id != null &&
+      githubApp.binding.target_account_id === account.id
+    ) {
+      return true;
+    }
+    const targetLogin = githubApp?.binding?.target_account_login?.trim().toLowerCase();
+    return Boolean(targetLogin && account?.login?.trim().toLowerCase() === targetLogin);
+  });
+  if (pendingMatches.length === 1) {
+    return { connection: pendingMatches[0], bindInstallation: true };
+  }
+  if (pendingMatches.length > 1) {
+    throw new Error('ambiguous_installation_binding');
+  }
+  throw new Error('connection_not_bound');
+}
+
 function tagWebhookCollection(
   collection: ConnectorCollection,
   addedAt = new Date().toISOString(),
@@ -799,6 +1064,392 @@ async function upsertAndSeedConnectionCollection(
     projectBindings: { [collection.id]: project.projectId },
   });
   return gateway.getConnection(subjectId, item.id);
+}
+
+async function persistGitHubAppConnectionState(input: {
+  gateway: SupabaseMemoryGateway;
+  subjectId: string;
+  connection: ConnectionLike;
+  collections: ConnectorCollection[];
+  installationId: number | null;
+  repositorySelection: 'all' | 'selected' | null;
+  account: ReturnType<typeof resolveGitHubWebhookInstallationAccount>;
+  deliveryId: string | null;
+  receivedAt: string;
+  event: string;
+  action: string;
+  bindInstallation?: boolean;
+  revokedAt?: string | null;
+  suspendedAt?: string | null;
+  nextStatus?: 'connected' | 'disabled' | 'revoked' | null;
+}) {
+  await input.gateway.setConnectionMetadata({
+    subjectId: input.subjectId,
+    connectionId: input.connection.id,
+    metadata: withGitHubAppMetadata({
+      metadata: input.connection.metadata,
+      githubApp: buildGitHubAppMetadata({
+        metadata: input.connection.metadata,
+        installationId: input.installationId,
+        repositorySelection: input.repositorySelection,
+        account: input.account,
+        collections: input.collections,
+        deliveryId: input.deliveryId,
+        receivedAt: input.receivedAt,
+        event: input.event,
+        action: input.action,
+        bindInstallation: input.bindInstallation,
+        revokedAt: input.revokedAt,
+        suspendedAt: input.suspendedAt,
+      }),
+    }),
+  });
+  if (input.nextStatus) {
+    await input.gateway.setConnectionStatus({
+      subjectId: input.subjectId,
+      connectionId: input.connection.id,
+      status: input.nextStatus,
+      lastError: null,
+    });
+  }
+  return input.gateway.getConnection(input.subjectId, input.connection.id);
+}
+
+async function processGitHubWebhookForConnection(input: {
+  gateway: SupabaseMemoryGateway;
+  subjectId: string;
+  connection: ConnectionLike;
+  routeMode: GitHubWebhookRouteMode;
+  payload: GitHubWebhookPayload;
+  event: string;
+  action: string;
+  deliveryId: string | null;
+  previousCursor: SyncCursor | null;
+  receivedAt: string;
+  bindInstallation?: boolean;
+}): Promise<{
+  connection: ConnectionLike;
+  projectId: string | null;
+  enqueued: number;
+  note: string;
+}> {
+  if (
+    input.event !== 'installation' &&
+    input.event !== 'installation_repositories' &&
+    isConnectionSyncSuppressed(input.connection)
+  ) {
+    return {
+      connection: input.connection,
+      projectId: null,
+      enqueued: 0,
+      note: `github ${input.event} acknowledged for ${input.connection.status} connection; sync skipped`,
+    };
+  }
+
+  const installationId = resolveGitHubWebhookInstallationId(input.payload);
+  const account = resolveGitHubWebhookInstallationAccount(input.payload);
+  const repositorySelection = resolveGitHubWebhookRepositorySelection(input.payload);
+
+  switch (input.event) {
+    case 'ping':
+      return {
+        connection: input.connection,
+        projectId: null,
+        enqueued: 0,
+        note: 'github webhook ping acknowledged',
+      };
+    case 'installation': {
+      const action = input.payload.action ?? 'updated';
+      if (action === 'deleted') {
+        const updatedConnection = await persistGitHubAppConnectionState({
+          gateway: input.gateway,
+          subjectId: input.subjectId,
+          connection: input.connection,
+          collections: connectionCollectionItems(input.connection.metadata),
+          installationId,
+          repositorySelection,
+          account,
+          deliveryId: input.deliveryId,
+          receivedAt: input.receivedAt,
+          event: input.event,
+          action: input.action,
+          bindInstallation: input.bindInstallation,
+          revokedAt: input.receivedAt,
+          nextStatus: 'revoked',
+        });
+        return {
+          connection: updatedConnection,
+          projectId: null,
+          enqueued: 0,
+          note: 'github app installation revoked; connector sync stopped',
+        };
+      }
+
+      if (action === 'suspend') {
+        const updatedConnection = await persistGitHubAppConnectionState({
+          gateway: input.gateway,
+          subjectId: input.subjectId,
+          connection: input.connection,
+          collections: connectionCollectionItems(input.connection.metadata),
+          installationId,
+          repositorySelection,
+          account,
+          deliveryId: input.deliveryId,
+          receivedAt: input.receivedAt,
+          event: input.event,
+          action: input.action,
+          bindInstallation: input.bindInstallation,
+          suspendedAt: input.payload.installation?.suspended_at ?? input.receivedAt,
+          nextStatus: 'disabled',
+        });
+        return {
+          connection: updatedConnection,
+          projectId: null,
+          enqueued: 0,
+          note: 'github app installation suspended; connector sync stopped',
+        };
+      }
+
+      let updatedConnection = input.connection;
+      if (
+        repositorySelection === 'selected' &&
+        Array.isArray(input.payload.repositories) &&
+        input.payload.repositories.length > 0
+      ) {
+        updatedConnection = await refreshAndSeedDiscoveredConnectionProjects(
+          input.gateway,
+          input.subjectId,
+          input.connection.workspaceId ?? seedWorkspace,
+          input.connection,
+          resolveGitHubWebhookRepositoryCollections(input.payload.repositories).map((collection) =>
+            tagGitHubAppCollection(collection, 'github_app_installation', input.receivedAt),
+          ),
+        );
+      }
+      updatedConnection = await persistGitHubAppConnectionState({
+        gateway: input.gateway,
+        subjectId: input.subjectId,
+        connection: updatedConnection,
+        collections: connectionCollectionItems(updatedConnection.metadata),
+        installationId,
+        repositorySelection,
+        account,
+        deliveryId: input.deliveryId,
+        receivedAt: input.receivedAt,
+        event: input.event,
+        action: input.action,
+        bindInstallation: input.bindInstallation,
+        revokedAt: null,
+        suspendedAt: null,
+        nextStatus: action === 'created' || action === 'new_permissions_accepted' || action === 'unsuspend'
+          ? 'connected'
+          : null,
+      });
+      const selectedCollections = selectedConnectionCollections(updatedConnection.metadata);
+      const shouldEnqueue = repositorySelection === 'selected' && selectedCollections.length > 0;
+      if (!shouldEnqueue || isConnectionSyncSuppressed(updatedConnection)) {
+        return {
+          connection: updatedConnection,
+          projectId: null,
+          enqueued: 0,
+          note:
+            repositorySelection === 'all'
+              ? 'github app installation bound without implicit repository indexing'
+              : 'github app installation metadata updated without selected repository sync',
+        };
+      }
+      const sync = await input.gateway.enqueueConnectorSync({
+        subjectId: input.subjectId,
+        workspaceId: updatedConnection.workspaceId ?? seedWorkspace,
+        connectionId: updatedConnection.id,
+      });
+      return {
+        connection: updatedConnection,
+        projectId: null,
+        enqueued: sync.count ?? 0,
+        note: 'github app installation bound and connector sync enqueued for selected repositories',
+      };
+    }
+    case 'installation_repositories': {
+      const currentCollections = connectionCollectionItems(input.connection.metadata);
+      const nextCollections =
+        repositorySelection === 'selected'
+          ? mergeConnectionCollections({
+              current: currentCollections,
+              added: resolveGitHubWebhookRepositoryCollections(
+                input.payload.repositories_added,
+              ).map((collection) =>
+                tagGitHubAppCollection(
+                  collection,
+                  'github_app_installation_repositories',
+                  input.receivedAt,
+                ),
+              ),
+              removedIds: new Set(
+                resolveGitHubWebhookRepositoryCollections(input.payload.repositories_removed).map(
+                  (collection) => collection.id,
+                ),
+              ),
+            })
+          : currentCollections;
+      let updatedConnection = input.connection;
+      if (repositorySelection === 'selected') {
+        updatedConnection = await refreshAndSeedDiscoveredConnectionProjects(
+          input.gateway,
+          input.subjectId,
+          input.connection.workspaceId ?? seedWorkspace,
+          input.connection,
+          nextCollections,
+        );
+      }
+      updatedConnection = await persistGitHubAppConnectionState({
+        gateway: input.gateway,
+        subjectId: input.subjectId,
+        connection: updatedConnection,
+        collections:
+          repositorySelection === 'selected'
+            ? nextCollections
+            : connectionCollectionItems(updatedConnection.metadata),
+        installationId,
+        repositorySelection,
+        account,
+        deliveryId: input.deliveryId,
+        receivedAt: input.receivedAt,
+        event: input.event,
+        action: input.action,
+        bindInstallation: input.bindInstallation,
+        revokedAt: null,
+      });
+      if (
+        input.payload.action === 'added' &&
+        repositorySelection === 'selected' &&
+        !isConnectionSyncSuppressed(updatedConnection)
+      ) {
+        const sync = await input.gateway.enqueueConnectorSync({
+          subjectId: input.subjectId,
+          workspaceId: updatedConnection.workspaceId ?? seedWorkspace,
+          connectionId: updatedConnection.id,
+        });
+        return {
+          connection: updatedConnection,
+          projectId: null,
+          enqueued: sync.count ?? 0,
+          note: 'github app repository selection updated and connector sync enqueued',
+        };
+      }
+      return {
+        connection: updatedConnection,
+        projectId: null,
+        enqueued: 0,
+        note: 'github app repository selection updated',
+      };
+    }
+    case 'push': {
+      if (!isGitHubRepositorySelectedForRoute(input)) {
+        return {
+          connection: input.connection,
+          projectId: null,
+          enqueued: 0,
+          note:
+            input.routeMode === 'app'
+              ? 'github push acknowledged outside selected repositories; sync skipped'
+              : 'github push acknowledged for excluded repository; sync enqueue skipped',
+        };
+      }
+      const sync = await input.gateway.enqueueConnectorSync({
+        subjectId: input.subjectId,
+        workspaceId: input.connection.workspaceId ?? seedWorkspace,
+        connectionId: input.connection.id,
+      });
+      return {
+        connection: input.connection,
+        projectId: null,
+        enqueued: sync.count ?? 0,
+        note: 'connector sync enqueued from github push',
+      };
+    }
+    case 'public':
+    case 'repository': {
+      const shouldSeedRepository =
+        input.event === 'public' ||
+        input.payload.action === 'created' ||
+        input.payload.action === 'publicized';
+      if (!shouldSeedRepository) {
+        return {
+          connection: input.connection,
+          projectId: null,
+          enqueued: 0,
+          note: input.payload.action
+            ? `github repository.${input.payload.action} ignored`
+            : 'github repository webhook ignored',
+        };
+      }
+      const collection = resolveGitHubWebhookRepositoryCollection(input.payload);
+      if (!collection) {
+        throw new Error('repository_payload_required');
+      }
+      if (!isGitHubRepositorySelectedForRoute(input)) {
+        return {
+          connection: input.connection,
+          projectId: null,
+          enqueued: 0,
+          note: 'repository acknowledged outside selected repositories; project upsert skipped',
+        };
+      }
+      const taggedCollection =
+        input.routeMode === 'app'
+          ? tagGitHubAppCollection(collection, 'github_app_installation_repositories', input.receivedAt)
+          : tagWebhookCollection(collection, input.receivedAt);
+      const updatedConnection = await upsertAndSeedConnectionCollection(
+        input.gateway,
+        input.subjectId,
+        input.connection.workspaceId ?? seedWorkspace,
+        input.connection,
+        taggedCollection,
+      );
+      const projectId = resolveCollectionProjectId(updatedConnection.metadata, taggedCollection.id);
+      if (!projectId || isConnectionSyncSuppressed(updatedConnection)) {
+        return {
+          connection: updatedConnection,
+          projectId,
+          enqueued: 0,
+          note: 'repository recorded but excluded from project seeding and sync enqueue',
+        };
+      }
+      const sync = await input.gateway.enqueueConnectorSync({
+        subjectId: input.subjectId,
+        workspaceId: updatedConnection.workspaceId ?? seedWorkspace,
+        connectionId: updatedConnection.id,
+      });
+      return {
+        connection: updatedConnection,
+        projectId,
+        enqueued: sync.count ?? 0,
+        note: 'repository project upserted and connector sync enqueued',
+      };
+    }
+    default: {
+      if (!isGitHubRepositorySelectedForRoute(input) || isConnectionSyncSuppressed(input.connection)) {
+        return {
+          connection: input.connection,
+          projectId: null,
+          enqueued: 0,
+          note: `github ${input.event} acknowledged without connector action`,
+        };
+      }
+      const sync = await input.gateway.enqueueConnectorSync({
+        subjectId: input.subjectId,
+        workspaceId: input.connection.workspaceId ?? seedWorkspace,
+        connectionId: input.connection.id,
+      });
+      return {
+        connection: input.connection,
+        projectId: null,
+        enqueued: sync.count ?? 0,
+        note: `connector sync enqueued from github ${input.event}`,
+      };
+    }
+  }
 }
 
 async function discoverAndSeedConnectionProjects(
@@ -1246,6 +1897,7 @@ export function createApp(options?: {
   app.use('/v1/consolidation/*', requireHttpApiSecret);
   app.use('/v1/connections/sync', requireHttpApiSecret);
   app.use('/v1/connections/*/resync', requireHttpApiSecret);
+  app.use('/v1/connections/*/github/reconcile', requireHttpApiSecret);
   app.use('/v1/jobs/dead-letter-stale', requireHttpApiSecret);
   app.use('/v1/jobs/*/replay', requireHttpApiSecret);
   app.use('/v1/outbox/*', requireHttpApiSecret);
@@ -1289,13 +1941,11 @@ export function createApp(options?: {
       return c.json({ error: 'missing_event' }, 400);
     }
 
-    const connectionId = c.req.query('connection_id') ?? payload.connection_id ?? null;
-    if (!connectionId) {
-      return c.json({ error: 'connection_id_required' }, 400);
-    }
-
     const deliveryId = c.req.header(GITHUB_WEBHOOK_DELIVERY_HEADER)?.trim() ?? null;
     const action = describeGitHubWebhookAction({ event, payload });
+    const manualConnectionId = c.req.query('connection_id') ?? payload.connection_id ?? null;
+    const routeMode: GitHubWebhookRouteMode =
+      manualConnectionId !== null ? 'manual' : resolveGitHubWebhookInstallationId(payload) != null ? 'app' : 'manual';
     const gw = c.get('gateway');
     if (!gw) {
       return c.json(
@@ -1303,10 +1953,11 @@ export function createApp(options?: {
           accepted: true,
           duplicate: false,
           connectorId,
-          connectionId,
+          connectionId: manualConnectionId,
           deliveryId,
           event,
           action,
+          routeMode,
           enqueued: 0,
           backend: 'memory-store',
           note: 'webhook receiver requires supabase backend for project upsert and sync enqueue',
@@ -1316,8 +1967,25 @@ export function createApp(options?: {
     }
 
     const subjectId = resolveOwnerSubjectId();
+    const receivedAt = new Date().toISOString();
     try {
-      const connection = await gw.getConnection(subjectId, connectionId);
+      const resolved =
+        routeMode === 'manual'
+          ? {
+              connection: await gw.getConnection(
+                subjectId,
+                manualConnectionId ?? (() => {
+                  throw new Error('connection_id_required');
+                })(),
+              ),
+              bindInstallation: false,
+            }
+          : await resolveGitHubAppConnection({
+              gateway: gw,
+              subjectId,
+              payload,
+            });
+      const connection = resolved.connection;
       if (connection.connectorId !== connectorId) {
         return c.json({ error: 'connection_connector_mismatch' }, 400);
       }
@@ -1329,7 +1997,7 @@ export function createApp(options?: {
           stream: GITHUB_WEBHOOK_CURSOR_STREAM,
         }),
       );
-      if (deliveryId && previousCursor?.opaque.deliveryId === deliveryId) {
+      if (hasSeenGitHubWebhookDelivery(previousCursor, deliveryId)) {
         return c.json({
           accepted: true,
           duplicate: true,
@@ -1338,111 +2006,60 @@ export function createApp(options?: {
           deliveryId,
           event,
           action,
+          routeMode,
           enqueued: 0,
           note: 'duplicate delivery ignored',
         });
       }
 
-      let updatedConnection: ConnectionLike = connection;
-      let projectId: string | null = null;
-      let enqueued = 0;
-      let note = `github ${event} webhook acknowledged without connector action`;
-
-      switch (event) {
-        case 'ping':
-          note = 'github webhook ping acknowledged';
-          break;
-        case 'push': {
-          const pushCollection = resolveGitHubWebhookRepositoryCollection(payload);
-          if (
-            pushCollection &&
-            connectionCollectionExclusionSet(connection.metadata).has(pushCollection.id)
-          ) {
-            note = 'github push acknowledged for excluded repository; sync enqueue skipped';
-            break;
-          }
-          const sync = await gw.enqueueConnectorSync({
-            subjectId,
-            workspaceId: connection.workspaceId,
-            connectionId: connection.id,
-          });
-          enqueued = sync.count ?? 0;
-          note = 'connector sync enqueued from github push';
-          break;
-        }
-        case 'public':
-        case 'repository': {
-          const shouldSeedRepository =
-            event === 'public' ||
-            payload.action === 'created' ||
-            payload.action === 'publicized';
-          if (!shouldSeedRepository) {
-            note = payload.action
-              ? `github repository.${payload.action} ignored`
-              : 'github repository webhook ignored';
-            break;
-          }
-          const collection = resolveGitHubWebhookRepositoryCollection(payload);
-          if (!collection) {
-            return c.json({ error: 'repository_payload_required' }, 400);
-          }
-          const taggedCollection = tagWebhookCollection(collection);
-          updatedConnection = await upsertAndSeedConnectionCollection(
-            gw,
-            subjectId,
-            connection.workspaceId,
-            connection,
-            taggedCollection,
-          );
-          projectId = resolveCollectionProjectId(updatedConnection.metadata, taggedCollection.id);
-          if (projectId) {
-            const sync = await gw.enqueueConnectorSync({
-              subjectId,
-              workspaceId: connection.workspaceId,
-              connectionId: connection.id,
-            });
-            enqueued = sync.count ?? 0;
-            note = 'repository project upserted and connector sync enqueued';
-          } else {
-            note = 'repository recorded but excluded from project seeding and sync enqueue';
-          }
-          break;
-        }
-        default:
-          break;
-      }
+      const processed = await processGitHubWebhookForConnection({
+        gateway: gw,
+        subjectId,
+        connection,
+        routeMode,
+        payload,
+        event,
+        action,
+        deliveryId,
+        previousCursor,
+        receivedAt,
+        bindInstallation: resolved.bindInstallation,
+      });
 
       await gw.upsertConnectorCursor({
         subjectId,
         accountId: connection.id,
         stream: GITHUB_WEBHOOK_CURSOR_STREAM,
-        cursor: {
+        cursor: buildGitHubWebhookCursorPayload({
+          previousCursor,
           deliveryId,
           event,
           action,
-          receivedAt: new Date().toISOString(),
-          repositoryId:
-            payload.repository?.id != null ? String(payload.repository.id) : null,
-          repositoryFullName: payload.repository?.full_name ?? null,
-        },
+          receivedAt,
+          routeMode,
+          repository: payload.repository,
+          installationId: resolveGitHubWebhookInstallationId(payload),
+        }),
         schemaVersion: '1.0',
       });
       await gw.appendAuditEvent({
         subjectId,
-        workspaceId: connection.workspaceId,
+        workspaceId: connection.workspaceId ?? seedWorkspace,
         action: 'connection.webhook.received',
         objectType: 'connector_webhook',
         objectId: deliveryId,
         reason: `${connectorId}.${action}`,
         afterState: {
-          connectionId: connection.id,
+          connectionId: processed.connection.id,
           connectorId,
           event,
           action,
           deliveryId,
-          projectId,
-          enqueued,
+          routeMode,
+          projectId: processed.projectId,
+          enqueued: processed.enqueued,
           repository: payload.repository?.full_name ?? null,
+          installationId: resolveGitHubWebhookInstallationId(payload),
         },
       });
 
@@ -1451,23 +2068,38 @@ export function createApp(options?: {
           accepted: true,
           duplicate: false,
           connectorId,
-          connectionId: updatedConnection.id,
+          connectionId: processed.connection.id,
           deliveryId,
           event,
           action,
-          projectId,
-          enqueued,
-          note,
+          routeMode,
+          projectId: processed.projectId,
+          enqueued: processed.enqueued,
+          note: processed.note,
         },
         event === 'ping' ? 200 : 202,
       );
     } catch (err) {
       if (isForbiddenError(err)) return c.json({ error: 'forbidden' }, 403);
+      if (err instanceof Error) {
+        if (err.message === 'connection_id_required') {
+          return c.json({ error: 'connection_id_required' }, 400);
+        }
+        if (err.message === 'repository_payload_required') {
+          return c.json({ error: 'repository_payload_required' }, 400);
+        }
+        if (err.message === 'connection_not_bound') {
+          return c.json({ error: 'connection_not_bound' }, 404);
+        }
+        if (err.message === 'ambiguous_installation_binding') {
+          return c.json({ error: 'ambiguous_installation_binding' }, 409);
+        }
+      }
       console.error(
         JSON.stringify({
           event: 'connector_webhook_failed',
           connectorId,
-          connectionId,
+          connectionId: manualConnectionId,
           deliveryId,
           error: err instanceof Error ? err.message : String(err),
         }),
@@ -1926,6 +2558,156 @@ export function createApp(options?: {
         connectionId,
       });
       return c.json({ ...result, resync: true }, 202);
+    } catch (err) {
+      if (isForbiddenError(err)) return c.json({ error: 'forbidden' }, 403);
+      return c.json({ error: (err as Error).message }, 500);
+    }
+  });
+
+  app.post('/v1/connections/:id/github/reconcile', async (c) => {
+    const connectionId = c.req.param('id');
+    const body = githubAppReconcileRequestSchema.parse(await c.req.json().catch(() => ({})));
+    const authz = c.get('authz');
+    if (!authz.isOwner && authz.subjectId !== body.actor_subject_id) {
+      return c.json({ error: 'forbidden' }, 403);
+    }
+    const gw = c.get('gateway');
+    if (!gw) {
+      return c.json(
+        {
+          connectionId,
+          reconciled: false,
+          recoveredDeliveries: 0,
+          backend: 'memory-store',
+          note: 'github app reconcile requires supabase backend',
+        },
+        501,
+      );
+    }
+
+    const appId = process.env.MEMORY_OS_GITHUB_APP_ID?.trim();
+    const privateKey = process.env.MEMORY_OS_GITHUB_APP_PRIVATE_KEY?.trim();
+    if (!appId || !privateKey) {
+      return c.json({ error: 'github_app_credentials_missing' }, 501);
+    }
+
+    try {
+      let connection = await gw.getConnection(body.actor_subject_id, connectionId);
+      if (connection.connectorId !== 'github') {
+        return c.json({ error: 'connection_connector_mismatch' }, 400);
+      }
+      const installationId = githubAppInstallationId(connection.metadata);
+      if (installationId == null) {
+        return c.json({ error: 'installation_id_required' }, 400);
+      }
+
+      const previousCursor = toSyncCursor(
+        await gw.getConnectorCursor({
+          subjectId: body.actor_subject_id,
+          accountId: connection.id,
+          stream: GITHUB_WEBHOOK_CURSOR_STREAM,
+        }),
+      );
+      const reconcile = await reconcileGitHubAppWebhookDeliveries({
+        appId,
+        privateKey,
+        installationId,
+        selectedRepositoryIds:
+          githubAppConnectionMetadata(connection.metadata)?.selected_repository_ids ?? [],
+        seenDeliveryIds: parseGitHubWebhookCursorState(previousCursor).recentDeliveryIds,
+        maxDeliveries: body.max_deliveries ?? 25,
+        apiBase: process.env.MEMORY_OS_GITHUB_API_BASE,
+      });
+
+      let recoveredDeliveries = 0;
+      let recoveredSyncs = 0;
+      const replayedDeliveryIds: string[] = [];
+
+      for (const delivery of reconcile.deliveries) {
+        const replayCursor = toSyncCursor(
+          await gw.getConnectorCursor({
+            subjectId: body.actor_subject_id,
+            accountId: connection.id,
+            stream: GITHUB_WEBHOOK_CURSOR_STREAM,
+          }),
+        );
+        if (hasSeenGitHubWebhookDelivery(replayCursor, delivery.guid)) {
+          continue;
+        }
+        const payload =
+          delivery.request?.payload && typeof delivery.request.payload === 'object'
+            ? (delivery.request.payload as GitHubWebhookPayload)
+            : null;
+        if (!payload) continue;
+        const deliveryAction = describeGitHubWebhookAction({
+          event: delivery.event,
+          payload,
+        });
+        const processed = await processGitHubWebhookForConnection({
+          gateway: gw,
+          subjectId: body.actor_subject_id,
+          connection,
+          routeMode: 'app',
+          payload,
+          event: delivery.event,
+          action: deliveryAction,
+          deliveryId: delivery.guid,
+          previousCursor: replayCursor,
+          receivedAt: delivery.delivered_at,
+          bindInstallation: false,
+        });
+        await gw.upsertConnectorCursor({
+          subjectId: body.actor_subject_id,
+          accountId: connection.id,
+          stream: GITHUB_WEBHOOK_CURSOR_STREAM,
+          cursor: buildGitHubWebhookCursorPayload({
+            previousCursor: replayCursor,
+            deliveryId: delivery.guid,
+            event: delivery.event,
+            action: deliveryAction,
+            receivedAt: delivery.delivered_at,
+            routeMode: 'app',
+            repository: payload.repository,
+            installationId: resolveGitHubWebhookInstallationId(payload),
+          }),
+          schemaVersion: '1.0',
+        });
+        await gw.appendAuditEvent({
+          subjectId: body.actor_subject_id,
+          workspaceId: connection.workspaceId ?? seedWorkspace,
+          action: 'connection.webhook.reconciled',
+          objectType: 'connector_webhook',
+          objectId: delivery.guid,
+          reason: `github.${deliveryAction}`,
+          afterState: {
+            connectionId: processed.connection.id,
+            connectorId: 'github',
+            event: delivery.event,
+            action: deliveryAction,
+            deliveryId: delivery.guid,
+            enqueued: processed.enqueued,
+          },
+        });
+        connection = processed.connection;
+        recoveredDeliveries += 1;
+        recoveredSyncs += processed.enqueued;
+        replayedDeliveryIds.push(delivery.guid);
+      }
+
+      return c.json(
+        {
+          connectionId: connection.id,
+          reconciled: true,
+          installationId,
+          inspectedDeliveries: reconcile.inspectedCount,
+          matchedDeliveries: reconcile.matchedCount,
+          recoveredDeliveries,
+          recoveredSyncs,
+          replayedDeliveryIds,
+          truncated: reconcile.truncated,
+        },
+        202,
+      );
     } catch (err) {
       if (isForbiddenError(err)) return c.json({ error: 'forbidden' }, 403);
       return c.json({ error: (err as Error).message }, 500);
