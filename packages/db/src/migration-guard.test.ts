@@ -44,6 +44,12 @@ const romaActionBudgetsMigrationPath = fileURLToPath(
     import.meta.url,
   ),
 );
+const proactiveConsolidationMigrationPath = fileURLToPath(
+  new URL(
+    '../../../supabase/migrations/20260820034500_m13_slice_03_proactive_consolidation.sql',
+    import.meta.url,
+  ),
+);
 
 describe('m8 slice 03 migration guards', () => {
   const sql = readFileSync(migrationPath, 'utf8');
@@ -58,6 +64,10 @@ describe('m8 slice 03 migration guards', () => {
     'utf8',
   );
   const romaActionBudgetsSql = readFileSync(romaActionBudgetsMigrationPath, 'utf8');
+  const proactiveConsolidationSql = readFileSync(
+    proactiveConsolidationMigrationPath,
+    'utf8',
+  );
 
   it('matches connector projects only by unique repository identity', () => {
     expect(sql).toContain(`repo->>'url' = v_repo_url`);
@@ -236,6 +246,31 @@ describe('m8 slice 03 migration guards', () => {
     source_job_id IS NULL
     OR source_checkpoint_id IS NULL
   )`,
+    );
+  });
+
+  it('adds a project-scoped proactive consolidation enqueue without defaulting to AISTROYKA', () => {
+    expect(proactiveConsolidationSql).toContain(
+      `CREATE OR REPLACE FUNCTION app.api_enqueue_project_consolidation`,
+    );
+    expect(proactiveConsolidationSql).toContain(`RAISE EXCEPTION 'project_id required'`);
+    expect(proactiveConsolidationSql).toContain(
+      `RAISE EXCEPTION 'owner subject required for proactive consolidation'`,
+    );
+    expect(proactiveConsolidationSql).toContain(`'projectId', p_project_id`);
+    expect(proactiveConsolidationSql).toContain(`'mode', 'proactive'`);
+    expect(proactiveConsolidationSql).toContain(`'memory.consolidation.requested'`);
+    expect(proactiveConsolidationSql).toContain(`'project'`);
+    expect(proactiveConsolidationSql).not.toContain(
+      `'44444444-4444-4444-8444-444444444401'`,
+    );
+  });
+
+  it('keys proactive consolidation idempotency by explicit project and minute bucket', () => {
+    expect(proactiveConsolidationSql).toContain(`'consolidate/%s/%s/%s'`);
+    expect(proactiveConsolidationSql).toContain(`p_project_id::text`);
+    expect(proactiveConsolidationSql).toContain(
+      `AND o.payload->>'idempotencyKey' = v_idem`,
     );
   });
 });

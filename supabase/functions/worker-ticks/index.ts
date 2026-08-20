@@ -7,6 +7,9 @@ const OWNER =
 const WORKSPACE =
   Deno.env.get("MEMORY_OS_WORKSPACE_ID") ??
   "11111111-1111-4111-8111-111111111111";
+const PROACTIVE_CONSOLIDATION_PROJECT_ERROR =
+  "project_id is required for proactive consolidation; never default to AISTROYKA";
+const PROACTIVE_CONSOLIDATION_RULES_VERSION = "m13-s03-v1";
 
 type MemoryRow = {
   id: string;
@@ -22,6 +25,14 @@ type Pair = {
   duplicateId: string;
   score: number;
   reason: string;
+};
+
+type CandidateConflict = {
+  title: string;
+  reason: "same-title-divergent-content" | "same-title-reviewed-history";
+  memoryIds: string[];
+  statuses: string[];
+  recordedAts: string[];
 };
 
 function json(data: unknown, status = 200): Response {
@@ -53,6 +64,30 @@ function normalizeTitle(title: string): string {
     .replace(/[^a-z0-9а-яё]+/giu, " ")
     .trim()
     .replace(/\s+/g, " ");
+}
+
+function normalizeContent(content: string): string {
+  return content
+    .toLowerCase()
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function sortForProactive(left: MemoryRow, right: MemoryRow): number {
+  const byRecordedAt = (right.recordedAt ?? "").localeCompare(left.recordedAt ?? "");
+  if (byRecordedAt !== 0) return byRecordedAt;
+  const byTitle = normalizeTitle(left.title).localeCompare(normalizeTitle(right.title));
+  if (byTitle !== 0) return byTitle;
+  return left.id.localeCompare(right.id);
+}
+
+function isCurrentishStatus(status: string): boolean {
+  return (
+    status === "candidate" ||
+    status === "active" ||
+    status === "verified" ||
+    status === "disputed"
+  );
 }
 
 function cosine(a: number[], b: number[]): number {
@@ -139,6 +174,86 @@ function planPairs(candidates: MemoryRow[], threshold = 0.92): Pair[] {
     }
   }
   return pairs;
+}
+
+function buildCandidateConflicts(
+  candidates: MemoryRow[],
+  pairs: Pair[],
+): CandidateConflict[] {
+  const grouped = new Map<string, MemoryRow[]>();
+  for (const candidate of candidates) {
+    if (!isCurrentishStatus(candidate.status)) continue;
+    const key = normalizeTitle(candidate.title);
+    if (!key) continue;
+    const list = grouped.get(key) ?? [];
+    list.push(candidate);
+    grouped.set(key, list);
+  }
+  const mergedIds = new Set<string>();
+  for (const pair of pairs) {
+    mergedIds.add(pair.keeperId);
+    mergedIds.add(pair.duplicateId);
+  }
+  return [...grouped.values()]
+    .filter((group) => group.length >= 2)
+    .map((group) => [...group].sort(sortForProactive))
+    .flatMap((group) => {
+      const distinctBodies = new Set(group.map((item) => normalizeContent(item.content)));
+      const hasReviewedMemory = group.some((item) => item.status !== "candidate");
+      const fullyCoveredByMerge = group.every((item) => mergedIds.has(item.id));
+      if (distinctBodies.size <= 1 && !hasReviewedMemory) return [];
+      if (fullyCoveredByMerge && !hasReviewedMemory) return [];
+      return [{
+        title: group[0]?.title ?? "untitled",
+        reason: distinctBodies.size > 1
+          ? "same-title-divergent-content"
+          : "same-title-reviewed-history",
+        memoryIds: group.map((item) => item.id),
+        statuses: group.map((item) => item.status),
+        recordedAts: group.map((item) => item.recordedAt ?? ""),
+      }];
+    });
+}
+
+function buildProactiveReason(runId: string, pairReason: string): string {
+  return `consolidation.proactive ${PROACTIVE_CONSOLIDATION_RULES_VERSION} run ${runId}: ${pairReason}`;
+}
+
+function planProactiveConsolidation(
+  candidates: MemoryRow[],
+  options?: {
+    scanLimit?: number;
+    maxMerges?: number;
+    maxConflicts?: number;
+  },
+) {
+  const scanLimit = Math.min(Math.max(Number(options?.scanLimit ?? 100) || 100, 1), 500);
+  const maxMerges = Math.min(Math.max(Number(options?.maxMerges ?? 12) || 12, 0), 100);
+  const maxConflicts = Math.min(Math.max(Number(options?.maxConflicts ?? 12) || 12, 0), 100);
+  const scannedPool = [...candidates].sort(sortForProactive).slice(0, scanLimit);
+  const mergeCandidatesAll = planPairs(scannedPool);
+  const candidateConflictsAll = buildCandidateConflicts(scannedPool, mergeCandidatesAll);
+  const mergeCandidates = mergeCandidatesAll.slice(0, maxMerges);
+  const candidateConflicts = candidateConflictsAll.slice(0, maxConflicts);
+  const stopReason =
+    candidates.length > scanLimit
+      ? "max_records"
+      : mergeCandidatesAll.length > mergeCandidates.length
+      ? "max_merges"
+      : candidateConflictsAll.length > candidateConflicts.length
+      ? "max_conflicts"
+      : "completed";
+  return {
+    scanned: scannedPool.length,
+    inputMemoryIds: scannedPool.map((item) => item.id),
+    mergeCandidates,
+    mergeCandidatesTotal: mergeCandidatesAll.length,
+    candidateConflicts,
+    candidateConflictsTotal: candidateConflictsAll.length,
+    stopReason,
+    exhausted: stopReason !== "completed",
+    verifiedWrites: 0 as const,
+  };
 }
 
 async function embedText(
@@ -337,14 +452,125 @@ Deno.serve(async (req: Request) => {
   const body = (await req.json().catch(() => ({}))) as {
     workspace_id?: string;
     actor_subject_id?: string;
+    project_id?: string;
     older_than_minutes?: number;
     limit?: number;
+    scan_limit?: number;
+    max_merges?: number;
+    max_conflicts?: number;
+    proactive?: boolean;
+    reason?: string;
   };
   const subjectId = body.actor_subject_id ?? OWNER;
   const workspaceId = body.workspace_id ?? WORKSPACE;
 
   try {
     if (path === "/v1/consolidation/run") {
+      if (body.proactive === true) {
+        const projectId = body.project_id?.trim();
+        if (!projectId) {
+          return json({ error: PROACTIVE_CONSOLIDATION_PROJECT_ERROR }, 400);
+        }
+        const runId = crypto.randomUUID();
+        const scanLimit = body.scan_limit ?? body.limit ?? 100;
+        const enq = await client.rpc("api_enqueue_project_consolidation", {
+          p_secret: secret,
+          p_subject_id: subjectId,
+          p_workspace_id: workspaceId,
+          p_project_id: projectId,
+          p_reason: body.reason ?? null,
+        });
+        if (enq.error) throw enq.error;
+        const listed = await client.rpc("api_list_memories", {
+          p_secret: secret,
+          p_subject_id: subjectId,
+          p_workspace_id: workspaceId,
+          p_project_id: projectId,
+          p_status: null,
+          p_limit: scanLimit,
+        });
+        if (listed.error) throw listed.error;
+        const rows = (listed.data ?? []) as MemoryRow[];
+        const plan = planProactiveConsolidation(rows, {
+          scanLimit,
+          maxMerges: body.max_merges,
+          maxConflicts: body.max_conflicts,
+        });
+        const applied: Pair[] = [];
+        const failed: Array<{ pair: Pair; error: string }> = [];
+        for (const pair of plan.mergeCandidates) {
+          const result = await client.rpc("api_supersede_memory", {
+            p_secret: secret,
+            p_subject_id: subjectId,
+            p_duplicate_id: pair.duplicateId,
+            p_keeper_id: pair.keeperId,
+            p_reason: buildProactiveReason(runId, pair.reason),
+          });
+          if (result.error) {
+            failed.push({ pair, error: result.error.message });
+          } else {
+            applied.push(pair);
+          }
+        }
+        const status = failed.length > 0 && applied.length === 0 ? "failed" : "succeeded";
+        const done = await client.rpc("api_complete_consolidation", {
+          p_secret: secret,
+          p_subject_id: subjectId,
+          p_job_id: (enq.data as { jobId?: string })?.jobId,
+          p_status: status,
+          p_error: failed.map((f) => f.error).join("; ").slice(0, 500) || null,
+        });
+        if (done.error) throw done.error;
+        const audit = await client.rpc("api_append_audit_event", {
+          p_secret: secret,
+          p_subject_id: subjectId,
+          p_workspace_id: workspaceId,
+          p_action: "consolidation.proactive.completed",
+          p_object_type: "consolidation_run",
+          p_object_id: runId,
+          p_reason: "project-scoped proactive consolidation",
+          p_before_state: null,
+          p_after_state: {
+            runId,
+            projectId,
+            rulesVersion: PROACTIVE_CONSOLIDATION_RULES_VERSION,
+            jobId: (enq.data as { jobId?: string })?.jobId ?? null,
+            eventId: (enq.data as { eventId?: string })?.eventId ?? null,
+            scanned: plan.scanned,
+            inputMemoryIds: plan.inputMemoryIds,
+            mergeCandidates: plan.mergeCandidates,
+            mergeCandidatesTotal: plan.mergeCandidatesTotal,
+            candidateConflicts: plan.candidateConflicts,
+            candidateConflictsTotal: plan.candidateConflictsTotal,
+            appliedPairs: applied,
+            failedPairs: failed,
+            stopReason: plan.stopReason,
+            exhausted: plan.exhausted,
+            verifiedWrites: 0,
+          },
+        });
+        if (audit.error) throw audit.error;
+        return json({
+          ok: true,
+          runId,
+          projectId,
+          rulesVersion: PROACTIVE_CONSOLIDATION_RULES_VERSION,
+          scanned: plan.scanned,
+          planned: plan.mergeCandidates.length,
+          pairs: plan.mergeCandidates,
+          mergeCandidatesTotal: plan.mergeCandidatesTotal,
+          candidateConflicts: plan.candidateConflicts,
+          candidateConflictsTotal: plan.candidateConflictsTotal,
+          applied,
+          failed,
+          stopReason: plan.stopReason,
+          exhausted: plan.exhausted,
+          verifiedWrites: 0,
+          auditEventId: (audit.data as { id?: string })?.id ?? null,
+          enqueue: enq.data,
+          complete: done.data,
+        });
+      }
       return json(
         await runConsolidation(client, secret, subjectId, workspaceId),
       );

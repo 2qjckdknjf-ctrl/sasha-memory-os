@@ -638,6 +638,90 @@ describe('mcp gateway alpha', () => {
     expect(report.applied.length).toBeGreaterThanOrEqual(1);
   });
 
+  it('requires explicit project_id for proactive consolidation instead of defaulting to AISTROYKA', async () => {
+    const gateway = createTwoProjectGateway();
+    const mcp = createMcpHandlers({ gateway: gateway as any });
+
+    await expect(
+      mcp.call('consolidation.run', {
+        workspace_id: workspaceId,
+        actor_subject_id: owner,
+        proactive: true,
+        apply: true,
+      }),
+    ).rejects.toThrow(
+      /project_id is required for proactive consolidation; never default to AISTROYKA/i,
+    );
+    expect(gateway.resolveProjectRef).not.toHaveBeenCalled();
+  });
+
+  it('keeps proactive consolidation scoped to one explicit project and audits the run offline', async () => {
+    const mcp = createMcpHandlers();
+    await mcp.call('capture.text', {
+      workspace_id: workspaceId,
+      project_id: projectId,
+      title: 'Scoped duplicate',
+      text: 'first scoped copy',
+      actor_subject_id: chatgpt,
+      idempotency_key: 'mcp-proactive-dup-1',
+    });
+    await mcp.call('capture.text', {
+      workspace_id: workspaceId,
+      project_id: projectId,
+      title: 'scoped duplicate',
+      text: 'second scoped copy',
+      actor_subject_id: chatgpt,
+      idempotency_key: 'mcp-proactive-dup-2',
+    });
+    const otherOne = (await mcp.call('capture.text', {
+      workspace_id: workspaceId,
+      project_id: otherProjectId,
+      title: 'Scoped duplicate',
+      text: 'other project first copy',
+      actor_subject_id: chatgpt,
+      idempotency_key: 'mcp-proactive-other-1',
+    })) as { memoryId: string };
+    const otherTwo = (await mcp.call('capture.text', {
+      workspace_id: workspaceId,
+      project_id: otherProjectId,
+      title: 'scoped duplicate',
+      text: 'other project second copy',
+      actor_subject_id: chatgpt,
+      idempotency_key: 'mcp-proactive-other-2',
+    })) as { memoryId: string };
+
+    const report = (await mcp.call('consolidation.run', {
+      workspace_id: workspaceId,
+      actor_subject_id: owner,
+      project_id: projectId,
+      proactive: true,
+      apply: true,
+    })) as {
+      projectId: string;
+      planned: number;
+      applied: unknown[];
+      verifiedWrites: number;
+      auditEventId: string;
+    };
+
+    expect(report.projectId).toBe(projectId);
+    expect(report.planned).toBeGreaterThanOrEqual(1);
+    expect(report.applied.length).toBeGreaterThanOrEqual(1);
+    expect(report.verifiedWrites).toBe(0);
+    expect(report.auditEventId).toBeTruthy();
+
+    const otherOneMemory = (await mcp.call('memory.get', {
+      memory_id: otherOne.memoryId,
+      actor_subject_id: owner,
+    })) as { memory?: { status?: string } };
+    const otherTwoMemory = (await mcp.call('memory.get', {
+      memory_id: otherTwo.memoryId,
+      actor_subject_id: owner,
+    })) as { memory?: { status?: string } };
+    expect(otherOneMemory.memory?.status).toBe('candidate');
+    expect(otherTwoMemory.memory?.status).toBe('candidate');
+  });
+
   it('sets memory status offline', async () => {
     const mcp = createMcpHandlers();
     const chatgpt = '33333333-3333-4333-8333-333333333302';

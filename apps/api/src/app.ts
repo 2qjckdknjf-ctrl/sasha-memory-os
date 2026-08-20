@@ -82,11 +82,14 @@ import {
 import {
   createEmbeddingAdapter,
   createExtractionAdapter,
+  buildProactiveConsolidationReason,
   embedMemoryText,
   type HybridHitLike,
   packSearchContext,
   planCandidateConsolidations,
+  planProactiveConsolidation,
   projectContext,
+  PROACTIVE_CONSOLIDATION_RULES_VERSION,
   rerankHitsHybrid,
   runBoundedAgenticRetrieval,
   searchMemoriesHybrid,
@@ -148,6 +151,8 @@ const owner = '33333333-3333-4333-8333-333333333301';
 const chatgpt = '33333333-3333-4333-8333-333333333302';
 const cursor = '33333333-3333-4333-8333-333333333303';
 const roma = '33333333-3333-4333-8333-333333333304';
+const PROACTIVE_CONSOLIDATION_PROJECT_ERROR =
+  'project_id is required for proactive consolidation; never default to AISTROYKA';
 
 type LocalAgentDescriptor = {
   purpose?: string;
@@ -4447,8 +4452,15 @@ export function createApp(options?: {
     const body = (await c.req.json().catch(() => ({}))) as {
       workspace_id?: string;
       actor_subject_id?: string;
+      project_id?: string;
       apply?: boolean;
       limit?: number;
+      scan_limit?: number;
+      max_merges?: number;
+      max_conflicts?: number;
+      max_time_ms?: number;
+      proactive?: boolean;
+      reason?: string;
       enqueue?: boolean;
     };
     const authz = c.get('authz');
@@ -4459,8 +4471,234 @@ export function createApp(options?: {
       return c.json({ error: 'forbidden' }, 403);
     }
     const apply = body.apply !== false;
+    const proactive = body.proactive === true;
     const gw = c.get('gateway');
     try {
+      if (proactive) {
+        const projectId = body.project_id?.trim();
+        if (!projectId) {
+          return c.json({ error: PROACTIVE_CONSOLIDATION_PROJECT_ERROR }, 400);
+        }
+        const runId = crypto.randomUUID();
+        const scanLimit = body.scan_limit ?? body.limit ?? 100;
+        if (gw) {
+          let jobMeta: {
+            jobId: string;
+            eventId: string;
+            idempotencyKey: string;
+            projectId?: string | null;
+            mode?: string | null;
+          } | null = null;
+          if (body.enqueue) {
+            jobMeta = await gw.enqueueConsolidation({
+              subjectId: actorSubjectId,
+              workspaceId,
+              projectId,
+              proactive: true,
+              reason: body.reason ?? null,
+            });
+          }
+          const rows = await gw.listMemories({
+            subjectId: actorSubjectId,
+            workspaceId,
+            projectId,
+            limit: scanLimit,
+          });
+          const plan = await planProactiveConsolidation(
+            rows.map((row) => ({
+              id: row.id,
+              title: row.title,
+              content: row.content,
+              status: row.status,
+              recordedAt: row.recordedAt,
+              embedding: Array.isArray(row.embedding) ? row.embedding : null,
+              projectId: row.projectId,
+            })),
+            {
+              scanLimit,
+              maxMerges: body.max_merges,
+              maxConflicts: body.max_conflicts,
+              maxTimeMs: body.max_time_ms,
+            },
+          );
+          const applied = [];
+          const failed = [];
+          if (apply) {
+            for (const pair of plan.mergeCandidates) {
+              const reason = buildProactiveConsolidationReason({
+                runId,
+                pairReason: pair.reason,
+              });
+              try {
+                await gw.supersedeMemory({
+                  subjectId: actorSubjectId,
+                  duplicateId: pair.duplicateId,
+                  keeperId: pair.keeperId,
+                  reason,
+                });
+                applied.push(pair);
+              } catch (err) {
+                failed.push({
+                  pair,
+                  error: err instanceof Error ? err.message : String(err),
+                });
+              }
+            }
+          }
+          const status =
+            failed.length > 0 && applied.length === 0 ? 'failed' : 'succeeded';
+          if (jobMeta) {
+            await gw.completeConsolidation({
+              subjectId: actorSubjectId,
+              jobId: jobMeta.jobId,
+              status,
+              error:
+                status === 'failed'
+                  ? failed
+                      .map((entry) => entry.error)
+                      .join('; ')
+                      .slice(0, 500)
+                  : null,
+            });
+          }
+          const audit = await gw.appendAuditEvent({
+            subjectId: actorSubjectId,
+            workspaceId,
+            action: apply
+              ? 'consolidation.proactive.completed'
+              : 'consolidation.proactive.planned',
+            objectType: 'consolidation_run',
+            objectId: runId,
+            reason: 'project-scoped proactive consolidation',
+            afterState: {
+              runId,
+              projectId,
+              rulesVersion: PROACTIVE_CONSOLIDATION_RULES_VERSION,
+              apply,
+              jobId: jobMeta?.jobId ?? null,
+              eventId: jobMeta?.eventId ?? null,
+              scanned: plan.scanned,
+              inputMemoryIds: plan.inputMemoryIds,
+              mergeCandidates: plan.mergeCandidates,
+              mergeCandidatesTotal: plan.mergeCandidatesTotal,
+              candidateConflicts: plan.candidateConflicts,
+              candidateConflictsTotal: plan.candidateConflictsTotal,
+              appliedPairs: applied,
+              failedPairs: failed,
+              stopReason: plan.stopReason,
+              exhausted: plan.exhausted,
+              verifiedWrites: 0,
+            },
+          });
+          return c.json({
+            runId,
+            projectId,
+            rulesVersion: PROACTIVE_CONSOLIDATION_RULES_VERSION,
+            scanned: plan.scanned,
+            planned: plan.mergeCandidates.length,
+            pairs: plan.mergeCandidates,
+            mergeCandidatesTotal: plan.mergeCandidatesTotal,
+            candidateConflicts: plan.candidateConflicts,
+            candidateConflictsTotal: plan.candidateConflictsTotal,
+            applied,
+            failed,
+            stopReason: plan.stopReason,
+            exhausted: plan.exhausted,
+            verifiedWrites: 0,
+            auditEventId: audit.id,
+            backend: 'supabase',
+            job: jobMeta,
+          });
+        }
+
+        const storeLocal = c.get('store');
+        const candidates = [...storeLocal.memories.values()]
+          .filter((m) => m.workspaceId === workspaceId)
+          .filter((m) => m.projectId === projectId)
+          .map((m) => ({
+            id: m.id,
+            title: m.title,
+            content: m.content,
+            status: m.status,
+            recordedAt: m.recordedAt,
+            projectId: m.projectId,
+          }));
+        const plan = await planProactiveConsolidation(candidates, {
+          scanLimit,
+          maxMerges: body.max_merges,
+          maxConflicts: body.max_conflicts,
+          maxTimeMs: body.max_time_ms,
+        });
+        const applied = [];
+        const failed = [];
+        if (apply) {
+          for (const pair of plan.mergeCandidates) {
+            const reason = buildProactiveConsolidationReason({
+              runId,
+              pairReason: pair.reason,
+            });
+            try {
+              storeLocal.supersedeMemory({
+                duplicateId: pair.duplicateId,
+                keeperId: pair.keeperId,
+                reason,
+                actorSubjectId,
+              });
+              applied.push(pair);
+            } catch (err) {
+              failed.push({
+                pair,
+                error: err instanceof Error ? err.message : String(err),
+              });
+            }
+          }
+        }
+        const audit = storeLocal.createAuditEvent({
+          workspaceId,
+          actorSubjectId,
+          action: apply
+            ? 'consolidation.proactive.completed'
+            : 'consolidation.proactive.planned',
+          objectType: 'consolidation_run',
+          objectId: runId,
+          reason: 'project-scoped proactive consolidation',
+          afterState: {
+            runId,
+            projectId,
+            rulesVersion: PROACTIVE_CONSOLIDATION_RULES_VERSION,
+            apply,
+            scanned: plan.scanned,
+            inputMemoryIds: plan.inputMemoryIds,
+            mergeCandidates: plan.mergeCandidates,
+            mergeCandidatesTotal: plan.mergeCandidatesTotal,
+            candidateConflicts: plan.candidateConflicts,
+            candidateConflictsTotal: plan.candidateConflictsTotal,
+            appliedPairs: applied,
+            failedPairs: failed,
+            stopReason: plan.stopReason,
+            exhausted: plan.exhausted,
+            verifiedWrites: 0,
+          },
+        });
+        return c.json({
+          runId,
+          projectId,
+          rulesVersion: PROACTIVE_CONSOLIDATION_RULES_VERSION,
+          scanned: plan.scanned,
+          planned: plan.mergeCandidates.length,
+          pairs: plan.mergeCandidates,
+          mergeCandidatesTotal: plan.mergeCandidatesTotal,
+          candidateConflicts: plan.candidateConflicts,
+          candidateConflictsTotal: plan.candidateConflictsTotal,
+          applied,
+          failed,
+          stopReason: plan.stopReason,
+          exhausted: plan.exhausted,
+          verifiedWrites: 0,
+          auditEventId: audit.id,
+          backend: 'memory-store',
+        });
+      }
       if (gw) {
         let jobMeta: {
           jobId: string;

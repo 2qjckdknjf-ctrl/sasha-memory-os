@@ -3330,6 +3330,119 @@ describe('memory api demo slice', () => {
     expect(body.applied.length).toBeGreaterThanOrEqual(1);
   });
 
+  it('rejects proactive consolidation without explicit project_id', async () => {
+    const app = createApp({});
+    const ownerId = '33333333-3333-4333-8333-333333333301';
+
+    const res = await app.request('/v1/consolidation/run', {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'x-subject-id': ownerId,
+        'x-actor-key': 'owner',
+      },
+      body: JSON.stringify({
+        workspace_id: workspaceId,
+        actor_subject_id: ownerId,
+        proactive: true,
+      }),
+    });
+
+    expect(res.status).toBe(400);
+    expect(await res.json()).toEqual(
+      expect.objectContaining({
+        error:
+          'project_id is required for proactive consolidation; never default to AISTROYKA',
+      }),
+    );
+  });
+
+  it('keeps proactive consolidation scoped to the explicit project and audits the run', async () => {
+    const app = createApp({});
+    const ownerId = '33333333-3333-4333-8333-333333333301';
+    await app.request('/v1/capture/text', {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'x-subject-id': chatgpt,
+      },
+      body: JSON.stringify({
+        workspace_id: workspaceId,
+        project_id: projectId,
+        actor_subject_id: chatgpt,
+        title: 'Scoped proactive duplicate',
+        text: 'first scoped copy',
+        idempotency_key: `api-proactive-a-${Date.now()}`,
+      }),
+    });
+    await app.request('/v1/capture/text', {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'x-subject-id': chatgpt,
+      },
+      body: JSON.stringify({
+        workspace_id: workspaceId,
+        project_id: projectId,
+        actor_subject_id: chatgpt,
+        title: 'scoped proactive duplicate',
+        text: 'second scoped copy',
+        idempotency_key: `api-proactive-b-${Date.now()}`,
+      }),
+    });
+    const other = await app.request('/v1/capture/text', {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'x-subject-id': chatgpt,
+      },
+      body: JSON.stringify({
+        workspace_id: workspaceId,
+        project_id: '44444444-4444-4444-8444-444444444430',
+        actor_subject_id: chatgpt,
+        title: 'Scoped proactive duplicate',
+        text: 'other project copy',
+        idempotency_key: `api-proactive-other-${Date.now()}`,
+      }),
+    });
+    const otherBody = (await other.json()) as { memoryId: string };
+
+    const res = await app.request('/v1/consolidation/run', {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'x-subject-id': ownerId,
+        'x-actor-key': 'owner',
+      },
+      body: JSON.stringify({
+        workspace_id: workspaceId,
+        actor_subject_id: ownerId,
+        project_id: projectId,
+        proactive: true,
+        apply: true,
+      }),
+    });
+
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.backend).toBe('memory-store');
+    expect(body.projectId).toBe(projectId);
+    expect(body.verifiedWrites).toBe(0);
+    expect(body.auditEventId).toBeTruthy();
+
+    const otherMemory = await app.request(`/v1/memories/${otherBody.memoryId}`, {
+      headers: {
+        'x-subject-id': ownerId,
+        'x-actor-key': 'owner',
+      },
+    });
+    expect(otherMemory.status).toBe(200);
+    const otherMemoryBody = (await otherMemory.json()) as {
+      memory?: { status?: string };
+    };
+    expect(otherMemoryBody.memory?.status).toBe('candidate');
+  });
+
   it('idempotently ingests events', async () => {
     const app = createApp({});
     const payload = {
