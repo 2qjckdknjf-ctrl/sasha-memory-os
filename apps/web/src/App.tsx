@@ -1968,7 +1968,6 @@ export function App() {
               onStartOAuth={onStartOAuth}
               onSyncConnections={onSyncConnections}
               onLoadOutbox={refreshOutboxPending}
-              onExportMemories={onExportMemories}
               onDeadLetterJobs={onDeadLetterJobs}
               onAckOutbox={onAckOutbox}
               onUpdateConnectionStatus={onUpdateConnectionStatus}

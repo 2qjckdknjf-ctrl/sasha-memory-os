@@ -112,7 +112,6 @@ function renderOpsPage() {
         onStartOAuth={() => undefined}
         onSyncConnections={() => undefined}
         onLoadOutbox={() => undefined}
-        onExportMemories={() => undefined}
         onDeadLetterJobs={() => undefined}
         onAckOutbox={() => undefined}
         onUpdateConnectionStatus={() => undefined}

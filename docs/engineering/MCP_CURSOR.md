@@ -16,7 +16,7 @@ npx pnpm@9.15.9 --filter @memory-os/mcp-gateway start:http
 
 Outside `local`/`test`, send `Authorization: Bearer $MEMORY_OS_API_SECRET` or `x-memory-os-api-secret`.
 
-**Profiles:** `MEMORY_OS_MCP_PROFILE=full` (default, Cursor/owner) or `chatgpt` (pilot tool allowlist + default subject/workspace/project). ChatGPT remote A: see [CHATGPT_MCP_PLAN.md](../m0/CHATGPT_MCP_PLAN.md) and `scripts/smoke-mcp-chatgpt.sh`.
+**Profiles:** `MEMORY_OS_MCP_PROFILE=full` (default, Cursor/owner) or `chatgpt` (pilot tool allowlist + default subject/workspace only; writes keep explicit `project_id`). ChatGPT remote A: see [CHATGPT_MCP_PLAN.md](../m0/CHATGPT_MCP_PLAN.md) and `scripts/smoke-mcp-chatgpt.sh`.
 
 Backend: Supabase when `MEMORY_OS_SUPABASE_*` + `MEMORY_OS_API_SECRET` are set in repo-root `.env`; otherwise in-memory store.
 
