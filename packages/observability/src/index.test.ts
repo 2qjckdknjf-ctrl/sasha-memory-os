@@ -1,5 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
+  OFFICIAL_M14_FIRST_HOUR_ONBOARDING_PACK,
+  OFFICIAL_M14_FIRST_HOUR_ONBOARDING_PACK_VERSION,
   createLogger,
   OFFICIAL_M14_GA_DOC_CATALOG_PACK,
   OFFICIAL_M14_GA_DOC_CATALOG_PACK_VERSION,
@@ -441,6 +443,66 @@ describe('observability package', () => {
       expect.arrayContaining([
         'docs/engineering/MCP_CURSOR.md',
         'scripts/smoke-mcp-chatgpt.sh',
+      ]),
+    );
+  });
+
+  it('publishes the official M14 Slice 09 first-hour onboarding pack with fail-closed invariants', () => {
+    expect(OFFICIAL_M14_FIRST_HOUR_ONBOARDING_PACK_VERSION).toBe('m14-s09-v1');
+    expect(OFFICIAL_M14_FIRST_HOUR_ONBOARDING_PACK.version).toBe('m14-s09-v1');
+    expect(OFFICIAL_M14_FIRST_HOUR_ONBOARDING_PACK.sloPackVersion).toBe('m14-s01-v1');
+    expect(OFFICIAL_M14_FIRST_HOUR_ONBOARDING_PACK.securityReviewPackVersion).toBe(
+      'm14-s03-v1',
+    );
+    expect(OFFICIAL_M14_FIRST_HOUR_ONBOARDING_PACK.privacySlaPackVersion).toBe(
+      'm14-s06-v1',
+    );
+    expect(
+      OFFICIAL_M14_FIRST_HOUR_ONBOARDING_PACK.dependencyUpgradePolicyPackVersion,
+    ).toBe('m14-s07-v1');
+    expect(OFFICIAL_M14_FIRST_HOUR_ONBOARDING_PACK.gaDocCatalogPackVersion).toBe(
+      'm14-s08-v1',
+    );
+    expect(OFFICIAL_M14_FIRST_HOUR_ONBOARDING_PACK.roadmapSections).toEqual([
+      '20.17',
+    ]);
+    expect(OFFICIAL_M14_FIRST_HOUR_ONBOARDING_PACK.steps.map((item) => item.id)).toEqual(
+      expect.arrayContaining([
+        'connect-chatgpt-mode-a',
+        'connect-cursor-mcp',
+        'open-control-center',
+        'pick-explicit-project',
+        'capture-one-memory',
+        'search-read-after-write',
+        'find-export-privacy-runbooks',
+      ]),
+    );
+    expect(OFFICIAL_M14_FIRST_HOUR_ONBOARDING_PACK.invariants).toMatchObject({
+      defensiveOnly: true,
+      fixtureOnly: true,
+      modeAToolCount: 7,
+      requireStepOwner: true,
+      requireExplicitProjectIdOnWriteAdminOrExportInvocation: true,
+      ignoreDefaultProjectIdEnv: true,
+      allowOwnerTokenBypass: false,
+      allowAistroykaFallback: false,
+      allowVerifiedWrites: false,
+      allowProductionSqlApply: false,
+      allowLiveOnboarding: false,
+      allowNewUi: false,
+      allowNewVendor: false,
+      logMemoryBodies: false,
+      logTokens: false,
+      logPayloadBodies: false,
+    });
+    expect(
+      OFFICIAL_M14_FIRST_HOUR_ONBOARDING_PACK.steps.find(
+        (item) => item.id === 'connect-chatgpt-mode-a',
+      )?.requiredArtifacts,
+    ).toEqual(
+      expect.arrayContaining([
+        'docs/m0/CHATGPT_MCP_PLAN.md',
+        'docs/engineering/M6_CHATGPT_PRODUCTION.md',
       ]),
     );
   });

@@ -1,0 +1,127 @@
+{
+  "manifestVersion": "m14-s09-v1",
+  "packVersion": "m14-s09-v1",
+  "source": "fixture-local",
+  "roadmapSections": ["20.17"],
+  "blockedFallbackProjectIds": [
+    "44444444-4444-4444-8444-444444444401"
+  ],
+  "guide": {
+    "docPath": "docs/engineering/ONBOARDING.md",
+    "requiredSnippets": [
+      "Version: `m14-s09-v1`",
+      "Roadmap section: `20.17`",
+      "ChatGPT Mode A stays exactly 7 tools.",
+      "Any write, admin, or export step requires an explicit `project_id`.",
+      "`MEMORY_OS_DEFAULT_PROJECT_ID` is ignored.",
+      "Never rely on AISTROYKA fallback",
+      "Do not use `memory.store_decision` or `memory.set_status` as part of onboarding.",
+      "Production SQL apply is not part of onboarding."
+    ]
+  },
+  "sliceDoc": {
+    "docPath": "docs/engineering/M14_SLICE_09.md",
+    "requiredSnippets": [
+      "Official pack version: `m14-s09-v1`",
+      "Roadmap section: `20.17`",
+      "ChatGPT Mode A stays exactly 7 tools",
+      "`MEMORY_OS_DEFAULT_PROJECT_ID` is ignored",
+      "no AISTROYKA fallback",
+      "no verified-memory writes as part of onboarding",
+      "No production SQL apply is part of this work."
+    ]
+  },
+  "requiredSteps": [
+    {
+      "id": "connect-chatgpt-mode-a",
+      "title": "Connect ChatGPT Mode A",
+      "owner": "Platform owner",
+      "status": "current official",
+      "guideSectionHeading": "Connect ChatGPT Mode A",
+      "requiredSnippets": [
+        "docs/m0/CHATGPT_MCP_PLAN.md",
+        "docs/engineering/M6_CHATGPT_PRODUCTION.md",
+        "exactly these 7 tools",
+        "Stop if ChatGPT exposes fewer or more than 7 tools."
+      ]
+    },
+    {
+      "id": "connect-cursor-mcp",
+      "title": "Connect Cursor MCP",
+      "owner": "Platform owner",
+      "status": "current official",
+      "guideSectionHeading": "Connect Cursor MCP",
+      "requiredSnippets": [
+        "docs/engineering/MCP_CURSOR.md",
+        "stdio / HTTP gateway instructions",
+        "Do not add a parallel onboarding connector."
+      ]
+    },
+    {
+      "id": "open-control-center",
+      "title": "Open Control Center",
+      "owner": "Platform owner",
+      "status": "current official",
+      "guideSectionHeading": "Open Control Center",
+      "requiredSnippets": [
+        "Open the current Control Center home at `/`.",
+        "`/connections`",
+        "`/projects`",
+        "`/search`",
+        "`/privacy`",
+        "`/ops`"
+      ]
+    },
+    {
+      "id": "pick-explicit-project",
+      "title": "Pick explicit project",
+      "owner": "Platform owner",
+      "status": "current official",
+      "guideSectionHeading": "Pick explicit project",
+      "requiredSnippets": [
+        "explicit `project_id`",
+        "Ignore `MEMORY_OS_DEFAULT_PROJECT_ID`.",
+        "44444444-4444-4444-8444-444444444401"
+      ]
+    },
+    {
+      "id": "capture-one-memory",
+      "title": "Capture one memory",
+      "owner": "Platform owner",
+      "status": "current official",
+      "guideSectionHeading": "Capture one memory",
+      "requiredSnippets": [
+        "`capture.text`",
+        "Pass an explicit `project_id`.",
+        "Do not use `memory.store_decision` or `memory.set_status` as part of onboarding.",
+        "not live user data and not production onboarding"
+      ]
+    },
+    {
+      "id": "search-read-after-write",
+      "title": "Search and read-after-write",
+      "owner": "Platform owner",
+      "status": "current official",
+      "guideSectionHeading": "Search and read-after-write",
+      "requiredSnippets": [
+        "`memory.search` and `memory.get`",
+        "`context.project`",
+        "`/search`",
+        "does not verify or promote the memory"
+      ]
+    },
+    {
+      "id": "find-export-privacy-runbooks",
+      "title": "Find export, privacy, and runbooks",
+      "owner": "Privacy owner",
+      "status": "current official",
+      "guideSectionHeading": "Find export, privacy, and runbooks",
+      "requiredSnippets": [
+        "`/privacy`",
+        "docs/engineering/privacy/EXPORT_DELETION_SLAS.md",
+        "docs/engineering/runbooks/",
+        "Production SQL apply is not part of onboarding."
+      ]
+    }
+  ]
+}

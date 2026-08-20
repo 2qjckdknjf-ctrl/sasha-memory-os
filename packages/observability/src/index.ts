@@ -10,6 +10,7 @@ export const OFFICIAL_M14_INCIDENT_RUNBOOK_PACK_VERSION = 'm14-s05-v1' as const;
 export const OFFICIAL_M14_PRIVACY_SLA_PACK_VERSION = 'm14-s06-v1' as const;
 export const OFFICIAL_M14_DEPENDENCY_UPGRADE_POLICY_PACK_VERSION = 'm14-s07-v1' as const;
 export const OFFICIAL_M14_GA_DOC_CATALOG_PACK_VERSION = 'm14-s08-v1' as const;
+export const OFFICIAL_M14_FIRST_HOUR_ONBOARDING_PACK_VERSION = 'm14-s09-v1' as const;
 
 const LATENCY_P95_ERROR_BUDGET_RATIO = 0.05;
 const MAX_SLO_SAMPLES_PER_TARGET = 1_024;
@@ -1235,6 +1236,239 @@ export const OFFICIAL_M14_GA_DOC_CATALOG_PACK = {
     logMemoryBodies: false,
     logTokens: false,
     allowCatalogPayloadExamples: false,
+  },
+} as const;
+
+type FirstHourOnboardingStepId =
+  | 'connect-chatgpt-mode-a'
+  | 'connect-cursor-mcp'
+  | 'open-control-center'
+  | 'pick-explicit-project'
+  | 'capture-one-memory'
+  | 'search-read-after-write'
+  | 'find-export-privacy-runbooks';
+
+type FirstHourOnboardingSurface =
+  | 'chatgpt'
+  | 'cursor'
+  | 'control-center'
+  | 'privacy';
+
+type FirstHourOnboardingOwnerRole = 'Platform owner' | 'Privacy owner';
+
+type FirstHourOnboardingStep = {
+  id: FirstHourOnboardingStepId;
+  ownerRole: FirstHourOnboardingOwnerRole;
+  surface: FirstHourOnboardingSurface;
+  description: string;
+  requiredArtifacts: readonly string[];
+};
+
+type FirstHourOnboardingChecklistItemId =
+  | 'mode-a-seven-tools'
+  | 'cursor-mcp-current-surface'
+  | 'control-center-explicit-project'
+  | 'candidate-capture-only'
+  | 'search-read-after-write'
+  | 'privacy-and-runbooks-findable'
+  | 'no-secret-payload-or-fallback-leak';
+
+type FirstHourOnboardingChecklistItem = {
+  id: FirstHourOnboardingChecklistItemId;
+  description: string;
+  defensiveOnly: true;
+  evidence: readonly string[];
+};
+
+export const OFFICIAL_M14_FIRST_HOUR_ONBOARDING_PACK = {
+  version: OFFICIAL_M14_FIRST_HOUR_ONBOARDING_PACK_VERSION,
+  sloPackVersion: OFFICIAL_M14_SLO_PACK_VERSION,
+  securityReviewPackVersion: OFFICIAL_M14_SECURITY_REVIEW_PACK_VERSION,
+  privacySlaPackVersion: OFFICIAL_M14_PRIVACY_SLA_PACK_VERSION,
+  dependencyUpgradePolicyPackVersion:
+    OFFICIAL_M14_DEPENDENCY_UPGRADE_POLICY_PACK_VERSION,
+  gaDocCatalogPackVersion: OFFICIAL_M14_GA_DOC_CATALOG_PACK_VERSION,
+  roadmapSections: ['20.17'],
+  steps: [
+    {
+      id: 'connect-chatgpt-mode-a',
+      ownerRole: 'Platform owner',
+      surface: 'chatgpt',
+      description:
+        'Connect ChatGPT to the current official Mode A profile and confirm the exposed surface stays at exactly 7 tools.',
+      requiredArtifacts: [
+        'docs/m0/CHATGPT_MCP_PLAN.md',
+        'docs/engineering/M6_CHATGPT_PRODUCTION.md',
+        'apps/mcp-gateway/src/profile.ts',
+      ],
+    },
+    {
+      id: 'connect-cursor-mcp',
+      ownerRole: 'Platform owner',
+      surface: 'cursor',
+      description:
+        'Connect Cursor to the current MCP gateway surface and reuse the checked-in mcp.json / stdio guidance instead of inventing a new onboarding path.',
+      requiredArtifacts: [
+        'docs/engineering/MCP_CURSOR.md',
+        'apps/mcp-gateway/src/tools.ts',
+      ],
+    },
+    {
+      id: 'open-control-center',
+      ownerRole: 'Platform owner',
+      surface: 'control-center',
+      description:
+        'Open the current Control Center and reuse the existing home, connections, projects, search, and privacy pages.',
+      requiredArtifacts: [
+        'apps/web/src/App.tsx',
+        'apps/web/src/ConnectionsPage.tsx',
+        'apps/web/src/ProjectsPage.tsx',
+        'apps/web/src/PrivacyPage.tsx',
+      ],
+    },
+    {
+      id: 'pick-explicit-project',
+      ownerRole: 'Platform owner',
+      surface: 'control-center',
+      description:
+        'Pick an explicit project before any write, admin, or export path; never rely on MEMORY_OS_DEFAULT_PROJECT_ID or AISTROYKA fallback.',
+      requiredArtifacts: [
+        'apps/web/src/projectScope.ts',
+        'apps/api/src/app.ts',
+        'apps/mcp-gateway/src/tools.ts',
+      ],
+    },
+    {
+      id: 'capture-one-memory',
+      ownerRole: 'Platform owner',
+      surface: 'chatgpt',
+      description:
+        'Capture one candidate memory through the current MCP capture path without creating a verified memory as part of onboarding.',
+      requiredArtifacts: [
+        'apps/mcp-gateway/src/tools.ts',
+        'apps/api/src/app.ts',
+      ],
+    },
+    {
+      id: 'search-read-after-write',
+      ownerRole: 'Platform owner',
+      surface: 'control-center',
+      description:
+        'Use the current search and project-context surfaces for read-after-write without widening scope or requiring a new onboarding UI.',
+      requiredArtifacts: [
+        'apps/web/src/SearchPage.tsx',
+        'apps/web/src/App.tsx',
+        'apps/mcp-gateway/src/tools.ts',
+      ],
+    },
+    {
+      id: 'find-export-privacy-runbooks',
+      ownerRole: 'Privacy owner',
+      surface: 'privacy',
+      description:
+        'Point owners to the existing privacy/export page and checked-in runbooks instead of adding a new support or operations workflow.',
+      requiredArtifacts: [
+        'apps/web/src/PrivacyPage.tsx',
+        'docs/engineering/privacy/EXPORT_DELETION_SLAS.md',
+        'docs/engineering/runbooks/',
+      ],
+    },
+  ] satisfies readonly FirstHourOnboardingStep[],
+  checklist: [
+    {
+      id: 'mode-a-seven-tools',
+      description:
+        'ChatGPT Mode A remains the official seven-tool surface and onboarding does not widen it.',
+      defensiveOnly: true,
+      evidence: [
+        'apps/mcp-gateway/src/profile.ts',
+        'apps/mcp-gateway/src/profile.test.ts',
+        'docs/m0/CHATGPT_MCP_PLAN.md',
+      ],
+    },
+    {
+      id: 'cursor-mcp-current-surface',
+      description:
+        'Cursor onboarding reuses the checked-in MCP gateway guide and current tool surface.',
+      defensiveOnly: true,
+      evidence: [
+        'docs/engineering/MCP_CURSOR.md',
+        'apps/mcp-gateway/src/tools.ts',
+      ],
+    },
+    {
+      id: 'control-center-explicit-project',
+      description:
+        'Control Center onboarding requires an explicit project selection and never defaults to AISTROYKA.',
+      defensiveOnly: true,
+      evidence: [
+        'apps/web/src/projectScope.ts',
+        'apps/web/src/ProjectsPage.tsx',
+        'apps/api/src/app.test.ts',
+      ],
+    },
+    {
+      id: 'candidate-capture-only',
+      description:
+        'The first captured onboarding memory uses candidate capture only; onboarding does not instruct verified writes or owner-token bypass.',
+      defensiveOnly: true,
+      evidence: [
+        'apps/mcp-gateway/src/tools.ts',
+        'apps/mcp-gateway/src/tools.test.ts',
+        'docs/engineering/ONBOARDING.md',
+      ],
+    },
+    {
+      id: 'search-read-after-write',
+      description:
+        'Owners can search and inspect the captured memory on the current MCP and Control Center surfaces after write.',
+      defensiveOnly: true,
+      evidence: [
+        'apps/web/src/SearchPage.tsx',
+        'apps/mcp-gateway/src/tools.ts',
+        'docs/engineering/ONBOARDING.md',
+      ],
+    },
+    {
+      id: 'privacy-and-runbooks-findable',
+      description:
+        'The first-hour guide links the current privacy/export and runbook surfaces without inventing a new support flow.',
+      defensiveOnly: true,
+      evidence: [
+        'apps/web/src/PrivacyPage.tsx',
+        'docs/engineering/privacy/EXPORT_DELETION_SLAS.md',
+        'docs/engineering/runbooks/',
+      ],
+    },
+    {
+      id: 'no-secret-payload-or-fallback-leak',
+      description:
+        'The onboarding pack, guide, and local drill remain metadata-only: no tokens, no payload bodies, no verified writes, and no AISTROYKA fallback.',
+      defensiveOnly: true,
+      evidence: [
+        'packages/observability/src/index.test.ts',
+        'apps/api/src/firstHourOnboardingDrill.test.ts',
+        'tests/security/m14_slice_09_pack.test.ts',
+      ],
+    },
+  ] satisfies readonly FirstHourOnboardingChecklistItem[],
+  invariants: {
+    defensiveOnly: true,
+    fixtureOnly: true,
+    modeAToolCount: 7,
+    requireStepOwner: true,
+    requireExplicitProjectIdOnWriteAdminOrExportInvocation: true,
+    ignoreDefaultProjectIdEnv: true,
+    allowOwnerTokenBypass: false,
+    allowAistroykaFallback: false,
+    allowVerifiedWrites: false,
+    allowProductionSqlApply: false,
+    allowLiveOnboarding: false,
+    allowNewUi: false,
+    allowNewVendor: false,
+    logMemoryBodies: false,
+    logTokens: false,
+    logPayloadBodies: false,
   },
 } as const;
 
