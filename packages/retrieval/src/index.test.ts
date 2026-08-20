@@ -3,13 +3,17 @@ import { createSeededStore, MemoryStore, type MemoryRecord } from '@memory-os/do
 import {
   AGENTIC_RETRIEVAL_TOOL_ALLOWLIST,
   authorityMultiplier,
+  createSearchRankingWeightsPack,
+  DEFAULT_SEARCH_RANKING_WEIGHTS_PACK,
   fuseRanksRrf,
   packSearchContext,
   PERSONALIZED_IMPORTANCE_VERSION,
   projectContext,
   runBoundedAgenticRetrieval,
   SEARCH_RANKING_VERSION,
+  SEARCH_RANKING_WEIGHTS_VERSION,
   searchMemories,
+  searchMemoriesHybrid,
 } from './index.js';
 
 describe('retrieval stub', () => {
@@ -120,6 +124,33 @@ describe('retrieval stub', () => {
     expect(fused[0]!.score).toBeGreaterThan(fused[1]!.score);
   });
 
+  it('supports weighted RRF list mixing for lexical/vector balance', () => {
+    const fused = fuseRanksRrf(
+      [
+        [{ id: 'a' }, { id: 'b' }, { id: 'c' }],
+        [{ id: 'c' }, { id: 'b' }, { id: 'a' }],
+      ],
+      {
+        idOf: (row) => row.id,
+        listWeights: [3, 1],
+      },
+    );
+    expect(fused[0]?.id).toBe('a');
+    expect(fused[0]!.score).toBeGreaterThan(fused[1]!.score);
+  });
+
+  it('exposes the official M13 Slice 06 default ranking weights pack', () => {
+    expect(DEFAULT_SEARCH_RANKING_WEIGHTS_PACK.version).toBe(
+      SEARCH_RANKING_WEIGHTS_VERSION,
+    );
+    expect(DEFAULT_SEARCH_RANKING_WEIGHTS_PACK.hardFilters).toEqual({
+      aclVisibility: 'hard-filter',
+      projectMatch: 'hard-filter',
+      temporalValidity: 'hard-filter',
+    });
+    expect(DEFAULT_SEARCH_RANKING_WEIGHTS_PACK.lexical.recencyWeight).toBe(0);
+  });
+
   it('packs citations under a char budget', () => {
     const packed = packSearchContext(
       [
@@ -153,6 +184,91 @@ describe('retrieval stub', () => {
   it('ranks verified above candidate via authority', () => {
     expect(authorityMultiplier('verified')).toBeGreaterThan(
       authorityMultiplier('candidate'),
+    );
+  });
+
+  it('applies explicit conflict-penalty weights without changing the default pack', () => {
+    const workspaceId = '11111111-1111-4111-8111-111111111111';
+    const projectId = '44444444-4444-4444-8444-444444444401';
+    const owner = '33333333-3333-4333-8333-333333333301';
+    const store = new MemoryStore();
+    const disputed = store.createDecision({
+      workspaceId,
+      projectId,
+      title: 'Release risk dispute',
+      content: 'release freeze dispute note',
+      actorSubjectId: owner,
+      idempotencyKey: 'retrieval-weights-disputed',
+      importance: 0.95,
+    });
+    const active = store.createDecision({
+      workspaceId,
+      projectId,
+      title: 'Release risk active',
+      content: 'release freeze dispute note',
+      actorSubjectId: owner,
+      idempotencyKey: 'retrieval-weights-active',
+      importance: 0.7,
+    });
+    store.setMemoryStatus({
+      memoryId: disputed.id,
+      status: 'disputed',
+      reason: 'ranking weights test',
+      actorSubjectId: owner,
+    });
+    store.setMemoryStatus({
+      memoryId: active.id,
+      status: 'active',
+      reason: 'ranking weights test',
+      actorSubjectId: owner,
+    });
+
+    const baseline = searchMemories(
+      [store.memories.get(disputed.id)!, store.memories.get(active.id)!],
+      'release freeze dispute',
+      {
+        projectId,
+        includeHistory: true,
+      },
+    );
+    const noConflictPenalty = searchMemories(
+      [store.memories.get(disputed.id)!, store.memories.get(active.id)!],
+      'release freeze dispute',
+      {
+        projectId,
+        includeHistory: true,
+        rankingWeights: createSearchRankingWeightsPack({
+          version: 'test-no-conflict-penalty-v1',
+          lexical: {
+            conflictPenaltyWeight: 0,
+          },
+        }),
+      },
+    );
+
+    expect(baseline[0]?.memory.id).toBe(active.id);
+    expect(noConflictPenalty[0]?.memory.id).toBe(disputed.id);
+  });
+
+  it('keeps the default pack stable when supplied explicitly', async () => {
+    const store = createSeededStore();
+    const baseline = await searchMemoriesHybrid(
+      [...store.memories.values()],
+      'Slice 01',
+      {
+        projectId: '44444444-4444-4444-8444-444444444401',
+      },
+    );
+    const explicit = await searchMemoriesHybrid(
+      [...store.memories.values()],
+      'Slice 01',
+      {
+        projectId: '44444444-4444-4444-8444-444444444401',
+        rankingWeights: DEFAULT_SEARCH_RANKING_WEIGHTS_PACK,
+      },
+    );
+    expect(explicit.map((hit) => hit.memory.id)).toEqual(
+      baseline.map((hit) => hit.memory.id),
     );
   });
 

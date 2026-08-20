@@ -37,6 +37,7 @@ import {
   rerankHitsHybrid,
   runBoundedAgenticRetrieval,
   SEARCH_RANKING_VERSION,
+  SEARCH_RANKING_WEIGHTS_VERSION,
   searchMemoriesHybrid,
 } from '@memory-os/retrieval';
 import {
@@ -1542,6 +1543,7 @@ export function createMcpHandlers(options?: {
               recordedAfter: recordedAfter ?? null,
               recordedBefore: recordedBefore ?? null,
               rankingVersion: result.rankingVersion,
+              rankingWeightsVersion: result.rankingWeightsVersion,
               outcome: result.outcome,
               stopReason: result.stopReason,
               writeActionsAttempted: result.writeActionsAttempted,
@@ -1590,11 +1592,13 @@ export function createMcpHandlers(options?: {
               hits: result.hits,
               ranking: result.ranking,
               rankingVersion: result.rankingVersion,
+              rankingWeightsVersion: result.rankingWeightsVersion,
               ...(pack
                 ? { context: result.context }
                 : {}),
               agentic: {
                 rankingVersion: result.rankingVersion,
+                rankingWeightsVersion: result.rankingWeightsVersion,
                 outcome: result.outcome,
                 stopReason: result.stopReason,
                 writeActionsAttempted: result.writeActionsAttempted,
@@ -1619,6 +1623,7 @@ export function createMcpHandlers(options?: {
             hits,
             ranking: 'hybrid-rrf',
             rankingVersion: SEARCH_RANKING_VERSION,
+            rankingWeightsVersion: SEARCH_RANKING_WEIGHTS_VERSION,
             ...(pack
               ? { context: packSearchContext(hits, { maxChars: maxContextChars }) }
               : {}),

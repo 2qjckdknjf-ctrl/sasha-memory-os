@@ -2,26 +2,36 @@ import {
   type EffectiveMemoryPersonalization,
   filterCurrentMemories,
   type MemoryRecord,
-  type MemoryStatus,
 } from '@memory-os/domain';
 import {
   cosineSimilarity,
   createEmbeddingAdapter,
 } from './embeddings.js';
 import { CONFLICTING_MEMORY_STATUSES } from './conflicts.js';
+import {
+  authorityMultiplier as weightedAuthorityMultiplier,
+  DEFAULT_SEARCH_RANKING_WEIGHTS_PACK,
+  hybridRankWeights,
+  importanceMultiplier,
+  pinnedScoreMultiplier,
+  recencyMultiplier,
+  resolveSearchRankingWeightsPack,
+  type SearchRankingWeightsPack,
+  vectorSimilarityTieBreakWeight,
+} from './ranking-weights.js';
 
 export const packageName = 'retrieval' as const;
 export * from './embeddings.js';
 export * from './consolidate.js';
 export * from './conflicts.js';
 export * from './extraction.js';
+export * from './ranking-weights.js';
 
 /** Classic RRF constant (Cormack et al.). */
 export const RRF_K = 60;
-export const SEARCH_RANKING_VERSION = 'hybrid-rrf+m13-s05-v1';
+export const SEARCH_RANKING_VERSION = 'hybrid-rrf+m13-s06-v1';
 export const PERSONALIZED_IMPORTANCE_VERSION = 'm13-s05-v1';
 export const MAX_IMPORTANCE_DELTA = 0.5;
-const PINNED_SCORE_MULTIPLIER = 1.75;
 
 export interface SearchHit {
   memory: MemoryRecord;
@@ -60,10 +70,6 @@ function recordedAtOf(memory: {
   return memory.recordedAt ?? memory.recorded_at ?? null;
 }
 
-function clamp01(value: number): number {
-  return Math.min(1, Math.max(0, value));
-}
-
 function clampImportanceDelta(value: number | null | undefined): number {
   if (typeof value !== 'number' || !Number.isFinite(value)) {
     return 0;
@@ -74,14 +80,16 @@ function clampImportanceDelta(value: number | null | undefined): number {
 function effectiveImportanceForHit(
   importance: number,
   personalization?: EffectiveMemoryPersonalization | null,
+  rankingWeights?: SearchRankingWeightsPack | null,
 ): number {
-  return clamp01(importance + clampImportanceDelta(personalization?.importanceDelta));
+  return importanceMultiplier(importance, personalization, rankingWeights);
 }
 
 function pinMultiplierForHit(
   personalization?: EffectiveMemoryPersonalization | null,
+  rankingWeights?: SearchRankingWeightsPack | null,
 ): number {
-  return personalization?.pinned ? PINNED_SCORE_MULTIPLIER : 1;
+  return pinnedScoreMultiplier(personalization, rankingWeights);
 }
 
 function asHitPersonalization(
@@ -163,23 +171,11 @@ export function inRecordedWindow(
 }
 
 /** Status → mild ranking multiplier (source / review authority). */
-export function authorityMultiplier(status?: string | null): number {
-  switch (status as MemoryStatus | undefined) {
-    case 'verified':
-      return 1.15;
-    case 'active':
-      return 1.08;
-    case 'candidate':
-      return 1.0;
-    case 'disputed':
-      return 0.7;
-    case 'superseded':
-    case 'retracted':
-    case 'deleted':
-      return 0.4;
-    default:
-      return 1.0;
-  }
+export function authorityMultiplier(
+  status?: string | null,
+  rankingWeights?: SearchRankingWeightsPack | null,
+): number {
+  return weightedAuthorityMultiplier(status, rankingWeights);
 }
 
 /**
@@ -191,6 +187,7 @@ export function fuseRanksRrf<T>(
   options?: {
     k?: number;
     idOf: (item: T) => string;
+    listWeights?: number[];
   },
 ): Array<{ id: string; score: number; item: T }> {
   const k = options?.k ?? RRF_K;
@@ -198,10 +195,14 @@ export function fuseRanksRrf<T>(
     throw new Error('fuseRanksRrf requires idOf');
   }
   const scores = new Map<string, { score: number; item: T }>();
-  for (const list of rankedLists) {
+  rankedLists.forEach((list, listIndex) => {
+    const listWeight = options?.listWeights?.[listIndex] ?? 1;
+    if (!Number.isFinite(listWeight) || listWeight <= 0) {
+      return;
+    }
     list.forEach((item, index) => {
       const id = options.idOf(item);
-      const add = 1 / (k + index + 1);
+      const add = listWeight / (k + index + 1);
       const prev = scores.get(id);
       if (prev) {
         prev.score += add;
@@ -209,7 +210,7 @@ export function fuseRanksRrf<T>(
         scores.set(id, { score: add, item });
       }
     });
-  }
+  });
   return [...scores.entries()]
     .map(([id, row]) => ({ id, score: row.score, item: row.item }))
     .sort((a, b) => b.score - a.score);
@@ -223,8 +224,10 @@ export function searchMemories(
     includeHistory?: boolean;
     projectId?: string;
     personalizationByMemoryId?: ReadonlyMap<string, EffectiveMemoryPersonalization>;
+    rankingWeights?: SearchRankingWeightsPack;
   } & SearchTemporalOptions,
 ): SearchHit[] {
+  const rankingWeights = resolveSearchRankingWeightsPack(options?.rankingWeights);
   const tokens = tokenize(query);
   const pool = options?.includeHistory
     ? records
@@ -237,17 +240,19 @@ export function searchMemories(
       if (!inRecordedWindow(memory.recordedAt, options)) {
         return null;
       }
-      const auth = authorityMultiplier(memory.status);
+      const auth = authorityMultiplier(memory.status, rankingWeights);
       const personalization = options?.personalizationByMemoryId?.get(memory.id) ?? null;
       const effectiveImportance = effectiveImportanceForHit(
         memory.importance,
         personalization,
+        rankingWeights,
       );
-      const pinMultiplier = pinMultiplierForHit(personalization);
+      const pinMultiplier = pinMultiplierForHit(personalization, rankingWeights);
+      const freshness = recencyMultiplier(memory.recordedAt, rankingWeights);
       if (tokens.length === 0) {
         return {
           memory,
-          score: effectiveImportance * memory.confidence * auth * pinMultiplier,
+          score: effectiveImportance * memory.confidence * auth * pinMultiplier * freshness,
           reason: 'structured+text',
           personalization,
         } satisfies SearchHit;
@@ -265,7 +270,8 @@ export function searchMemories(
           memory.confidence *
           auth *
           (0.5 + coverage / 2) *
-          pinMultiplier,
+          pinMultiplier *
+          freshness,
         reason: 'structured+text',
         personalization,
       } satisfies SearchHit;
@@ -438,8 +444,10 @@ export async function rerankHitsHybrid<T extends HybridHitLike>(
   options?: {
     embedEngine?: string;
     reason?: string;
+    rankingWeights?: SearchRankingWeightsPack;
   } & SearchTemporalOptions,
 ): Promise<T[]> {
+  const rankingWeights = resolveSearchRankingWeightsPack(options?.rankingWeights);
   const scoped = filterHitsTemporal(hits, options);
   if (scoped.length === 0 || !query.trim()) {
     return [...scoped].sort((a, b) =>
@@ -491,6 +499,7 @@ export async function rerankHitsHybrid<T extends HybridHitLike>(
 
   const fused = fuseRanksRrf([lexicalOrder, vectorOrder], {
     idOf: (hit) => hitDocId(hit, indexByRef.get(hit) ?? 0),
+    listWeights: hybridRankWeights(rankingWeights),
   });
 
   const reason = options?.reason ?? defaultReason;
@@ -505,7 +514,7 @@ export async function rerankHitsHybrid<T extends HybridHitLike>(
       return {
         ...hit,
         // Readable score: RRF mass + mild cosine cue for ties.
-        score: rrf + sim * 0.01,
+        score: rrf + sim * vectorSimilarityTieBreakWeight(rankingWeights),
         reason,
       };
     })
@@ -528,6 +537,7 @@ export async function searchMemoriesHybrid(
     projectId?: string;
     embedEngine?: string;
     personalizationByMemoryId?: ReadonlyMap<string, EffectiveMemoryPersonalization>;
+    rankingWeights?: SearchRankingWeightsPack;
   } & SearchTemporalOptions,
 ): Promise<SearchHit[]> {
   const lexical = searchMemories(records, query, options);
@@ -536,6 +546,7 @@ export async function searchMemoriesHybrid(
     reason: 'hybrid:rrf',
     recordedAfter: options?.recordedAfter,
     recordedBefore: options?.recordedBefore,
+    rankingWeights: options?.rankingWeights,
   });
 }
 
@@ -624,6 +635,7 @@ export type AgenticRetrievalResult<T extends HybridHitLike = HybridHitLike> = {
   hits: T[];
   ranking: 'hybrid-rrf';
   rankingVersion: string;
+  rankingWeightsVersion: string;
   context: ReturnType<typeof packSearchContext>;
   outcome: AgenticRetrievalOutcome;
   stopReason: AgenticRetrievalStopReason;
@@ -1153,6 +1165,7 @@ export async function runBoundedAgenticRetrieval<T extends HybridHitLike>(input:
     hits,
     ranking: 'hybrid-rrf',
     rankingVersion: SEARCH_RANKING_VERSION,
+    rankingWeightsVersion: DEFAULT_SEARCH_RANKING_WEIGHTS_PACK.version,
     context: packSearchContext(hits, { maxChars: input.maxContextChars }),
     outcome,
     stopReason,
