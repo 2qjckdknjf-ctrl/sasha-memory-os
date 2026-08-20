@@ -68,6 +68,10 @@ import {
   resolveLocalSubject,
   type AuthzContext,
 } from '@memory-os/authz';
+import {
+  recordSloObservation,
+  type SloObservationOutcome,
+} from '@memory-os/observability';
 import { randomUUID } from 'node:crypto';
 import {
   adaptToolSchemaForProfile,
@@ -93,6 +97,60 @@ const CURSOR_SUBJECT_ID = '33333333-3333-4333-8333-333333333303';
 const ROMA_SUBJECT_ID = '33333333-3333-4333-8333-333333333304';
 const PROACTIVE_CONSOLIDATION_PROJECT_ERROR =
   'project_id is required for proactive consolidation; never default to AISTROYKA';
+const WRITE_RECEIPT_TOOL_NAMES = new Set<string>([
+  'memory.store_decision',
+  'handoff.create',
+  'capture.text',
+  'capture.document',
+  'capture.link',
+  'memory.set_status',
+  'extraction.apply',
+  'extraction.run',
+]);
+
+function mcpOutcomeForError(err: unknown): SloObservationOutcome {
+  const message = err instanceof Error ? err.message : String(err);
+  return /forbidden|not available|project|ambiguous|not found|workspace_id is required|text is required/i.test(
+    message,
+  )
+    ? 'ok'
+    : 'error';
+}
+
+function recordToolSlo(
+  name: string,
+  args: Record<string, unknown>,
+  durationMs: number,
+  outcome: SloObservationOutcome,
+): void {
+  if (name === 'memory.search') {
+    recordSloObservation({
+      targetId:
+        args.retrieval_mode === 'agentic' ||
+        (typeof args.agentic === 'object' && args.agentic !== null)
+          ? 'search.agentic'
+          : 'search.hybrid',
+      durationMs,
+      outcome,
+    });
+    return;
+  }
+  if (name === 'context.project') {
+    recordSloObservation({
+      targetId: 'project.state',
+      durationMs,
+      outcome,
+    });
+    return;
+  }
+  if (WRITE_RECEIPT_TOOL_NAMES.has(name)) {
+    recordSloObservation({
+      targetId: 'write.receipt',
+      durationMs,
+      outcome,
+    });
+  }
+}
 
 function localAuthzForSubject(
   subjectId: string,
@@ -1401,13 +1459,15 @@ export function createMcpHandlers(options?: {
     instructions: profile.instructions,
     backend: gateway ? ('supabase' as const) : ('memory-store' as const),
     async call(name: string, rawArgs: Record<string, unknown>) {
-      if (!isToolAllowed(profile, name)) {
-        throw new Error(
-          `Tool ${name} is not available on MCP profile '${profile.name}'`,
-        );
-      }
-      const args = applyProfileDefaults(profile, rawArgs, name);
-      switch (name) {
+      const startedAt = Date.now();
+      const execute = async () => {
+        if (!isToolAllowed(profile, name)) {
+          throw new Error(
+            `Tool ${name} is not available on MCP profile '${profile.name}'`,
+          );
+        }
+        const args = applyProfileDefaults(profile, rawArgs, name);
+        switch (name) {
         case 'memory.search': {
           const query = String(args.query ?? '');
           const subjectId = String(args.actor_subject_id);
@@ -2874,6 +2934,27 @@ export function createMcpHandlers(options?: {
           const _exhaustive: never = name as never;
           throw new Error(`Unknown tool: ${_exhaustive}`);
         }
+      }
+      };
+      try {
+        const result = await execute();
+        const durationMs = Date.now() - startedAt;
+        recordSloObservation({
+          targetId: 'mcp.availability',
+          durationMs,
+        });
+        recordToolSlo(name, rawArgs, durationMs, 'ok');
+        return result;
+      } catch (err) {
+        const durationMs = Date.now() - startedAt;
+        const outcome = mcpOutcomeForError(err);
+        recordSloObservation({
+          targetId: 'mcp.availability',
+          durationMs,
+          outcome,
+        });
+        recordToolSlo(name, rawArgs, durationMs, outcome);
+        throw err;
       }
     },
   };

@@ -2,6 +2,10 @@ import { describe, expect, it, vi } from 'vitest';
 import { createConnectorRegistry } from '@memory-os/connector-sdk';
 import { createSeededStore, MemoryStore, type MemoryRecord } from '@memory-os/domain';
 import {
+  getSloBudgetSnapshot,
+  resetSloObservations,
+} from '@memory-os/observability';
+import {
   SEARCH_RANKING_VERSION,
   SEARCH_RANKING_WEIGHTS_VERSION,
 } from '@memory-os/retrieval';
@@ -2454,7 +2458,82 @@ describe('memory api demo slice', () => {
     expect(emptyBody.hits).toHaveLength(0);
   });
 
+  it('records versioned SLO observations for search, state, write receipt, and webhook ack without payload leakage', async () => {
+    resetSloObservations();
+    const app = createApp({});
+
+    const search = await app.request('/v1/search', {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'x-actor-key': 'cursor',
+      },
+      body: JSON.stringify({
+        query: 'family travel top-secret-token',
+        project_id: projectId,
+      }),
+    });
+    expect(search.status).toBe(200);
+
+    const stateRead = await app.request(`/v1/projects/${projectId}/state`, {
+      headers: { 'x-subject-id': owner },
+    });
+    expect(stateRead.status).toBe(200);
+
+    const stateWrite = await app.request('/v1/capture/text', {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'x-actor-key': 'cursor',
+      },
+      body: JSON.stringify({
+        workspace_id: workspaceId,
+        project_id: projectId,
+        title: 'Private MCP payload mirror',
+        text: 'private payload body must stay out of telemetry',
+        actor_subject_id: cursor,
+        idempotency_key: 'm14-slo-capture-1',
+        process_now: true,
+      }),
+    });
+    expect(stateWrite.status).toBe(201);
+
+    const webhook = await app.request('/v1/webhooks/missing', {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({ text: 'private webhook payload' }),
+    });
+    expect(webhook.status).toBe(404);
+
+    const snapshot = getSloBudgetSnapshot();
+    const byId = Object.fromEntries(snapshot.targets.map((target) => [target.id, target]));
+
+    expect(byId['api.availability']?.observations).toMatchObject({
+      totalCount: 4,
+      errorCount: 0,
+    });
+    expect(byId['search.hybrid']?.observations).toMatchObject({
+      sampleCount: 1,
+    });
+    expect(byId['project.state']?.observations).toMatchObject({
+      sampleCount: 1,
+    });
+    expect(byId['write.receipt']?.observations).toMatchObject({
+      sampleCount: 1,
+    });
+    expect(byId['webhook.ack']?.observations).toMatchObject({
+      sampleCount: 1,
+    });
+
+    const serialized = JSON.stringify(snapshot);
+    expect(serialized).not.toContain('family travel top-secret-token');
+    expect(serialized).not.toContain('private webhook payload');
+  });
+
   it('runs bounded agentic search with an audit trace and zero write attempts', async () => {
+    resetSloObservations();
     const store = createSeededStore();
     const app = createApp({ store });
 
@@ -2500,6 +2579,11 @@ describe('memory api demo slice', () => {
       projectId,
       toolAllowlist: ['memory.search'],
       writeActionsAttempted: 0,
+    });
+    const snapshot = getSloBudgetSnapshot();
+    const agentic = snapshot.targets.find((target) => target.id === 'search.agentic');
+    expect(agentic?.observations).toMatchObject({
+      sampleCount: 1,
     });
   });
 
