@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  connectionCollectionItems,
   githubAppConnectionMetadata,
   githubAppInstallationId,
   githubAppReconcileRequestSchema,
@@ -89,6 +90,51 @@ describe('GitHub App connection metadata', () => {
     });
     expect(parsed.github_app).toBeUndefined();
     expect(parsed.other).toBe('value');
+  });
+});
+
+describe('connector collection metadata', () => {
+  it('accepts selected file/folder scopes without widening them to all', () => {
+    const parsed = normalizeConnectionMetadata({
+      collections: {
+        selection_mode: 'selected',
+        excluded_ids: [],
+        items: [
+          {
+            id: 'google-drive:file:FILE-1',
+            external_id: 'FILE-1',
+            kind: 'file',
+            name: 'roadmap.md',
+            title: 'roadmap.md',
+            metadata: {
+              storage_mode: 'indexed',
+            },
+          },
+          {
+            id: 'google-drive:folder:FOLDER-1',
+            external_id: 'FOLDER-1',
+            kind: 'folder',
+            name: 'Specs',
+            title: 'Specs',
+            metadata: {
+              storage_mode: 'reference',
+            },
+          },
+        ],
+        project_bindings: {
+          'google-drive:file:FILE-1': '44444444-4444-4444-8444-444444444421',
+          'google-drive:folder:FOLDER-1': '44444444-4444-4444-8444-444444444422',
+        },
+      },
+    });
+
+    expect(parsed.collections?.selection_mode).toBe('selected');
+    expect(connectionCollectionItems(parsed)).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ kind: 'file', external_id: 'FILE-1' }),
+        expect.objectContaining({ kind: 'folder', external_id: 'FOLDER-1' }),
+      ]),
+    );
   });
 });
 

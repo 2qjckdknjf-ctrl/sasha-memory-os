@@ -11,10 +11,13 @@ export const connectionStatusSchema = z.enum([
 export const connectorCollectionKindSchema = z.enum([
   'collection',
   'repository',
+  'file',
   'folder',
   'calendar',
   'label',
 ]);
+
+export const connectorCollectionSelectionModeSchema = z.enum(['all', 'selected']);
 
 export const connectorCollectionSchema = z.object({
   id: z.string().min(1),
@@ -29,7 +32,7 @@ export const connectorCollectionSchema = z.object({
 });
 
 export const connectorCollectionsStateSchema = z.object({
-  selection_mode: z.literal('all').default('all'),
+  selection_mode: connectorCollectionSelectionModeSchema.default('all'),
   excluded_ids: z.array(z.string()).default([]),
   items: z.array(connectorCollectionSchema).default([]),
   discovered_at: z.string().datetime({ offset: true }).nullish(),
@@ -234,7 +237,7 @@ export function withDiscoveredCollections(
   return {
     ...normalized,
     collections: {
-      selection_mode: 'all',
+      selection_mode: current?.selection_mode ?? 'all',
       excluded_ids: current?.excluded_ids ?? [],
       items,
       discovered_at: discoveredAt,

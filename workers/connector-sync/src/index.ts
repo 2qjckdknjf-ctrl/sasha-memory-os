@@ -83,6 +83,20 @@ function resolveCollectionProjectId(
   return normalized.collections?.project_bindings?.[collectionId] ?? null;
 }
 
+function resolveRecordProjectId(
+  metadata: Record<string, unknown> | undefined,
+  record: {
+    externalObject: { collectionId?: string };
+    envelope: { scope?: { project_id?: string } };
+  },
+): string | null {
+  const boundProjectId = resolveCollectionProjectId(metadata, record.externalObject.collectionId);
+  if (boundProjectId) return boundProjectId;
+  return typeof record.envelope.scope?.project_id === 'string'
+    ? record.envelope.scope.project_id
+    : null;
+}
+
 async function discoverAndSeedConnectionProjects(
   gateway: SupabaseMemoryGateway,
   subjectId: string,
@@ -238,22 +252,56 @@ async function ingestSdkConnectorDelta(
     },
   });
   let captured = 0;
+  let tombstoned = 0;
+  let skippedWithoutProject = 0;
   for (const record of syncRun.records) {
-    const projectId =
-      resolveCollectionProjectId(
-        syncedConnection.metadata,
-        record.externalObject.collectionId,
-      ) ?? null;
-    const captureResult = await gateway.captureText({
+    const projectId = resolveRecordProjectId(syncedConnection.metadata, record);
+    if (record.externalObject.deleted) {
+      await gateway.tombstoneConnectorObject({
+        subjectId,
+        workspaceId,
+        projectId,
+        provider: record.externalObject.provider,
+        accountId: record.externalObject.accountId,
+        externalId: record.externalObject.externalId,
+        eventType: record.envelope.event_type,
+        observedAt: record.envelope.observed_at,
+        idempotencyKey: record.envelope.idempotency_key,
+        reason:
+          typeof record.externalObject.permissionsSnapshot.reason === 'string'
+            ? record.externalObject.permissionsSnapshot.reason
+            : String(record.envelope.provenance.changeState ?? 'connector object removed'),
+        provenance: record.envelope.provenance,
+        metadata: record.externalObject.metadata,
+      });
+      tombstoned += 1;
+      continue;
+    }
+    if (!projectId) {
+      skippedWithoutProject += 1;
+      continue;
+    }
+    const captureResult = await gateway.captureConnectorRecord({
       subjectId,
       workspaceId,
       projectId,
+      provider: record.externalObject.provider,
+      accountId: record.externalObject.accountId,
+      externalId: record.externalObject.externalId,
+      externalVersion: record.externalObject.externalVersion ?? null,
+      eventType: record.envelope.event_type,
       title: record.capture.title,
       text: record.capture.text,
-      idempotencyKey: record.capture.idempotencyKey,
-      processNow: true,
+      idempotencyKey: record.envelope.idempotency_key,
+      sensitivity: record.envelope.scope.sensitivity,
+      storageMode: record.envelope.scope.storage_mode,
+      observedAt: record.envelope.observed_at,
       filename: record.capture.filename,
       mimeType: record.capture.mimeType,
+      canonicalReference: record.externalObject.canonicalReference,
+      provenance: record.envelope.provenance,
+      metadata: record.externalObject.metadata,
+      processNow: true,
     });
     await maybeEmbed(gateway, subjectId, record.capture.title, record.capture.text, captureResult);
     captured += 1;
@@ -270,7 +318,13 @@ async function ingestSdkConnectorDelta(
   return {
     captured,
     pullMode: syncRun.page.pullMode ?? 'stub',
-    note: syncRun.page.note ?? `${syncRun.manifest.id} connector sync completed`,
+    note: [
+      syncRun.page.note ?? `${syncRun.manifest.id} connector sync completed`,
+      tombstoned > 0 ? `tombstoned ${tombstoned}` : null,
+      skippedWithoutProject > 0 ? `skipped ${skippedWithoutProject} without project binding` : null,
+    ]
+      .filter((value): value is string => Boolean(value))
+      .join('; '),
   };
 }
 

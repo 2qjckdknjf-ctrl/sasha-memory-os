@@ -201,7 +201,8 @@ describe('planConnectorSync', () => {
         memoryId: '66666666-6666-4666-8666-666666666601',
         collectionId: 'fixture',
       })),
-      captureText: vi.fn(async () => ({ process: null })),
+      captureConnectorRecord: vi.fn(async () => ({ process: null })),
+      tombstoneConnectorObject: vi.fn(async () => ({ affectedCount: 0 })),
       upsertConnectorCursor: vi.fn(async () => null),
       completeConnectorSync: vi.fn(async ({ jobId, status }: { jobId: string; status: string }) => ({
         jobId,
@@ -438,7 +439,8 @@ describe('planConnectorSync', () => {
         return { metadata: metadataState };
       }),
       upsertProjectFromConnector,
-      captureText: vi.fn(async () => ({ process: null })),
+      captureConnectorRecord: vi.fn(async () => ({ process: null })),
+      tombstoneConnectorObject: vi.fn(async () => ({ affectedCount: 0 })),
       upsertConnectorCursor: vi.fn(async () => null),
       completeConnectorSync: vi.fn(async ({ jobId, status }: { jobId: string; status: string }) => ({
         jobId,
@@ -525,7 +527,7 @@ describe('planConnectorSync', () => {
       },
     ]);
 
-    const captureText = vi.fn(async () => ({ process: null }));
+    const captureConnectorRecord = vi.fn(async () => ({ process: null }));
     const gateway = {
       deadLetterStaleJobs: vi.fn(async () => ({ deadLettered: 0 })),
       listOutboxPending: vi.fn(async () => ({ count: 0 })),
@@ -574,7 +576,8 @@ describe('planConnectorSync', () => {
         memoryId: '66666666-6666-4666-8666-666666666601',
         collectionId: 'fixture',
       })),
-      captureText,
+      captureConnectorRecord,
+      tombstoneConnectorObject: vi.fn(async () => ({ affectedCount: 0 })),
       upsertConnectorCursor: vi.fn(async () => null),
       completeConnectorSync: vi.fn(async ({ jobId, status }: { jobId: string; status: string }) => {
         jobStatus = status === 'succeeded' ? 'succeeded' : 'dead_letter';
@@ -652,7 +655,7 @@ describe('planConnectorSync', () => {
       connectorRegistry,
     });
     expect(third.completed[0]?.status).toBe('succeeded');
-    expect(captureText).toHaveBeenCalledTimes(1);
+    expect(captureConnectorRecord).toHaveBeenCalledTimes(1);
   });
 
   it('re-runs an initial sync after operator resync clears the cursor', async () => {
@@ -778,7 +781,8 @@ describe('planConnectorSync', () => {
         memoryId: '66666666-6666-4666-8666-666666666601',
         collectionId: 'fixture',
       })),
-      captureText: vi.fn(async () => ({ process: null })),
+      captureConnectorRecord: vi.fn(async () => ({ process: null })),
+      tombstoneConnectorObject: vi.fn(async () => ({ affectedCount: 0 })),
       upsertConnectorCursor: vi.fn(async () => null),
       completeConnectorSync: vi.fn(async ({ jobId, status }: { jobId: string; status: string }) => ({
         jobId,
