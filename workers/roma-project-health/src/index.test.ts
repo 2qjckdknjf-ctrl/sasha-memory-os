@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
+  buildRomaQaFindingApprovalCheckpointRequest,
   parseWorkerIntervalMs,
   runRomaAutomationOnce,
   runRomaProjectFindingsJob,
@@ -816,6 +817,101 @@ describe('runRomaProjectFindingsTick', () => {
     );
     expect(completeRomaProjectFindings).not.toHaveBeenCalled();
     expect(report.pendingOutbox).toBe(1);
+  });
+});
+
+describe('buildRomaQaFindingApprovalCheckpointRequest', () => {
+  it('keeps approval payloads bounded to titles, ids, and reason only', async () => {
+    const gateway = {
+      listProjects: vi.fn(async () => [
+        {
+          id: projectId,
+          slug: 'aistroyka',
+          name: 'AISTROYKA',
+          status: 'active',
+        },
+      ]),
+      projectContext: vi.fn(async () => ({
+        projectId,
+        decisions: [],
+        tasks: [
+          {
+            id: 'task-1',
+            title: 'Fix blocked deployment',
+            content: 'Private escalation thread body that must never be quoted.',
+            memoryType: 'task',
+          },
+        ],
+        facts: [],
+        state: {
+          version: 7,
+          summary: 'Blocked deployment needs owner attention.',
+          state: {
+            blocked: [
+              'Production deploy is blocked on owner approval.',
+              'Incident thread includes personal contact details.',
+            ],
+            risks: [],
+            next: ['Resolve deploy gate'],
+          },
+        },
+        latestHandoff: null,
+      })),
+      captureConnectorRecord: vi.fn(async (_input: Record<string, any>) => ({
+        eventId: 'source-findings-1',
+        process: { memoryId: 'memory-findings-1' },
+      })),
+      appendAuditEvent: vi.fn(async () => ({ id: 'audit-findings-1' })),
+      completeRomaProjectFindings: vi.fn(async () => ({
+        jobId: 'job-findings-1',
+        status: 'succeeded',
+      })),
+    };
+
+    const result = await runRomaProjectFindingsJob({
+      gateway: gateway as any,
+      job: buildFindingsJob(),
+      romaSubjectId: roma,
+    });
+    const highSeverity = result.findings.find((entry) => entry.severity === 'high');
+    expect(highSeverity).toBeTruthy();
+
+    const checkpoint = buildRomaQaFindingApprovalCheckpointRequest({
+      job: buildFindingsJob(),
+      finding: {
+        key: 'blocked-work',
+        title: 'Blocked work requires review',
+        summary:
+          'Project state lists blocked work items, so ROMA flagged follow-up that may stall delivery.',
+        severity: 'high',
+        status: 'open',
+        evidenceRefs: [
+          {
+            kind: 'project_state',
+            stateVersion: 7,
+            field: 'blocked',
+            titles: [
+              'Production deploy is blocked on owner approval.',
+              'Incident thread includes personal contact details.',
+            ],
+          },
+          {
+            kind: 'memory',
+            memoryId: 'task-1',
+            memoryType: 'task',
+            title: 'Fix blocked deployment',
+          },
+        ],
+      },
+    });
+
+    expect(checkpoint.idempotencyKey).toContain(projectId);
+    expect(JSON.stringify(checkpoint)).toContain('Fix blocked deployment');
+    expect(JSON.stringify(checkpoint)).not.toContain(
+      'Private escalation thread body that must never be quoted.',
+    );
+    expect(JSON.stringify(checkpoint)).not.toContain('"content"');
+    expect(checkpoint.reason).toBe('Generate bounded ROMA QA findings.');
   });
 });
 
