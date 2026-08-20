@@ -2,6 +2,7 @@ export const packageName = 'mcp-gateway' as const;
 export { createMcpHandlers, mcpTools } from './tools.js';
 export {
   CHATGPT_PILOT_TOOLS,
+  DEFAULT_PROJECT_ID,
   DEFAULT_WORKSPACE_ID,
   getMcpProfile,
   resolveMcpProfileName,

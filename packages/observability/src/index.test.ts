@@ -1,6 +1,8 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   createLogger,
+  OFFICIAL_M14_DEPENDENCY_UPGRADE_POLICY_PACK,
+  OFFICIAL_M14_DEPENDENCY_UPGRADE_POLICY_PACK_VERSION,
   OFFICIAL_M14_DR_RESTORE_DRILL_PACK,
   OFFICIAL_M14_DR_RESTORE_DRILL_PACK_VERSION,
   getSloBudgetSnapshot,
@@ -310,6 +312,69 @@ describe('observability package', () => {
         (item) => item.id === 'connector-derived-coverage',
       )?.evidence,
     ).toContain('workers/connector-sync/src/index.ts');
+  });
+
+  it('publishes the official M14 Slice 07 dependency upgrade policy pack with fail-closed defensive invariants', () => {
+    expect(OFFICIAL_M14_DEPENDENCY_UPGRADE_POLICY_PACK_VERSION).toBe('m14-s07-v1');
+    expect(OFFICIAL_M14_DEPENDENCY_UPGRADE_POLICY_PACK.version).toBe('m14-s07-v1');
+    expect(OFFICIAL_M14_DEPENDENCY_UPGRADE_POLICY_PACK.sloPackVersion).toBe('m14-s01-v1');
+    expect(OFFICIAL_M14_DEPENDENCY_UPGRADE_POLICY_PACK.securityReviewPackVersion).toBe(
+      'm14-s03-v1',
+    );
+    expect(OFFICIAL_M14_DEPENDENCY_UPGRADE_POLICY_PACK.drRestoreDrillPackVersion).toBe(
+      'm14-s04-v1',
+    );
+    expect(OFFICIAL_M14_DEPENDENCY_UPGRADE_POLICY_PACK.incidentRunbookPackVersion).toBe(
+      'm14-s05-v1',
+    );
+    expect(OFFICIAL_M14_DEPENDENCY_UPGRADE_POLICY_PACK.privacySlaPackVersion).toBe(
+      'm14-s06-v1',
+    );
+    expect(OFFICIAL_M14_DEPENDENCY_UPGRADE_POLICY_PACK.roadmapSections).toEqual([
+      '20.17',
+    ]);
+    expect(
+      OFFICIAL_M14_DEPENDENCY_UPGRADE_POLICY_PACK.controls.map((item) => item.id),
+    ).toEqual(
+      expect.arrayContaining([
+        'upgrade-owner',
+        'rollback-note',
+        'contract-and-smoke-gate',
+        'protocol-adr-and-contract-tests',
+        'mode-a-seven-tools',
+        'explicit-project-id-no-default-fallback',
+        'no-secret-payload-or-verified-write-leaks',
+      ]),
+    );
+    expect(OFFICIAL_M14_DEPENDENCY_UPGRADE_POLICY_PACK.invariants).toMatchObject({
+      defensiveOnly: true,
+      fixtureOnly: true,
+      modeAToolCount: 7,
+      requireUpgradeOwner: true,
+      requireRollbackNote: true,
+      requireContractTests: true,
+      requireSmokeTest: true,
+      requireProtocolAdrForMcpOrSdkChanges: true,
+      requireProtocolContractTests: true,
+      requireExplicitProjectIdOnWriteAdminOrApplyInvocation: true,
+      ignoreDefaultProjectIdEnv: true,
+      allowOwnerTokenBypass: false,
+      allowAistroykaFallback: false,
+      allowVerifiedWrites: false,
+      allowProductionSqlApply: false,
+      allowLiveMassUpgrade: false,
+      allowNewVendor: false,
+      allowSilentProtocolBump: false,
+      logMemoryBodies: false,
+      logTokens: false,
+      logUpgradePayloads: false,
+      logCiSecrets: false,
+    });
+    expect(
+      OFFICIAL_M14_DEPENDENCY_UPGRADE_POLICY_PACK.controls.find(
+        (item) => item.id === 'protocol-adr-and-contract-tests',
+      )?.evidence,
+    ).toContain('apps/mcp-gateway/src/rpc.test.ts');
   });
 
   it('redacts tokens, bodies, queries, and personal content from structured logs', () => {

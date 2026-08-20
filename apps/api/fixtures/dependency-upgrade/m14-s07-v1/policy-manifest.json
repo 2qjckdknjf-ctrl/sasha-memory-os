@@ -1,0 +1,181 @@
+{
+  "manifestVersion": "m14-s07-v1",
+  "packVersion": "m14-s07-v1",
+  "source": "fixture-local",
+  "roadmapSections": ["20.17"],
+  "blockedFallbackProjectIds": [
+    "44444444-4444-4444-8444-444444444401"
+  ],
+  "intake": {
+    "docPath": "docs/engineering/DEPENDENCY_UPGRADE_POLICY.md",
+    "sectionHeading": "Intake",
+    "owner": "Platform owner",
+    "rollback": "Revert the dependency change and `pnpm-lock.yaml`, rerun `pnpm typecheck`, `pnpm test`, and `scripts/smoke-mcp-chatgpt.sh`, and never apply SQL to production as part of rollback.",
+    "requiredSnippets": [
+      "current pnpm workspace",
+      "pnpm-lock.yaml",
+      "No new vendor is added unless the vendor is already present and a pin is required to encode policy.",
+      "No live mass upgrade is allowed; ship one bounded PR at a time.",
+      "Dependency bumps do not imply production SQL apply."
+    ]
+  },
+  "controls": [
+    {
+      "id": "upgrade-owner",
+      "title": "Dependency upgrade ownership",
+      "owner": "Platform owner",
+      "docPath": "docs/engineering/DEPENDENCY_UPGRADE_POLICY.md",
+      "sectionHeading": "Intake",
+      "requiredSnippets": [
+        "current pnpm workspace",
+        "pnpm-lock.yaml"
+      ]
+    },
+    {
+      "id": "rollback-note",
+      "title": "Dependency upgrade rollback note",
+      "owner": "Platform owner",
+      "docPath": "docs/engineering/DEPENDENCY_UPGRADE_POLICY.md",
+      "sectionHeading": "Intake",
+      "requiredSnippets": [
+        "never apply SQL to production as part of rollback.",
+        "scripts/smoke-mcp-chatgpt.sh"
+      ]
+    },
+    {
+      "id": "contract-and-smoke-gate",
+      "title": "Contract and smoke gate",
+      "owner": "Platform owner",
+      "docPath": "docs/engineering/DEPENDENCY_UPGRADE_POLICY.md",
+      "sectionHeading": "Contract and smoke gate",
+      "requiredSnippets": [
+        "`pnpm typecheck`",
+        "`pnpm test`",
+        "`pnpm audit --audit-level=critical`",
+        "`scripts/smoke-mcp-chatgpt.sh`",
+        "`.github/workflows/ci.yml`"
+      ]
+    },
+    {
+      "id": "protocol-adr-and-contract-tests",
+      "title": "Protocol ADR and contract tests",
+      "owner": "Platform owner",
+      "docPath": "docs/engineering/DEPENDENCY_UPGRADE_POLICY.md",
+      "sectionHeading": "Protocol / SDK changes",
+      "requiredSnippets": [
+        "Do not silently bump `protocolVersion`.",
+        "`docs/adr/ADR-001-canonical-memory.md`",
+        "`docs/adr/ADR-005-secrets-and-environments.md`",
+        "`apps/mcp-gateway/src/profile.test.ts`",
+        "`apps/mcp-gateway/src/rpc.test.ts`"
+      ]
+    },
+    {
+      "id": "mode-a-seven-tools",
+      "title": "ChatGPT Mode A surface",
+      "owner": "Platform owner",
+      "docPath": "docs/engineering/DEPENDENCY_UPGRADE_POLICY.md",
+      "sectionHeading": "ChatGPT Mode A surface",
+      "requiredSnippets": [
+        "ChatGPT Mode A stays exactly 7 tools.",
+        "`memory.search`",
+        "`memory.store_decision`",
+        "`memory.set_status`"
+      ]
+    },
+    {
+      "id": "explicit-project-id-no-default-fallback",
+      "title": "Project scope and write/admin guards",
+      "owner": "Platform owner",
+      "docPath": "docs/engineering/DEPENDENCY_UPGRADE_POLICY.md",
+      "sectionHeading": "Project scope and write/admin guards",
+      "requiredSnippets": [
+        "explicit `project_id`",
+        "`MEMORY_OS_DEFAULT_PROJECT_ID`",
+        "AISTROYKA (`44444444-4444-4444-8444-444444444401`)",
+        "No owner-token bypass.",
+        "No verified-memory writes as part of a dependency upgrade.",
+        "Production SQL apply is never implied by a dependency bump."
+      ]
+    },
+    {
+      "id": "no-secret-payload-or-verified-write-leaks",
+      "title": "Log and CI hygiene",
+      "owner": "Platform owner",
+      "docPath": "docs/engineering/DEPENDENCY_UPGRADE_POLICY.md",
+      "sectionHeading": "Log and CI hygiene",
+      "requiredSnippets": [
+        "metadata-only upgrade notes",
+        "`service_role`",
+        "Do not log tokens, secrets, memory bodies, or dependency-upgrade payloads in CI output, upgrade notes, or validator output."
+      ]
+    }
+  ],
+  "protocolEvidence": [
+    {
+      "title": "ChatGPT profile contract test",
+      "path": "apps/mcp-gateway/src/profile.test.ts",
+      "expectedVersions": ["2025-03-26"],
+      "adrPaths": [
+        "docs/adr/ADR-001-canonical-memory.md",
+        "docs/adr/ADR-005-secrets-and-environments.md"
+      ],
+      "contractEvidence": [
+        "apps/mcp-gateway/src/profile.test.ts",
+        "apps/mcp-gateway/src/rpc.test.ts",
+        "scripts/smoke-mcp-chatgpt.sh",
+        ".github/workflows/ci.yml"
+      ]
+    },
+    {
+      "title": "RPC compatibility contract test",
+      "path": "apps/mcp-gateway/src/rpc.test.ts",
+      "expectedVersions": ["2024-11-05"],
+      "adrPaths": [
+        "docs/adr/ADR-001-canonical-memory.md",
+        "docs/adr/ADR-005-secrets-and-environments.md"
+      ],
+      "contractEvidence": [
+        "apps/mcp-gateway/src/profile.test.ts",
+        "apps/mcp-gateway/src/rpc.test.ts",
+        "scripts/smoke-mcp-chatgpt.sh",
+        ".github/workflows/ci.yml"
+      ]
+    },
+    {
+      "title": "ChatGPT smoke script",
+      "path": "scripts/smoke-mcp-chatgpt.sh",
+      "expectedVersions": ["2025-03-26"],
+      "adrPaths": [
+        "docs/adr/ADR-001-canonical-memory.md",
+        "docs/adr/ADR-005-secrets-and-environments.md"
+      ],
+      "contractEvidence": [
+        "apps/mcp-gateway/src/profile.test.ts",
+        "apps/mcp-gateway/src/rpc.test.ts",
+        "scripts/smoke-mcp-chatgpt.sh",
+        ".github/workflows/ci.yml"
+      ]
+    },
+    {
+      "title": "CI unauthenticated initialize smoke",
+      "path": ".github/workflows/ci.yml",
+      "expectedVersions": ["2025-03-26"],
+      "adrPaths": [
+        "docs/adr/ADR-001-canonical-memory.md",
+        "docs/adr/ADR-005-secrets-and-environments.md"
+      ],
+      "contractEvidence": [
+        "apps/mcp-gateway/src/profile.test.ts",
+        "apps/mcp-gateway/src/rpc.test.ts",
+        "scripts/smoke-mcp-chatgpt.sh",
+        ".github/workflows/ci.yml"
+      ]
+    }
+  ],
+  "telemetryHygiene": {
+    "docPath": "docs/engineering/DEPENDENCY_UPGRADE_POLICY.md",
+    "sectionHeading": "Log and CI hygiene",
+    "snippet": "Do not log tokens, secrets, memory bodies, or dependency-upgrade payloads in CI output, upgrade notes, or validator output."
+  }
+}
