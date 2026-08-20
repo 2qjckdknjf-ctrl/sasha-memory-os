@@ -19,6 +19,8 @@
       "JSON.stringify(jobLookup, null, 2)",
       "candidate.content.slice(0, 240)",
       "hit.memory?.content ?? ''",
+      "hit.memory?.content",
+      "text: hit.memory?.content",
       "item.content",
       "connection.vaultRef"
     ]

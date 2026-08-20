@@ -627,7 +627,6 @@ export function OpsPage({
                       onClick={() => {
                         void onEmbedMemory(hit.memory!.id!, {
                           title: hit.memory?.title,
-                          text: hit.memory?.content,
                         });
                       }}
                     >

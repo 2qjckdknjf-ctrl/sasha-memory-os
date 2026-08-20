@@ -191,6 +191,25 @@ describe('support / ops drill harness', () => {
     ).toThrow(/AISTROYKA fallback project_id/i);
   });
 
+  it('fails closed immediately on explicit missing fixtureDir or manifestPath', () => {
+    expect(() =>
+      resolveSupportOpsDrillConfig({
+        fixtureDir: resolve(FIXTURE_DIR, 'missing-fixture'),
+        projectId: explicitProjectId,
+        workspaceId,
+      }),
+    ).toThrow(/support \/ ops fixture directory does not exist/i);
+
+    expect(() =>
+      resolveSupportOpsDrillConfig({
+        fixtureDir: FIXTURE_DIR,
+        manifestPath: 'missing-manifest.json',
+        projectId: explicitProjectId,
+        workspaceId,
+      }),
+    ).toThrow(/support \/ ops manifest path does not exist/i);
+  });
+
   it('proves checked-in support links and payload redaction from the canned fixture', async () => {
     const report = await runSupportOpsDrill({
       fixtureDir: FIXTURE_DIR,
@@ -249,7 +268,7 @@ describe('support / ops drill harness', () => {
     const { fixtureDir, opsPagePath } = prepareMutableFixtureCopy('support-ops-payload-leak');
     writeFileSync(
       opsPagePath,
-      `${readFileSync(opsPagePath, 'utf8')}\n// hit.memory?.content ?? ''\n`,
+      `${readFileSync(opsPagePath, 'utf8')}\n// text: hit.memory?.content\n`,
     );
 
     const report = await runSupportOpsDrill({
@@ -261,7 +280,7 @@ describe('support / ops drill harness', () => {
     expect(report.assertions.ok).toBe(false);
     expect(report.assertions.errors).toEqual(
       expect.arrayContaining([
-        "ops page source reintroduced raw payload rendering (hit.memory?.content ?? '')",
+        'ops page source reintroduced raw payload rendering (hit.memory?.content, text: hit.memory?.content)',
       ]),
     );
     expect(SUPPORT_OPS_REDACTION_SNIPPET.length).toBeGreaterThan(0);

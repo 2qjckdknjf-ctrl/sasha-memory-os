@@ -102,6 +102,8 @@ describe('M14 Slice 10 support / ops pack', () => {
     expect(opsPage).not.toContain('JSON.stringify(jobLookup, null, 2)');
     expect(opsPage).not.toContain("candidate.content.slice(0, 240)");
     expect(opsPage).not.toContain("hit.memory?.content ?? ''");
+    expect(opsPage).not.toContain('hit.memory?.content');
+    expect(opsPage).not.toContain('text: hit.memory?.content');
     expect(opsPage).not.toContain('item.content');
     expect(opsPage).not.toContain('connection.vaultRef');
 

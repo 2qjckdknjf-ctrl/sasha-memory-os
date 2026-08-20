@@ -144,7 +144,7 @@ importers:
         specifier: workspace:^
         version: link:../../packages/domain
       '@memory-os/observability':
-        specifier: workspace:*
+        specifier: workspace:^
         version: link:../../packages/observability
       '@memory-os/retrieval':
         specifier: workspace:^

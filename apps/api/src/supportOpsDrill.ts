@@ -164,7 +164,12 @@ function trimToNull(value: string | null | undefined): string | null {
 }
 
 function normalizeFixturePath(pathValue: string | null | undefined): string {
-  return resolve(trimToNull(pathValue) ?? DEFAULT_FIXTURE_DIR);
+  const explicit = trimToNull(pathValue);
+  const resolved = resolve(explicit ?? DEFAULT_FIXTURE_DIR);
+  if (explicit && !existsSync(resolved)) {
+    throw new Error(`support / ops fixture directory does not exist: ${resolved}`);
+  }
+  return resolved;
 }
 
 function resolveDocPath(pathValue: string): string {
@@ -359,11 +364,16 @@ export function supportOpsDrillConfigInputFromEnv(
 export function resolveSupportOpsDrillConfig(
   input: SupportOpsDrillConfigInput,
 ): ResolvedSupportOpsDrillConfig {
+  const explicitFixtureDir = trimToNull(input.fixtureDir);
+  const explicitManifestPath = trimToNull(input.manifestPath);
   const fixtureDir = normalizeFixturePath(input.fixtureDir);
   const manifestPath = resolve(
     fixtureDir,
-    trimToNull(input.manifestPath) ?? 'ops-manifest.json',
+    explicitManifestPath ?? 'ops-manifest.json',
   );
+  if ((explicitFixtureDir || explicitManifestPath) && !existsSync(manifestPath)) {
+    throw new Error(`support / ops manifest path does not exist: ${manifestPath}`);
+  }
   const projectId = trimToNull(input.projectId);
   if (!projectId) {
     throw new Error(
