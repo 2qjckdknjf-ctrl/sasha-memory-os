@@ -1190,7 +1190,7 @@ export const mcpTools: McpTool[] = [
         recorded_after: { type: 'string' },
         recorded_before: { type: 'string' },
       },
-      required: ['workspace_id', 'actor_subject_id'],
+      required: ['workspace_id', 'project_id', 'actor_subject_id'],
     },
   },
   {
@@ -2582,6 +2582,7 @@ export function createMcpHandlers(options?: {
         case 'memory.export': {
           const subjectId = String(args.actor_subject_id);
           const workspaceId = String(args.workspace_id);
+          const projectId = await resolveExplicitProjectId(gateway, args);
           const ownerId = '33333333-3333-4333-8333-333333333301';
           if (subjectId !== ownerId) {
             throw new Error('memory.export requires owner actor');
@@ -2601,7 +2602,7 @@ export function createMcpHandlers(options?: {
             const listed = await gateway.listMemories({
               subjectId,
               workspaceId,
-              projectId: args.project_id ? String(args.project_id) : null,
+              projectId,
               status: args.status ? String(args.status) : null,
               limit,
               recordedAfter,
@@ -2627,7 +2628,7 @@ export function createMcpHandlers(options?: {
           }
           const memories = [...store.memories.values()]
             .filter((m) => {
-              if (args.project_id && m.projectId !== String(args.project_id)) {
+              if (m.projectId !== projectId) {
                 return false;
               }
               if (args.status && m.status !== String(args.status)) return false;

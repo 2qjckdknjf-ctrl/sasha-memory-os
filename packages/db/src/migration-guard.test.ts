@@ -62,6 +62,12 @@ const personalizedImportanceMigrationPath = fileURLToPath(
     import.meta.url,
   ),
 );
+const privacySlaGuardsMigrationPath = fileURLToPath(
+  new URL(
+    '../../../supabase/migrations/20260820065500_m14_slice_06_privacy_request_sla_guards.sql',
+    import.meta.url,
+  ),
+);
 
 describe('m8 slice 03 migration guards', () => {
   const sql = readFileSync(migrationPath, 'utf8');
@@ -88,6 +94,7 @@ describe('m8 slice 03 migration guards', () => {
     personalizedImportanceMigrationPath,
     'utf8',
   );
+  const privacySlaGuardsSql = readFileSync(privacySlaGuardsMigrationPath, 'utf8');
 
   it('matches connector projects only by unique repository identity', () => {
     expect(sql).toContain(`repo->>'url' = v_repo_url`);
@@ -379,5 +386,14 @@ describe('m8 slice 03 migration guards', () => {
     );
     expect(personalizedImportanceSql).toContain(`'importanceDelta', NULL`);
     expect(personalizedImportanceSql).toContain(`'importanceDelta', v_next.importance_delta`);
+  });
+
+  it('hardens privacy requests with explicit project scope and metadata-only audit logs', () => {
+    expect(privacySlaGuardsSql).toContain(`RAISE EXCEPTION 'project_id required'`);
+    expect(privacySlaGuardsSql).toContain(`RAISE EXCEPTION 'project mismatch'`);
+    expect(privacySlaGuardsSql).toContain(`'privacy request submitted'`);
+    expect(privacySlaGuardsSql).toContain(`'targetMemoryId', p_target_memory_id`);
+    expect(privacySlaGuardsSql).not.toContain(`'44444444-4444-4444-8444-444444444401'`);
+    expect(privacySlaGuardsSql).not.toContain(`reason,\n    btrim(p_reason)`);
   });
 });

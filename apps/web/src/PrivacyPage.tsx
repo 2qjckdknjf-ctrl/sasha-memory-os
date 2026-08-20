@@ -15,6 +15,7 @@ type Props = {
   backend: BackendMode;
   backendResolved: boolean;
   onExportMemories: () => void | Promise<void>;
+  projectId: string | null;
   subjectId: string;
 };
 
@@ -44,11 +45,12 @@ export function PrivacyPage({
   backend,
   backendResolved,
   onExportMemories,
+  projectId,
   subjectId,
 }: Props) {
   const isOwner = actor === 'owner';
-  const exportAvailable = isOwner && backend !== 'local';
-  const requestAvailable = isOwner && backend !== 'local';
+  const exportAvailable = isOwner && backend !== 'local' && Boolean(projectId);
+  const requestAvailable = isOwner && backend !== 'local' && Boolean(projectId);
   const [requests, setRequests] = useState<PrivacyRequestRecord[]>([]);
   const [loading, setLoading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -63,6 +65,9 @@ export function PrivacyPage({
   if (!isOwner) {
     exportHint =
       'Экспорт доступен только владельцу. Переключение акторов для demo по-прежнему остаётся на /ops.';
+  } else if (!projectId) {
+    exportHint =
+      'Экспорт и privacy requests требуют явный project scope. Выберите проект; глобальная страница не должна default to AISTROYKA.';
   } else if (backend === 'local') {
     exportHint =
       'Экспорт требует подключенный API backend. В локальном preview страница не притворяется, что выгрузка сработает.';
@@ -118,6 +123,7 @@ export function PrivacyPage({
         subjectId,
         {
           workspace_id: WORKSPACE_ID,
+          project_id: projectId ?? undefined,
           actor_subject_id: subjectId,
           request_type: requestType,
           target_memory_id: targetMemoryId.trim() || undefined,
@@ -272,6 +278,12 @@ export function PrivacyPage({
           {!backendResolved ? <p className="hint">Определяю режим backend…</p> : null}
           {backendResolved && !isOwner ? (
             <p className="hint">Отправка privacy requests доступна только владельцу.</p>
+          ) : null}
+          {backendResolved && isOwner && !projectId ? (
+            <p className="hint">
+              Сначала выберите проект. Export/delete/correction/retraction теперь требуют
+              explicit `project_id` и не используют fallback project.
+            </p>
           ) : null}
           {backendResolved && isOwner && backend === 'local' ? (
             <p className="hint">

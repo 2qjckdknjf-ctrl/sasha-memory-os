@@ -1,0 +1,80 @@
+{
+  "manifestVersion": "m14-s06-v1",
+  "packVersion": "m14-s06-v1",
+  "source": "fixture-local",
+  "roadmapSections": ["16.6", "16.7", "20.17"],
+  "slaPaths": [
+    {
+      "id": "owner-export",
+      "title": "Owner export SLA",
+      "route": "GET /v1/export/memories",
+      "requestType": null,
+      "owner": "Privacy owner",
+      "deadline": "72h from validated owner request",
+      "docPath": "docs/engineering/privacy/EXPORT_DELETION_SLAS.md",
+      "sectionHeading": "Owner export SLA",
+      "explicitProjectIdRequired": true,
+      "metadataOnlyAudit": true,
+      "connectorDerivedCoverage": true
+    },
+    {
+      "id": "privacy-deletion",
+      "title": "Deletion / forget SLA",
+      "route": "POST /v1/privacy/requests",
+      "requestType": "deletion",
+      "owner": "Privacy owner",
+      "deadline": "30d from validated owner request",
+      "docPath": "docs/engineering/privacy/EXPORT_DELETION_SLAS.md",
+      "sectionHeading": "Deletion / forget SLA",
+      "explicitProjectIdRequired": true,
+      "metadataOnlyAudit": true,
+      "connectorDerivedCoverage": true
+    },
+    {
+      "id": "privacy-correction",
+      "title": "Correction SLA",
+      "route": "POST /v1/privacy/requests",
+      "requestType": "correction",
+      "owner": "Privacy owner",
+      "deadline": "30d from validated owner request",
+      "docPath": "docs/engineering/privacy/EXPORT_DELETION_SLAS.md",
+      "sectionHeading": "Correction SLA",
+      "explicitProjectIdRequired": true,
+      "metadataOnlyAudit": true,
+      "connectorDerivedCoverage": false
+    },
+    {
+      "id": "privacy-retraction",
+      "title": "Retraction SLA",
+      "route": "POST /v1/privacy/requests",
+      "requestType": "retraction",
+      "owner": "Privacy owner",
+      "deadline": "30d from validated owner request",
+      "docPath": "docs/engineering/privacy/EXPORT_DELETION_SLAS.md",
+      "sectionHeading": "Retraction SLA",
+      "explicitProjectIdRequired": true,
+      "metadataOnlyAudit": true,
+      "connectorDerivedCoverage": false
+    }
+  ],
+  "connectorCoverage": {
+    "docPath": "docs/engineering/privacy/EXPORT_DELETION_SLAS.md",
+    "sectionHeading": "Connector-derived coverage",
+    "connectorFamilies": [
+      "GitHub",
+      "Google Drive",
+      "Gmail",
+      "Google Calendar",
+      "Apple transferred objects"
+    ],
+    "reuseSurfaces": [
+      "workers/connector-sync/src/index.ts",
+      "apps/web/src/TransferredObjectsPage.tsx"
+    ]
+  },
+  "telemetryHygiene": {
+    "docPath": "docs/engineering/privacy/EXPORT_DELETION_SLAS.md",
+    "sectionHeading": "Telemetry hygiene",
+    "snippet": "Do not log memory bodies, export payloads, privacy request free-text reasons, correction text, or tokens."
+  }
+}

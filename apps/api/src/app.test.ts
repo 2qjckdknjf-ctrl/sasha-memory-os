@@ -3248,7 +3248,7 @@ describe('memory api demo slice', () => {
       headers: { 'x-actor-key': 'chatgpt' },
     });
     expect(denied.status).toBe(403);
-    const res = await app.request('/v1/export/memories?limit=50', {
+    const res = await app.request(`/v1/export/memories?project_id=${projectId}&limit=50`, {
       headers: { 'x-subject-id': ownerId, 'x-actor-key': 'owner' },
     });
     expect(res.status).toBe(200);
@@ -3259,6 +3259,17 @@ describe('memory api demo slice', () => {
       (m: { title?: string }) => m.title === 'Export full',
     );
     expect(hit?.content?.length).toBe(600);
+  });
+
+  it('requires explicit project_id for owner export', async () => {
+    const app = createApp({});
+    const ownerId = '33333333-3333-4333-8333-333333333301';
+    const res = await app.request('/v1/export/memories?limit=25', {
+      headers: { 'x-subject-id': ownerId, 'x-actor-key': 'owner' },
+    });
+    expect(res.status).toBe(400);
+    const body = await res.json();
+    expect(String(body.error)).toContain('project_id is required for export');
   });
 
   it('denies roma reading personal memory', async () => {
@@ -3397,6 +3408,29 @@ describe('memory api demo slice', () => {
     expect(body.requests).toHaveLength(1);
     expect(body.requests[0].requestType).toBe('correction');
     expect(body.requests[0].correctionText).toContain('updated date');
+  });
+
+  it('requires explicit project_id for privacy requests', async () => {
+    const app = createApp({});
+    const ownerId = '33333333-3333-4333-8333-333333333301';
+    const created = await app.request('/v1/privacy/requests', {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'x-subject-id': ownerId,
+        'x-actor-key': 'owner',
+      },
+      body: JSON.stringify({
+        workspace_id: workspaceId,
+        actor_subject_id: ownerId,
+        request_type: 'deletion',
+        reason: 'Project scope must be explicit.',
+        idempotency_key: 'privacy-request-no-project-1',
+      }),
+    });
+    expect(created.status).toBe(400);
+    const body = await created.json();
+    expect(String(body.error)).toContain('project_id is required');
   });
 
   it('corrects a memory by superseding it with an authoritative replacement', async () => {
@@ -3683,8 +3717,14 @@ describe('memory api demo slice', () => {
       },
     );
     expect(audit.status).toBe(200);
-    const body = await audit.json();
-    const actions = (body.events as Array<{ action: string }>).map((event) => event.action);
+    const body = (await audit.json()) as {
+      events: Array<{
+        action: string;
+        reason?: string | null;
+        afterState?: Record<string, unknown> | null;
+      }>;
+    };
+    const actions = body.events.map((event) => event.action);
     expect(actions).toEqual(
       expect.arrayContaining([
         'memory.set_status',
@@ -3692,6 +3732,21 @@ describe('memory api demo slice', () => {
         'privacy.request.submitted',
         'memory.export',
       ]),
+    );
+    const privacyAudit = body.events.find(
+      (event) => event.action === 'privacy.request.submitted',
+    );
+    expect(privacyAudit?.reason).toBe('privacy request submitted');
+    expect(JSON.stringify(privacyAudit)).not.toContain(
+      'Owner requested deletion audit trail.',
+    );
+    const exportAudit = body.events.find((event) => event.action === 'memory.export');
+    expect(exportAudit?.afterState).toMatchObject({
+      projectId,
+    });
+    expect(JSON.stringify(exportAudit)).not.toContain(captureBody.memoryId);
+    expect(JSON.stringify(exportAudit)).not.toContain(
+      'This captured note will be reviewed.',
     );
   });
 

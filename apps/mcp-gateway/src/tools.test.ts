@@ -641,11 +641,23 @@ describe('mcp gateway alpha', () => {
     });
     const dump = (await mcp.call('memory.export', {
       workspace_id: workspaceId,
+      project_id: projectId,
       actor_subject_id: owner,
       limit: 50,
     })) as { format: string; count: number };
     expect(dump.format).toBe('memory-os.export.memories.v1');
     expect(dump.count).toBeGreaterThan(0);
+  });
+
+  it('requires explicit project_id for owner export', async () => {
+    const mcp = createMcpHandlers();
+    await expect(
+      mcp.call('memory.export', {
+        workspace_id: workspaceId,
+        actor_subject_id: owner,
+        limit: 25,
+      }),
+    ).rejects.toThrow(/project_id is required/i);
   });
 
   it('returns stub job status offline', async () => {

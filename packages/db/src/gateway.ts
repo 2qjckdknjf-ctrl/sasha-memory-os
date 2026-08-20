@@ -346,11 +346,14 @@ export class SupabaseMemoryGateway {
     correctionText?: string | null;
     idempotencyKey: string;
   }) {
+    if (!input.projectId) {
+      throw new Error('project_id is required for privacy requests');
+    }
     const { data, error } = await this.client.rpc('api_create_privacy_request', {
       p_secret: this.apiSecret,
       p_subject_id: input.subjectId,
       p_workspace_id: input.workspaceId,
-      p_project_id: input.projectId ?? null,
+      p_project_id: input.projectId,
       p_request_type: input.requestType,
       p_target_memory_id: input.targetMemoryId ?? null,
       p_reason: input.reason,
