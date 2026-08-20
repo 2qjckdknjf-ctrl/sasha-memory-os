@@ -35,6 +35,10 @@ export type CalendarPullResult = {
 
 type CalendarStorageMode = 'reference';
 type CalendarChangeState = 'active' | 'cancelled' | 'missing_from_selected_resync';
+type CalendarEventPrivacyReason =
+  | 'visibility_private'
+  | 'visibility_confidential'
+  | 'restricted_busy';
 
 type CalendarSelectedCalendar = {
   collectionId: string;
@@ -42,6 +46,7 @@ type CalendarSelectedCalendar = {
   name: string;
   title: string;
   storageMode: CalendarStorageMode;
+  privateContentOptIn: boolean;
 };
 
 type CalendarCursorEntry = {
@@ -92,6 +97,8 @@ type CalendarApiEvent = {
   status?: string;
   updated?: string;
   created?: string;
+  visibility?: string;
+  transparency?: string;
   description?: string;
   htmlLink?: string;
   location?: string;
@@ -114,6 +121,10 @@ type CalendarEvent = CalendarApiEvent & {
   __mode?: 'stub' | 'vault';
   deleted: boolean;
   changeState: CalendarChangeState;
+  isPrivate: boolean;
+  privateContentOptIn: boolean;
+  privateContentRedacted: boolean;
+  privateReason: CalendarEventPrivacyReason | null;
 };
 
 type CalendarListResponse = {
@@ -151,6 +162,16 @@ function deriveCalendarExternalId(collectionId: string): string | null {
     : null;
 }
 
+function trimToNull(value?: string): string | null {
+  return typeof value === 'string' && value.trim().length > 0 ? value.trim() : null;
+}
+
+function resolveCalendarPrivateContentOptIn(metadata: unknown): boolean {
+  if (!isPlainObject(metadata)) return false;
+  const googleCalendar = isPlainObject(metadata.google_calendar) ? metadata.google_calendar : null;
+  return googleCalendar?.private_event_content === true;
+}
+
 export function resolveGoogleCalendarSelectedCalendars(
   metadata: unknown,
 ): CalendarSelectedCalendar[] {
@@ -177,6 +198,7 @@ export function resolveGoogleCalendarSelectedCalendars(
     const name = typeof item.name === 'string' ? item.name.trim() : '';
     const title =
       typeof item.title === 'string' && item.title.trim().length > 0 ? item.title.trim() : name;
+    const itemMetadata = isPlainObject(item.metadata) ? item.metadata : null;
     if (!externalId || !name || !title) return [];
     return [
       {
@@ -185,6 +207,7 @@ export function resolveGoogleCalendarSelectedCalendars(
         name,
         title,
         storageMode: CALENDAR_STORAGE_MODE,
+        privateContentOptIn: resolveCalendarPrivateContentOptIn(itemMetadata),
       } satisfies CalendarSelectedCalendar,
     ];
   });
@@ -213,7 +236,12 @@ export function validateGoogleCalendarSelectionScope(metadata: unknown): {
 
 function buildCalendarScopeKey(calendars: CalendarSelectedCalendar[]): string {
   return calendars
-    .map((calendar) => `${calendar.collectionId}:${calendar.externalId}:${calendar.storageMode}`)
+    .map(
+      (calendar) =>
+        `${calendar.collectionId}:${calendar.externalId}:${calendar.storageMode}:${
+          calendar.privateContentOptIn ? 'private-content-opt-in' : 'private-content-redacted'
+        }`,
+    )
     .sort()
     .join('|');
 }
@@ -337,6 +365,84 @@ function buildKnownCalendarEvent(rawObject: CalendarEvent): CalendarKnownEvent |
   };
 }
 
+function hasCalendarAttendeeDetails(attendees: CalendarEventAttendee[] | undefined): boolean {
+  return (attendees ?? []).some(
+    (attendee) =>
+      trimToNull(attendee.email) !== null ||
+      trimToNull(attendee.displayName) !== null ||
+      trimToNull(attendee.responseStatus) !== null ||
+      attendee.organizer === true ||
+      attendee.self === true,
+  );
+}
+
+function resolveCalendarPrivacyReason(
+  event: CalendarApiEvent,
+): CalendarEventPrivacyReason | null {
+  const visibility = trimToNull(event.visibility)?.toLowerCase() ?? null;
+  if (visibility === 'private' || visibility === 'restricted') {
+    return 'visibility_private';
+  }
+  if (visibility === 'confidential') {
+    return 'visibility_confidential';
+  }
+  if (visibility === 'public' || visibility === 'default') {
+    return null;
+  }
+  if ((trimToNull(event.transparency)?.toLowerCase() ?? null) === 'transparent') {
+    return null;
+  }
+
+  const summary = trimToNull(event.summary)?.toLowerCase() ?? null;
+  const hasRestrictedBusyEnvelope =
+    (summary === null || summary === 'busy') &&
+    trimToNull(event.description) === null &&
+    trimToNull(event.location) === null &&
+    !hasCalendarAttendeeDetails(event.attendees);
+  return hasRestrictedBusyEnvelope ? 'restricted_busy' : null;
+}
+
+function applyCalendarPrivacyPolicy(input: {
+  event: CalendarApiEvent;
+  selectedCalendar: CalendarSelectedCalendar;
+}): Pick<
+  CalendarEvent,
+  | 'summary'
+  | 'description'
+  | 'htmlLink'
+  | 'location'
+  | 'attendees'
+  | 'organizer'
+  | 'creator'
+  | 'iCalUID'
+  | 'visibility'
+  | 'transparency'
+  | 'isPrivate'
+  | 'privateContentOptIn'
+  | 'privateContentRedacted'
+  | 'privateReason'
+> {
+  const privateReason = resolveCalendarPrivacyReason(input.event);
+  const privateContentRedacted =
+    privateReason !== null && input.selectedCalendar.privateContentOptIn !== true;
+  return {
+    summary: privateContentRedacted ? 'Busy' : input.event.summary,
+    description: privateContentRedacted ? undefined : input.event.description,
+    htmlLink: privateContentRedacted ? undefined : input.event.htmlLink,
+    location: privateContentRedacted ? undefined : input.event.location,
+    attendees: privateContentRedacted ? undefined : input.event.attendees,
+    organizer: privateContentRedacted ? undefined : input.event.organizer,
+    creator: privateContentRedacted ? undefined : input.event.creator,
+    iCalUID: privateContentRedacted ? undefined : input.event.iCalUID,
+    visibility: input.event.visibility,
+    transparency: input.event.transparency,
+    isPrivate: privateReason !== null,
+    privateContentOptIn: input.selectedCalendar.privateContentOptIn,
+    privateContentRedacted,
+    privateReason,
+  };
+}
+
 function buildCalendarEventFromApi(input: {
   event: CalendarApiEvent;
   selectedCalendar: CalendarSelectedCalendar;
@@ -344,8 +450,10 @@ function buildCalendarEventFromApi(input: {
 }): CalendarEvent | null {
   if (!input.event.id) return null;
   const deleted = input.event.status === 'cancelled';
+  const privacy = applyCalendarPrivacyPolicy(input);
   return {
     ...input.event,
+    ...privacy,
     calendarId: input.selectedCalendar.externalId,
     calendarTitle: input.selectedCalendar.title,
     collectionId: input.selectedCalendar.collectionId,
@@ -379,6 +487,12 @@ function buildCalendarTombstone(input: {
   creator?: CalendarEventActor;
   iCalUID?: string;
   eventType?: string;
+  visibility?: string;
+  transparency?: string;
+  isPrivate?: boolean;
+  privateContentOptIn?: boolean;
+  privateContentRedacted?: boolean;
+  privateReason?: CalendarEventPrivacyReason | null;
 }): CalendarEvent {
   return {
     id: input.eventId,
@@ -401,6 +515,8 @@ function buildCalendarTombstone(input: {
     creator: input.creator,
     iCalUID: input.iCalUID,
     eventType: input.eventType,
+    visibility: input.visibility,
+    transparency: input.transparency,
     calendarId: input.calendarId,
     calendarTitle: input.calendarTitle,
     collectionId: input.collectionId,
@@ -408,6 +524,10 @@ function buildCalendarTombstone(input: {
     __mode: 'vault',
     deleted: true,
     changeState: input.changeState,
+    isPrivate: input.isPrivate ?? false,
+    privateContentOptIn: input.privateContentOptIn ?? false,
+    privateContentRedacted: input.privateContentRedacted ?? false,
+    privateReason: input.privateReason ?? null,
   };
 }
 
@@ -435,6 +555,10 @@ function buildStubCalendarEvents(input: {
       __mode: 'stub',
       deleted: false,
       changeState: 'active',
+      isPrivate: false,
+      privateContentOptIn: selectedCalendar.privateContentOptIn,
+      privateContentRedacted: false,
+      privateReason: null,
     },
   ];
 }
@@ -656,6 +780,12 @@ async function runSelectedCalendarInitialSync(input: {
             creator: rawObject.creator,
             iCalUID: rawObject.iCalUID,
             eventType: rawObject.eventType,
+            visibility: rawObject.visibility,
+            transparency: rawObject.transparency,
+            isPrivate: rawObject.isPrivate,
+            privateContentOptIn: rawObject.privateContentOptIn,
+            privateContentRedacted: rawObject.privateContentRedacted,
+            privateReason: rawObject.privateReason,
           }),
         );
         tombstonedKeys.add(key);
@@ -854,6 +984,12 @@ async function syncGoogleCalendarEvents(
               creator: rawObject.creator,
               iCalUID: rawObject.iCalUID,
               eventType: rawObject.eventType,
+              visibility: rawObject.visibility,
+              transparency: rawObject.transparency,
+              isPrivate: rawObject.isPrivate,
+              privateContentOptIn: rawObject.privateContentOptIn,
+              privateContentRedacted: rawObject.privateContentRedacted,
+              privateReason: rawObject.privateReason,
             }),
           );
           nextKnownEvents.delete(key);
@@ -941,7 +1077,9 @@ function normalizeCalendarEvent(input: {
 }): NormalizedConnectorRecord {
   const label = labelForCalendarAccount(input);
   const externalId = calendarEventExternalId(input.event);
-  const summary = input.event.summary?.trim() || '(untitled event)';
+  const summary =
+    input.event.summary?.trim() ||
+    (input.event.privateContentRedacted ? 'Busy' : '(untitled event)');
   const start = resolveCalendarInstant(input.event.start);
   const end = resolveCalendarInstant(input.event.end);
   const observedAt = sanitizeObservedAt(input.event.updated ?? input.event.created);
@@ -959,6 +1097,11 @@ function normalizeCalendarEvent(input: {
     sourceMode === 'stub'
       ? 'Synthetic Google Calendar selected-calendar sync (vault credentials not read).'
       : 'Source: vault-backed Google Calendar events.list selected-calendar metadata sync.';
+  const privacyNote = input.event.privateContentRedacted
+    ? 'Privacy: private event content redacted; selected-calendar opt-in is disabled.'
+    : input.event.isPrivate && input.event.privateContentOptIn
+      ? 'Privacy: private event content retained via selected-calendar opt-in.'
+      : null;
   const object: ExternalObject = {
     provider: 'google-calendar',
     accountId: input.connectionId,
@@ -985,6 +1128,11 @@ function normalizeCalendarEvent(input: {
       status: input.event.status ?? 'confirmed',
       start,
       end,
+      visibility: input.event.visibility ?? null,
+      privateEvent: input.event.isPrivate,
+      privateContentOptIn: input.event.privateContentOptIn,
+      privateContentRedacted: input.event.privateContentRedacted,
+      privateReason: input.event.privateReason,
       description: input.event.description ?? null,
       location: input.event.location ?? null,
       htmlLink: input.event.htmlLink ?? null,
@@ -1048,6 +1196,7 @@ function normalizeCalendarEvent(input: {
         input.event.originalStartTime
           ? `Original start: ${resolveCalendarInstant(input.event.originalStartTime)}`
           : null,
+        privacyNote,
         note,
       ]
         .filter((value): value is string => Boolean(value))
