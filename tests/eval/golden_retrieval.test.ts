@@ -315,7 +315,7 @@ describe('golden retrieval harness', () => {
     },
     {
       title: 'Calendar standup stub note',
-      text: 'Google Calendar stub invents AISTROYKA standup events from vault refs.',
+      text: 'Google Calendar stub emits synthetic selected-calendar events when credentials are unavailable.',
       actor: chatgpt,
       key: 'eval/cal-standup',
     },
