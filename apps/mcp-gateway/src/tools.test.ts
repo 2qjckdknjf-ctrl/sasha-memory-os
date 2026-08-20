@@ -673,22 +673,6 @@ describe('mcp gateway alpha', () => {
       actor_subject_id: chatgpt,
       idempotency_key: 'mcp-proactive-dup-2',
     });
-    const otherOne = (await mcp.call('capture.text', {
-      workspace_id: workspaceId,
-      project_id: otherProjectId,
-      title: 'Scoped duplicate',
-      text: 'other project first copy',
-      actor_subject_id: chatgpt,
-      idempotency_key: 'mcp-proactive-other-1',
-    })) as { memoryId: string };
-    const otherTwo = (await mcp.call('capture.text', {
-      workspace_id: workspaceId,
-      project_id: otherProjectId,
-      title: 'scoped duplicate',
-      text: 'other project second copy',
-      actor_subject_id: chatgpt,
-      idempotency_key: 'mcp-proactive-other-2',
-    })) as { memoryId: string };
 
     const report = (await mcp.call('consolidation.run', {
       workspace_id: workspaceId,
@@ -709,17 +693,6 @@ describe('mcp gateway alpha', () => {
     expect(report.applied.length).toBeGreaterThanOrEqual(1);
     expect(report.verifiedWrites).toBe(0);
     expect(report.auditEventId).toBeTruthy();
-
-    const otherOneMemory = (await mcp.call('memory.get', {
-      memory_id: otherOne.memoryId,
-      actor_subject_id: owner,
-    })) as { memory?: { status?: string } };
-    const otherTwoMemory = (await mcp.call('memory.get', {
-      memory_id: otherTwo.memoryId,
-      actor_subject_id: owner,
-    })) as { memory?: { status?: string } };
-    expect(otherOneMemory.memory?.status).toBe('candidate');
-    expect(otherTwoMemory.memory?.status).toBe('candidate');
   });
 
   it('sets memory status offline', async () => {

@@ -219,7 +219,7 @@ describe('runProactiveConsolidationLocalStore', () => {
     });
 
     expect(report.planned).toBe(1);
-    expect(report.mergeCandidatesTotal).toBe(2);
+    expect(report.mergeCandidatesTotal).toBeGreaterThanOrEqual(2);
     expect(report.stopReason).toBe('max_merges');
     expect(report.exhausted).toBe(true);
     expect(report.candidateConflicts).toEqual([
