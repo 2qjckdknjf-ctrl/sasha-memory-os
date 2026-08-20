@@ -1,6 +1,8 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   createLogger,
+  OFFICIAL_M14_GA_DOC_CATALOG_PACK,
+  OFFICIAL_M14_GA_DOC_CATALOG_PACK_VERSION,
   OFFICIAL_M14_DEPENDENCY_UPGRADE_POLICY_PACK,
   OFFICIAL_M14_DEPENDENCY_UPGRADE_POLICY_PACK_VERSION,
   OFFICIAL_M14_DR_RESTORE_DRILL_PACK,
@@ -375,6 +377,72 @@ describe('observability package', () => {
         (item) => item.id === 'protocol-adr-and-contract-tests',
       )?.evidence,
     ).toContain('apps/mcp-gateway/src/rpc.test.ts');
+  });
+
+  it('publishes the official M14 Slice 08 GA documentation catalog pack with fail-closed invariants', () => {
+    expect(OFFICIAL_M14_GA_DOC_CATALOG_PACK_VERSION).toBe('m14-s08-v1');
+    expect(OFFICIAL_M14_GA_DOC_CATALOG_PACK.version).toBe('m14-s08-v1');
+    expect(OFFICIAL_M14_GA_DOC_CATALOG_PACK.sloPackVersion).toBe('m14-s01-v1');
+    expect(OFFICIAL_M14_GA_DOC_CATALOG_PACK.boundedSoakRecipeVersion).toBe('m14-s02-v1');
+    expect(OFFICIAL_M14_GA_DOC_CATALOG_PACK.securityReviewPackVersion).toBe(
+      'm14-s03-v1',
+    );
+    expect(OFFICIAL_M14_GA_DOC_CATALOG_PACK.drRestoreDrillPackVersion).toBe(
+      'm14-s04-v1',
+    );
+    expect(OFFICIAL_M14_GA_DOC_CATALOG_PACK.incidentRunbookPackVersion).toBe(
+      'm14-s05-v1',
+    );
+    expect(OFFICIAL_M14_GA_DOC_CATALOG_PACK.privacySlaPackVersion).toBe(
+      'm14-s06-v1',
+    );
+    expect(
+      OFFICIAL_M14_GA_DOC_CATALOG_PACK.dependencyUpgradePolicyPackVersion,
+    ).toBe('m14-s07-v1');
+    expect(OFFICIAL_M14_GA_DOC_CATALOG_PACK.roadmapSections).toEqual(['20.17']);
+    expect(OFFICIAL_M14_GA_DOC_CATALOG_PACK.surfaces.map((item) => item.id)).toEqual(
+      expect.arrayContaining([
+        'slo-error-budgets',
+        'bounded-soak',
+        'security-review',
+        'dr-restore-drill',
+        'incident-runbooks',
+        'export-deletion-slas',
+        'dependency-upgrade-policy',
+        'rls-matrix',
+        'secrets-policy',
+        'mcp-mode-a',
+      ]),
+    );
+    expect(OFFICIAL_M14_GA_DOC_CATALOG_PACK.invariants).toMatchObject({
+      defensiveOnly: true,
+      fixtureOnly: true,
+      requireCatalogIndex: true,
+      requireDocOwner: true,
+      requireDocStatus: true,
+      failClosedWhenDocMissing: true,
+      failClosedWhenCatalogLeaksTokens: true,
+      failClosedWhenCatalogLeaksPayloads: true,
+      modeAToolCount: 7,
+      ignoreDefaultProjectIdEnv: true,
+      allowOwnerTokenBypass: false,
+      allowAistroykaFallback: false,
+      allowVerifiedWrites: false,
+      allowProductionSqlApply: false,
+      logMemoryBodies: false,
+      logTokens: false,
+      allowCatalogPayloadExamples: false,
+    });
+    expect(
+      OFFICIAL_M14_GA_DOC_CATALOG_PACK.surfaces.find(
+        (item) => item.id === 'mcp-mode-a',
+      )?.linkedPaths,
+    ).toEqual(
+      expect.arrayContaining([
+        'docs/engineering/MCP_CURSOR.md',
+        'scripts/smoke-mcp-chatgpt.sh',
+      ]),
+    );
   });
 
   it('redacts tokens, bodies, queries, and personal content from structured logs', () => {

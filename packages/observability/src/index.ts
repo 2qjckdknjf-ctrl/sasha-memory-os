@@ -9,6 +9,7 @@ export const OFFICIAL_M14_DR_RESTORE_DRILL_PACK_VERSION = 'm14-s04-v1' as const;
 export const OFFICIAL_M14_INCIDENT_RUNBOOK_PACK_VERSION = 'm14-s05-v1' as const;
 export const OFFICIAL_M14_PRIVACY_SLA_PACK_VERSION = 'm14-s06-v1' as const;
 export const OFFICIAL_M14_DEPENDENCY_UPGRADE_POLICY_PACK_VERSION = 'm14-s07-v1' as const;
+export const OFFICIAL_M14_GA_DOC_CATALOG_PACK_VERSION = 'm14-s08-v1' as const;
 
 const LATENCY_P95_ERROR_BUDGET_RATIO = 0.05;
 const MAX_SLO_SAMPLES_PER_TARGET = 1_024;
@@ -1066,6 +1067,174 @@ export const OFFICIAL_M14_DEPENDENCY_UPGRADE_POLICY_PACK = {
     logTokens: false,
     logUpgradePayloads: false,
     logCiSecrets: false,
+  },
+} as const;
+
+type GaDocSurfaceId =
+  | 'slo-error-budgets'
+  | 'bounded-soak'
+  | 'security-review'
+  | 'dr-restore-drill'
+  | 'incident-runbooks'
+  | 'export-deletion-slas'
+  | 'dependency-upgrade-policy'
+  | 'rls-matrix'
+  | 'secrets-policy'
+  | 'mcp-mode-a';
+
+type GaDocOwnerRole = 'Platform owner' | 'Security owner' | 'Privacy owner';
+type GaDocStatus = 'current official';
+
+type GaDocSurfaceSpec = {
+  id: GaDocSurfaceId;
+  ownerRole: GaDocOwnerRole;
+  status: GaDocStatus;
+  primaryDocPath: string;
+  versionTag: string;
+  linkedPaths: readonly string[];
+  description: string;
+};
+
+export const OFFICIAL_M14_GA_DOC_CATALOG_PACK = {
+  version: OFFICIAL_M14_GA_DOC_CATALOG_PACK_VERSION,
+  sloPackVersion: OFFICIAL_M14_SLO_PACK_VERSION,
+  boundedSoakRecipeVersion: 'm14-s02-v1',
+  securityReviewPackVersion: OFFICIAL_M14_SECURITY_REVIEW_PACK_VERSION,
+  drRestoreDrillPackVersion: OFFICIAL_M14_DR_RESTORE_DRILL_PACK_VERSION,
+  incidentRunbookPackVersion: OFFICIAL_M14_INCIDENT_RUNBOOK_PACK_VERSION,
+  privacySlaPackVersion: OFFICIAL_M14_PRIVACY_SLA_PACK_VERSION,
+  dependencyUpgradePolicyPackVersion:
+    OFFICIAL_M14_DEPENDENCY_UPGRADE_POLICY_PACK_VERSION,
+  roadmapSections: ['20.17'],
+  surfaces: [
+    {
+      id: 'slo-error-budgets',
+      ownerRole: 'Platform owner',
+      status: 'current official',
+      primaryDocPath: 'docs/engineering/M14_SLICE_01.md',
+      versionTag: 'm14-s01-v1',
+      linkedPaths: ['packages/observability/src/index.ts'],
+      description:
+        'Current official SLO pack and bounded telemetry targets stay linked and versioned.',
+    },
+    {
+      id: 'bounded-soak',
+      ownerRole: 'Platform owner',
+      status: 'current official',
+      primaryDocPath: 'docs/engineering/M14_SLICE_02.md',
+      versionTag: 'm14-s02-v1',
+      linkedPaths: ['apps/api/src/soakHarness.ts'],
+      description:
+        'Current official bounded soak recipe stays linked without adding a new ops surface.',
+    },
+    {
+      id: 'security-review',
+      ownerRole: 'Security owner',
+      status: 'current official',
+      primaryDocPath: 'docs/engineering/M14_SLICE_03.md',
+      versionTag: 'm14-s03-v1',
+      linkedPaths: [
+        'docs/engineering/RLS_MATRIX.md',
+        'tests/security/rls_matrix.test.ts',
+      ],
+      description:
+        'Current official security review pack stays linked to negative coverage and RLS evidence.',
+    },
+    {
+      id: 'dr-restore-drill',
+      ownerRole: 'Platform owner',
+      status: 'current official',
+      primaryDocPath: 'docs/engineering/M14_SLICE_04.md',
+      versionTag: 'm14-s04-v1',
+      linkedPaths: ['apps/api/src/restoreDrill.ts'],
+      description:
+        'Current official DR restore drill stays linked as a bounded fixture-only surface.',
+    },
+    {
+      id: 'incident-runbooks',
+      ownerRole: 'Platform owner',
+      status: 'current official',
+      primaryDocPath: 'docs/engineering/M14_SLICE_05.md',
+      versionTag: 'm14-s05-v1',
+      linkedPaths: [
+        'docs/engineering/runbooks/alert-ownership-and-routing.md',
+        'docs/engineering/runbooks/',
+      ],
+      description:
+        'Current official incident runbooks stay linked on the existing stack with checked-in ownership.',
+    },
+    {
+      id: 'export-deletion-slas',
+      ownerRole: 'Privacy owner',
+      status: 'current official',
+      primaryDocPath: 'docs/engineering/privacy/EXPORT_DELETION_SLAS.md',
+      versionTag: 'm14-s06-v1',
+      linkedPaths: ['docs/engineering/M14_SLICE_06.md'],
+      description:
+        'Current official export and deletion SLA notes stay linked without inventing a parallel privacy product.',
+    },
+    {
+      id: 'dependency-upgrade-policy',
+      ownerRole: 'Platform owner',
+      status: 'current official',
+      primaryDocPath: 'docs/engineering/DEPENDENCY_UPGRADE_POLICY.md',
+      versionTag: 'm14-s07-v1',
+      linkedPaths: ['docs/engineering/M14_SLICE_07.md'],
+      description:
+        'Current official dependency-upgrade policy stays linked as a bounded local-only control surface.',
+    },
+    {
+      id: 'rls-matrix',
+      ownerRole: 'Security owner',
+      status: 'current official',
+      primaryDocPath: 'docs/engineering/RLS_MATRIX.md',
+      versionTag: 'm14-s08-v1',
+      linkedPaths: ['tests/security/rls_matrix.test.ts'],
+      description:
+        'Current official RLS matrix stays linked and catalogued by the versioned GA doc pack.',
+    },
+    {
+      id: 'secrets-policy',
+      ownerRole: 'Security owner',
+      status: 'current official',
+      primaryDocPath: 'docs/engineering/SECRETS_POLICY.md',
+      versionTag: 'm14-s08-v1',
+      linkedPaths: ['docs/adr/ADR-005-secrets-and-environments.md'],
+      description:
+        'Current official secrets policy stays linked and catalogued by the versioned GA doc pack.',
+    },
+    {
+      id: 'mcp-mode-a',
+      ownerRole: 'Platform owner',
+      status: 'current official',
+      primaryDocPath: 'docs/m0/CHATGPT_MCP_PLAN.md',
+      versionTag: 'm14-s08-v1',
+      linkedPaths: [
+        'docs/engineering/MCP_CURSOR.md',
+        'scripts/smoke-mcp-chatgpt.sh',
+      ],
+      description:
+        'Current official ChatGPT Mode A contract stays linked at exactly 7 tools with no owner or ops widening.',
+    },
+  ] satisfies readonly GaDocSurfaceSpec[],
+  invariants: {
+    defensiveOnly: true,
+    fixtureOnly: true,
+    requireCatalogIndex: true,
+    requireDocOwner: true,
+    requireDocStatus: true,
+    failClosedWhenDocMissing: true,
+    failClosedWhenCatalogLeaksTokens: true,
+    failClosedWhenCatalogLeaksPayloads: true,
+    modeAToolCount: 7,
+    ignoreDefaultProjectIdEnv: true,
+    allowOwnerTokenBypass: false,
+    allowAistroykaFallback: false,
+    allowVerifiedWrites: false,
+    allowProductionSqlApply: false,
+    logMemoryBodies: false,
+    logTokens: false,
+    allowCatalogPayloadExamples: false,
   },
 } as const;
 
