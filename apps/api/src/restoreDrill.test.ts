@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { CHATGPT_PILOT_TOOLS } from '@memory-os/mcp-gateway';
 import { OFFICIAL_M14_DR_RESTORE_DRILL_PACK } from '@memory-os/observability';
 import {
+  evaluateRestoreDrillReport,
   OFFICIAL_M14_DR_RESTORE_RECIPE,
   OFFICIAL_M14_DR_RESTORE_RECIPE_VERSION,
   resolveRestoreDrillConfig,
@@ -56,6 +57,9 @@ describe('bounded DR restore drill harness', () => {
       maxBackupContours: 2,
       maxOwnerExportEvidenceFiles: 1,
     });
+    expect(OFFICIAL_M14_DR_RESTORE_RECIPE.invariants.modeAToolCount).toBe(
+      OFFICIAL_M14_DR_RESTORE_DRILL_PACK.invariants.modeAToolCount,
+    );
     expect(OFFICIAL_M14_DR_RESTORE_RECIPE.invariants).toMatchObject({
       modeAToolCount: 7,
       requireIndependentBackupContours: true,
@@ -79,6 +83,27 @@ describe('bounded DR restore drill harness', () => {
     ).toThrow(/explicit project_id is required/i);
   });
 
+  it('fails closed when an explicit export evidence override path is missing', async () => {
+    const missingPath = resolve(FIXTURE_DIR, 'missing-owner-export-metadata.json');
+
+    expect(() =>
+      resolveRestoreDrillConfig({
+        fixtureDir: FIXTURE_DIR,
+        projectId: explicitProjectId,
+        workspaceId,
+        exportEvidencePath: missingPath,
+      }),
+    ).toThrow(/owner export evidence override is missing/i);
+    await expect(
+      runRestoreDrillRecipe({
+        fixtureDir: FIXTURE_DIR,
+        projectId: explicitProjectId,
+        workspaceId,
+        exportEvidencePath: missingPath,
+      }),
+    ).rejects.toThrow(/owner export evidence override is missing/i);
+  });
+
   it('ignores MEMORY_OS_DEFAULT_PROJECT_ID fallback env for the drill fixture', () => {
     expect(() =>
       resolveRestoreDrillConfigFromEnv({
@@ -100,7 +125,9 @@ describe('bounded DR restore drill harness', () => {
       ok: true,
       errors: [],
     });
-    expect(report.modeAToolCount).toBe(CHATGPT_PILOT_TOOLS.length);
+    expect(report.modeAToolCount).toBe(
+      OFFICIAL_M14_DR_RESTORE_DRILL_PACK.invariants.modeAToolCount,
+    );
     expect(report.contours.database.includesArchivedStorageObjects).toBe(false);
     expect(report.contours.storage.versionedCopy).toBe(true);
     expect(report.contours.storage.offsiteCopy).toBe(true);
@@ -221,5 +248,43 @@ describe('bounded DR restore drill harness', () => {
     );
     const serialized = JSON.stringify(report);
     expect(serialized).not.toContain('super-secret-memory-body');
+  });
+
+  it('fails closed when Mode A drifts away from the official hard 7 tool count', async () => {
+    const report = await runRestoreDrillRecipe({
+      fixtureDir: FIXTURE_DIR,
+      projectId: explicitProjectId,
+      workspaceId,
+    });
+    const validationInput: Parameters<typeof evaluateRestoreDrillReport>[1] = {
+      databaseManifest: readJson(
+        'db-backup-manifest.json',
+        FIXTURE_DIR,
+      ) as Parameters<typeof evaluateRestoreDrillReport>[1]['databaseManifest'],
+      storageManifest: readJson(
+        'storage-archive-manifest.json',
+        FIXTURE_DIR,
+      ) as Parameters<typeof evaluateRestoreDrillReport>[1]['storageManifest'],
+      restoreReport: readJson(
+        'restore-report.json',
+        FIXTURE_DIR,
+      ) as Parameters<typeof evaluateRestoreDrillReport>[1]['restoreReport'],
+      exportEvidence: readJson(
+        'owner-export-metadata.json',
+        FIXTURE_DIR,
+      ) as Parameters<typeof evaluateRestoreDrillReport>[1]['exportEvidence'],
+    };
+
+    const errors = evaluateRestoreDrillReport(
+      {
+        ...report,
+        modeAToolCount:
+          OFFICIAL_M14_DR_RESTORE_DRILL_PACK.invariants.modeAToolCount - 1,
+      },
+      validationInput,
+    );
+
+    expect(CHATGPT_PILOT_TOOLS).toHaveLength(7);
+    expect(errors).toContain('ChatGPT Mode A tool count changed (6 !== 7)');
   });
 });

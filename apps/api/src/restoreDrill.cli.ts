@@ -1,5 +1,4 @@
 import {
-  resolveRestoreDrillConfig,
   restoreDrillConfigInputFromEnv,
   runRestoreDrillRecipe,
   type RestoreDrillConfigInput,
@@ -63,10 +62,10 @@ async function main(): Promise<void> {
     console.log(usage());
     return;
   }
-  const merged = resolveRestoreDrillConfig({
+  const merged: RestoreDrillConfigInput = {
     ...restoreDrillConfigInputFromEnv(process.env),
     ...parsed,
-  });
+  };
   const report = await runRestoreDrillRecipe(merged);
   if (!report.assertions.ok) {
     throw new Error(report.assertions.errors.join('; '));

@@ -118,7 +118,7 @@ export const OFFICIAL_M14_DR_RESTORE_RECIPE = {
     maxFixtureBytes: MAX_FIXTURE_BYTES,
   },
   invariants: {
-    modeAToolCount: CHATGPT_PILOT_TOOLS.length,
+    modeAToolCount: OFFICIAL_M14_DR_RESTORE_DRILL_PACK.invariants.modeAToolCount,
     requireIndependentBackupContours: true,
     requireExplicitProjectIdOnWriteOrExportInvocation: true,
     allowOwnerTokenBypass: false,
@@ -259,9 +259,20 @@ export function resolveRestoreDrillConfig(
 ): ResolvedRestoreDrillConfig {
   const fixtureDir = normalizeFixturePath(input.fixtureDir);
   const exportEvidenceOverride = trimToNull(input.exportEvidencePath);
-  const exportEvidencePath = exportEvidenceOverride
+  const resolvedExportEvidenceOverride = exportEvidenceOverride
     ? resolve(exportEvidenceOverride)
-    : resolve(fixtureDir, DEFAULT_OWNER_EXPORT_EVIDENCE_FILE);
+    : null;
+  if (
+    resolvedExportEvidenceOverride &&
+    !existsSync(resolvedExportEvidenceOverride)
+  ) {
+    throw new Error(
+      `owner export evidence override is missing: ${resolvedExportEvidenceOverride}`,
+    );
+  }
+  const exportEvidencePath =
+    resolvedExportEvidenceOverride ??
+    resolve(fixtureDir, DEFAULT_OWNER_EXPORT_EVIDENCE_FILE);
   const exportEvidenceExists = existsSync(exportEvidencePath);
   const projectId = trimToNull(input.projectId);
 
@@ -278,7 +289,8 @@ export function resolveRestoreDrillConfig(
     databaseManifestPath: resolve(fixtureDir, 'db-backup-manifest.json'),
     storageManifestPath: resolve(fixtureDir, 'storage-archive-manifest.json'),
     restoreReportPath: resolve(fixtureDir, 'restore-report.json'),
-    exportEvidencePath: exportEvidenceExists ? exportEvidencePath : null,
+    exportEvidencePath:
+      resolvedExportEvidenceOverride ?? (exportEvidenceExists ? exportEvidencePath : null),
   };
 }
 
@@ -369,9 +381,12 @@ export function evaluateRestoreDrillReport(
 ): string[] {
   const errors: string[] = [];
 
-  if (report.modeAToolCount !== CHATGPT_PILOT_TOOLS.length) {
+  if (
+    report.modeAToolCount !==
+    OFFICIAL_M14_DR_RESTORE_DRILL_PACK.invariants.modeAToolCount
+  ) {
     errors.push(
-      `ChatGPT Mode A tool count changed (${report.modeAToolCount} !== ${CHATGPT_PILOT_TOOLS.length})`,
+      `ChatGPT Mode A tool count changed (${report.modeAToolCount} !== ${OFFICIAL_M14_DR_RESTORE_DRILL_PACK.invariants.modeAToolCount})`,
     );
   }
 
