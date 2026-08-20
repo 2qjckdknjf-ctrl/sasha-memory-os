@@ -122,9 +122,6 @@ BEGIN
   IF v_scope NOT IN ('actor', 'project_default') THEN
     RAISE EXCEPTION 'invalid scope: %', v_scope;
   END IF;
-  IF p_pinned IS NULL AND p_importance_delta IS NULL THEN
-    RAISE EXCEPTION 'pinned or importance_delta required';
-  END IF;
   IF p_importance_delta IS NOT NULL
      AND (p_importance_delta < -0.5 OR p_importance_delta > 0.5) THEN
     RAISE EXCEPTION 'importance_delta must be between -0.5 and 0.5';

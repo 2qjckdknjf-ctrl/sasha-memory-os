@@ -116,7 +116,10 @@ function asHitPersonalization(
           ? record.actor_subject_id
           : null,
     pinned: record.pinned === true,
-    importanceDelta: clampImportanceDelta(record.importanceDelta),
+    importanceDelta:
+      typeof record.importanceDelta === 'number' && Number.isFinite(record.importanceDelta)
+        ? clampImportanceDelta(record.importanceDelta)
+        : null,
     rankingVersion:
       typeof record.rankingVersion === 'string' && record.rankingVersion.trim()
         ? record.rankingVersion

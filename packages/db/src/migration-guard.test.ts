@@ -369,4 +369,15 @@ describe('m8 slice 03 migration guards', () => {
     expect(personalizedImportanceSql).toContain(`'memory.personalization.set'`);
     expect(personalizedImportanceSql).toContain(`'memory.personalization.cleared'`);
   });
+
+  it('lets the same payload clear personalization on SQL and keeps pin-only delta null', () => {
+    expect(personalizedImportanceSql).toContain(
+      `v_should_clear := coalesce(p_pinned, false) = false AND p_importance_delta IS NULL;`,
+    );
+    expect(personalizedImportanceSql).not.toContain(
+      `RAISE EXCEPTION 'pinned or importance_delta required'`,
+    );
+    expect(personalizedImportanceSql).toContain(`'importanceDelta', NULL`);
+    expect(personalizedImportanceSql).toContain(`'importanceDelta', v_next.importance_delta`);
+  });
 });

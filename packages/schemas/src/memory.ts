@@ -115,19 +115,6 @@ export const setMemoryPersonalizationSchema = z
     actor_subject_id: z.string().uuid(),
     pinned: z.boolean().optional(),
     importance_delta: z.number().min(-0.5).max(0.5).nullable().optional(),
-  })
-  .superRefine((value, ctx) => {
-    if (
-      value.pinned === undefined &&
-      value.importance_delta === undefined
-    ) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message:
-          'pinned or importance_delta is required for personalized importance updates',
-        path: ['pinned'],
-      });
-    }
   });
 
 export const correctMemorySchema = z

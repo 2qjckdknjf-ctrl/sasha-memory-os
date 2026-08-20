@@ -160,7 +160,7 @@ export class MemoryStore {
           scope: row.scope,
           actorSubjectId: row.actorSubjectId,
           pinned: row.pinned,
-          importanceDelta: row.importanceDelta ?? 0,
+          importanceDelta: row.importanceDelta,
           rankingVersion: row.rankingVersion,
           version: row.version,
         });
@@ -646,7 +646,7 @@ export class MemoryStore {
         scope: next.scope,
         actorSubjectId: next.actorSubjectId,
         pinned: next.pinned,
-        importanceDelta: next.importanceDelta ?? 0,
+        importanceDelta: next.importanceDelta,
         rankingVersion: next.rankingVersion,
         version: next.version,
       },

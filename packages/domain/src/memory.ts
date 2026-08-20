@@ -105,7 +105,7 @@ export interface EffectiveMemoryPersonalization {
   scope: MemoryPersonalizationScope;
   actorSubjectId: string | null;
   pinned: boolean;
-  importanceDelta: number;
+  importanceDelta: number | null;
   rankingVersion: string;
   version: number;
 }

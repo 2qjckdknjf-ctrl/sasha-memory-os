@@ -2617,6 +2617,144 @@ describe('memory api demo slice', () => {
     });
   });
 
+  it('returns importanceDelta null for pin-only personalization writes', async () => {
+    const store = new MemoryStore();
+    const memory = store.createDecision({
+      workspaceId,
+      projectId,
+      title: 'Pin only target',
+      content: 'Pin-only writes should not coerce a delta.',
+      actorSubjectId: owner,
+      idempotencyKey: 'pin-only-target',
+    });
+    const app = createApp({ store });
+
+    const res = await app.request(`/v1/memories/${memory.id}/status`, {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'x-subject-id': owner,
+        'x-actor-key': 'owner',
+      },
+      body: JSON.stringify({
+        project_id: projectId,
+        scope: 'actor',
+        actor_subject_id: owner,
+        reason: 'Pin only',
+        pinned: true,
+      }),
+    });
+
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual(
+      expect.objectContaining({
+        pinned: true,
+        importanceDelta: null,
+        cleared: false,
+      }),
+    );
+  });
+
+  it('clears personalization for omitted or null pin+delta payloads and audits the clear', async () => {
+    const store = new MemoryStore();
+    const memory = store.createDecision({
+      workspaceId,
+      projectId,
+      title: 'Clear personalization target',
+      content: 'Clear requests should converge across backends.',
+      actorSubjectId: owner,
+      idempotencyKey: 'clear-personalization-target',
+    });
+    const app = createApp({ store });
+
+    const firstSet = await app.request(`/v1/memories/${memory.id}/status`, {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'x-subject-id': owner,
+        'x-actor-key': 'owner',
+      },
+      body: JSON.stringify({
+        project_id: projectId,
+        scope: 'actor',
+        actor_subject_id: owner,
+        reason: 'Pin before clear',
+        pinned: true,
+      }),
+    });
+    expect(firstSet.status).toBe(200);
+
+    const clearOmitted = await app.request(`/v1/memories/${memory.id}/status`, {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'x-subject-id': owner,
+        'x-actor-key': 'owner',
+      },
+      body: JSON.stringify({
+        project_id: projectId,
+        scope: 'actor',
+        actor_subject_id: owner,
+        reason: 'Clear by omission',
+      }),
+    });
+    expect(clearOmitted.status).toBe(200);
+    expect(await clearOmitted.json()).toEqual(
+      expect.objectContaining({
+        pinned: false,
+        importanceDelta: null,
+        cleared: true,
+      }),
+    );
+    expect(store.memoryPersonalizations.size).toBe(0);
+
+    const secondSet = await app.request(`/v1/memories/${memory.id}/status`, {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'x-subject-id': owner,
+        'x-actor-key': 'owner',
+      },
+      body: JSON.stringify({
+        project_id: projectId,
+        scope: 'actor',
+        actor_subject_id: owner,
+        reason: 'Re-pin before explicit null clear',
+        pinned: true,
+      }),
+    });
+    expect(secondSet.status).toBe(200);
+
+    const clearExplicitNull = await app.request(`/v1/memories/${memory.id}/status`, {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'x-subject-id': owner,
+        'x-actor-key': 'owner',
+      },
+      body: JSON.stringify({
+        project_id: projectId,
+        scope: 'actor',
+        actor_subject_id: owner,
+        reason: 'Clear with explicit null delta',
+        pinned: false,
+        importance_delta: null,
+      }),
+    });
+    expect(clearExplicitNull.status).toBe(200);
+    expect(await clearExplicitNull.json()).toEqual(
+      expect.objectContaining({
+        pinned: false,
+        importanceDelta: null,
+        cleared: true,
+      }),
+    );
+    expect(store.memoryPersonalizations.size).toBe(0);
+    expect(
+      store.auditLog.filter((entry) => entry.action === 'memory.personalization.cleared'),
+    ).toHaveLength(2);
+  });
+
   it('keeps personalized importance scoped by actor and project', async () => {
     const store = new MemoryStore();
     const actorScoped = store.createDecision({
