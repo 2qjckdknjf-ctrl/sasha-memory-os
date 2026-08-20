@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { createSeededStore } from '@memory-os/domain';
+import { createSeededStore, type MemoryRecord } from '@memory-os/domain';
 import {
   AGENTIC_RETRIEVAL_TOOL_ALLOWLIST,
   authorityMultiplier,
@@ -163,78 +163,83 @@ describe('retrieval stub', () => {
     expect(ctx.decisions.length).toBe(1);
   });
 
-  it('runs bounded agentic retrieval with step trace and scoped results', async () => {
+  it('records grounded multi-hop trace and keeps every hop scoped to the explicit project', async () => {
     const targetProjectId = '44444444-4444-4444-8444-444444444401';
     const otherProjectId = '44444444-4444-4444-8444-444444444499';
     const calls: string[] = [];
     const result = await runBoundedAgenticRetrieval({
-      query: 'Slice kickoff',
+      query: 'Release freeze',
       projectId: targetProjectId,
+      budget: { minEvidenceHits: 3 },
       search: async ({ query, includeHistory }) => {
         calls.push(`${includeHistory ? 'history' : 'current'}:${query}`);
-        if (query.includes('disputed superseded corrected retracted')) {
+        if (query.includes('superseded corrected')) {
           return [
             {
               memory: {
-                id: 'm-2',
+                id: 'm-4',
                 projectId: targetProjectId,
-                title: 'Kickoff handoff note',
-                content: 'Current evidence remains aligned.',
-                status: 'active',
+                title: 'Release freeze current state',
+                content: 'The current verified freeze policy supersedes the old note.',
+                status: 'verified',
+                supersededBy: null,
               },
               score: 0.82,
               reason: 'hybrid:rpc+rrf',
             },
           ];
         }
-        if (includeHistory) {
+        if (query.includes('history timeline')) {
           return [
             {
               memory: {
-                id: 'm-1',
+                id: 'm-3',
                 projectId: targetProjectId,
-                title: 'Slice kickoff decision',
-                content: 'History confirms the kickoff decision.',
-                status: 'verified',
+                title: 'Release freeze history note',
+                content: 'Historical note confirms the freeze checklist for release.',
+                memoryType: 'fact',
+                status: 'active',
               },
-              score: 0.93,
+              score: 0.89,
               reason: 'hybrid:rpc+rrf',
             },
             {
               memory: {
-                id: 'm-2',
-                projectId: targetProjectId,
-                title: 'Kickoff handoff note',
-                content: 'Timeline evidence references the same slice.',
+                id: 'timeline-leak',
+                projectId: otherProjectId,
+                title: 'Wrong project timeline',
+                content: 'This history result must be filtered out.',
                 status: 'active',
               },
-              score: 0.81,
+              score: 0.97,
               reason: 'hybrid:rpc+rrf',
             },
           ];
         }
-        if (query.includes('decision')) {
+        if (query.includes('task fact')) {
           return [
             {
               memory: {
-                id: 'm-1',
+                id: 'm-2',
                 projectId: targetProjectId,
-                title: 'Slice kickoff decision',
-                content: 'Decision evidence for Slice kickoff.',
-                status: 'verified',
+                title: 'Release freeze checklist',
+                content: 'Task checklist follows the release freeze decision.',
+                memoryType: 'task',
+                status: 'active',
               },
               score: 0.94,
               reason: 'hybrid:rpc+rrf',
             },
             {
               memory: {
-                id: 'm-2',
-                projectId: targetProjectId,
-                title: 'Kickoff handoff note',
-                content: 'Follow-up evidence for Slice kickoff.',
+                id: 'related-leak',
+                projectId: otherProjectId,
+                title: 'Wrong project task',
+                content: 'This related result must be filtered out.',
+                memoryType: 'task',
                 status: 'active',
               },
-              score: 0.83,
+              score: 0.99,
               reason: 'hybrid:rpc+rrf',
             },
           ];
@@ -244,8 +249,9 @@ describe('retrieval stub', () => {
             memory: {
               id: 'm-1',
               projectId: targetProjectId,
-              title: 'Slice kickoff decision',
-              content: 'Decision evidence for Slice kickoff.',
+              title: 'Release freeze decision',
+              content: 'Freeze decision anchors the release process.',
+              memoryType: 'decision',
               status: 'verified',
             },
             score: 0.91,
@@ -270,36 +276,153 @@ describe('retrieval stub', () => {
     expect(result.stopReason).toBe('enough_evidence');
     expect(result.toolAllowlist).toEqual(AGENTIC_RETRIEVAL_TOOL_ALLOWLIST);
     expect(result.writeActionsAttempted).toBe(0);
-    expect(result.trace.steps.length).toBeGreaterThanOrEqual(3);
+    expect(result.trace.steps).toHaveLength(4);
+    expect(result.trace.steps[0]?.hop).toBeNull();
+    expect(result.trace.steps[1]?.hop).toMatchObject({
+      index: 1,
+      kind: 'related_evidence',
+      groundedByMemoryIds: ['m-1'],
+      groundedByTitles: ['Release freeze decision'],
+    });
+    expect(result.trace.steps[2]?.hop).toMatchObject({
+      index: 2,
+      kind: 'timeline',
+    });
+    expect(result.trace.steps[3]?.hop).toMatchObject({
+      index: 3,
+      kind: 'supersession',
+    });
+    expect(result.trace.steps[2]?.hop?.groundedByMemoryIds).toEqual(['m-2', 'm-1']);
+    expect(result.trace.steps[3]?.hop?.groundedByMemoryIds).toEqual(['m-2', 'm-1']);
     expect(result.trace.steps[0]?.scopeFilteredCount).toBe(1);
+    expect(result.trace.steps[1]?.scopeFilteredCount).toBe(1);
+    expect(result.trace.steps[2]?.scopeFilteredCount).toBe(1);
     expect(result.hits.every((hit) => hit.memory.projectId === targetProjectId)).toBe(true);
     expect(result.context.packedCount).toBeGreaterThan(0);
-    expect(calls.some((call) => call.startsWith('history:'))).toBe(true);
+    expect(calls[0]).toBe('current:Release freeze');
+    expect(calls[1]).toContain('task fact');
+    expect(calls[2]).toContain('history timeline');
+    expect(calls[3]).toContain('superseded corrected');
   });
 
-  it('stops bounded agentic retrieval when max steps are exhausted', async () => {
+  it('uses a compact grounded hop query so related project evidence still passes lexical coverage', async () => {
+    const projectId = '44444444-4444-4444-8444-444444444401';
+    const records: MemoryRecord[] = [
+      {
+        id: '11111111-1111-4111-8111-111111111111',
+        workspaceId: '11111111-1111-4111-8111-111111111111',
+        projectId,
+        memoryType: 'decision',
+        title: 'Release freeze decision',
+        content: 'Decision approvals guardrails anchor the release freeze.',
+        status: 'verified',
+        importance: 0.9,
+        confidence: 0.95,
+        sensitivity: 'internal',
+        validFrom: null,
+        validTo: null,
+        observedAt: null,
+        recordedAt: '2026-08-20T03:30:00.000Z',
+        supersededBy: null,
+        sourceEventId: null,
+        createdBySubject: null,
+        schemaVersion: '1.0',
+        metadata: {},
+      },
+      {
+        id: '22222222-2222-4222-8222-222222222222',
+        workspaceId: '11111111-1111-4111-8111-111111111111',
+        projectId,
+        memoryType: 'task',
+        title: 'Release freeze checklist',
+        content: 'Task checklist for the release freeze.',
+        status: 'active',
+        importance: 0.82,
+        confidence: 0.9,
+        sensitivity: 'internal',
+        validFrom: null,
+        validTo: null,
+        observedAt: null,
+        recordedAt: '2026-08-20T03:31:00.000Z',
+        supersededBy: null,
+        sourceEventId: null,
+        createdBySubject: null,
+        schemaVersion: '1.0',
+        metadata: {},
+      },
+    ];
+
+    const result = await runBoundedAgenticRetrieval({
+      query: 'release freeze decision approvals guardrails',
+      projectId,
+      budget: { maxSteps: 2, minEvidenceHits: 2 },
+      search: async ({ query, includeHistory, projectId }) =>
+        searchMemories(records, query, { includeHistory, projectId }),
+    });
+
+    expect(result.trace.steps[0]?.hitCount).toBe(1);
+    expect(result.trace.steps[1]?.hop).toMatchObject({
+      index: 1,
+      kind: 'related_evidence',
+    });
+    expect(result.trace.steps[1]?.query).toBe('release freeze decision task');
+    expect(result.trace.steps[1]?.query).not.toContain('approvals');
+    expect(result.trace.steps[1]?.query).not.toContain('guardrails');
+    expect(result.outcome).toBe('answered');
+    expect(result.stopReason).toBe('enough_evidence');
+    expect(result.hits.map((hit) => hit.memory.title)).toEqual([
+      'Release freeze decision',
+      'Release freeze checklist',
+    ]);
+  });
+
+  it('stops bounded agentic retrieval when max steps are exhausted mid-hop plan', async () => {
     const result = await runBoundedAgenticRetrieval({
       query: 'thin evidence',
       projectId: '44444444-4444-4444-8444-444444444401',
-      budget: { maxSteps: 1, minEvidenceHits: 3 },
-      search: async () => [
-        {
-          memory: {
-            id: 'only-hit',
-            projectId: '44444444-4444-4444-8444-444444444401',
-            title: 'Only one candidate',
-            content: 'This is not enough evidence.',
-            status: 'candidate',
+      budget: { maxSteps: 2, minEvidenceHits: 3 },
+      search: async ({ query }) => {
+        if (query.includes('task fact')) {
+          return [
+            {
+              memory: {
+                id: 'second-hop',
+                projectId: '44444444-4444-4444-8444-444444444401',
+                title: 'Second supporting memory',
+                content: 'A second hit is still not enough evidence.',
+                memoryType: 'task',
+                status: 'active',
+              },
+              score: 0.71,
+              reason: 'hybrid:rpc+rrf',
+            },
+          ];
+        }
+        return [
+          {
+            memory: {
+              id: 'only-hit',
+              projectId: '44444444-4444-4444-8444-444444444401',
+              title: 'Only one candidate',
+              content: 'This is not enough evidence.',
+              memoryType: 'decision',
+              status: 'candidate',
+            },
+            score: 0.52,
+            reason: 'hybrid:rpc+rrf',
           },
-          score: 0.52,
-          reason: 'hybrid:rpc+rrf',
-        },
-      ],
+        ];
+      },
     });
 
     expect(result.outcome).toBe('budget_exhausted');
     expect(result.stopReason).toBe('max_steps');
-    expect(result.budget.usedSteps).toBe(1);
+    expect(result.budget.usedSteps).toBe(2);
+    expect(result.trace.steps[1]?.hop).toMatchObject({
+      index: 1,
+      kind: 'related_evidence',
+      groundedByMemoryIds: ['only-hit'],
+    });
     expect(result.writeActionsAttempted).toBe(0);
   });
 

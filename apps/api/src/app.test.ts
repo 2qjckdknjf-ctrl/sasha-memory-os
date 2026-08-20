@@ -2478,6 +2478,12 @@ describe('memory api demo slice', () => {
     expect(body.agentic.writeActionsAttempted).toBe(0);
     expect(body.agentic.trace.projectId).toBe(projectId);
     expect(body.agentic.trace.steps.length).toBeGreaterThan(0);
+    expect(
+      body.agentic.trace.steps.some(
+        (step: { hop?: { kind?: string } | null }) =>
+          step.hop?.kind === 'related_evidence',
+      ),
+    ).toBe(true);
     expect(body.context?.packedCount).toBeGreaterThan(0);
     expect(store.auditLog[0]?.action).toBe('retrieval.agentic_search.completed');
     expect(store.auditLog[0]?.afterState).toMatchObject({

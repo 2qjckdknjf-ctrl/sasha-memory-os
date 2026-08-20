@@ -169,9 +169,13 @@ export type HybridHitLike = {
     id?: string | null;
     title?: string | null;
     content?: string | null;
+    memoryType?: string | null;
+    memory_type?: string | null;
     status?: string | null;
     recordedAt?: string | null;
     recorded_at?: string | null;
+    supersededBy?: string | null;
+    superseded_by?: string | null;
     embedding?: number[] | null;
     embedding_vector?: number[] | string | null;
   };
@@ -418,6 +422,11 @@ export type AgenticRetrievalPhase =
   | 'timeline'
   | 'conflict_check';
 
+export type AgenticRetrievalHopKind =
+  | 'related_evidence'
+  | 'timeline'
+  | 'supersession';
+
 export type AgenticRetrievalBudget = {
   maxSteps: number;
   maxTimeMs: number;
@@ -455,6 +464,12 @@ export type AgenticRetrievalTraceStep = {
   tokensEstimated: number;
   costEstimatedUsd: number;
   topHits: AgenticRetrievalTraceHit[];
+  hop: {
+    index: number;
+    kind: AgenticRetrievalHopKind;
+    groundedByMemoryIds: string[];
+    groundedByTitles: string[];
+  } | null;
 };
 
 export type AgenticRetrievalConflict = {
@@ -590,6 +605,22 @@ function hitTitleOf(hit: HybridHitLike): string {
   return String(hit.memory.title ?? 'untitled').trim() || 'untitled';
 }
 
+function hitMemoryTypeOf(hit: HybridHitLike): string | null {
+  const memory = hit.memory as HybridHitLike['memory'] & {
+    memoryType?: string | null;
+    memory_type?: string | null;
+  };
+  return memory.memoryType ?? memory.memory_type ?? null;
+}
+
+function hitSupersededByOf(hit: HybridHitLike): string | null {
+  const memory = hit.memory as HybridHitLike['memory'] & {
+    supersededBy?: string | null;
+    superseded_by?: string | null;
+  };
+  return memory.supersededBy ?? memory.superseded_by ?? null;
+}
+
 function hitIdOf(hit: HybridHitLike, index: number): string {
   return String(hit.memory.id ?? `idx:${index}`);
 }
@@ -648,24 +679,144 @@ function buildEvidenceRefinementQuery<T extends HybridHitLike>(
   query: string,
   hits: T[],
 ): string | null {
-  const queryTokens = new Set(tokenize(query));
-  for (const hit of hits.slice(0, 3)) {
-    const extraTokens = tokenize(hitTitleOf(hit)).filter(
-      (token) =>
-        !queryTokens.has(token) && !AGENTIC_RETRIEVAL_STOPWORDS.has(token),
-    );
-    if (extraTokens.length > 0) {
-      return `${query} ${extraTokens.slice(0, 3).join(' ')}`.trim();
+  const anchor = selectHopAnchorHit(hits);
+  if (!anchor) {
+    return null;
+  }
+  const relatedTypeHints =
+    hitMemoryTypeOf(anchor) === 'decision'
+      ? 'task fact'
+      : hitMemoryTypeOf(anchor) === 'task'
+        ? 'decision fact'
+        : hitMemoryTypeOf(anchor) === 'fact'
+          ? 'decision task'
+          : 'decision task fact';
+  return buildHopQuery(query, hits, relatedTypeHints);
+}
+
+function buildTimelineHopQuery<T extends HybridHitLike>(
+  query: string,
+  hits: T[],
+): string | null {
+  return buildHopQuery(query, hits, 'history timeline current previous');
+}
+
+function buildSupersessionHopQuery<T extends HybridHitLike>(
+  query: string,
+  hits: T[],
+): string | null {
+  const anchor = selectHopAnchorHit(hits);
+  if (!anchor) {
+    return null;
+  }
+  const qualifiers =
+    hitSupersededByOf(anchor) ||
+    CONFLICTING_MEMORY_STATUSES.has(hitStatusOf(anchor) ?? '')
+      ? 'current superseded corrected replacement'
+      : 'superseded corrected retracted disputed';
+  return buildHopQuery(query, hits, qualifiers);
+}
+
+function selectHopAnchorHit<T extends HybridHitLike>(hits: T[]): T | null {
+  const preferred = hits.find(
+    (hit) => !CONFLICTING_MEMORY_STATUSES.has(hitStatusOf(hit) ?? ''),
+  );
+  return preferred ?? hits[0] ?? null;
+}
+
+function buildHopGrounding<T extends HybridHitLike>(hits: T[]): T[] {
+  const seen = new Set<string>();
+  const grounding: T[] = [];
+  hits.forEach((hit, index) => {
+    const id = hitIdOf(hit, index);
+    if (seen.has(id) || grounding.length >= 2) {
+      return;
+    }
+    seen.add(id);
+    grounding.push(hit);
+  });
+  return grounding;
+}
+
+function buildHopQuery<T extends HybridHitLike>(
+  query: string,
+  hits: T[],
+  suffix: string,
+): string | null {
+  const stemTokens = buildGroundedHopStem(query, hits);
+  if (stemTokens.length === 0) {
+    return null;
+  }
+  const maxSuffixTokens =
+    stemTokens.length <= 1 ? 1 : stemTokens.length >= 3 ? 1 : 2;
+  const suffixTokens = tokenize(suffix).slice(0, maxSuffixTokens);
+  const merged = joinDistinctQueryTokens([
+    stemTokens.join(' '),
+    suffixTokens.join(' '),
+  ]);
+  return merged.trim() ? merged : null;
+}
+
+function buildGroundedHopStem<T extends HybridHitLike>(
+  query: string,
+  hits: T[],
+): string[] {
+  const anchor = selectHopAnchorHit(hits);
+  if (!anchor) {
+    return [];
+  }
+  const queryTokens = tokenize(query).filter(
+    (token) => !AGENTIC_RETRIEVAL_STOPWORDS.has(token),
+  );
+  const queryTokenSet = new Set(queryTokens);
+  const anchorTokens = tokenize(hitTitleOf(anchor)).filter(
+    (token) => !AGENTIC_RETRIEVAL_STOPWORDS.has(token),
+  );
+  const overlap: string[] = [];
+  const seenOverlap = new Set<string>();
+  for (const token of anchorTokens) {
+    if (!queryTokenSet.has(token) || seenOverlap.has(token)) {
+      continue;
+    }
+    seenOverlap.add(token);
+    overlap.push(token);
+  }
+  if (overlap.length >= 2) {
+    return overlap.slice(0, 3);
+  }
+
+  const stem = [...overlap];
+  for (const token of anchorTokens) {
+    if (seenOverlap.has(token)) {
+      continue;
+    }
+    seenOverlap.add(token);
+    stem.push(token);
+    if (stem.length >= 3) {
+      return stem;
     }
   }
-  const fallbackTitle = hits[0] ? hitTitleOf(hits[0]) : '';
-  if (
-    fallbackTitle &&
-    fallbackTitle.toLowerCase() !== query.trim().toLowerCase()
-  ) {
-    return `${query} ${fallbackTitle}`.trim();
+
+  if (stem.length > 0) {
+    return stem;
   }
-  return null;
+
+  return [...new Set(queryTokens)].slice(0, 3);
+}
+
+function joinDistinctQueryTokens(parts: Array<string | null | undefined>): string {
+  const seen = new Set<string>();
+  const merged: string[] = [];
+  for (const part of parts) {
+    for (const token of tokenize(part ?? '')) {
+      if (seen.has(token)) {
+        continue;
+      }
+      seen.add(token);
+      merged.push(token);
+    }
+  }
+  return merged.join(' ');
 }
 
 function detectConflicts<T extends HybridHitLike>(hits: T[]): AgenticRetrievalConflict[] {
@@ -715,32 +866,38 @@ export async function runBoundedAgenticRetrieval<T extends HybridHitLike>(input:
   const seenQueries = new Set<string>();
   let usedTokens = 0;
   let usedCostUsd = 0;
+  let hopIndex = 0;
   let stopReason: AgenticRetrievalStopReason = 'not_enough_data';
   let outcome: AgenticRetrievalOutcome = 'not_enough_data';
 
   const phasePlan: Array<{
     phase: AgenticRetrievalPhase;
+    hopKind: AgenticRetrievalHopKind | null;
     buildQuery: (mergedHits: T[]) => string | null;
     includeHistory: boolean;
   }> = [
     {
       phase: 'initial',
+      hopKind: null,
       buildQuery: () => input.query.trim(),
       includeHistory: false,
     },
     {
       phase: 'evidence',
+      hopKind: 'related_evidence',
       buildQuery: (mergedHits) => buildEvidenceRefinementQuery(input.query, mergedHits),
       includeHistory: false,
     },
     {
       phase: 'timeline',
-      buildQuery: () => input.query.trim(),
+      hopKind: 'timeline',
+      buildQuery: (mergedHits) => buildTimelineHopQuery(input.query, mergedHits),
       includeHistory: true,
     },
     {
       phase: 'conflict_check',
-      buildQuery: () => `${input.query.trim()} disputed superseded corrected retracted`,
+      hopKind: 'supersession',
+      buildQuery: (mergedHits) => buildSupersessionHopQuery(input.query, mergedHits),
       includeHistory: true,
     },
   ];
@@ -773,6 +930,9 @@ export async function runBoundedAgenticRetrieval<T extends HybridHitLike>(input:
     if (!query) {
       continue;
     }
+    const grounding = phasePlanEntry.hopKind
+      ? buildHopGrounding(mergedHitsBeforeStep)
+      : [];
     const queryKey = `${phasePlanEntry.includeHistory ? 'history' : 'current'}:${query.toLowerCase()}`;
     if (seenQueries.has(queryKey)) {
       continue;
@@ -812,6 +972,16 @@ export async function runBoundedAgenticRetrieval<T extends HybridHitLike>(input:
       tokensEstimated,
       costEstimatedUsd,
       topHits: buildTraceHits(scoped.hits),
+      hop: phasePlanEntry.hopKind
+        ? {
+            index: ++hopIndex,
+            kind: phasePlanEntry.hopKind,
+            groundedByMemoryIds: grounding.map((hit, index) =>
+              hit.memory.id ? String(hit.memory.id) : hitIdOf(hit, index),
+            ),
+            groundedByTitles: grounding.map((hit) => hitTitleOf(hit)),
+          }
+        : null,
     });
 
     const mergedHitsAfterStep = mergeHybridHits(hitLists);
