@@ -19,6 +19,7 @@ describe('mcp profile', () => {
   it('limits chatgpt pilot tools and blocks owner ops', async () => {
     const mcp = createMcpHandlers({ profile: 'chatgpt' });
     expect(mcp.profile).toBe('chatgpt');
+    expect(CHATGPT_PILOT_TOOLS).toHaveLength(7);
     expect([...mcp.tools.map((t) => t.name)].sort()).toEqual([...CHATGPT_PILOT_TOOLS].sort());
 
     await expect(

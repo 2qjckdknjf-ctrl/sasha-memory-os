@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { createConnectorRegistry } from '@memory-os/connector-sdk';
-import { MemoryStore, type MemoryRecord } from '@memory-os/domain';
+import { createSeededStore, MemoryStore, type MemoryRecord } from '@memory-os/domain';
 import { createApp } from './app.js';
 
 const projectId = '44444444-4444-4444-8444-444444444401';
@@ -2446,6 +2446,136 @@ describe('memory api demo slice', () => {
     expect(emptyWindow.status).toBe(200);
     const emptyBody = await emptyWindow.json();
     expect(emptyBody.hits).toHaveLength(0);
+  });
+
+  it('runs bounded agentic search with an audit trace and zero write attempts', async () => {
+    const store = createSeededStore();
+    const app = createApp({ store });
+
+    const res = await app.request('/v1/search', {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'x-actor-key': 'cursor',
+      },
+      body: JSON.stringify({
+        query: 'Slice 01',
+        project_id: projectId,
+        retrieval_mode: 'agentic',
+        pack_context: true,
+        agentic: {
+          max_steps: 2,
+          min_evidence_hits: 1,
+        },
+      }),
+    });
+
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.agentic.outcome).toBe('answered');
+    expect(body.agentic.stopReason).toBe('enough_evidence');
+    expect(body.agentic.toolAllowlist).toEqual(['memory.search']);
+    expect(body.agentic.writeActionsAttempted).toBe(0);
+    expect(body.agentic.trace.projectId).toBe(projectId);
+    expect(body.agentic.trace.steps.length).toBeGreaterThan(0);
+    expect(body.context?.packedCount).toBeGreaterThan(0);
+    expect(store.auditLog[0]?.action).toBe('retrieval.agentic_search.completed');
+    expect(store.auditLog[0]?.afterState).toMatchObject({
+      mode: 'agentic',
+      projectId,
+      toolAllowlist: ['memory.search'],
+      writeActionsAttempted: 0,
+    });
+  });
+
+  it('rejects bounded agentic search without an explicit project_id instead of defaulting to AISTROYKA', async () => {
+    const app = createApp({});
+
+    const res = await app.request('/v1/search', {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'x-actor-key': 'cursor',
+      },
+      body: JSON.stringify({
+        query: 'AISTROYKA',
+        retrieval_mode: 'agentic',
+      }),
+    });
+
+    expect(res.status).toBe(400);
+    expect(await res.json()).toEqual({
+      error:
+        'project_id is required for bounded agentic retrieval; never default to AISTROYKA',
+    });
+  });
+
+  it('keeps bounded agentic search scoped to the explicit project on the gateway path', async () => {
+    const gateway = {
+      search: vi.fn(async () => [
+        {
+          memory: {
+            id: 'scope-hit',
+            projectId,
+            title: 'Scoped result',
+            content: 'This belongs to the explicit project.',
+            status: 'verified',
+          },
+          score: 0.91,
+          reason: 'structured+text',
+        },
+        {
+          memory: {
+            id: 'scope-leak',
+            projectId: otherProjectId,
+            title: 'Leaked result',
+            content: 'This must be filtered out.',
+            status: 'active',
+          },
+          score: 0.99,
+          reason: 'structured+text',
+        },
+      ]),
+      appendAuditEvent: vi.fn(async () => ({})),
+      createDecision: vi.fn(async () => ({ id: 'decision-should-not-run' })),
+      captureText: vi.fn(async () => ({ process: null })),
+    };
+    const app = createApp({ gateway: gateway as any });
+
+    const res = await app.request('/v1/search', {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'x-actor-key': 'cursor',
+      },
+      body: JSON.stringify({
+        query: 'Scoped result',
+        project_id: projectId,
+        retrieval_mode: 'agentic',
+        agentic: {
+          max_steps: 1,
+          min_evidence_hits: 1,
+        },
+      }),
+    });
+
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.hits).toHaveLength(1);
+    expect(body.hits[0]?.memory?.projectId).toBe(projectId);
+    expect(body.agentic.trace.steps[0]?.scopeFilteredCount).toBe(1);
+    expect(gateway.appendAuditEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: 'retrieval.agentic_search.completed',
+        afterState: expect.objectContaining({
+          mode: 'agentic',
+          projectId,
+          writeActionsAttempted: 0,
+        }),
+      }),
+    );
+    expect(gateway.createDecision).not.toHaveBeenCalled();
+    expect(gateway.captureText).not.toHaveBeenCalled();
   });
 
   it('previews extraction candidates', async () => {

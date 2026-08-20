@@ -1,10 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import { createSeededStore } from '@memory-os/domain';
 import {
+  AGENTIC_RETRIEVAL_TOOL_ALLOWLIST,
   authorityMultiplier,
   fuseRanksRrf,
   packSearchContext,
   projectContext,
+  runBoundedAgenticRetrieval,
   searchMemories,
 } from './index.js';
 
@@ -159,5 +161,184 @@ describe('retrieval stub', () => {
       '44444444-4444-4444-8444-444444444401',
     );
     expect(ctx.decisions.length).toBe(1);
+  });
+
+  it('runs bounded agentic retrieval with step trace and scoped results', async () => {
+    const targetProjectId = '44444444-4444-4444-8444-444444444401';
+    const otherProjectId = '44444444-4444-4444-8444-444444444499';
+    const calls: string[] = [];
+    const result = await runBoundedAgenticRetrieval({
+      query: 'Slice kickoff',
+      projectId: targetProjectId,
+      search: async ({ query, includeHistory }) => {
+        calls.push(`${includeHistory ? 'history' : 'current'}:${query}`);
+        if (query.includes('disputed superseded corrected retracted')) {
+          return [
+            {
+              memory: {
+                id: 'm-2',
+                projectId: targetProjectId,
+                title: 'Kickoff handoff note',
+                content: 'Current evidence remains aligned.',
+                status: 'active',
+              },
+              score: 0.82,
+              reason: 'hybrid:rpc+rrf',
+            },
+          ];
+        }
+        if (includeHistory) {
+          return [
+            {
+              memory: {
+                id: 'm-1',
+                projectId: targetProjectId,
+                title: 'Slice kickoff decision',
+                content: 'History confirms the kickoff decision.',
+                status: 'verified',
+              },
+              score: 0.93,
+              reason: 'hybrid:rpc+rrf',
+            },
+            {
+              memory: {
+                id: 'm-2',
+                projectId: targetProjectId,
+                title: 'Kickoff handoff note',
+                content: 'Timeline evidence references the same slice.',
+                status: 'active',
+              },
+              score: 0.81,
+              reason: 'hybrid:rpc+rrf',
+            },
+          ];
+        }
+        if (query.includes('decision')) {
+          return [
+            {
+              memory: {
+                id: 'm-1',
+                projectId: targetProjectId,
+                title: 'Slice kickoff decision',
+                content: 'Decision evidence for Slice kickoff.',
+                status: 'verified',
+              },
+              score: 0.94,
+              reason: 'hybrid:rpc+rrf',
+            },
+            {
+              memory: {
+                id: 'm-2',
+                projectId: targetProjectId,
+                title: 'Kickoff handoff note',
+                content: 'Follow-up evidence for Slice kickoff.',
+                status: 'active',
+              },
+              score: 0.83,
+              reason: 'hybrid:rpc+rrf',
+            },
+          ];
+        }
+        return [
+          {
+            memory: {
+              id: 'm-1',
+              projectId: targetProjectId,
+              title: 'Slice kickoff decision',
+              content: 'Decision evidence for Slice kickoff.',
+              status: 'verified',
+            },
+            score: 0.91,
+            reason: 'hybrid:rpc+rrf',
+          },
+          {
+            memory: {
+              id: 'leak-1',
+              projectId: otherProjectId,
+              title: 'Wrong project leak',
+              content: 'This must be filtered out.',
+              status: 'active',
+            },
+            score: 0.99,
+            reason: 'hybrid:rpc+rrf',
+          },
+        ];
+      },
+    });
+
+    expect(result.outcome).toBe('answered');
+    expect(result.stopReason).toBe('enough_evidence');
+    expect(result.toolAllowlist).toEqual(AGENTIC_RETRIEVAL_TOOL_ALLOWLIST);
+    expect(result.writeActionsAttempted).toBe(0);
+    expect(result.trace.steps.length).toBeGreaterThanOrEqual(3);
+    expect(result.trace.steps[0]?.scopeFilteredCount).toBe(1);
+    expect(result.hits.every((hit) => hit.memory.projectId === targetProjectId)).toBe(true);
+    expect(result.context.packedCount).toBeGreaterThan(0);
+    expect(calls.some((call) => call.startsWith('history:'))).toBe(true);
+  });
+
+  it('stops bounded agentic retrieval when max steps are exhausted', async () => {
+    const result = await runBoundedAgenticRetrieval({
+      query: 'thin evidence',
+      projectId: '44444444-4444-4444-8444-444444444401',
+      budget: { maxSteps: 1, minEvidenceHits: 3 },
+      search: async () => [
+        {
+          memory: {
+            id: 'only-hit',
+            projectId: '44444444-4444-4444-8444-444444444401',
+            title: 'Only one candidate',
+            content: 'This is not enough evidence.',
+            status: 'candidate',
+          },
+          score: 0.52,
+          reason: 'hybrid:rpc+rrf',
+        },
+      ],
+    });
+
+    expect(result.outcome).toBe('budget_exhausted');
+    expect(result.stopReason).toBe('max_steps');
+    expect(result.budget.usedSteps).toBe(1);
+    expect(result.writeActionsAttempted).toBe(0);
+  });
+
+  it('requires at least minEvidenceHits eligible hits even when the only hit is verified', async () => {
+    const result = await runBoundedAgenticRetrieval({
+      query: 'single verified hit',
+      projectId: '44444444-4444-4444-8444-444444444401',
+      budget: { minEvidenceHits: 2, maxSteps: 4 },
+      search: async () => [
+        {
+          memory: {
+            id: 'verified-only',
+            projectId: '44444444-4444-4444-8444-444444444401',
+            title: 'Only verified result',
+            content: 'One verified result is still insufficient here.',
+            status: 'verified',
+          },
+          score: 0.88,
+          reason: 'hybrid:rpc+rrf',
+        },
+      ],
+    });
+
+    expect(result.outcome).toBe('not_enough_data');
+    expect(result.stopReason).toBe('not_enough_data');
+    expect(result.hits).toHaveLength(1);
+    expect(result.writeActionsAttempted).toBe(0);
+  });
+
+  it('stops bounded agentic retrieval with not enough data when the first search is empty', async () => {
+    const result = await runBoundedAgenticRetrieval({
+      query: 'missing evidence query',
+      projectId: '44444444-4444-4444-8444-444444444401',
+      search: async () => [],
+    });
+
+    expect(result.outcome).toBe('not_enough_data');
+    expect(result.stopReason).toBe('not_enough_data');
+    expect(result.hits).toEqual([]);
+    expect(result.trace.steps[0]?.hitCount).toBe(0);
   });
 });

@@ -27,10 +27,12 @@ import {
   createEmbeddingAdapter,
   createExtractionAdapter,
   embedMemoryText,
+  type HybridHitLike,
   packSearchContext,
   planCandidateConsolidations,
   projectContext,
   rerankHitsHybrid,
+  runBoundedAgenticRetrieval,
   searchMemoriesHybrid,
 } from '@memory-os/retrieval';
 import {
@@ -488,6 +490,39 @@ async function resolveRequiredProjectId(
   return resolvedProjectId;
 }
 
+async function resolveExplicitProjectId(
+  gateway: SupabaseMemoryGateway | null,
+  args: Record<string, unknown>,
+): Promise<string> {
+  const explicitRef =
+    typeof args.project_id === 'string' ? args.project_id.trim() : '';
+  if (!explicitRef) {
+    throw new Error(
+      'project_id is required for bounded agentic retrieval; never default to AISTROYKA',
+    );
+  }
+  const subjectId = resolveActorSubjectId(args);
+  const workspaceId = resolveWorkspaceId(args);
+  const resolution = gateway
+    ? await gateway.resolveProjectRef({
+        subjectId,
+        workspaceId,
+        projectRef: explicitRef,
+      })
+    : localResolveProjectRef(explicitRef);
+  if (resolution.matchCount > 1) {
+    throw new Error(
+      `project reference "${explicitRef}" is ambiguous. Candidates: ${formatProjectCandidates(
+        resolution.candidates,
+      )}`,
+    );
+  }
+  if (!resolution.projectId) {
+    throw new Error('project not found; pass a valid project UUID or slug from /projects');
+  }
+  return resolution.projectId;
+}
+
 function resolveCollectionProjectId(
   metadata: Record<string, unknown> | undefined,
   collectionId: string | undefined,
@@ -712,7 +747,7 @@ export const mcpTools: McpTool[] = [
   {
     name: 'memory.search',
     description:
-      'Hybrid RRF search over allowed memories (optional temporal window + packed context)',
+      'Hybrid RRF search over allowed memories with optional bounded agentic retrieval',
     inputSchema: {
       type: 'object',
       properties: {
@@ -721,6 +756,17 @@ export const mcpTools: McpTool[] = [
         include_history: { type: 'boolean' },
         recorded_after: { type: 'string' },
         recorded_before: { type: 'string' },
+        retrieval_mode: { type: 'string', enum: ['hybrid', 'agentic'] },
+        agentic: {
+          type: 'object',
+          properties: {
+            max_steps: { type: 'number' },
+            max_time_ms: { type: 'number' },
+            max_tokens: { type: 'number' },
+            max_cost_usd: { type: 'number' },
+            min_evidence_hits: { type: 'number' },
+          },
+        },
         pack_context: { type: 'boolean' },
         max_context_chars: { type: 'number' },
         actor_subject_id: { type: 'string' },
@@ -1318,11 +1364,6 @@ export function createMcpHandlers(options?: {
           const subjectId = String(args.actor_subject_id);
           const workspaceId = String(args.workspace_id ?? DEFAULT_WORKSPACE_ID);
           const authz = localAuthzForSubject(subjectId, workspaceId);
-          const resolvedProjectId = await resolveProjectForArgs({
-            gateway: gateway ?? undefined,
-            args,
-            requireProject: false,
-          });
           const recordedAfter = args.recorded_after
             ? String(args.recorded_after)
             : undefined;
@@ -1334,62 +1375,189 @@ export function createMcpHandlers(options?: {
             typeof args.max_context_chars === 'number'
               ? args.max_context_chars
               : undefined;
-          if (gateway) {
-            let queryEmbedding: number[] | null = null;
-            try {
-              const adapter = createEmbeddingAdapter();
-              const embedded = await adapter.embed({ texts: [query] });
-              if ((embedded.vectors[0]?.length ?? 0) === 32) {
-                queryEmbedding = embedded.vectors[0] ?? null;
+          const retrievalMode =
+            args.retrieval_mode === 'agentic' ||
+            (typeof args.agentic === 'object' && args.agentic !== null)
+              ? 'agentic'
+              : 'hybrid';
+          const searchOnce: (input: {
+            query: string;
+            projectId?: string;
+            includeHistory: boolean;
+          }) => Promise<HybridHitLike[]> = async (input) => {
+            const projectId =
+              typeof input.projectId === 'string' && input.projectId.trim()
+                ? input.projectId.trim()
+                : undefined;
+            if (gateway) {
+              let queryEmbedding: number[] | null = null;
+              try {
+                const adapter = createEmbeddingAdapter();
+                const embedded = await adapter.embed({ texts: [input.query] });
+                if ((embedded.vectors[0]?.length ?? 0) === 32) {
+                  queryEmbedding = embedded.vectors[0] ?? null;
+                }
+              } catch {
+                queryEmbedding = null;
               }
-            } catch {
-              queryEmbedding = null;
+              const raw = await gateway.search({
+                subjectId,
+                query: input.query,
+                projectId,
+                includeHistory: input.includeHistory,
+                queryEmbedding,
+                recordedAfter,
+                recordedBefore,
+              });
+              const list = (Array.isArray(raw) ? raw : []) as Array<{
+                memory: {
+                  id?: string | null;
+                  title?: string | null;
+                  content?: string | null;
+                  status?: string | null;
+                  recordedAt?: string | null;
+                  recorded_at?: string | null;
+                  embedding?: number[] | null;
+                  projectId?: string | null;
+                  project_id?: string | null;
+                };
+                score: number;
+                reason?: string;
+              }>;
+              return rerankHitsHybrid(list, input.query, {
+                reason: 'hybrid:rpc+rrf',
+                recordedAfter,
+                recordedBefore,
+              });
             }
-            const raw = await gateway.search({
-              subjectId: String(args.actor_subject_id),
+            return searchMemoriesHybrid(
+              filterReadableOfflineMemories(authz, store),
+              input.query,
+              {
+                projectId,
+                includeHistory: input.includeHistory,
+                recordedAfter,
+                recordedBefore,
+              },
+            );
+          };
+          if (retrievalMode === 'agentic') {
+            const resolvedProjectId = await resolveExplicitProjectId(
+              gateway,
+              args,
+            );
+            const agenticArgs =
+              typeof args.agentic === 'object' && args.agentic !== null
+                ? (args.agentic as Record<string, unknown>)
+                : {};
+            const result = await runBoundedAgenticRetrieval({
               query,
-              projectId: resolvedProjectId ?? undefined,
+              projectId: resolvedProjectId,
+              search: searchOnce,
+              budget: {
+                maxSteps:
+                  typeof agenticArgs.max_steps === 'number'
+                    ? agenticArgs.max_steps
+                    : undefined,
+                maxTimeMs:
+                  typeof agenticArgs.max_time_ms === 'number'
+                    ? agenticArgs.max_time_ms
+                    : undefined,
+                maxTokens:
+                  typeof agenticArgs.max_tokens === 'number'
+                    ? agenticArgs.max_tokens
+                    : undefined,
+                maxCostUsd:
+                  typeof agenticArgs.max_cost_usd === 'number'
+                    ? agenticArgs.max_cost_usd
+                    : undefined,
+                minEvidenceHits:
+                  typeof agenticArgs.min_evidence_hits === 'number'
+                    ? agenticArgs.min_evidence_hits
+                    : undefined,
+              },
+              recordedAfter,
+              recordedBefore,
+              maxContextChars: pack ? maxContextChars : undefined,
+            });
+            const auditState = {
+              mode: 'agentic',
+              query,
+              projectId: resolvedProjectId,
               includeHistory: Boolean(args.include_history),
-              queryEmbedding,
-              recordedAfter,
-              recordedBefore,
-            });
-            const list = (Array.isArray(raw) ? raw : []) as Array<{
-              memory: {
-                id?: string | null;
-                title?: string | null;
-                content?: string | null;
-                status?: string | null;
-                recordedAt?: string | null;
-                recorded_at?: string | null;
-                embedding?: number[] | null;
-              };
-              score: number;
-              reason?: string;
-            }>;
-            const hits = await rerankHitsHybrid(list, query, {
-              reason: 'hybrid:rpc+rrf',
-              recordedAfter,
-              recordedBefore,
-            });
+              recordedAfter: recordedAfter ?? null,
+              recordedBefore: recordedBefore ?? null,
+              outcome: result.outcome,
+              stopReason: result.stopReason,
+              writeActionsAttempted: result.writeActionsAttempted,
+              toolAllowlist: [...result.toolAllowlist],
+              budget: result.budget,
+              trace: result.trace,
+              conflicts: result.conflicts,
+              topResults: result.hits.slice(0, 5).map((hit) => ({
+                memoryId: hit.memory.id ? String(hit.memory.id) : null,
+                title: String(hit.memory.title ?? 'untitled'),
+                status:
+                  typeof hit.memory.status === 'string' ? hit.memory.status : null,
+                projectId:
+                  'projectId' in hit.memory &&
+                  typeof hit.memory.projectId === 'string'
+                    ? hit.memory.projectId
+                    : 'project_id' in hit.memory &&
+                        typeof hit.memory.project_id === 'string'
+                      ? hit.memory.project_id
+                      : null,
+                score: Number(hit.score),
+              })),
+            };
+            if (gateway) {
+              await gateway.appendAuditEvent({
+                subjectId,
+                workspaceId,
+                action: 'retrieval.agentic_search.completed',
+                objectType: 'agentic_retrieval',
+                objectId: randomUUID(),
+                reason: result.stopReason,
+                afterState: auditState,
+              });
+            } else {
+              store.createAuditEvent({
+                workspaceId,
+                actorSubjectId: subjectId,
+                action: 'retrieval.agentic_search.completed',
+                objectType: 'agentic_retrieval',
+                objectId: randomUUID(),
+                reason: result.stopReason,
+                afterState: auditState,
+              });
+            }
             return {
-              hits,
-              ranking: 'hybrid-rrf',
+              hits: result.hits,
+              ranking: result.ranking,
               ...(pack
-                ? { context: packSearchContext(hits, { maxChars: maxContextChars }) }
+                ? { context: result.context }
                 : {}),
+              agentic: {
+                outcome: result.outcome,
+                stopReason: result.stopReason,
+                writeActionsAttempted: result.writeActionsAttempted,
+                toolAllowlist: result.toolAllowlist,
+                budget: result.budget,
+                trace: result.trace,
+                conflicts: result.conflicts,
+              },
             };
           }
-          const hits = await searchMemoriesHybrid(
-            filterReadableOfflineMemories(authz, store),
+          const resolvedProjectId = await resolveProjectForArgs({
+            gateway: gateway ?? undefined,
+            args,
+            requireProject: false,
+          });
+          const hits = await searchOnce({
             query,
-            {
-              projectId: resolvedProjectId ?? undefined,
-              includeHistory: Boolean(args.include_history),
-              recordedAfter,
-              recordedBefore,
-            },
-          );
+            projectId: resolvedProjectId ?? undefined,
+            includeHistory: Boolean(args.include_history),
+          });
           return {
             hits,
             ranking: 'hybrid-rrf',

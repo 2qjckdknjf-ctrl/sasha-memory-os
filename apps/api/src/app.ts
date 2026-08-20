@@ -83,10 +83,12 @@ import {
   createEmbeddingAdapter,
   createExtractionAdapter,
   embedMemoryText,
+  type HybridHitLike,
   packSearchContext,
   planCandidateConsolidations,
   projectContext,
   rerankHitsHybrid,
+  runBoundedAgenticRetrieval,
   searchMemoriesHybrid,
 } from '@memory-os/retrieval';
 import { createConfiguredVaultStore } from '@memory-os/db';
@@ -599,6 +601,18 @@ function missingProjectResponse(c: { json: (body: { error: string }, status: 400
 
 function missingProjectReadResponse(c: { json: (body: { error: string }, status: 400) => Response }) {
   return c.json({ error: 'project_id is required for this read' }, 400);
+}
+
+function missingAgenticProjectResponse(c: {
+  json: (body: { error: string }, status: 400) => Response;
+}) {
+  return c.json(
+    {
+      error:
+        'project_id is required for bounded agentic retrieval; never default to AISTROYKA',
+    },
+    400,
+  );
 }
 
 async function resolveProjectIdForWrite(input: {
@@ -5241,16 +5255,47 @@ export function createApp(options?: {
       recorded_before?: string;
       pack_context?: boolean;
       max_context_chars?: number;
+      retrieval_mode?: 'hybrid' | 'agentic';
+      agentic?: {
+        max_steps?: number;
+        max_time_ms?: number;
+        max_tokens?: number;
+        max_cost_usd?: number;
+        min_evidence_hits?: number;
+      };
     }>();
     const authz = c.get('authz');
     const gw = c.get('gateway');
     const pack = Boolean(body.pack_context);
-    if (gw) {
-      try {
+    const retrievalMode =
+      body.retrieval_mode === 'agentic' || body.agentic ? 'agentic' : 'hybrid';
+    const requestId = c.get('requestId');
+    const storeLocal = c.get('store');
+    const allowed = gw
+      ? null
+      : [...storeLocal.memories.values()].filter((m) =>
+          authorize(authz, {
+            resourceType: 'memory',
+            action: 'read',
+            projectId: m.projectId,
+            sensitivity: m.sensitivity,
+          }),
+        );
+
+    const searchOnce: (input: {
+      query: string;
+      projectId?: string;
+      includeHistory: boolean;
+    }) => Promise<HybridHitLike[]> = async (input) => {
+      const projectId =
+        typeof input.projectId === 'string' && input.projectId.trim()
+          ? input.projectId.trim()
+          : undefined;
+      if (gw) {
         let queryEmbedding: number[] | null = null;
         try {
           const adapter = createEmbeddingAdapter();
-          const embedded = await adapter.embed({ texts: [body.query ?? ''] });
+          const embedded = await adapter.embed({ texts: [input.query] });
           if ((embedded.vectors[0]?.length ?? 0) === 32) {
             queryEmbedding = embedded.vectors[0] ?? null;
           }
@@ -5259,9 +5304,9 @@ export function createApp(options?: {
         }
         const raw = await gw.search({
           subjectId: authz.subjectId,
-          query: body.query ?? '',
-          projectId: body.project_id,
-          includeHistory: body.include_history,
+          query: input.query,
+          projectId,
+          includeHistory: input.includeHistory,
           queryEmbedding,
           recordedAfter: body.recorded_after,
           recordedBefore: body.recorded_before,
@@ -5275,20 +5320,127 @@ export function createApp(options?: {
             recordedAt?: string | null;
             recorded_at?: string | null;
             embedding?: number[] | null;
+            projectId?: string | null;
+            project_id?: string | null;
           };
           score: number;
           reason?: string;
         }>;
-        const hits = await rerankHitsHybrid(list, body.query ?? '', {
+        return rerankHitsHybrid(list, input.query, {
           reason: 'hybrid:rpc+rrf',
           recordedAfter: body.recorded_after,
           recordedBefore: body.recorded_before,
+        });
+      }
+      return searchMemoriesHybrid(allowed ?? [], input.query, {
+        projectId,
+        includeHistory: input.includeHistory,
+        recordedAfter: body.recorded_after,
+        recordedBefore: body.recorded_before,
+      });
+    };
+
+    if (retrievalMode === 'agentic') {
+      const projectId = body.project_id?.trim();
+      if (!projectId) {
+        return missingAgenticProjectResponse(c);
+      }
+      try {
+        const result = await runBoundedAgenticRetrieval({
+          query: body.query ?? '',
+          projectId,
+          search: searchOnce,
+          budget: {
+            maxSteps: body.agentic?.max_steps,
+            maxTimeMs: body.agentic?.max_time_ms,
+            maxTokens: body.agentic?.max_tokens,
+            maxCostUsd: body.agentic?.max_cost_usd,
+            minEvidenceHits: body.agentic?.min_evidence_hits,
+          },
+          recordedAfter: body.recorded_after,
+          recordedBefore: body.recorded_before,
+          maxContextChars: pack ? body.max_context_chars : undefined,
+        });
+        const auditState = {
+          mode: 'agentic',
+          query: body.query ?? '',
+          projectId,
+          includeHistory: Boolean(body.include_history),
+          recordedAfter: body.recorded_after ?? null,
+          recordedBefore: body.recorded_before ?? null,
+          outcome: result.outcome,
+          stopReason: result.stopReason,
+          writeActionsAttempted: result.writeActionsAttempted,
+          toolAllowlist: [...result.toolAllowlist],
+          budget: result.budget,
+          trace: result.trace,
+          conflicts: result.conflicts,
+          topResults: result.hits.slice(0, 5).map((hit) => ({
+            memoryId: hit.memory.id ? String(hit.memory.id) : null,
+            title: String(hit.memory.title ?? 'untitled'),
+            status: typeof hit.memory.status === 'string' ? hit.memory.status : null,
+            projectId:
+              'projectId' in hit.memory && typeof hit.memory.projectId === 'string'
+                ? hit.memory.projectId
+                : 'project_id' in hit.memory && typeof hit.memory.project_id === 'string'
+                  ? hit.memory.project_id
+                  : null,
+            score: Number(hit.score),
+          })),
+        };
+        if (gw) {
+          await gw.appendAuditEvent({
+            subjectId: authz.subjectId,
+            workspaceId: authz.workspaceId,
+            action: 'retrieval.agentic_search.completed',
+            objectType: 'agentic_retrieval',
+            objectId: requestId,
+            reason: result.stopReason,
+            afterState: auditState,
+          });
+        } else {
+          storeLocal.createAuditEvent({
+            workspaceId: authz.workspaceId,
+            actorSubjectId: authz.subjectId,
+            action: 'retrieval.agentic_search.completed',
+            objectType: 'agentic_retrieval',
+            objectId: requestId,
+            reason: result.stopReason,
+            afterState: auditState,
+          });
+        }
+        return c.json({
+          hits: result.hits,
+          ranking: result.ranking,
+          backend: gw ? 'supabase' : 'memory-store',
+          ...(pack ? { context: result.context } : {}),
+          agentic: {
+            outcome: result.outcome,
+            stopReason: result.stopReason,
+            writeActionsAttempted: result.writeActionsAttempted,
+            toolAllowlist: result.toolAllowlist,
+            budget: result.budget,
+            trace: result.trace,
+            conflicts: result.conflicts,
+          },
+        });
+      } catch (err) {
+        if (isForbiddenError(err)) return c.json({ error: 'forbidden' }, 403);
+        return c.json({ error: (err as Error).message }, 500);
+      }
+    }
+
+    if (gw) {
+      try {
+        const hits = await searchOnce({
+          query: body.query ?? '',
+          projectId: body.project_id ?? '',
+          includeHistory: Boolean(body.include_history),
         });
         return c.json({
           hits,
           backend: 'supabase',
           ranking: 'hybrid-rrf',
-          queryEmbeddingDims: queryEmbedding?.length ?? 0,
           ...(pack
             ? {
                 context: packSearchContext(hits, {
@@ -5303,20 +5455,10 @@ export function createApp(options?: {
       }
     }
 
-    const storeLocal = c.get('store');
-    const allowed = [...storeLocal.memories.values()].filter((m) =>
-      authorize(authz, {
-        resourceType: 'memory',
-        action: 'read',
-        projectId: m.projectId,
-        sensitivity: m.sensitivity,
-      }),
-    );
-    const hits = await searchMemoriesHybrid(allowed, body.query ?? '', {
-      projectId: body.project_id,
-      includeHistory: body.include_history,
-      recordedAfter: body.recorded_after,
-      recordedBefore: body.recorded_before,
+    const hits = await searchOnce({
+      query: body.query ?? '',
+      projectId: body.project_id ?? '',
+      includeHistory: Boolean(body.include_history),
     });
     return c.json({
       hits,

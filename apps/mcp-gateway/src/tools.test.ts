@@ -74,6 +74,7 @@ function createTwoProjectGateway() {
     createDecision: vi.fn(async () => ({ id: 'decision-1' })),
     createHandoff: vi.fn(async () => ({ id: 'handoff-1' })),
     search: vi.fn(async () => []),
+    appendAuditEvent: vi.fn(async () => ({})),
   };
 }
 
@@ -280,6 +281,108 @@ describe('mcp gateway alpha', () => {
     expect(result.hits[0]?.reason).toBe('hybrid:rrf');
     expect(result.context?.packedCount).toBeGreaterThan(0);
     expect(result.context?.text).toContain('[1]');
+  });
+
+  it('requires explicit project_id for bounded agentic memory.search instead of inferring AISTROYKA', async () => {
+    const gateway = createTwoProjectGateway();
+    const mcp = createMcpHandlers({ gateway: gateway as any });
+
+    await expect(
+      mcp.call('memory.search', {
+        query: 'AISTROYKA release plan',
+        actor_subject_id: cursor,
+        retrieval_mode: 'agentic',
+      }),
+    ).rejects.toThrow(
+      /project_id is required for bounded agentic retrieval; never default to AISTROYKA/i,
+    );
+    expect(gateway.search).not.toHaveBeenCalled();
+  });
+
+  it('traces bounded agentic memory.search without widening scope or writing', async () => {
+    const gateway = {
+      resolveProjectRef: vi.fn(async ({ projectRef }: { projectRef?: string | null }) => {
+        if (projectRef === projectId || projectRef === 'aistroyka') {
+          return {
+            projectId,
+            matchCount: 1,
+            candidates: [
+              {
+                id: projectId,
+                slug: 'aistroyka',
+                name: 'AISTROYKA',
+                url: 'https://github.com/aistroyka/core',
+              },
+            ],
+          };
+        }
+        return { projectId: null, matchCount: 0, candidates: [] };
+      }),
+      search: vi.fn(async () => [
+        {
+          memory: {
+            id: 'scoped-hit',
+            projectId,
+            title: 'Scoped memory',
+            content: 'Belongs to the requested project.',
+            status: 'verified',
+          },
+          score: 0.91,
+          reason: 'structured+text',
+        },
+        {
+          memory: {
+            id: 'scoped-leak',
+            projectId: otherProjectId,
+            title: 'Leaked memory',
+            content: 'Must be filtered from the explicit scope.',
+            status: 'active',
+          },
+          score: 0.99,
+          reason: 'structured+text',
+        },
+      ]),
+      appendAuditEvent: vi.fn(async () => ({})),
+      createDecision: vi.fn(async () => ({ id: 'decision-should-not-run' })),
+      captureText: vi.fn(async () => ({ process: null })),
+    };
+    const mcp = createMcpHandlers({ gateway: gateway as any });
+
+    const result = (await mcp.call('memory.search', {
+      query: 'Scoped memory',
+      project_id: projectId,
+      actor_subject_id: cursor,
+      retrieval_mode: 'agentic',
+      agentic: {
+        max_steps: 1,
+        min_evidence_hits: 1,
+      },
+    })) as {
+      hits: Array<{ memory: { projectId?: string | null } }>;
+      agentic: {
+        toolAllowlist: string[];
+        writeActionsAttempted: number;
+        trace: { steps: Array<{ scopeFilteredCount: number }> };
+      };
+    };
+
+    expect(result.hits).toHaveLength(1);
+    expect(result.hits[0]?.memory.projectId).toBe(projectId);
+    expect(result.agentic.toolAllowlist).toEqual(['memory.search']);
+    expect(result.agentic.writeActionsAttempted).toBe(0);
+    expect(result.agentic.trace.steps[0]?.scopeFilteredCount).toBe(1);
+    expect(gateway.appendAuditEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: 'retrieval.agentic_search.completed',
+        afterState: expect.objectContaining({
+          mode: 'agentic',
+          projectId,
+          writeActionsAttempted: 0,
+        }),
+      }),
+    );
+    expect(gateway.createDecision).not.toHaveBeenCalled();
+    expect(gateway.captureText).not.toHaveBeenCalled();
   });
 
   it('default-denies personal Gmail and Calendar memories for Cursor, ROMA, and ChatGPT offline', async () => {
