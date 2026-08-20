@@ -40,7 +40,7 @@ const romaApprovalCheckpointsMigrationPath = fileURLToPath(
 );
 const romaActionBudgetsMigrationPath = fileURLToPath(
   new URL(
-    '../../../supabase/migrations/20260820030240_m12_slice_06_roma_action_budgets.sql',
+    '../../../supabase/migrations/20260820033000_m12_slice_06_roma_action_budgets.sql',
     import.meta.url,
   ),
 );
@@ -221,5 +221,21 @@ describe('m8 slice 03 migration guards', () => {
     expect(romaActionBudgetsSql).toContain(`'budgetAuditEventId'`);
     expect(romaActionBudgetsSql).toContain(`IF COALESCE(v_capture->>'error', '') <> '' THEN`);
     expect(romaActionBudgetsSql).toContain(`'status', v_checkpoint.status`);
+  });
+
+  it('allows approved checkpoint writes to carry both job and checkpoint lineage', () => {
+    expect(romaActionBudgetsSql).toContain(
+      `CONSTRAINT roma_action_budget_events_source_checkpoint_type CHECK (`,
+    );
+    expect(romaActionBudgetsSql).toContain(
+      `source_checkpoint_id IS NULL
+    OR action_type = 'roma_approval_checkpoint_write'`,
+    );
+    expect(romaActionBudgetsSql).not.toContain(
+      `CONSTRAINT roma_action_budget_events_source_pair CHECK (
+    source_job_id IS NULL
+    OR source_checkpoint_id IS NULL
+  )`,
+    );
   });
 });

@@ -64,9 +64,9 @@ CREATE TABLE roma_action_budget_events (
   CONSTRAINT roma_action_budget_events_execution_subject CHECK (
     execution_subject_id = '33333333-3333-4333-8333-333333333304'::uuid
   ),
-  CONSTRAINT roma_action_budget_events_source_pair CHECK (
-    source_job_id IS NULL
-    OR source_checkpoint_id IS NULL
+  CONSTRAINT roma_action_budget_events_source_checkpoint_type CHECK (
+    source_checkpoint_id IS NULL
+    OR action_type = 'roma_approval_checkpoint_write'
   )
 );
 
