@@ -1,8 +1,12 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
   parseWorkerIntervalMs,
+  runRomaAutomationOnce,
+  runRomaProjectFindingsJob,
+  runRomaProjectFindingsTick,
   runRomaProjectHealthJob,
   runRomaProjectHealthTick,
+  type ClaimedRomaProjectFindingsJob,
   type ClaimedRomaProjectHealthJob,
 } from './index.js';
 
@@ -25,6 +29,24 @@ function buildJob(
     projectId,
     requestedBy: owner,
     reason: 'Generate one audited summary.',
+    ...overrides,
+  };
+}
+
+function buildFindingsJob(
+  overrides: Partial<ClaimedRomaProjectFindingsJob> = {},
+): ClaimedRomaProjectFindingsJob {
+  return {
+    jobId: 'job-findings-1',
+    workspaceId,
+    status: 'running',
+    attempt: 0,
+    error: null,
+    idempotencyKey: 'roma-project-findings/44444444-4444-4444-8444-444444444401/slice-03',
+    requestEventId: 'event-findings-1',
+    projectId,
+    requestedBy: owner,
+    reason: 'Generate bounded ROMA QA findings.',
     ...overrides,
   };
 }
@@ -183,6 +205,262 @@ describe('runRomaProjectHealthJob', () => {
       expect.objectContaining({
         subjectId: roma,
         jobId: 'job-roma-1',
+        status: 'failed',
+      }),
+    );
+  });
+});
+
+describe('runRomaProjectFindingsJob', () => {
+  it('writes bounded QA findings as ROMA without quoting raw memory bodies', async () => {
+    const captureConnectorRecord = vi.fn(async (input: Record<string, any>) => ({
+      eventId: `source-${input.metadata.finding_key}`,
+      process: { memoryId: `memory-${input.metadata.finding_key}` },
+    }));
+    const appendAuditEvent = vi.fn(async ({ afterState }: Record<string, any>) => ({
+      id: `audit-${afterState.findingKey}`,
+    }));
+    const completeRomaProjectFindings = vi.fn(async () => ({
+      jobId: 'job-findings-1',
+      status: 'succeeded',
+    }));
+    const gateway = {
+      listProjects: vi.fn(async () => [
+        {
+          id: projectId,
+          slug: 'aistroyka',
+          name: 'AISTROYKA',
+          status: 'active',
+        },
+      ]),
+      projectContext: vi.fn(async () => ({
+        projectId,
+        decisions: [
+          {
+            id: 'decision-1',
+            title: 'Kickoff order',
+            content: 'Decision body must not be copied verbatim.',
+            memoryType: 'decision',
+          },
+        ],
+        tasks: [
+          {
+            id: 'task-1',
+            title: 'Resolve blocked deploy',
+            content: 'Task body must not be copied verbatim.',
+            memoryType: 'task',
+          },
+        ],
+        facts: [
+          {
+            id: 'fact-1',
+            title: 'Risk register refreshed',
+            content: 'Confidential finance note that must never be quoted.',
+            memoryType: 'fact',
+          },
+        ],
+        state: {
+          version: 3,
+          summary: 'Delivery is blocked by deployment access.',
+          state: {
+            stage: 'slice-03',
+            completed: ['slice-02'],
+            blocked: ['deployment access'],
+            next: ['restore deploy access'],
+            risks: ['release window may slip'],
+          },
+        },
+        latestHandoff: null,
+      })),
+      captureConnectorRecord,
+      appendAuditEvent,
+      completeRomaProjectFindings,
+    };
+
+    const result = await runRomaProjectFindingsJob({
+      gateway: gateway as any,
+      job: buildFindingsJob(),
+      romaSubjectId: roma,
+    });
+
+    expect(result.findingCount).toBeGreaterThan(0);
+    expect(captureConnectorRecord).toHaveBeenCalled();
+    expect(appendAuditEvent).toHaveBeenCalled();
+    expect(completeRomaProjectFindings).toHaveBeenCalledWith(
+      expect.objectContaining({
+        subjectId: roma,
+        jobId: 'job-findings-1',
+        status: 'succeeded',
+        findingCount: result.findingCount,
+      }),
+    );
+
+    const captureInputs = captureConnectorRecord.mock.calls.map(
+      (call) => call[0] as Record<string, any>,
+    );
+    for (const input of captureInputs) {
+      expect(input.subjectId).toBe(roma);
+      expect(input.subjectId).not.toBe(owner);
+      expect(input.text).not.toContain('Confidential finance note that must never be quoted.');
+      expect(input.text).toContain('source IDs/titles only');
+      expect(input.metadata.summary_type).toBe('qa_finding');
+      expect(Array.isArray(input.metadata.evidence_refs)).toBe(true);
+      expect(input.provenance.automation.executionSubjectId).toBe(roma);
+    }
+  });
+
+  it('preserves snake_case memory_type values in finding evidence refs', async () => {
+    const captureConnectorRecord = vi.fn(async (input: Record<string, any>) => ({
+      eventId: `source-${input.metadata.finding_key}`,
+      process: { memoryId: `memory-${input.metadata.finding_key}` },
+    }));
+    const gateway = {
+      listProjects: vi.fn(async () => [
+        {
+          id: projectId,
+          slug: 'aistroyka',
+          name: 'AISTROYKA',
+          status: 'active',
+        },
+      ]),
+      projectContext: vi.fn(async () => ({
+        projectId,
+        decisions: [],
+        tasks: [
+          {
+            id: 'task-snake-1',
+            title: 'Resolve blocked deploy',
+            memory_type: 'task',
+          },
+        ],
+        facts: [],
+        state: {
+          version: 3,
+          summary: 'Delivery is blocked by deployment access.',
+          state: {
+            blocked: ['deployment access'],
+            next: ['restore deploy access'],
+            risks: [],
+          },
+        },
+        latestHandoff: null,
+      })),
+      captureConnectorRecord,
+      appendAuditEvent: vi.fn(async ({ afterState }: Record<string, any>) => ({
+        id: `audit-${afterState.findingKey}`,
+      })),
+      completeRomaProjectFindings: vi.fn(async () => ({
+        jobId: 'job-findings-1',
+        status: 'succeeded',
+      })),
+    };
+
+    await runRomaProjectFindingsJob({
+      gateway: gateway as any,
+      job: buildFindingsJob(),
+      romaSubjectId: roma,
+    });
+
+    const blockedFinding = captureConnectorRecord.mock.calls.find(
+      (call) => call[0]?.metadata?.finding_key === 'blocked-work',
+    )?.[0] as Record<string, any> | undefined;
+    expect(blockedFinding).toBeTruthy();
+    expect(blockedFinding?.metadata?.evidence_refs).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          kind: 'memory',
+          memoryId: 'task-snake-1',
+          memoryType: 'task',
+        }),
+      ]),
+    );
+  });
+
+  it('reuses stable finding idempotency keys for identical reruns', async () => {
+    const captureConnectorRecord = vi.fn(async (input: Record<string, any>) => ({
+      eventId: `source-${input.idempotencyKey}`,
+      process: { memoryId: `memory-${input.idempotencyKey}` },
+    }));
+    const gateway = {
+      listProjects: vi.fn(async () => [
+        {
+          id: projectId,
+          slug: 'aistroyka',
+          name: 'AISTROYKA',
+          status: 'active',
+        },
+      ]),
+      projectContext: vi.fn(async () => ({
+        projectId,
+        decisions: [],
+        tasks: [],
+        facts: [],
+        state: {
+          version: 1,
+          summary: '',
+          state: {
+            blocked: [],
+            next: [],
+            risks: [],
+          },
+        },
+        latestHandoff: null,
+      })),
+      captureConnectorRecord,
+      appendAuditEvent: vi.fn(async ({ afterState }: Record<string, any>) => ({
+        id: `audit-${afterState.findingKey}`,
+      })),
+      completeRomaProjectFindings: vi.fn(async () => ({
+        jobId: 'job-findings-1',
+        status: 'succeeded',
+      })),
+    };
+
+    await runRomaProjectFindingsJob({
+      gateway: gateway as any,
+      job: buildFindingsJob(),
+      romaSubjectId: roma,
+    });
+    await runRomaProjectFindingsJob({
+      gateway: gateway as any,
+      job: buildFindingsJob(),
+      romaSubjectId: roma,
+    });
+
+    const firstKeys = captureConnectorRecord.mock.calls
+      .slice(0, captureConnectorRecord.mock.calls.length / 2)
+      .map((call) => call[0]?.idempotencyKey);
+    const secondKeys = captureConnectorRecord.mock.calls
+      .slice(captureConnectorRecord.mock.calls.length / 2)
+      .map((call) => call[0]?.idempotencyKey);
+    expect(secondKeys).toEqual(firstKeys);
+  });
+
+  it('fails the findings job when the project is not visible to ROMA', async () => {
+    const completeRomaProjectFindings = vi.fn(async () => ({
+      jobId: 'job-findings-1',
+      status: 'failed',
+    }));
+    const gateway = {
+      listProjects: vi.fn(async () => []),
+      projectContext: vi.fn(),
+      captureConnectorRecord: vi.fn(),
+      appendAuditEvent: vi.fn(),
+      completeRomaProjectFindings,
+    };
+
+    await expect(
+      runRomaProjectFindingsJob({
+        gateway: gateway as any,
+        job: buildFindingsJob(),
+        romaSubjectId: roma,
+      }),
+    ).rejects.toThrow(/not visible to ROMA/i);
+
+    expect(completeRomaProjectFindings).toHaveBeenCalledWith(
+      expect.objectContaining({
+        subjectId: roma,
+        jobId: 'job-findings-1',
         status: 'failed',
       }),
     );
@@ -392,5 +670,115 @@ describe('runRomaProjectHealthTick', () => {
     expect(second.completed).toHaveLength(0);
     expect(second.scheduled.enqueued).toHaveLength(0);
     expect(captureConnectorRecord).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('runRomaProjectFindingsTick', () => {
+  it('requeues a retryable findings failure instead of consuming the request', async () => {
+    const retryRomaProjectFindings = vi.fn(async () => ({
+      jobId: 'job-findings-1',
+      status: 'queued',
+      attempt: 1,
+      jobType: 'roma_project_findings',
+      error: 'temporary qa outage',
+    }));
+    const completeRomaProjectFindings = vi.fn(async () => ({
+      jobId: 'job-findings-1',
+      status: 'failed',
+    }));
+    const gateway = {
+      deadLetterStaleJobs: vi.fn(async () => ({ deadLettered: 0 })),
+      listOutboxPending: vi.fn(async () => ({ count: 1 })),
+      claimRomaProjectFindingsJobs: vi.fn(async () => ({
+        count: 1,
+        jobs: [buildFindingsJob({ attempt: 0 })],
+      })),
+      listProjects: vi.fn(async () => [
+        {
+          id: projectId,
+          slug: 'aistroyka',
+          name: 'AISTROYKA',
+          status: 'active',
+        },
+      ]),
+      projectContext: vi.fn(async () => ({
+        projectId,
+        decisions: [],
+        tasks: [],
+        facts: [],
+        state: null,
+        latestHandoff: null,
+      })),
+      captureConnectorRecord: vi.fn(async () => {
+        throw new Error('temporary qa outage');
+      }),
+      appendAuditEvent: vi.fn(),
+      completeRomaProjectFindings,
+      retryRomaProjectFindings,
+    };
+
+    const report = await runRomaProjectFindingsTick({
+      gateway: gateway as any,
+      workspaceId,
+      romaSubjectId: roma,
+    });
+
+    expect(retryRomaProjectFindings).toHaveBeenCalledWith(
+      expect.objectContaining({
+        subjectId: roma,
+        jobId: 'job-findings-1',
+        error: 'temporary qa outage',
+      }),
+    );
+    expect(completeRomaProjectFindings).not.toHaveBeenCalled();
+    expect(report.pendingOutbox).toBe(1);
+  });
+});
+
+describe('runRomaAutomationOnce', () => {
+  it('still runs the health tick when the findings tick throws', async () => {
+    const tickRomaProjectHealthSchedules = vi.fn(async () => ({
+      count: 1,
+      enqueued: [],
+      disabled: [],
+      errors: [],
+    }));
+    const claimRomaProjectHealthJobs = vi.fn(async () => ({ count: 0, jobs: [] }));
+    const gateway = {
+      deadLetterStaleJobs: vi.fn(async () => ({ deadLettered: 0 })),
+      claimRomaProjectFindingsJobs: vi.fn(async () => {
+        throw new Error('missing findings rpc');
+      }),
+      listOutboxPending: vi.fn(async ({ eventType }: Record<string, any>) => ({
+        count: eventType === 'roma.project_health.requested' ? 0 : 0,
+      })),
+      listProjects: vi.fn(),
+      projectContext: vi.fn(),
+      captureConnectorRecord: vi.fn(),
+      appendAuditEvent: vi.fn(),
+      completeRomaProjectFindings: vi.fn(),
+      retryRomaProjectFindings: vi.fn(),
+      tickRomaProjectHealthSchedules,
+      claimRomaProjectHealthJobs,
+      completeRomaProjectHealth: vi.fn(),
+      retryRomaProjectHealth: vi.fn(),
+    };
+
+    const report = await runRomaAutomationOnce({
+      gateway: gateway as any,
+      workspaceId,
+      romaSubjectId: roma,
+    });
+
+    expect(report.qaFindings.error).toMatch(/missing findings rpc/i);
+    expect(report.qaFindings.claimed).toBe(0);
+    expect(report.projectHealth.error).toBeNull();
+    expect(tickRomaProjectHealthSchedules).toHaveBeenCalledWith({
+      subjectId: roma,
+      workspaceId,
+      limit: 10,
+      projectId: null,
+    });
+    expect(claimRomaProjectHealthJobs).toHaveBeenCalled();
   });
 });

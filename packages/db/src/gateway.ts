@@ -505,6 +505,35 @@ export class SupabaseMemoryGateway {
     };
   }
 
+  async enqueueRomaProjectFindings(input: {
+    subjectId: string;
+    workspaceId: string;
+    projectId: string;
+    idempotencyKey?: string | null;
+    reason?: string | null;
+  }) {
+    const { data, error } = await this.client.rpc('api_enqueue_roma_project_findings', {
+      p_secret: this.apiSecret,
+      p_subject_id: input.subjectId,
+      p_workspace_id: input.workspaceId,
+      p_project_id: input.projectId,
+      p_idempotency_key: input.idempotencyKey ?? null,
+      p_reason: input.reason ?? null,
+    });
+    if (error) throw error;
+    return data as {
+      jobId: string;
+      eventId: string | null;
+      workspaceId: string;
+      projectId: string;
+      requestedBy: string;
+      executionSubjectId: string;
+      reason: string;
+      idempotencyKey: string;
+      inserted: boolean;
+    };
+  }
+
   async upsertRomaProjectHealthSchedule(input: {
     subjectId: string;
     workspaceId: string;
@@ -660,6 +689,90 @@ export class SupabaseMemoryGateway {
     error?: string | null;
   }) {
     const { data, error } = await this.client.rpc('api_retry_roma_project_health', {
+      p_secret: this.apiSecret,
+      p_subject_id: input.subjectId,
+      p_job_id: input.jobId,
+      p_error: input.error ?? null,
+    });
+    if (error) throw error;
+    return data as {
+      jobId: string;
+      status: string;
+      attempt: number;
+      jobType: string;
+      error: string | null;
+    };
+  }
+
+  async claimRomaProjectFindingsJobs(input: {
+    subjectId: string;
+    workspaceId: string;
+    limit?: number;
+    projectId?: string | null;
+  }) {
+    const { data, error } = await this.client.rpc('api_claim_roma_project_findings_jobs', {
+      p_secret: this.apiSecret,
+      p_subject_id: input.subjectId,
+      p_workspace_id: input.workspaceId,
+      p_limit: input.limit ?? 10,
+      p_project_id: input.projectId ?? null,
+    });
+    if (error) throw error;
+    return data as {
+      count: number;
+      jobs: Array<{
+        jobId: string;
+        workspaceId: string;
+        status: string;
+        attempt: number;
+        error: string | null;
+        idempotencyKey: string;
+        requestEventId: string;
+        projectId: string;
+        requestedBy: string | null;
+        reason: string | null;
+      }>;
+    };
+  }
+
+  async completeRomaProjectFindings(input: {
+    subjectId: string;
+    jobId: string;
+    status?: 'succeeded' | 'failed' | 'dead_letter';
+    error?: string | null;
+    memoryId?: string | null;
+    auditEventId?: string | null;
+    findingCount?: number | null;
+  }) {
+    const { data, error } = await this.client.rpc('api_complete_roma_project_findings', {
+      p_secret: this.apiSecret,
+      p_subject_id: input.subjectId,
+      p_job_id: input.jobId,
+      p_status: input.status ?? 'succeeded',
+      p_error: input.error ?? null,
+      p_memory_id: input.memoryId ?? null,
+      p_audit_event_id: input.auditEventId ?? null,
+      p_finding_count: input.findingCount ?? null,
+    });
+    if (error) throw error;
+    return data as {
+      jobId: string;
+      status: string;
+      jobType: string;
+      error: string | null;
+      memoryId: string | null;
+      auditEventId: string | null;
+      findingCount: number | null;
+      eventId: string | null;
+    };
+  }
+
+  async retryRomaProjectFindings(input: {
+    subjectId: string;
+    jobId: string;
+    error?: string | null;
+  }) {
+    const { data, error } = await this.client.rpc('api_retry_roma_project_findings', {
       p_secret: this.apiSecret,
       p_subject_id: input.subjectId,
       p_job_id: input.jobId,

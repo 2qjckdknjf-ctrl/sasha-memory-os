@@ -20,6 +20,12 @@ const romaProjectHealthMigrationPath = fileURLToPath(
     import.meta.url,
   ),
 );
+const romaQaFindingsMigrationPath = fileURLToPath(
+  new URL(
+    '../../../supabase/migrations/20260820022425_m12_slice_03_roma_qa_findings.sql',
+    import.meta.url,
+  ),
+);
 
 describe('m8 slice 03 migration guards', () => {
   const sql = readFileSync(migrationPath, 'utf8');
@@ -27,6 +33,7 @@ describe('m8 slice 03 migration guards', () => {
   const projectRefFixSql = readFileSync(projectRefFixMigrationPath, 'utf8');
   const replayResyncFixSql = readFileSync(replayResyncFixMigrationPath, 'utf8');
   const romaProjectHealthSql = readFileSync(romaProjectHealthMigrationPath, 'utf8');
+  const romaQaFindingsSql = readFileSync(romaQaFindingsMigrationPath, 'utf8');
 
   it('matches connector projects only by unique repository identity', () => {
     expect(sql).toContain(`repo->>'url' = v_repo_url`);
@@ -93,5 +100,24 @@ describe('m8 slice 03 migration guards', () => {
     expect(romaProjectHealthSql).toContain(`status = 'queued'`);
     expect(romaProjectHealthSql).toContain(`attempt = attempt + 1`);
     expect(romaProjectHealthSql).toContain(`last_error = v_error`);
+  });
+
+  it('adds a dedicated ROMA QA findings job with explicit project scope', () => {
+    expect(romaQaFindingsSql).toContain(`'roma_project_findings'`);
+    expect(romaQaFindingsSql).toContain(`app.assert_roma_project_health_schedule_access`);
+    expect(romaQaFindingsSql).toContain(`'roma.project_findings.requested'`);
+    expect(romaQaFindingsSql).toContain(`'roma.project_findings.completed'`);
+    expect(romaQaFindingsSql).toContain(`'Generate audited ROMA QA findings for one explicit project.'`);
+    expect(romaQaFindingsSql).not.toContain(`'44444444-4444-4444-8444-444444444401'`);
+  });
+
+  it('forces findings claim and completion through the ROMA subject and records bounded retry state', () => {
+    expect(romaQaFindingsSql).toContain(
+      `v_roma_subject constant uuid := '33333333-3333-4333-8333-333333333304'`,
+    );
+    expect(romaQaFindingsSql).toContain(`RAISE EXCEPTION 'roma subject required'`);
+    expect(romaQaFindingsSql).toContain(`CREATE OR REPLACE FUNCTION app.api_retry_roma_project_findings`);
+    expect(romaQaFindingsSql).toContain(`attempt = attempt + 1`);
+    expect(romaQaFindingsSql).toContain(`'executionSubjectId', v_roma_subject`);
   });
 });

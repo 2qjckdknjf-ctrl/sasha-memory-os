@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import {
   createMemoryOsClient,
   loadMemoryOsEnv,
@@ -24,7 +25,13 @@ type ProjectRow = {
 };
 
 type ContextMemory = {
+  id?: string;
   title: string;
+  content?: string | null;
+  memoryType?: string | null;
+  memory_type?: string | null;
+  sensitivity?: string | null;
+  metadata?: Record<string, unknown> | null;
 };
 
 type ProjectStateRow = {
@@ -34,6 +41,7 @@ type ProjectStateRow = {
 };
 
 type HandoffRow = {
+  id?: string;
   createdAt?: string;
   fromSubjectId?: string | null;
   toSubjectId?: string | null;
@@ -62,16 +70,32 @@ export type ClaimedRomaProjectHealthJob = {
   reason: string | null;
 };
 
+export type ClaimedRomaProjectFindingsJob = {
+  jobId: string;
+  workspaceId: string;
+  status: string;
+  attempt: number;
+  error: string | null;
+  idempotencyKey: string;
+  requestEventId: string;
+  projectId: string;
+  requestedBy: string | null;
+  reason: string | null;
+};
+
 type RomaProjectHealthGateway = Pick<
   SupabaseMemoryGateway,
   | 'appendAuditEvent'
   | 'captureConnectorRecord'
+  | 'claimRomaProjectFindingsJobs'
   | 'claimRomaProjectHealthJobs'
+  | 'completeRomaProjectFindings'
   | 'completeRomaProjectHealth'
   | 'deadLetterStaleJobs'
   | 'listOutboxPending'
   | 'listProjects'
   | 'projectContext'
+  | 'retryRomaProjectFindings'
   | 'retryRomaProjectHealth'
   | 'tickRomaProjectHealthSchedules'
 >;
@@ -83,6 +107,48 @@ export type RomaProjectHealthRunResult = {
   auditEventId: string;
   summaryTitle: string;
   projectName: string;
+};
+
+type FindingSeverity = 'low' | 'medium' | 'high';
+type FindingStatus = 'open';
+
+type QaFindingEvidenceRef = {
+  kind: 'memory' | 'project_state' | 'handoff';
+  memoryId?: string;
+  memoryType?: string | null;
+  handoffId?: string | null;
+  stateVersion?: number | null;
+  field?: string;
+  title?: string;
+  titles?: string[];
+  createdAt?: string | null;
+};
+
+type QaFindingCandidate = {
+  key: string;
+  title: string;
+  summary: string;
+  severity: FindingSeverity;
+  status: FindingStatus;
+  evidenceRefs: QaFindingEvidenceRef[];
+};
+
+type RomaQaFindingWrite = {
+  findingKey: string;
+  title: string;
+  severity: FindingSeverity;
+  status: FindingStatus;
+  memoryId: string;
+  auditEventId: string;
+  idempotencyKey: string;
+};
+
+export type RomaProjectFindingsRunResult = {
+  jobId: string;
+  projectId: string;
+  projectName: string;
+  findingCount: number;
+  findings: RomaQaFindingWrite[];
 };
 
 export type RomaProjectHealthTickReport = {
@@ -106,6 +172,21 @@ export type RomaProjectHealthTickReport = {
   failed: Array<{ jobId: string; projectId: string; error: string }>;
   pendingOutbox: number;
   deadLettered: number;
+  error: string | null;
+};
+
+export type RomaProjectFindingsTickReport = {
+  claimed: number;
+  completed: RomaProjectFindingsRunResult[];
+  failed: Array<{ jobId: string; projectId: string; error: string }>;
+  pendingOutbox: number;
+  deadLettered: number;
+  error: string | null;
+};
+
+export type RomaAutomationTickReport = {
+  qaFindings: RomaProjectFindingsTickReport;
+  projectHealth: RomaProjectHealthTickReport;
 };
 
 type SummaryPayload = {
@@ -182,7 +263,55 @@ function formatList(label: string, values: string[]): string {
   return `- ${label}: ${values.join('; ')}`;
 }
 
+function toMemoryEvidenceRefs(
+  items: ContextMemory[],
+  limit = 3,
+): QaFindingEvidenceRef[] {
+  return items
+    .filter((item) => typeof item.id === 'string' && item.id.length > 0)
+    .slice(0, limit)
+    .map((item) => ({
+      kind: 'memory' as const,
+      memoryId: item.id,
+      memoryType: item.memoryType ?? item.memory_type ?? null,
+      title: truncateText(item.title, 120),
+    }));
+}
+
+function formatQaFindingEvidenceRef(ref: QaFindingEvidenceRef): string {
+  switch (ref.kind) {
+    case 'memory':
+      return `- memory ${ref.memoryType ?? 'memory'} ${ref.memoryId}: ${ref.title ?? 'Untitled'}`;
+    case 'project_state':
+      return `- project_state v${ref.stateVersion ?? 'n/a'} ${ref.field ?? 'context'}: ${(ref.titles ?? []).join('; ') || 'none'}`;
+    case 'handoff':
+      return `- handoff ${ref.handoffId ?? 'none'}${ref.createdAt ? ` at ${ref.createdAt}` : ''}`;
+    default: {
+      const _exhaustive: never = ref.kind;
+      return _exhaustive;
+    }
+  }
+}
+
+function stableFindingIdempotencyKey(input: {
+  projectId: string;
+  findingKey: string;
+  severity: FindingSeverity;
+  status: FindingStatus;
+  evidenceRefs: QaFindingEvidenceRef[];
+}): string {
+  const fingerprint = createHash('sha256')
+    .update(JSON.stringify(input))
+    .digest('hex')
+    .slice(0, 24);
+  return `roma-project-findings/${input.projectId}/${input.findingKey}/${fingerprint}`;
+}
+
 function isRetryableRomaProjectHealthError(message: string): boolean {
+  return !/project .* not visible to ROMA|project not found/i.test(message);
+}
+
+function isRetryableRomaProjectFindingsError(message: string): boolean {
   return !/project .* not visible to ROMA|project not found/i.test(message);
 }
 
@@ -270,6 +399,190 @@ export function buildRomaProjectHealthSummary(input: {
       stateVersion: typeof state?.version === 'number' ? state.version : null,
       hasHandoff: Boolean(input.context.latestHandoff),
     },
+  };
+}
+
+function buildRomaQaFindingCandidates(input: {
+  project: ProjectRow;
+  context: ProjectContextRow;
+}): QaFindingCandidate[] {
+  const state = input.context.state ?? null;
+  const stateData =
+    state && typeof state.state === 'object' && state.state !== null ? state.state : {};
+  const blocked = readStringArray(stateData.blocked);
+  const risks = readStringArray(stateData.risks);
+  const next = readStringArray(stateData.next);
+  const taskRefs = toMemoryEvidenceRefs(input.context.tasks);
+  const factRefs = toMemoryEvidenceRefs(input.context.facts);
+  const candidates: QaFindingCandidate[] = [];
+
+  if (blocked.length > 0) {
+    candidates.push({
+      key: 'blocked-work',
+      title: 'Blocked work requires review',
+      summary:
+        'Project state lists blocked work items, so ROMA flagged follow-up that may stall delivery.',
+      severity: blocked.length > 1 ? 'high' : 'medium',
+      status: 'open',
+      evidenceRefs: [
+        {
+          kind: 'project_state',
+          stateVersion: typeof state?.version === 'number' ? state.version : null,
+          field: 'blocked',
+          titles: blocked.slice(0, 5).map((entry) => truncateText(entry, 120)),
+        },
+        ...taskRefs,
+      ],
+    });
+  }
+
+  if (risks.length > 0) {
+    candidates.push({
+      key: 'active-risks',
+      title: 'Explicit project risks need QA follow-up',
+      summary:
+        'The project state includes active risks that should stay visible until the owner confirms mitigation.',
+      severity: 'medium',
+      status: 'open',
+      evidenceRefs: [
+        {
+          kind: 'project_state',
+          stateVersion: typeof state?.version === 'number' ? state.version : null,
+          field: 'risks',
+          titles: risks.slice(0, 5).map((entry) => truncateText(entry, 120)),
+        },
+        ...factRefs,
+      ],
+    });
+  }
+
+  if (!input.context.latestHandoff) {
+    candidates.push({
+      key: 'missing-handoff',
+      title: 'Recent handoff is missing',
+      summary:
+        'ROMA could not find a recent handoff for this project, reducing traceability for the next automation step.',
+      severity: 'medium',
+      status: 'open',
+      evidenceRefs: [
+        {
+          kind: 'handoff',
+          handoffId: null,
+          createdAt: null,
+        },
+        ...taskRefs,
+      ],
+    });
+  }
+
+  const stateSummary =
+    typeof state?.summary === 'string' ? state.summary.trim() : '';
+  if (stateSummary.length === 0) {
+    candidates.push({
+      key: 'missing-project-state-summary',
+      title: 'Project state summary is missing',
+      summary:
+        'ROMA could not find a current project state summary, so QA context is harder to audit or explain.',
+      severity: 'medium',
+      status: 'open',
+      evidenceRefs: [
+        {
+          kind: 'project_state',
+          stateVersion: typeof state?.version === 'number' ? state.version : null,
+          field: 'summary',
+          titles: [],
+        },
+      ],
+    });
+  }
+
+  if (input.context.tasks.length === 0) {
+    candidates.push({
+      key: 'missing-current-tasks',
+      title: 'Current task memory is missing',
+      summary:
+        'ROMA did not find any active or verified task memories for the project, which weakens QA accountability.',
+      severity: 'medium',
+      status: 'open',
+      evidenceRefs: [
+        {
+          kind: 'project_state',
+          stateVersion: typeof state?.version === 'number' ? state.version : null,
+          field: 'next',
+          titles: next.slice(0, 5).map((entry) => truncateText(entry, 120)),
+        },
+      ],
+    });
+  }
+
+  if (candidates.length === 0) {
+    candidates.push({
+      key: 'missing-explicit-risks',
+      title: 'Explicit risk register is missing',
+      summary:
+        'ROMA found no explicit blocked or risk entries in the current project state, so follow-up remains under-documented.',
+      severity: 'low',
+      status: 'open',
+      evidenceRefs: [
+        {
+          kind: 'project_state',
+          stateVersion: typeof state?.version === 'number' ? state.version : null,
+          field: 'risks',
+          titles: [],
+        },
+      ],
+    });
+  }
+
+  return candidates.slice(0, 3);
+}
+
+function buildRomaQaFindingMemory(input: {
+  project: ProjectRow;
+  job: ClaimedRomaProjectFindingsJob;
+  finding: QaFindingCandidate;
+  romaSubjectId?: string;
+}) {
+  const romaSubjectId = input.romaSubjectId ?? ROMA_SUBJECT_ID;
+  const reason =
+    input.job.reason ?? 'Generate audited ROMA QA findings for one explicit project.';
+  const idempotencyKey = stableFindingIdempotencyKey({
+    projectId: input.job.projectId,
+    findingKey: input.finding.key,
+    severity: input.finding.severity,
+    status: input.finding.status,
+    evidenceRefs: input.finding.evidenceRefs,
+  });
+  const lines = [
+    'ROMA QA finding',
+    `Project: ${input.project.name} (${input.project.slug})`,
+    `Project status: ${input.project.status}`,
+    `Project ID: ${input.project.id}`,
+    `Finding key: ${input.finding.key}`,
+    `Severity: ${input.finding.severity}`,
+    `Status: ${input.finding.status}`,
+    `Execution subject: ROMA (${romaSubjectId})`,
+    `Requested by: ${input.job.requestedBy ?? 'unknown'}`,
+    `Reason: ${reason}`,
+    'Bounded scope: one explicit project, one finding memory, source IDs/titles only.',
+    '',
+    `Summary: ${input.finding.summary}`,
+    '',
+    'Evidence refs',
+    ...input.finding.evidenceRefs.map(formatQaFindingEvidenceRef),
+    '',
+    'Audit',
+    `- Job ID: ${input.job.jobId}`,
+    `- Request event ID: ${input.job.requestEventId}`,
+    `- Idempotency key: ${idempotencyKey}`,
+    '- Note: this finding stores titles and structured evidence refs only; raw memory bodies are not quoted.',
+    '- ACL note: personal, confidential, and restricted memories remain excluded from ROMA access.',
+  ];
+
+  return {
+    idempotencyKey,
+    title: `ROMA QA finding: ${input.finding.title}`,
+    text: lines.join('\n'),
   };
 }
 
@@ -414,6 +727,267 @@ export async function runRomaProjectHealthJob(options: {
   }
 }
 
+async function executeRomaProjectFindingsJob(options: {
+  gateway?: RomaProjectHealthGateway;
+  job: ClaimedRomaProjectFindingsJob;
+  romaSubjectId?: string;
+}): Promise<RomaProjectFindingsRunResult> {
+  const gateway = requireGateway(options.gateway);
+  const romaSubjectId = options.romaSubjectId ?? ROMA_SUBJECT_ID;
+  const job = options.job;
+
+  const projects = await gateway.listProjects(romaSubjectId, job.workspaceId);
+  const project = projects.find((entry) => entry.id === job.projectId);
+  if (!project) {
+    throw new Error(`project ${job.projectId} is not visible to ROMA`);
+  }
+
+  const context = (await gateway.projectContext(
+    romaSubjectId,
+    job.projectId,
+  )) as ProjectContextRow;
+  const candidates = buildRomaQaFindingCandidates({
+    project,
+    context,
+  });
+  const findings: RomaQaFindingWrite[] = [];
+
+  for (const candidate of candidates) {
+    const findingMemory = buildRomaQaFindingMemory({
+      project,
+      job,
+      finding: candidate,
+      romaSubjectId,
+    });
+    const capture = await gateway.captureConnectorRecord({
+      subjectId: romaSubjectId,
+      workspaceId: job.workspaceId,
+      projectId: job.projectId,
+      provider: 'roma',
+      accountId: 'service:roma',
+      externalId: `qa-finding/${job.projectId}/${candidate.key}`,
+      externalVersion: '1',
+      eventType: 'roma.qa_finding.created',
+      title: findingMemory.title,
+      text: findingMemory.text,
+      idempotencyKey: findingMemory.idempotencyKey,
+      sensitivity: 'internal',
+      storageMode: 'indexed',
+      observedAt: new Date().toISOString(),
+      filename: `roma-qa-finding-${job.projectId}-${candidate.key}.md`,
+      mimeType: 'text/markdown',
+      canonicalReference: `memory-os://roma/qa-findings/${job.projectId}/${candidate.key}`,
+      provenance: {
+        automation: {
+          jobType: 'roma_project_findings',
+          jobId: job.jobId,
+          requestEventId: job.requestEventId,
+          requestedBy: job.requestedBy,
+          executionSubjectId: romaSubjectId,
+          idempotencyKey: findingMemory.idempotencyKey,
+        },
+        scope: {
+          workspaceId: job.workspaceId,
+          projectId: job.projectId,
+        },
+        reason:
+          job.reason ?? 'Generate audited ROMA QA findings for one explicit project.',
+      },
+      metadata: {
+        summary_type: 'qa_finding',
+        project_slug: project.slug,
+        project_name: project.name,
+        project_status: project.status,
+        finding_key: candidate.key,
+        finding_severity: candidate.severity,
+        finding_status: candidate.status,
+        evidence_refs: candidate.evidenceRefs,
+      },
+      processNow: true,
+    });
+    const memoryId = capture.process?.memoryId;
+    if (!memoryId) {
+      throw new Error(`roma qa finding capture did not produce a memory for ${candidate.key}`);
+    }
+    const audit = await gateway.appendAuditEvent({
+      subjectId: romaSubjectId,
+      workspaceId: job.workspaceId,
+      action: 'roma.qa_finding.written',
+      objectType: 'memory',
+      objectId: memoryId,
+      reason: job.reason ?? 'Generate audited ROMA QA findings for one explicit project.',
+      afterState: {
+        projectId: job.projectId,
+        jobId: job.jobId,
+        requestEventId: job.requestEventId,
+        requestedBy: job.requestedBy,
+        executionSubjectId: romaSubjectId,
+        memoryId,
+        sourceEventId: capture.eventId ?? null,
+        findingKey: candidate.key,
+        findingTitle: findingMemory.title,
+        severity: candidate.severity,
+        status: candidate.status,
+        evidenceRefs: candidate.evidenceRefs,
+      },
+    });
+    findings.push({
+      findingKey: candidate.key,
+      title: findingMemory.title,
+      severity: candidate.severity,
+      status: candidate.status,
+      memoryId,
+      auditEventId: audit.id,
+      idempotencyKey: findingMemory.idempotencyKey,
+    });
+  }
+
+  return {
+    jobId: job.jobId,
+    projectId: job.projectId,
+    projectName: project.name,
+    findingCount: findings.length,
+    findings,
+  };
+}
+
+export async function runRomaProjectFindingsJob(options: {
+  gateway?: RomaProjectHealthGateway;
+  job: ClaimedRomaProjectFindingsJob;
+  romaSubjectId?: string;
+}): Promise<RomaProjectFindingsRunResult> {
+  const gateway = requireGateway(options.gateway);
+  const romaSubjectId = options.romaSubjectId ?? ROMA_SUBJECT_ID;
+  const job = options.job;
+
+  try {
+    const result = await executeRomaProjectFindingsJob({
+      gateway,
+      job,
+      romaSubjectId,
+    });
+    await gateway.completeRomaProjectFindings({
+      subjectId: romaSubjectId,
+      jobId: job.jobId,
+      status: 'succeeded',
+      memoryId: result.findings[0]?.memoryId ?? null,
+      auditEventId: result.findings[0]?.auditEventId ?? null,
+      findingCount: result.findingCount,
+    });
+    return result;
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    try {
+      await gateway.completeRomaProjectFindings({
+        subjectId: romaSubjectId,
+        jobId: job.jobId,
+        status: 'failed',
+        error: message,
+      });
+    } catch {
+      // Preserve the original failure while making a best effort to mark the job.
+    }
+    throw err;
+  }
+}
+
+export async function runRomaProjectFindingsTick(options?: {
+  gateway?: RomaProjectHealthGateway;
+  workspaceId?: string;
+  projectId?: string | null;
+  limit?: number;
+  staleMinutes?: number;
+  romaSubjectId?: string;
+}): Promise<RomaProjectFindingsTickReport> {
+  const gateway = requireGateway(options?.gateway);
+  const romaSubjectId = options?.romaSubjectId ?? ROMA_SUBJECT_ID;
+  const workspaceId = options?.workspaceId ?? WORKSPACE_ID;
+  const maxAttempts = Math.max(
+    1,
+    Number(process.env.MEMORY_OS_ROMA_PROJECT_FINDINGS_MAX_ATTEMPTS ?? 3),
+  );
+  const stale = await gateway.deadLetterStaleJobs({
+    subjectId: romaSubjectId,
+    workspaceId,
+    olderThanMinutes:
+      options?.staleMinutes ??
+      Number(process.env.MEMORY_OS_JOB_STALE_MINUTES ?? 60),
+  });
+  const claimed = await gateway.claimRomaProjectFindingsJobs({
+    subjectId: romaSubjectId,
+    workspaceId,
+    limit: options?.limit ?? 10,
+    projectId: options?.projectId ?? null,
+  });
+  const completed: RomaProjectFindingsRunResult[] = [];
+  const failed: RomaProjectFindingsTickReport['failed'] = [];
+
+  for (const job of claimed.jobs) {
+    try {
+      const result = await executeRomaProjectFindingsJob({
+        gateway,
+        job,
+        romaSubjectId,
+      });
+      await gateway.completeRomaProjectFindings({
+        subjectId: romaSubjectId,
+        jobId: job.jobId,
+        status: 'succeeded',
+        memoryId: result.findings[0]?.memoryId ?? null,
+        auditEventId: result.findings[0]?.auditEventId ?? null,
+        findingCount: result.findingCount,
+      });
+      completed.push(result);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      if (isRetryableRomaProjectFindingsError(message)) {
+        if (job.attempt + 1 >= maxAttempts) {
+          await gateway.completeRomaProjectFindings({
+            subjectId: romaSubjectId,
+            jobId: job.jobId,
+            status: 'dead_letter',
+            error: message,
+          });
+        } else {
+          await gateway.retryRomaProjectFindings({
+            subjectId: romaSubjectId,
+            jobId: job.jobId,
+            error: message,
+          });
+        }
+      } else {
+        await gateway.completeRomaProjectFindings({
+          subjectId: romaSubjectId,
+          jobId: job.jobId,
+          status: 'failed',
+          error: message,
+        });
+      }
+      failed.push({
+        jobId: job.jobId,
+        projectId: job.projectId,
+        error: message,
+      });
+    }
+  }
+
+  const pending = await gateway.listOutboxPending({
+    subjectId: romaSubjectId,
+    workspaceId,
+    eventType: 'roma.project_findings.requested',
+    limit: 20,
+  });
+
+  return {
+    claimed: claimed.count,
+    completed,
+    failed,
+    pendingOutbox: pending.count,
+    deadLettered: stale.deadLettered,
+    error: null,
+  };
+}
+
 export async function runRomaProjectHealthTick(options?: {
   gateway?: RomaProjectHealthGateway;
   workspaceId?: string;
@@ -514,11 +1088,64 @@ export async function runRomaProjectHealthTick(options?: {
     failed,
     pendingOutbox: pending.count,
     deadLettered: stale.deadLettered,
+    error: null,
   };
 }
 
 export async function runRomaProjectHealthOnce(): Promise<RomaProjectHealthTickReport> {
   return runRomaProjectHealthTick();
+}
+
+export async function runRomaAutomationOnce(options?: {
+  gateway?: RomaProjectHealthGateway;
+  workspaceId?: string;
+  projectId?: string | null;
+  limit?: number;
+  scheduleLimit?: number;
+  staleMinutes?: number;
+  romaSubjectId?: string;
+}): Promise<RomaAutomationTickReport> {
+  const qaFindings = await runRomaProjectFindingsTick({
+    gateway: options?.gateway,
+    workspaceId: options?.workspaceId,
+    projectId: options?.projectId,
+    limit: options?.limit,
+    staleMinutes: options?.staleMinutes,
+    romaSubjectId: options?.romaSubjectId,
+  }).catch((err) => ({
+    claimed: 0,
+    completed: [],
+    failed: [],
+    pendingOutbox: 0,
+    deadLettered: 0,
+    error: err instanceof Error ? err.message : String(err),
+  }));
+  const projectHealth = await runRomaProjectHealthTick({
+    gateway: options?.gateway,
+    workspaceId: options?.workspaceId,
+    projectId: options?.projectId,
+    limit: options?.limit,
+    scheduleLimit: options?.scheduleLimit,
+    staleMinutes: options?.staleMinutes,
+    romaSubjectId: options?.romaSubjectId,
+  }).catch((err) => ({
+    scheduled: {
+      count: 0,
+      enqueued: [],
+      disabled: [],
+      errors: [],
+    },
+    claimed: 0,
+    completed: [],
+    failed: [],
+    pendingOutbox: 0,
+    deadLettered: 0,
+    error: err instanceof Error ? err.message : String(err),
+  }));
+  return {
+    qaFindings,
+    projectHealth,
+  };
 }
 
 export function parseWorkerIntervalMs(
@@ -538,8 +1165,16 @@ export async function startRomaProjectHealthLoop(
 ): Promise<void> {
   const intervalMs = parseWorkerIntervalMs(env);
   const tick = async () => {
-    const report = await runRomaProjectHealthTick();
-    console.log(JSON.stringify({ ok: true, ...report }));
+    const report = await runRomaAutomationOnce();
+    const ok = report.qaFindings.error == null && report.projectHealth.error == null;
+    console.log(JSON.stringify({ ok, ...report }));
+    if (!ok) {
+      const errors = [
+        report.qaFindings.error ? `qaFindings: ${report.qaFindings.error}` : null,
+        report.projectHealth.error ? `projectHealth: ${report.projectHealth.error}` : null,
+      ].filter((value): value is string => value !== null);
+      throw new Error(errors.join('; '));
+    }
   };
   await tick();
   if (intervalMs == null) return;
