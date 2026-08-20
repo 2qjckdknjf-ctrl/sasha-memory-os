@@ -33,7 +33,7 @@ ChatGPT uses Memory OS as external long-term memory: search/context read; captur
 | `GET /mcp` long-lived SSE | Not offered (405) — JSON responses are valid Streamable HTTP |
 | Bearer / `x-memory-os-api-secret` | Required outside `local`/`test` |
 | Pilot tool allowlist | `MEMORY_OS_MCP_PROFILE=chatgpt` |
-| Defaults for actor/workspace/project | Filled when omitted on chatgpt profile |
+| Defaults for actor/workspace | Filled when omitted on chatgpt profile; writes still require explicit `project_id` |
 | `readOnlyHint` annotations + `instructions` | On `initialize` / `tools/list` |
 | Smoke loop | `scripts/smoke-mcp-chatgpt.sh` |
 

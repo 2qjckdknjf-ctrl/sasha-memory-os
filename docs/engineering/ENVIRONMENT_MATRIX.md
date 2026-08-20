@@ -13,9 +13,10 @@ Related: [ADR-005](../adr/ADR-005-secrets-and-environments.md), baseline §24.4.
 
 | Variable | Notes |
 |---|---|
-| `MEMORY_OS_MCP_PROFILE` | `full` (default) or `chatgpt` — ChatGPT pilot tool allowlist + default subject/workspace/project |
+| `MEMORY_OS_MCP_PROFILE` | `full` (default) or `chatgpt` — ChatGPT pilot tool allowlist + default subject/workspace only; writes keep explicit `project_id` |
 | `MEMORY_OS_CHATGPT_SUBJECT_ID` | Override ChatGPT demo subject for MCP defaults |
-| `MEMORY_OS_DEFAULT_WORKSPACE_ID` / `MEMORY_OS_DEFAULT_PROJECT_ID` | MCP default IDs when tool args omit them |
+| `MEMORY_OS_DEFAULT_WORKSPACE_ID` | May fill `workspace_id` when the ChatGPT MCP profile omits it |
+| `MEMORY_OS_DEFAULT_PROJECT_ID` | Ignored for MCP/write/export/privacy fallback; writes must pass explicit `project_id` |
 
 ## Rules
 

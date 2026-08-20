@@ -101,7 +101,6 @@ type Props = {
   onStartOAuth: () => void | Promise<void>;
   onSyncConnections: () => void | Promise<void>;
   onLoadOutbox: () => void | Promise<void>;
-  onExportMemories: () => void | Promise<void>;
   onDeadLetterJobs: () => void | Promise<void>;
   onAckOutbox: (id: string) => void | Promise<void>;
   onUpdateConnectionStatus: (
@@ -214,7 +213,6 @@ export function OpsPage({
   onStartOAuth,
   onSyncConnections,
   onLoadOutbox,
-  onExportMemories,
   onDeadLetterJobs,
   onAckOutbox,
   onUpdateConnectionStatus,
