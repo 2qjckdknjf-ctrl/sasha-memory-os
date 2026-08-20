@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { createSeededStore } from '@memory-os/domain';
+import { createSeededStore, type MemoryRecord } from '@memory-os/domain';
 import {
   AGENTIC_RETRIEVAL_TOOL_ALLOWLIST,
   authorityMultiplier,
@@ -173,7 +173,7 @@ describe('retrieval stub', () => {
       budget: { minEvidenceHits: 3 },
       search: async ({ query, includeHistory }) => {
         calls.push(`${includeHistory ? 'history' : 'current'}:${query}`);
-        if (query.includes('current superseded corrected replacement')) {
+        if (query.includes('superseded corrected')) {
           return [
             {
               memory: {
@@ -189,7 +189,7 @@ describe('retrieval stub', () => {
             },
           ];
         }
-        if (query.includes('history timeline current previous')) {
+        if (query.includes('history timeline')) {
           return [
             {
               memory: {
@@ -301,8 +301,79 @@ describe('retrieval stub', () => {
     expect(result.context.packedCount).toBeGreaterThan(0);
     expect(calls[0]).toBe('current:Release freeze');
     expect(calls[1]).toContain('task fact');
-    expect(calls[2]).toContain('history timeline current previous');
+    expect(calls[2]).toContain('history timeline');
     expect(calls[3]).toContain('superseded corrected');
+  });
+
+  it('uses a compact grounded hop query so related project evidence still passes lexical coverage', async () => {
+    const projectId = '44444444-4444-4444-8444-444444444401';
+    const records: MemoryRecord[] = [
+      {
+        id: '11111111-1111-4111-8111-111111111111',
+        workspaceId: '11111111-1111-4111-8111-111111111111',
+        projectId,
+        memoryType: 'decision',
+        title: 'Release freeze decision',
+        content: 'Decision approvals guardrails anchor the release freeze.',
+        status: 'verified',
+        importance: 0.9,
+        confidence: 0.95,
+        sensitivity: 'internal',
+        validFrom: null,
+        validTo: null,
+        observedAt: null,
+        recordedAt: '2026-08-20T03:30:00.000Z',
+        supersededBy: null,
+        sourceEventId: null,
+        createdBySubject: null,
+        schemaVersion: '1.0',
+        metadata: {},
+      },
+      {
+        id: '22222222-2222-4222-8222-222222222222',
+        workspaceId: '11111111-1111-4111-8111-111111111111',
+        projectId,
+        memoryType: 'task',
+        title: 'Release freeze checklist',
+        content: 'Task checklist for the release freeze.',
+        status: 'active',
+        importance: 0.82,
+        confidence: 0.9,
+        sensitivity: 'internal',
+        validFrom: null,
+        validTo: null,
+        observedAt: null,
+        recordedAt: '2026-08-20T03:31:00.000Z',
+        supersededBy: null,
+        sourceEventId: null,
+        createdBySubject: null,
+        schemaVersion: '1.0',
+        metadata: {},
+      },
+    ];
+
+    const result = await runBoundedAgenticRetrieval({
+      query: 'release freeze decision approvals guardrails',
+      projectId,
+      budget: { maxSteps: 2, minEvidenceHits: 2 },
+      search: async ({ query, includeHistory, projectId }) =>
+        searchMemories(records, query, { includeHistory, projectId }),
+    });
+
+    expect(result.trace.steps[0]?.hitCount).toBe(1);
+    expect(result.trace.steps[1]?.hop).toMatchObject({
+      index: 1,
+      kind: 'related_evidence',
+    });
+    expect(result.trace.steps[1]?.query).toBe('release freeze decision task');
+    expect(result.trace.steps[1]?.query).not.toContain('approvals');
+    expect(result.trace.steps[1]?.query).not.toContain('guardrails');
+    expect(result.outcome).toBe('answered');
+    expect(result.stopReason).toBe('enough_evidence');
+    expect(result.hits.map((hit) => hit.memory.title)).toEqual([
+      'Release freeze decision',
+      'Release freeze checklist',
+    ]);
   });
 
   it('stops bounded agentic retrieval when max steps are exhausted mid-hop plan', async () => {

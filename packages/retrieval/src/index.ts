@@ -743,48 +743,65 @@ function buildHopQuery<T extends HybridHitLike>(
   hits: T[],
   suffix: string,
 ): string | null {
-  const anchor = selectHopAnchorHit(hits);
-  if (!anchor) {
+  const stemTokens = buildGroundedHopStem(query, hits);
+  if (stemTokens.length === 0) {
     return null;
   }
-  const salientTerms = buildSalientHopTerms(query, hits);
+  const maxSuffixTokens =
+    stemTokens.length <= 1 ? 1 : stemTokens.length >= 3 ? 1 : 2;
+  const suffixTokens = tokenize(suffix).slice(0, maxSuffixTokens);
   const merged = joinDistinctQueryTokens([
-    query,
-    hitTitleOf(anchor),
-    salientTerms.join(' '),
-    suffix,
+    stemTokens.join(' '),
+    suffixTokens.join(' '),
   ]);
   return merged.trim() ? merged : null;
 }
 
-function buildSalientHopTerms<T extends HybridHitLike>(
+function buildGroundedHopStem<T extends HybridHitLike>(
   query: string,
   hits: T[],
 ): string[] {
-  const queryTokens = new Set(tokenize(query));
-  const counts = new Map<string, number>();
-  for (const hit of hits.slice(0, 3)) {
-    const searchable = `${hitTitleOf(hit)} ${String(hit.memory.content ?? '').slice(0, 180)}`;
-    for (const token of tokenize(searchable)) {
-      if (
-        queryTokens.has(token) ||
-        AGENTIC_RETRIEVAL_STOPWORDS.has(token) ||
-        token.length < 3
-      ) {
-        continue;
-      }
-      counts.set(token, (counts.get(token) ?? 0) + 1);
+  const anchor = selectHopAnchorHit(hits);
+  if (!anchor) {
+    return [];
+  }
+  const queryTokens = tokenize(query).filter(
+    (token) => !AGENTIC_RETRIEVAL_STOPWORDS.has(token),
+  );
+  const queryTokenSet = new Set(queryTokens);
+  const anchorTokens = tokenize(hitTitleOf(anchor)).filter(
+    (token) => !AGENTIC_RETRIEVAL_STOPWORDS.has(token),
+  );
+  const overlap: string[] = [];
+  const seenOverlap = new Set<string>();
+  for (const token of anchorTokens) {
+    if (!queryTokenSet.has(token) || seenOverlap.has(token)) {
+      continue;
+    }
+    seenOverlap.add(token);
+    overlap.push(token);
+  }
+  if (overlap.length >= 2) {
+    return overlap.slice(0, 3);
+  }
+
+  const stem = [...overlap];
+  for (const token of anchorTokens) {
+    if (seenOverlap.has(token)) {
+      continue;
+    }
+    seenOverlap.add(token);
+    stem.push(token);
+    if (stem.length >= 3) {
+      return stem;
     }
   }
-  return [...counts.entries()]
-    .sort((a, b) => {
-      if (b[1] !== a[1]) {
-        return b[1] - a[1];
-      }
-      return a[0].localeCompare(b[0]);
-    })
-    .slice(0, 4)
-    .map(([token]) => token);
+
+  if (stem.length > 0) {
+    return stem;
+  }
+
+  return [...new Set(queryTokens)].slice(0, 3);
 }
 
 function joinDistinctQueryTokens(parts: Array<string | null | undefined>): string {
