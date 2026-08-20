@@ -2036,6 +2036,85 @@ describe('memory api demo slice', () => {
     }
   });
 
+  it('rejects ROMA project-health schedules without an explicit project_id', async () => {
+    const gateway = {
+      upsertRomaProjectHealthSchedule: vi.fn(),
+    };
+    const app = createApp({ gateway: gateway as any });
+    const res = await app.request('/v1/roma/project-health/schedules', {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'x-subject-id': cursor,
+        'x-actor-key': 'cursor',
+      },
+      body: JSON.stringify({
+        workspace_id: workspaceId,
+        actor_subject_id: cursor,
+        cadence_minutes: 720,
+      }),
+    });
+
+    expect(res.status).toBe(400);
+    expect(gateway.upsertRomaProjectHealthSchedule).not.toHaveBeenCalled();
+  });
+
+  it('upserts and disables a ROMA project-health schedule with one explicit project uuid', async () => {
+    const gateway = {
+      upsertRomaProjectHealthSchedule: vi.fn(async () => ({
+        scheduleId: 'schedule-1',
+        workspaceId,
+        projectId,
+        cadenceMinutes: 720,
+        nextRunAt: '2026-08-20T12:00:00.000Z',
+        lastEnqueuedAt: null,
+        lastPeriodStart: null,
+        lastJobId: null,
+        lastError: null,
+        enabled: false,
+        disabledAt: '2026-08-20T02:10:00.000Z',
+        disabledReason: 'disabled by operator',
+        reason: 'Scheduled ROMA health summary.',
+      })),
+    };
+    const app = createApp({ gateway: gateway as any });
+    const res = await app.request('/v1/roma/project-health/schedules', {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'x-subject-id': cursor,
+        'x-actor-key': 'cursor',
+      },
+      body: JSON.stringify({
+        workspace_id: workspaceId,
+        project_id: projectId,
+        actor_subject_id: cursor,
+        cadence_minutes: 720,
+        enabled: false,
+        reason: 'Scheduled ROMA health summary.',
+      }),
+    });
+
+    expect(res.status).toBe(200);
+    expect(gateway.upsertRomaProjectHealthSchedule).toHaveBeenCalledWith({
+      subjectId: cursor,
+      workspaceId,
+      projectId,
+      cadenceMinutes: 720,
+      enabled: false,
+      nextRunAt: null,
+      reason: 'Scheduled ROMA health summary.',
+    });
+    const body = (await res.json()) as {
+      projectId: string;
+      enabled: boolean;
+      backend: string;
+    };
+    expect(body.projectId).toBe(projectId);
+    expect(body.enabled).toBe(false);
+    expect(body.backend).toBe('supabase');
+  });
+
   it('serves health with embed/vault modes', async () => {
     const app = createApp({});
     const mcpHealth = await app.request('/mcp/health');

@@ -505,6 +505,88 @@ export class SupabaseMemoryGateway {
     };
   }
 
+  async upsertRomaProjectHealthSchedule(input: {
+    subjectId: string;
+    workspaceId: string;
+    projectId: string;
+    cadenceMinutes: number;
+    enabled?: boolean;
+    nextRunAt?: string | null;
+    reason?: string | null;
+  }) {
+    const { data, error } = await this.client.rpc(
+      'api_upsert_roma_project_health_schedule',
+      {
+        p_secret: this.apiSecret,
+        p_subject_id: input.subjectId,
+        p_workspace_id: input.workspaceId,
+        p_project_id: input.projectId,
+        p_cadence_minutes: input.cadenceMinutes,
+        p_enabled: input.enabled ?? true,
+        p_next_run_at: input.nextRunAt ?? null,
+        p_reason: input.reason ?? null,
+      },
+    );
+    if (error) throw error;
+    return data as {
+      scheduleId: string;
+      workspaceId: string;
+      projectId: string;
+      cadenceMinutes: number;
+      nextRunAt: string;
+      lastEnqueuedAt: string | null;
+      lastPeriodStart: string | null;
+      lastJobId: string | null;
+      lastError: string | null;
+      enabled: boolean;
+      disabledAt: string | null;
+      disabledReason: string | null;
+      reason: string;
+    };
+  }
+
+  async tickRomaProjectHealthSchedules(input: {
+    subjectId: string;
+    workspaceId: string;
+    limit?: number;
+    projectId?: string | null;
+  }) {
+    const { data, error } = await this.client.rpc(
+      'api_tick_roma_project_health_schedules',
+      {
+        p_secret: this.apiSecret,
+        p_subject_id: input.subjectId,
+        p_workspace_id: input.workspaceId,
+        p_limit: input.limit ?? 10,
+        p_project_id: input.projectId ?? null,
+      },
+    );
+    if (error) throw error;
+    return data as {
+      count: number;
+      enqueued: Array<{
+        scheduleId: string;
+        projectId: string;
+        periodStart: string;
+        nextRunAt: string;
+        jobId: string;
+        inserted: boolean;
+        skippedIntervals: number;
+        idempotencyKey: string;
+      }>;
+      disabled: Array<{
+        scheduleId: string;
+        projectId: string;
+        error: string;
+      }>;
+      errors: Array<{
+        scheduleId: string;
+        projectId: string;
+        error: string;
+      }>;
+    };
+  }
+
   async claimRomaProjectHealthJobs(input: {
     subjectId: string;
     workspaceId: string;
