@@ -1,0 +1,10 @@
+{
+  "manifestVersion": "m14-s04-v1",
+  "contour": "database",
+  "source": "fixture-local",
+  "backupKind": "pitr",
+  "pointInTimeRecovery": true,
+  "rpoMinutes": 15,
+  "dailyRpoDocumented": true,
+  "includesArchivedStorageObjects": false
+}

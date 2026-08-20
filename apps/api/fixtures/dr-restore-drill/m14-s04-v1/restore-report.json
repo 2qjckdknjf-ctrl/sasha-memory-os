@@ -1,0 +1,74 @@
+{
+  "reportVersion": "m14-s04-v1",
+  "restoreKind": "production-like-fixture",
+  "source": "fixture-local",
+  "rtoHours": 8,
+  "rowsPresent": {
+    "memories": 12,
+    "artifacts": 2,
+    "auditEvents": 5
+  },
+  "checks": [
+    {
+      "id": "rows-present",
+      "ok": true,
+      "summary": "Recovered row counts match the canned drill fixture."
+    },
+    {
+      "id": "rls-after-restore",
+      "ok": true,
+      "summary": "RLS deny cases still reject wrong workspace, cross-project, and personal reads."
+    },
+    {
+      "id": "checksum-verify",
+      "ok": true,
+      "summary": "Archived object checksums match the storage manifest."
+    },
+    {
+      "id": "embedding-index-rebuild",
+      "ok": true,
+      "summary": "Embedding vectors and indexes were rebuilt before validation."
+    },
+    {
+      "id": "provenance-sample",
+      "ok": true,
+      "summary": "Selective provenance fields reproduced for sampled recovered memories."
+    }
+  ],
+  "rlsVerification": {
+    "ok": true,
+    "matrixCases": [
+      "wrong-workspace",
+      "cross-project",
+      "personal-default-deny"
+    ]
+  },
+  "checksumVerification": {
+    "ok": true,
+    "verifiedObjects": 2,
+    "algorithms": [
+      "sha256"
+    ]
+  },
+  "embeddingIndexRebuild": {
+    "ok": true,
+    "rebuiltIndexIds": [
+      "memory_records_embedding_vector_idx",
+      "memory_records_embedding_hq_idx"
+    ],
+    "rebuiltEmbeddings": 12
+  },
+  "selectiveProvenance": {
+    "ok": true,
+    "sampleMemoryIds": [
+      "mem-restore-sample-1",
+      "mem-restore-sample-2"
+    ],
+    "reproducibleFields": [
+      "source_event_id",
+      "artifact_checksum",
+      "captured_at"
+    ]
+  },
+  "verifiedWritesCreated": 0
+}

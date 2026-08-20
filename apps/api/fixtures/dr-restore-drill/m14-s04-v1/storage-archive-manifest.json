@@ -1,0 +1,11 @@
+{
+  "manifestVersion": "m14-s04-v1",
+  "contour": "storage",
+  "source": "fixture-local",
+  "storageMode": "archived",
+  "versionedCopy": true,
+  "offsiteCopy": true,
+  "rpoHours": 24,
+  "objectCount": 2,
+  "checksumsVerified": true
+}
