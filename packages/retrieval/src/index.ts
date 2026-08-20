@@ -1,4 +1,5 @@
 import {
+  type EffectiveMemoryPersonalization,
   filterCurrentMemories,
   type MemoryRecord,
   type MemoryStatus,
@@ -17,16 +18,31 @@ export * from './extraction.js';
 
 /** Classic RRF constant (Cormack et al.). */
 export const RRF_K = 60;
+export const SEARCH_RANKING_VERSION = 'hybrid-rrf+m13-s05-v1';
+export const PERSONALIZED_IMPORTANCE_VERSION = 'm13-s05-v1';
+export const MAX_IMPORTANCE_DELTA = 0.5;
+const PINNED_SCORE_MULTIPLIER = 1.75;
 
 export interface SearchHit {
   memory: MemoryRecord;
   score: number;
   reason: string;
+  personalization?: EffectiveMemoryPersonalization | null;
 }
 
 export type SearchTemporalOptions = {
   recordedAfter?: string;
   recordedBefore?: string;
+};
+
+type HitPersonalizationLike = {
+  pinned?: boolean | null;
+  importanceDelta?: number | null;
+  rankingVersion?: string | null;
+  scope?: string | null;
+  actorSubjectId?: string | null;
+  actor_subject_id?: string | null;
+  version?: number | null;
 };
 
 function tokenize(query: string): string[] {
@@ -42,6 +58,89 @@ function recordedAtOf(memory: {
   recorded_at?: string | null;
 }): string | null {
   return memory.recordedAt ?? memory.recorded_at ?? null;
+}
+
+function clamp01(value: number): number {
+  return Math.min(1, Math.max(0, value));
+}
+
+function clampImportanceDelta(value: number | null | undefined): number {
+  if (typeof value !== 'number' || !Number.isFinite(value)) {
+    return 0;
+  }
+  return Math.min(MAX_IMPORTANCE_DELTA, Math.max(-MAX_IMPORTANCE_DELTA, value));
+}
+
+function effectiveImportanceForHit(
+  importance: number,
+  personalization?: EffectiveMemoryPersonalization | null,
+): number {
+  return clamp01(importance + clampImportanceDelta(personalization?.importanceDelta));
+}
+
+function pinMultiplierForHit(
+  personalization?: EffectiveMemoryPersonalization | null,
+): number {
+  return personalization?.pinned ? PINNED_SCORE_MULTIPLIER : 1;
+}
+
+function asHitPersonalization(
+  value: unknown,
+): EffectiveMemoryPersonalization | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return null;
+  }
+  const record = value as HitPersonalizationLike & {
+    memoryId?: string | null;
+    memory_id?: string | null;
+    projectId?: string | null;
+    project_id?: string | null;
+  };
+  const scope =
+    record.scope === 'actor' || record.scope === 'project_default'
+      ? record.scope
+      : null;
+  const memoryId = String(record.memoryId ?? record.memory_id ?? '').trim();
+  const projectId = String(record.projectId ?? record.project_id ?? '').trim();
+  if (!scope || !memoryId || !projectId) {
+    return null;
+  }
+  return {
+    memoryId,
+    projectId,
+    scope,
+    actorSubjectId:
+      typeof record.actorSubjectId === 'string'
+        ? record.actorSubjectId
+        : typeof record.actor_subject_id === 'string'
+          ? record.actor_subject_id
+          : null,
+    pinned: record.pinned === true,
+    importanceDelta:
+      typeof record.importanceDelta === 'number' && Number.isFinite(record.importanceDelta)
+        ? clampImportanceDelta(record.importanceDelta)
+        : null,
+    rankingVersion:
+      typeof record.rankingVersion === 'string' && record.rankingVersion.trim()
+        ? record.rankingVersion
+        : PERSONALIZED_IMPORTANCE_VERSION,
+    version:
+      typeof record.version === 'number' && Number.isFinite(record.version)
+        ? Math.max(1, Math.round(record.version))
+        : 1,
+  };
+}
+
+function compareHitsByPinnedThenScore<T extends { score: number }>(
+  left: T,
+  right: T,
+  leftPersonalization?: EffectiveMemoryPersonalization | null,
+  rightPersonalization?: EffectiveMemoryPersonalization | null,
+): number {
+  if ((leftPersonalization?.pinned ?? false) !== (rightPersonalization?.pinned ?? false)) {
+    return leftPersonalization?.pinned ? -1 : 1;
+  }
+  return right.score - left.score;
 }
 
 export function inRecordedWindow(
@@ -123,6 +222,7 @@ export function searchMemories(
   options?: {
     includeHistory?: boolean;
     projectId?: string;
+    personalizationByMemoryId?: ReadonlyMap<string, EffectiveMemoryPersonalization>;
   } & SearchTemporalOptions,
 ): SearchHit[] {
   const tokens = tokenize(query);
@@ -130,8 +230,7 @@ export function searchMemories(
     ? records
     : filterCurrentMemories(records);
 
-  return pool
-    .map((memory) => {
+  const hits = pool.map<SearchHit | null>((memory) => {
       if (options?.projectId && memory.projectId !== options.projectId) {
         return null;
       }
@@ -139,11 +238,18 @@ export function searchMemories(
         return null;
       }
       const auth = authorityMultiplier(memory.status);
+      const personalization = options?.personalizationByMemoryId?.get(memory.id) ?? null;
+      const effectiveImportance = effectiveImportanceForHit(
+        memory.importance,
+        personalization,
+      );
+      const pinMultiplier = pinMultiplierForHit(personalization);
       if (tokens.length === 0) {
         return {
           memory,
-          score: memory.importance * memory.confidence * auth,
+          score: effectiveImportance * memory.confidence * auth * pinMultiplier,
           reason: 'structured+text',
+          personalization,
         } satisfies SearchHit;
       }
       const haystack = `${memory.title}\n${memory.content}`.toLowerCase();
@@ -155,15 +261,26 @@ export function searchMemories(
       return {
         memory,
         score:
-          memory.importance *
+          effectiveImportance *
           memory.confidence *
           auth *
-          (0.5 + coverage / 2),
+          (0.5 + coverage / 2) *
+          pinMultiplier,
         reason: 'structured+text',
+        personalization,
       } satisfies SearchHit;
-    })
+    });
+
+  return hits
     .filter((hit): hit is SearchHit => hit !== null)
-    .sort((a, b) => b.score - a.score);
+    .sort((a, b) =>
+      compareHitsByPinnedThenScore(
+        a,
+        b,
+        a.personalization ?? null,
+        b.personalization ?? null,
+      ),
+    );
 }
 
 export type HybridHitLike = {
@@ -183,6 +300,7 @@ export type HybridHitLike = {
   };
   score: number;
   reason?: string;
+  personalization?: EffectiveMemoryPersonalization | HitPersonalizationLike | null;
 };
 
 function asNumberVector(value: unknown): number[] | null {
@@ -206,6 +324,12 @@ export function extractStoredEmbedding(memory: HybridHitLike['memory']): number[
   return (
     asNumberVector(memory.embedding) ?? asNumberVector(memory.embedding_vector)
   );
+}
+
+function hitPersonalizationOf(
+  hit: Pick<HybridHitLike, 'personalization'>,
+): EffectiveMemoryPersonalization | null {
+  return asHitPersonalization(hit.personalization);
 }
 
 function hitDocId<T extends HybridHitLike>(hit: T, index: number): string {
@@ -318,7 +442,14 @@ export async function rerankHitsHybrid<T extends HybridHitLike>(
 ): Promise<T[]> {
   const scoped = filterHitsTemporal(hits, options);
   if (scoped.length === 0 || !query.trim()) {
-    return scoped;
+    return [...scoped].sort((a, b) =>
+      compareHitsByPinnedThenScore(
+        a,
+        b,
+        hitPersonalizationOf(a),
+        hitPersonalizationOf(b),
+      ),
+    );
   }
 
   const adapter = createEmbeddingAdapter(options?.embedEngine);
@@ -378,7 +509,14 @@ export async function rerankHitsHybrid<T extends HybridHitLike>(
         reason,
       };
     })
-    .sort((a, b) => b.score - a.score);
+    .sort((a, b) =>
+      compareHitsByPinnedThenScore(
+        a,
+        b,
+        hitPersonalizationOf(a),
+        hitPersonalizationOf(b),
+      ),
+    );
 }
 
 /** Lexical candidates fused with embedding ranks via RRF (WP-07 / M5). */
@@ -389,6 +527,7 @@ export async function searchMemoriesHybrid(
     includeHistory?: boolean;
     projectId?: string;
     embedEngine?: string;
+    personalizationByMemoryId?: ReadonlyMap<string, EffectiveMemoryPersonalization>;
   } & SearchTemporalOptions,
 ): Promise<SearchHit[]> {
   const lexical = searchMemories(records, query, options);
@@ -484,6 +623,7 @@ export type AgenticRetrievalConflict = {
 export type AgenticRetrievalResult<T extends HybridHitLike = HybridHitLike> = {
   hits: T[];
   ranking: 'hybrid-rrf';
+  rankingVersion: string;
   context: ReturnType<typeof packSearchContext>;
   outcome: AgenticRetrievalOutcome;
   stopReason: AgenticRetrievalStopReason;
@@ -667,7 +807,14 @@ function mergeHybridHits<T extends HybridHitLike>(lists: T[][]): T[] {
       }
     });
   }
-  return [...merged.values()].sort((a, b) => Number(b.score) - Number(a.score));
+  return [...merged.values()].sort((a, b) =>
+    compareHitsByPinnedThenScore(
+      a,
+      b,
+      hitPersonalizationOf(a),
+      hitPersonalizationOf(b),
+    ),
+  );
 }
 
 function buildEvidenceRefinementQuery<T extends HybridHitLike>(
@@ -1005,6 +1152,7 @@ export async function runBoundedAgenticRetrieval<T extends HybridHitLike>(input:
   return {
     hits,
     ranking: 'hybrid-rrf',
+    rankingVersion: SEARCH_RANKING_VERSION,
     context: packSearchContext(hits, { maxChars: input.maxContextChars }),
     outcome,
     stopReason,

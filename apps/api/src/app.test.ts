@@ -2584,6 +2584,383 @@ describe('memory api demo slice', () => {
     expect(gateway.captureText).not.toHaveBeenCalled();
   });
 
+  it('requires explicit project_id for personalized importance and never defaults to AISTROYKA', async () => {
+    const store = new MemoryStore();
+    const memory = store.createDecision({
+      workspaceId,
+      projectId,
+      title: 'Personalization target',
+      content: 'Explicit project id is required.',
+      actorSubjectId: owner,
+      idempotencyKey: 'personalization-missing-project',
+    });
+    const app = createApp({ store });
+
+    const res = await app.request(`/v1/memories/${memory.id}/status`, {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'x-subject-id': owner,
+        'x-actor-key': 'owner',
+      },
+      body: JSON.stringify({
+        actor_subject_id: owner,
+        reason: 'Should fail without explicit project scope.',
+        pinned: true,
+      }),
+    });
+
+    expect(res.status).toBe(400);
+    expect(await res.json()).toEqual({
+      error:
+        'project_id is required for personalized importance; never default to AISTROYKA',
+    });
+  });
+
+  it('returns importanceDelta null for pin-only personalization writes', async () => {
+    const store = new MemoryStore();
+    const memory = store.createDecision({
+      workspaceId,
+      projectId,
+      title: 'Pin only target',
+      content: 'Pin-only writes should not coerce a delta.',
+      actorSubjectId: owner,
+      idempotencyKey: 'pin-only-target',
+    });
+    const app = createApp({ store });
+
+    const res = await app.request(`/v1/memories/${memory.id}/status`, {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'x-subject-id': owner,
+        'x-actor-key': 'owner',
+      },
+      body: JSON.stringify({
+        project_id: projectId,
+        scope: 'actor',
+        actor_subject_id: owner,
+        reason: 'Pin only',
+        pinned: true,
+      }),
+    });
+
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual(
+      expect.objectContaining({
+        pinned: true,
+        importanceDelta: null,
+        cleared: false,
+      }),
+    );
+  });
+
+  it('clears personalization for omitted or null pin+delta payloads and audits the clear', async () => {
+    const store = new MemoryStore();
+    const memory = store.createDecision({
+      workspaceId,
+      projectId,
+      title: 'Clear personalization target',
+      content: 'Clear requests should converge across backends.',
+      actorSubjectId: owner,
+      idempotencyKey: 'clear-personalization-target',
+    });
+    const app = createApp({ store });
+
+    const firstSet = await app.request(`/v1/memories/${memory.id}/status`, {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'x-subject-id': owner,
+        'x-actor-key': 'owner',
+      },
+      body: JSON.stringify({
+        project_id: projectId,
+        scope: 'actor',
+        actor_subject_id: owner,
+        reason: 'Pin before clear',
+        pinned: true,
+      }),
+    });
+    expect(firstSet.status).toBe(200);
+
+    const clearOmitted = await app.request(`/v1/memories/${memory.id}/status`, {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'x-subject-id': owner,
+        'x-actor-key': 'owner',
+      },
+      body: JSON.stringify({
+        project_id: projectId,
+        scope: 'actor',
+        actor_subject_id: owner,
+        reason: 'Clear by omission',
+      }),
+    });
+    expect(clearOmitted.status).toBe(200);
+    expect(await clearOmitted.json()).toEqual(
+      expect.objectContaining({
+        pinned: false,
+        importanceDelta: null,
+        cleared: true,
+      }),
+    );
+    expect(store.memoryPersonalizations.size).toBe(0);
+
+    const secondSet = await app.request(`/v1/memories/${memory.id}/status`, {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'x-subject-id': owner,
+        'x-actor-key': 'owner',
+      },
+      body: JSON.stringify({
+        project_id: projectId,
+        scope: 'actor',
+        actor_subject_id: owner,
+        reason: 'Re-pin before explicit null clear',
+        pinned: true,
+      }),
+    });
+    expect(secondSet.status).toBe(200);
+
+    const clearExplicitNull = await app.request(`/v1/memories/${memory.id}/status`, {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'x-subject-id': owner,
+        'x-actor-key': 'owner',
+      },
+      body: JSON.stringify({
+        project_id: projectId,
+        scope: 'actor',
+        actor_subject_id: owner,
+        reason: 'Clear with explicit null delta',
+        pinned: false,
+        importance_delta: null,
+      }),
+    });
+    expect(clearExplicitNull.status).toBe(200);
+    expect(await clearExplicitNull.json()).toEqual(
+      expect.objectContaining({
+        pinned: false,
+        importanceDelta: null,
+        cleared: true,
+      }),
+    );
+    expect(store.memoryPersonalizations.size).toBe(0);
+    expect(
+      store.auditLog.filter((entry) => entry.action === 'memory.personalization.cleared'),
+    ).toHaveLength(2);
+  });
+
+  it('keeps personalized importance scoped by actor and project', async () => {
+    const store = new MemoryStore();
+    const actorScoped = store.createDecision({
+      workspaceId,
+      projectId,
+      title: 'Cursor actor priority',
+      content: 'shared ranking phrase',
+      actorSubjectId: owner,
+      idempotencyKey: 'actor-priority',
+      importance: 0.2,
+    });
+    const projectDefault = store.createDecision({
+      workspaceId,
+      projectId,
+      title: 'Project default priority',
+      content: 'shared ranking phrase',
+      actorSubjectId: owner,
+      idempotencyKey: 'project-default-priority',
+      importance: 0.2,
+    });
+    const otherProject = store.createDecision({
+      workspaceId,
+      projectId: otherProjectId,
+      title: 'Other project priority',
+      content: 'shared ranking phrase',
+      actorSubjectId: owner,
+      idempotencyKey: 'other-project-priority',
+      importance: 0.2,
+    });
+    const app = createApp({ store });
+
+    const projectDefaultSet = await app.request(`/v1/memories/${projectDefault.id}/status`, {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'x-subject-id': owner,
+        'x-actor-key': 'owner',
+      },
+      body: JSON.stringify({
+        project_id: projectId,
+        scope: 'project_default',
+        actor_subject_id: owner,
+        reason: 'Default project ranking',
+        pinned: true,
+        importance_delta: 0.1,
+      }),
+    });
+    expect(projectDefaultSet.status).toBe(200);
+
+    const actorSet = await app.request(`/v1/memories/${actorScoped.id}/status`, {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'x-subject-id': cursor,
+        'x-actor-key': 'cursor',
+      },
+      body: JSON.stringify({
+        project_id: projectId,
+        scope: 'actor',
+        actor_subject_id: cursor,
+        reason: 'Cursor-specific ranking',
+        pinned: true,
+        importance_delta: 0.4,
+      }),
+    });
+    expect(actorSet.status).toBe(200);
+
+    const ownerSearch = await app.request('/v1/search', {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'x-subject-id': owner,
+        'x-actor-key': 'owner',
+      },
+      body: JSON.stringify({
+        query: 'shared ranking phrase',
+        project_id: projectId,
+      }),
+    });
+    expect(ownerSearch.status).toBe(200);
+    const ownerBody = await ownerSearch.json();
+    expect(ownerBody.hits[0]?.memory?.id).toBe(projectDefault.id);
+
+    const cursorSearch = await app.request('/v1/search', {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'x-subject-id': cursor,
+        'x-actor-key': 'cursor',
+      },
+      body: JSON.stringify({
+        query: 'shared ranking phrase',
+        project_id: projectId,
+      }),
+    });
+    expect(cursorSearch.status).toBe(200);
+    const cursorBody = await cursorSearch.json();
+    expect(cursorBody.hits[0]?.memory?.id).toBe(actorScoped.id);
+
+    const otherProjectSearch = await app.request('/v1/search', {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'x-subject-id': owner,
+        'x-actor-key': 'owner',
+      },
+      body: JSON.stringify({
+        query: 'shared ranking phrase',
+        project_id: otherProjectId,
+      }),
+    });
+    expect(otherProjectSearch.status).toBe(200);
+    const otherProjectBody = await otherProjectSearch.json();
+    expect(otherProjectBody.hits).toHaveLength(1);
+    expect(otherProjectBody.hits[0]?.memory?.id).toBe(otherProject.id);
+  });
+
+  it('honors pinned ranking after ACL filtering without creating verified writes', async () => {
+    const store = new MemoryStore();
+    const app = createApp({ store });
+
+    const visibleCapture = await app.request('/v1/capture/text', {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'x-subject-id': owner,
+        'x-actor-key': 'owner',
+      },
+      body: JSON.stringify({
+        workspace_id: workspaceId,
+        project_id: projectId,
+        title: 'Visible pinned memory',
+        text: 'acl personalization query',
+        actor_subject_id: owner,
+        idempotency_key: 'visible-pinned-memory',
+        sensitivity: 'internal',
+      }),
+    });
+    expect(visibleCapture.status).toBe(201);
+    const visibleBody = (await visibleCapture.json()) as { memoryId: string };
+
+    const restrictedCapture = await app.request('/v1/capture/text', {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'x-subject-id': owner,
+        'x-actor-key': 'owner',
+      },
+      body: JSON.stringify({
+        workspace_id: workspaceId,
+        project_id: projectId,
+        title: 'Restricted pinned memory',
+        text: 'acl personalization query',
+        actor_subject_id: owner,
+        idempotency_key: 'restricted-pinned-memory',
+        sensitivity: 'restricted',
+      }),
+    });
+    expect(restrictedCapture.status).toBe(201);
+    const restrictedBody = (await restrictedCapture.json()) as { memoryId: string };
+
+    for (const memoryId of [visibleBody.memoryId, restrictedBody.memoryId]) {
+      const personalized = await app.request(`/v1/memories/${memoryId}/status`, {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          'x-subject-id': owner,
+          'x-actor-key': 'owner',
+        },
+        body: JSON.stringify({
+          project_id: projectId,
+          scope: 'project_default',
+          actor_subject_id: owner,
+          reason: 'Project default pin',
+          pinned: true,
+        }),
+      });
+      expect(personalized.status).toBe(200);
+    }
+
+    const search = await app.request('/v1/search', {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'x-subject-id': cursor,
+        'x-actor-key': 'cursor',
+      },
+      body: JSON.stringify({
+        query: 'acl personalization query',
+        project_id: projectId,
+      }),
+    });
+    expect(search.status).toBe(200);
+    const body = await search.json();
+    expect(body.hits[0]?.memory?.id).toBe(visibleBody.memoryId);
+    expect(
+      body.hits.some((hit: { memory?: { id?: string } }) => hit.memory?.id === restrictedBody.memoryId),
+    ).toBe(false);
+    expect(store.memories.size).toBe(2);
+    expect(store.memories.get(visibleBody.memoryId)?.status).toBe('candidate');
+    expect(store.memories.get(restrictedBody.memoryId)?.status).toBe('candidate');
+    expect(
+      store.auditLog.filter((entry) => entry.action === 'memory.personalization.set'),
+    ).toHaveLength(2);
+  });
+
   it('previews extraction candidates', async () => {
     const app = createApp({});
     const res = await app.request('/v1/extraction/preview', {

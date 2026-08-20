@@ -1733,6 +1733,39 @@ export class SupabaseMemoryGateway {
     };
   }
 
+  async setMemoryPersonalization(input: {
+    subjectId: string;
+    projectId: string;
+    memoryId: string;
+    scope?: 'actor' | 'project_default';
+    reason: string;
+    pinned?: boolean;
+    importanceDelta?: number | null;
+  }) {
+    const { data, error } = await this.client.rpc('api_set_memory_personalization', {
+      p_secret: this.apiSecret,
+      p_subject_id: input.subjectId,
+      p_project_id: input.projectId,
+      p_memory_id: input.memoryId,
+      p_scope: input.scope ?? 'actor',
+      p_reason: input.reason,
+      p_pinned: input.pinned ?? null,
+      p_importance_delta: input.importanceDelta ?? null,
+    });
+    if (error) throw error;
+    return data as {
+      memoryId: string;
+      projectId: string;
+      scope: 'actor' | 'project_default';
+      actorSubjectId: string | null;
+      pinned: boolean;
+      importanceDelta: number | null;
+      rankingVersion: string;
+      version: number | null;
+      cleared: boolean;
+    };
+  }
+
   async correctMemory(input: {
     subjectId: string;
     memoryId: string;

@@ -36,6 +36,7 @@ import {
   PROACTIVE_CONSOLIDATION_RULES_VERSION,
   rerankHitsHybrid,
   runBoundedAgenticRetrieval,
+  SEARCH_RANKING_VERSION,
   searchMemoriesHybrid,
 } from '@memory-os/retrieval';
 import {
@@ -1477,6 +1478,11 @@ export function createMcpHandlers(options?: {
                 recordedBefore,
               });
             }
+            const personalizationByMemoryId =
+              store.listEffectiveMemoryPersonalizations({
+                actorSubjectId: subjectId,
+                projectId: projectId ?? null,
+              });
             return searchMemoriesHybrid(
               filterReadableOfflineMemories(authz, store),
               input.query,
@@ -1485,6 +1491,7 @@ export function createMcpHandlers(options?: {
                 includeHistory: input.includeHistory,
                 recordedAfter,
                 recordedBefore,
+                personalizationByMemoryId,
               },
             );
           };
@@ -1534,6 +1541,7 @@ export function createMcpHandlers(options?: {
               includeHistory: Boolean(args.include_history),
               recordedAfter: recordedAfter ?? null,
               recordedBefore: recordedBefore ?? null,
+              rankingVersion: result.rankingVersion,
               outcome: result.outcome,
               stopReason: result.stopReason,
               writeActionsAttempted: result.writeActionsAttempted,
@@ -1581,10 +1589,12 @@ export function createMcpHandlers(options?: {
             return {
               hits: result.hits,
               ranking: result.ranking,
+              rankingVersion: result.rankingVersion,
               ...(pack
                 ? { context: result.context }
                 : {}),
               agentic: {
+                rankingVersion: result.rankingVersion,
                 outcome: result.outcome,
                 stopReason: result.stopReason,
                 writeActionsAttempted: result.writeActionsAttempted,
@@ -1608,6 +1618,7 @@ export function createMcpHandlers(options?: {
           return {
             hits,
             ranking: 'hybrid-rrf',
+            rankingVersion: SEARCH_RANKING_VERSION,
             ...(pack
               ? { context: packSearchContext(hits, { maxChars: maxContextChars }) }
               : {}),

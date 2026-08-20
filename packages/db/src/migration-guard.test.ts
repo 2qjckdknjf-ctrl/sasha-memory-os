@@ -56,6 +56,12 @@ const contradictionDetectionMigrationPath = fileURLToPath(
     import.meta.url,
   ),
 );
+const personalizedImportanceMigrationPath = fileURLToPath(
+  new URL(
+    '../../../supabase/migrations/20260820050100_m13_slice_05_personalized_importance.sql',
+    import.meta.url,
+  ),
+);
 
 describe('m8 slice 03 migration guards', () => {
   const sql = readFileSync(migrationPath, 'utf8');
@@ -76,6 +82,10 @@ describe('m8 slice 03 migration guards', () => {
   );
   const contradictionDetectionSql = readFileSync(
     contradictionDetectionMigrationPath,
+    'utf8',
+  );
+  const personalizedImportanceSql = readFileSync(
+    personalizedImportanceMigrationPath,
     'utf8',
   );
 
@@ -315,5 +325,59 @@ describe('m8 slice 03 migration guards', () => {
     expect(contradictionDetectionSql).toContain(`'memoryId'`);
     expect(contradictionDetectionSql).toContain(`'title'`);
     expect(contradictionDetectionSql).not.toContain(`'content'`);
+  });
+
+  it('adds project-scoped personalized importance without defaulting to AISTROYKA', () => {
+    expect(personalizedImportanceSql).toContain(`CREATE TABLE memory_personalizations`);
+    expect(personalizedImportanceSql).toContain(
+      `UNIQUE (workspace_id, project_id, memory_id, scope_key)`,
+    );
+    expect(personalizedImportanceSql).toContain(
+      `CREATE OR REPLACE FUNCTION app.api_set_memory_personalization`,
+    );
+    expect(personalizedImportanceSql).toContain(`RAISE EXCEPTION 'project_id required'`);
+    expect(personalizedImportanceSql).not.toContain(
+      `'44444444-4444-4444-8444-444444444401'`,
+    );
+  });
+
+  it('keeps personalization rows actor-private or project-default only and versioned', () => {
+    expect(personalizedImportanceSql).toContain(
+      `scope IN ('actor', 'project_default')`,
+    );
+    expect(personalizedImportanceSql).toContain(
+      `scope = 'project_default'
+      OR actor_subject_id = app.current_subject_id()`,
+    );
+    expect(personalizedImportanceSql).toContain(`FROM memory_records mr`);
+    expect(personalizedImportanceSql).toContain(`mr.sensitivity`);
+    expect(personalizedImportanceSql).toContain(`ranking_version text NOT NULL DEFAULT 'm13-s05-v1'`);
+    expect(personalizedImportanceSql).toContain(`version integer NOT NULL DEFAULT 1`);
+    expect(personalizedImportanceSql).toContain(`'owner subject required for project-default personalization'`);
+  });
+
+  it('applies personalized importance inside search only after ACL-visible memories are selected', () => {
+    expect(personalizedImportanceSql).toContain(`LEFT JOIN LATERAL (`);
+    expect(personalizedImportanceSql).toContain(`FROM memory_personalizations mp`);
+    expect(personalizedImportanceSql).toContain(
+      `(mp.scope = 'actor' AND mp.actor_subject_id = p_subject_id)`,
+    );
+    expect(personalizedImportanceSql).toContain(`OR mp.scope = 'project_default'`);
+    expect(personalizedImportanceSql).toContain(
+      `AND app.has_acl(m.workspace_id, 'memory', 'read', m.project_id, m.sensitivity)`,
+    );
+    expect(personalizedImportanceSql).toContain(`'memory.personalization.set'`);
+    expect(personalizedImportanceSql).toContain(`'memory.personalization.cleared'`);
+  });
+
+  it('lets the same payload clear personalization on SQL and keeps pin-only delta null', () => {
+    expect(personalizedImportanceSql).toContain(
+      `v_should_clear := coalesce(p_pinned, false) = false AND p_importance_delta IS NULL;`,
+    );
+    expect(personalizedImportanceSql).not.toContain(
+      `RAISE EXCEPTION 'pinned or importance_delta required'`,
+    );
+    expect(personalizedImportanceSql).toContain(`'importanceDelta', NULL`);
+    expect(personalizedImportanceSql).toContain(`'importanceDelta', v_next.importance_delta`);
   });
 });

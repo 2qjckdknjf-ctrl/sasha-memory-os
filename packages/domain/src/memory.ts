@@ -77,6 +77,39 @@ export interface AuditLogEntry {
   recordedAt: string;
 }
 
+export const MEMORY_PERSONALIZATION_SCOPES = ['actor', 'project_default'] as const;
+
+export type MemoryPersonalizationScope =
+  (typeof MEMORY_PERSONALIZATION_SCOPES)[number];
+
+export interface MemoryPersonalizationRecord {
+  id: string;
+  workspaceId: string;
+  projectId: string;
+  memoryId: string;
+  scope: MemoryPersonalizationScope;
+  scopeKey: string;
+  actorSubjectId: string | null;
+  pinned: boolean;
+  importanceDelta: number | null;
+  rankingVersion: string;
+  version: number;
+  createdAt: string;
+  updatedAt: string;
+  updatedBySubject: string | null;
+}
+
+export interface EffectiveMemoryPersonalization {
+  memoryId: string;
+  projectId: string;
+  scope: MemoryPersonalizationScope;
+  actorSubjectId: string | null;
+  pinned: boolean;
+  importanceDelta: number | null;
+  rankingVersion: string;
+  version: number;
+}
+
 export interface MemoryConflictRecord {
   id: string;
   workspaceId: string;

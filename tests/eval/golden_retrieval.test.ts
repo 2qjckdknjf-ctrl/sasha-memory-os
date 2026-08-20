@@ -66,6 +66,20 @@ describe('golden retrieval harness', () => {
   ) as { cases: GoldenCase[] };
   const store = createSeededStore();
 
+  it('keeps unpersonalized golden retrieval stable when no personalization map is supplied', async () => {
+    const records = [...store.memories.values()];
+    const baseline = await searchMemoriesHybrid(records, 'Slice 01', {
+      projectId,
+    });
+    const withEmptyPersonalization = await searchMemoriesHybrid(records, 'Slice 01', {
+      projectId,
+      personalizationByMemoryId: new Map(),
+    });
+    expect(withEmptyPersonalization.map((hit) => hit.memory.id)).toEqual(
+      baseline.map((hit) => hit.memory.id),
+    );
+  });
+
   const fixtures: Array<{
     title: string;
     text: string;

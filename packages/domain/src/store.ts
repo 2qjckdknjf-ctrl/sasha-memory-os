@@ -1,10 +1,13 @@
 import {
   type AuditLogEntry,
+  type EffectiveMemoryPersonalization,
   filterCurrentMemories,
   type PrivacyRequest,
   nextProjectStateVersion,
   type Handoff,
   type MemoryConflictRecord,
+  type MemoryPersonalizationRecord,
+  type MemoryPersonalizationScope,
   type MemoryRecord,
   type ProjectStateVersion,
 } from './memory.js';
@@ -15,6 +18,22 @@ function newId(): string {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function memoryPersonalizationAuditState(
+  record: MemoryPersonalizationRecord,
+): Record<string, unknown> {
+  return {
+    projectId: record.projectId,
+    memoryId: record.memoryId,
+    scope: record.scope,
+    actorSubjectId: record.actorSubjectId,
+    pinned: record.pinned,
+    importanceDelta: record.importanceDelta,
+    rankingVersion: record.rankingVersion,
+    version: record.version,
+    updatedAt: record.updatedAt,
+  };
 }
 
 export interface SourceEvent {
@@ -36,6 +55,7 @@ export class MemoryStore {
   readonly events = new Map<string, SourceEvent>();
   readonly eventByIdempotency = new Map<string, string>();
   readonly memories = new Map<string, MemoryRecord>();
+  readonly memoryPersonalizations = new Map<string, MemoryPersonalizationRecord>();
   readonly memoryConflicts = new Map<string, MemoryConflictRecord>();
   readonly memoryConflictByKey = new Map<string, string>();
   readonly projectStates = new Map<string, ProjectStateVersion[]>();
@@ -96,6 +116,57 @@ export class MemoryStore {
 
   private handoffBucket(projectId?: string | null): string {
     return projectId ?? '__workspace__';
+  }
+
+  private memoryPersonalizationKey(input: {
+    projectId: string;
+    memoryId: string;
+    scope: MemoryPersonalizationScope;
+    actorSubjectId?: string | null;
+  }): string {
+    const scopeKey =
+      input.scope === 'actor' ? (input.actorSubjectId ?? '').trim() : 'project_default';
+    return `${input.projectId}:${input.memoryId}:${input.scope}:${scopeKey}`;
+  }
+
+  listEffectiveMemoryPersonalizations(input: {
+    actorSubjectId: string;
+    projectId?: string | null;
+    memoryIds?: readonly string[];
+  }): Map<string, EffectiveMemoryPersonalization> {
+    const selectedMemoryIds = input.memoryIds ? new Set(input.memoryIds) : null;
+    const effective = new Map<string, EffectiveMemoryPersonalization>();
+    for (const row of this.memoryPersonalizations.values()) {
+      if (input.projectId && row.projectId !== input.projectId) {
+        continue;
+      }
+      if (selectedMemoryIds && !selectedMemoryIds.has(row.memoryId)) {
+        continue;
+      }
+      if (row.scope === 'actor' && row.actorSubjectId !== input.actorSubjectId) {
+        continue;
+      }
+      const nextPrecedence = row.scope === 'actor' ? 0 : 1;
+      const existing = effective.get(row.memoryId);
+      const existingPrecedence = existing?.scope === 'actor' ? 0 : 1;
+      if (
+        !existing ||
+        nextPrecedence < existingPrecedence ||
+        (nextPrecedence === existingPrecedence && row.version > existing.version)
+      ) {
+        effective.set(row.memoryId, {
+          memoryId: row.memoryId,
+          projectId: row.projectId,
+          scope: row.scope,
+          actorSubjectId: row.actorSubjectId,
+          pinned: row.pinned,
+          importanceDelta: row.importanceDelta,
+          rankingVersion: row.rankingVersion,
+          version: row.version,
+        });
+      }
+    }
+    return effective;
   }
 
   createDecision(input: {
@@ -470,6 +541,116 @@ export class MemoryStore {
       .filter((request) => request.workspaceId === workspaceId)
       .sort((left, right) => right.createdAt.localeCompare(left.createdAt))
       .slice(0, Math.max(1, limit));
+  }
+
+  setMemoryPersonalization(input: {
+    memoryId: string;
+    projectId: string;
+    scope: MemoryPersonalizationScope;
+    reason: string;
+    actorSubjectId: string;
+    pinned?: boolean | null;
+    importanceDelta?: number | null;
+    rankingVersion: string;
+  }): {
+    cleared: boolean;
+    personalization: EffectiveMemoryPersonalization | null;
+  } {
+    const current = this.memories.get(input.memoryId);
+    if (!current) throw new Error('memory not found');
+    if (!current.projectId || current.projectId !== input.projectId) {
+      throw new Error('project mismatch');
+    }
+    if (
+      input.importanceDelta !== undefined &&
+      input.importanceDelta !== null &&
+      (!Number.isFinite(input.importanceDelta) ||
+        input.importanceDelta < -0.5 ||
+        input.importanceDelta > 0.5)
+    ) {
+      throw new Error('importance_delta must be between -0.5 and 0.5');
+    }
+
+    const scopeKey =
+      input.scope === 'actor' ? input.actorSubjectId.trim() : 'project_default';
+    const key = this.memoryPersonalizationKey({
+      projectId: input.projectId,
+      memoryId: input.memoryId,
+      scope: input.scope,
+      actorSubjectId: input.scope === 'actor' ? input.actorSubjectId : null,
+    });
+    const existing = this.memoryPersonalizations.get(key) ?? null;
+    const shouldClear =
+      input.pinned !== true &&
+      (input.importanceDelta === undefined || input.importanceDelta === null);
+
+    if (shouldClear) {
+      if (existing) {
+        this.memoryPersonalizations.delete(key);
+        this.createAuditEvent({
+          workspaceId: current.workspaceId,
+          actorSubjectId: input.actorSubjectId,
+          action: 'memory.personalization.cleared',
+          objectType: 'memory_personalization',
+          objectId: existing.id,
+          reason: input.reason,
+          beforeState: memoryPersonalizationAuditState(existing),
+          afterState: {
+            projectId: current.projectId,
+            memoryId: current.id,
+            scope: input.scope,
+            actorSubjectId:
+              input.scope === 'actor' ? input.actorSubjectId : null,
+            cleared: true,
+            rankingVersion: input.rankingVersion,
+          },
+        });
+      }
+      return { cleared: true, personalization: null };
+    }
+
+    const now = new Date().toISOString();
+    const next: MemoryPersonalizationRecord = {
+      id: existing?.id ?? newId(),
+      workspaceId: current.workspaceId,
+      projectId: input.projectId,
+      memoryId: current.id,
+      scope: input.scope,
+      scopeKey,
+      actorSubjectId: input.scope === 'actor' ? input.actorSubjectId : null,
+      pinned: input.pinned === true,
+      importanceDelta:
+        input.importanceDelta === undefined ? null : input.importanceDelta,
+      rankingVersion: input.rankingVersion,
+      version: (existing?.version ?? 0) + 1,
+      createdAt: existing?.createdAt ?? now,
+      updatedAt: now,
+      updatedBySubject: input.actorSubjectId,
+    };
+    this.memoryPersonalizations.set(key, next);
+    this.createAuditEvent({
+      workspaceId: current.workspaceId,
+      actorSubjectId: input.actorSubjectId,
+      action: 'memory.personalization.set',
+      objectType: 'memory_personalization',
+      objectId: next.id,
+      reason: input.reason,
+      beforeState: existing ? memoryPersonalizationAuditState(existing) : null,
+      afterState: memoryPersonalizationAuditState(next),
+    });
+    return {
+      cleared: false,
+      personalization: {
+        memoryId: next.memoryId,
+        projectId: next.projectId,
+        scope: next.scope,
+        actorSubjectId: next.actorSubjectId,
+        pinned: next.pinned,
+        importanceDelta: next.importanceDelta,
+        rankingVersion: next.rankingVersion,
+        version: next.version,
+      },
+    };
   }
 
   setMemoryStatus(input: {
