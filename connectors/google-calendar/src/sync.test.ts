@@ -405,6 +405,12 @@ describe('google calendar selected-calendar contract', () => {
                 htmlLink: 'https://calendar.google.com/private-review',
                 location: 'Room 7',
                 attendees: [{ email: 'manager@example.com', responseStatus: 'accepted' }],
+                attachments: [
+                  {
+                    title: 'Performance Review.pdf',
+                    mimeType: 'application/pdf',
+                  },
+                ],
               }),
               calendarEvent({
                 id: 'evt-restricted-busy',
@@ -473,10 +479,12 @@ describe('google calendar selected-calendar contract', () => {
         htmlLink: null,
         attendees: [],
       });
+      expect(privateRecord?.externalObject.attachments).toEqual([]);
       expect(privateRecord?.capture.text).toContain('Event: Busy');
       expect(privateRecord?.capture.text).toContain('Privacy: private event content redacted');
       expect(privateRecord?.capture.text).not.toContain('Performance Review');
       expect(privateRecord?.capture.text).not.toContain('Discuss compensation changes');
+      expect(privateRecord?.capture.text).not.toContain('Performance Review.pdf');
       expect(privateRecord?.capture.text).not.toContain('manager@example.com');
       expect(privateRecord?.capture.text).not.toContain('Room 7');
       expect(privateRecord?.capture.text).not.toContain('private-review');
@@ -507,6 +515,7 @@ describe('google calendar selected-calendar contract', () => {
       expect(publicRecord?.capture.text).toContain('Description: Quarterly roadmap');
       expect(publicRecord?.capture.text).toContain('Location: Zoom');
       expect(publicRecord?.capture.text).toContain('teammate@example.com');
+      expect(fetchImpl.mock.calls.some(([value]) => String(value).includes('alt=media'))).toBe(false);
     } finally {
       await rm(dir, { recursive: true, force: true });
     }
@@ -533,6 +542,12 @@ describe('google calendar selected-calendar contract', () => {
                 htmlLink: 'https://calendar.google.com/private-opt-in',
                 location: 'Clinic',
                 attendees: [{ email: 'doctor@example.com', responseStatus: 'accepted' }],
+                attachments: [
+                  {
+                    title: 'therapy-notes.pdf',
+                    mimeType: 'application/pdf',
+                  },
+                ],
               }),
             ],
             nextSyncToken: 'cal-personal-sync-1',
@@ -585,11 +600,18 @@ describe('google calendar selected-calendar contract', () => {
           responseStatus: 'accepted',
         },
       ]);
+      expect(record?.externalObject.attachments).toEqual([
+        {
+          title: 'therapy-notes.pdf',
+          mimeType: 'application/pdf',
+        },
+      ]);
       expect(record?.capture.text).toContain('Event: Therapy appointment');
       expect(record?.capture.text).toContain('Description: Weekly check-in');
       expect(record?.capture.text).toContain('Location: Clinic');
       expect(record?.capture.text).toContain('doctor@example.com');
       expect(record?.capture.text).toContain('retained via selected-calendar opt-in');
+      expect(fetchImpl.mock.calls.some(([value]) => String(value).includes('alt=media'))).toBe(false);
     } finally {
       await rm(dir, { recursive: true, force: true });
     }

@@ -435,6 +435,7 @@ function applyCalendarPrivacyPolicy(input: {
   | 'htmlLink'
   | 'location'
   | 'attendees'
+  | 'attachments'
   | 'organizer'
   | 'creator'
   | 'iCalUID'
@@ -454,6 +455,7 @@ function applyCalendarPrivacyPolicy(input: {
     htmlLink: privateContentRedacted ? undefined : input.event.htmlLink,
     location: privateContentRedacted ? undefined : input.event.location,
     attendees: privateContentRedacted ? undefined : input.event.attendees,
+    attachments: privateContentRedacted ? undefined : input.event.attachments,
     organizer: privateContentRedacted ? undefined : input.event.organizer,
     creator: privateContentRedacted ? undefined : input.event.creator,
     iCalUID: privateContentRedacted ? undefined : input.event.iCalUID,
