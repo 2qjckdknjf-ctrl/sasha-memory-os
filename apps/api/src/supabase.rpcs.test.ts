@@ -18,6 +18,7 @@ const describeRemote = env ? describe : describe.skip;
 const workspaceId = '11111111-1111-4111-8111-111111111111';
 const projectId = '44444444-4444-4444-8444-444444444401';
 const owner = '33333333-3333-4333-8333-333333333301';
+const roma = '33333333-3333-4333-8333-333333333304';
 
 describeRemote('remote Supabase RPCs (vault / embed / consolidation)', () => {
   // Lazily construct — vitest still evaluates describe.skip bodies during collect.
@@ -137,6 +138,103 @@ describeRemote('remote Supabase RPCs (vault / embed / consolidation)', () => {
         });
         expect(published.publishedAt).toBeTruthy();
       }
+    },
+    20_000,
+  );
+
+  it(
+    'upserts one explicit project schedule and due-ticks it idempotently as ROMA',
+    async () => {
+      const reason = `rpc-schedule-${Date.now()}`;
+      const created = await gateway().upsertRomaProjectHealthSchedule({
+        subjectId: owner,
+        workspaceId,
+        projectId,
+        cadenceMinutes: 1440,
+        nextRunAt: new Date(Date.now() - 60_000).toISOString(),
+        enabled: true,
+        reason,
+      });
+      expect(created.projectId).toBe(projectId);
+
+      const first = await gateway().tickRomaProjectHealthSchedules({
+        subjectId: roma,
+        workspaceId,
+        limit: 50,
+      });
+      const firstSchedule = first.enqueued.find(
+        (entry) => entry.scheduleId === created.scheduleId,
+      );
+      expect(firstSchedule).toBeTruthy();
+      expect(firstSchedule?.projectId).toBe(projectId);
+
+      const claimed = await gateway().claimRomaProjectHealthJobs({
+        subjectId: roma,
+        workspaceId,
+        limit: 50,
+        projectId,
+      });
+      const job = claimed.jobs.find(
+        (entry) => entry.idempotencyKey === firstSchedule?.idempotencyKey,
+      );
+      expect(job?.requestedBy).toBe(roma);
+      expect(job?.projectId).toBe(projectId);
+
+      if (job) {
+        const completed = await gateway().completeRomaProjectHealth({
+          subjectId: roma,
+          jobId: job.jobId,
+          status: 'failed',
+          error: 'rpc cleanup',
+        });
+        expect(completed.status).toBe('failed');
+      }
+
+      const second = await gateway().tickRomaProjectHealthSchedules({
+        subjectId: roma,
+        workspaceId,
+        limit: 50,
+      });
+      expect(
+        second.enqueued.some((entry) => entry.scheduleId === created.scheduleId),
+      ).toBe(false);
+
+      const disabled = await gateway().upsertRomaProjectHealthSchedule({
+        subjectId: owner,
+        workspaceId,
+        projectId,
+        cadenceMinutes: 1440,
+        enabled: false,
+        reason: `${reason}-disabled`,
+      });
+      expect(disabled.enabled).toBe(false);
+    },
+    20_000,
+  );
+
+  it(
+    'keeps a disabled schedule disabled when enabled and reason are omitted',
+    async () => {
+      const reason = `rpc-disabled-${Date.now()}`;
+      const disabled = await gateway().upsertRomaProjectHealthSchedule({
+        subjectId: owner,
+        workspaceId,
+        projectId,
+        cadenceMinutes: 720,
+        enabled: false,
+        reason,
+      });
+      expect(disabled.enabled).toBe(false);
+      expect(disabled.reason).toBe(reason);
+
+      const updated = await gateway().upsertRomaProjectHealthSchedule({
+        subjectId: owner,
+        workspaceId,
+        projectId,
+        cadenceMinutes: 1440,
+      });
+      expect(updated.enabled).toBe(false);
+      expect(updated.reason).toBe(reason);
     },
     20_000,
   );

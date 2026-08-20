@@ -67,6 +67,7 @@ import {
   selectedConnectionCollections,
   setConnectionStatusSchema,
   setMemoryStatusSchema,
+  upsertRomaProjectHealthScheduleSchema,
   upsertConnectionSchema,
   upsertProjectStateSchema,
   updateConnectionSchema,
@@ -1973,6 +1974,7 @@ export function createApp(options?: {
   app.use('/v1/jobs/*/replay', requireHttpApiSecret);
   app.use('/v1/outbox/*', requireHttpApiSecret);
   app.use('/v1/memories/embed-missing', requireHttpApiSecret);
+  app.use('/v1/roma/project-health/schedules', requireHttpApiSecret);
   app.use('/v1/export/*', requireHttpApiSecret);
 
   app.post('/v1/webhooks/:connectorId', async (c) => {
@@ -3931,6 +3933,49 @@ export function createApp(options?: {
       return c.json({ ...result, backend: 'supabase' });
     } catch (err) {
       if (isForbiddenError(err)) return c.json({ error: 'forbidden' }, 403);
+      return c.json({ error: (err as Error).message }, 500);
+    }
+  });
+
+  app.post('/v1/roma/project-health/schedules', async (c) => {
+    const rawBody = (await c.req.json().catch(() => ({}))) as Record<string, unknown>;
+    const parsed = upsertRomaProjectHealthScheduleSchema.safeParse(rawBody);
+    if (!parsed.success) {
+      const firstIssue = parsed.error.issues[0]?.message ?? 'invalid request';
+      return c.json({ error: firstIssue }, 400);
+    }
+
+    const body = parsed.data;
+    const authz = c.get('authz');
+    if (authz.subjectId !== body.actor_subject_id) {
+      return c.json({ error: 'forbidden' }, 403);
+    }
+
+    const gw = c.get('gateway');
+    if (!gw) {
+      return c.json(
+        {
+          error: 'not_implemented',
+          note: 'ROMA project-health schedules require supabase backend',
+        },
+        501,
+      );
+    }
+
+    try {
+      const result = await gw.upsertRomaProjectHealthSchedule({
+        subjectId: body.actor_subject_id,
+        workspaceId: body.workspace_id,
+        projectId: body.project_id,
+        cadenceMinutes: body.cadence_minutes,
+        enabled: body.enabled,
+        nextRunAt: body.next_run_at,
+        reason: body.reason,
+      });
+      return c.json({ ...result, backend: 'supabase' });
+    } catch (err) {
+      if (isForbiddenError(err)) return c.json({ error: 'forbidden' }, 403);
+      if (isNotFoundError(err)) return c.json({ error: 'project_not_found' }, 404);
       return c.json({ error: (err as Error).message }, 500);
     }
   });

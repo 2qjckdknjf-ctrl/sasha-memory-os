@@ -39,6 +39,16 @@ jobs:
           MEMORY_OS_OWNER_SUBJECT_ID: ${{ secrets.MEMORY_OS_OWNER_SUBJECT_ID }}
         run: pnpm --filter @memory-os/worker-consolidation consolidate:once
 
+      - name: ROMA scheduled project health once
+        continue-on-error: true
+        env:
+          MEMORY_OS_SUPABASE_URL: ${{ secrets.MEMORY_OS_SUPABASE_URL }}
+          MEMORY_OS_SUPABASE_ANON_KEY: ${{ secrets.MEMORY_OS_SUPABASE_ANON_KEY }}
+          MEMORY_OS_API_SECRET: ${{ secrets.MEMORY_OS_API_SECRET }}
+          MEMORY_OS_WORKSPACE_ID: ${{ secrets.MEMORY_OS_WORKSPACE_ID }}
+          MEMORY_OS_ROMA_SUBJECT_ID: ${{ secrets.MEMORY_OS_ROMA_SUBJECT_ID }}
+        run: pnpm --filter @memory-os/worker-roma-project-health run:once
+
       - name: Connector sync once
         env:
           MEMORY_OS_SUPABASE_URL: ${{ secrets.MEMORY_OS_SUPABASE_URL }}

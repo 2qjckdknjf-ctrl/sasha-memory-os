@@ -190,6 +190,53 @@ describe('runRomaProjectHealthJob', () => {
 });
 
 describe('runRomaProjectHealthTick', () => {
+  it('ticks due schedules before claiming project-health jobs', async () => {
+    const tickRomaProjectHealthSchedules = vi.fn(async () => ({
+      count: 1,
+      enqueued: [
+        {
+          scheduleId: 'schedule-1',
+          projectId,
+          periodStart: '2026-08-20T01:00:00.000Z',
+          nextRunAt: '2026-08-20T13:00:00.000Z',
+          jobId: 'job-queued-1',
+          inserted: true,
+          skippedIntervals: 0,
+          idempotencyKey: 'roma-project-health/44444444-4444-4444-8444-444444444401/schedule-1',
+        },
+      ],
+      disabled: [],
+      errors: [],
+    }));
+    const gateway = {
+      tickRomaProjectHealthSchedules,
+      deadLetterStaleJobs: vi.fn(async () => ({ deadLettered: 0 })),
+      listOutboxPending: vi.fn(async () => ({ count: 0 })),
+      claimRomaProjectHealthJobs: vi.fn(async () => ({ count: 0, jobs: [] })),
+      listProjects: vi.fn(),
+      projectContext: vi.fn(),
+      captureConnectorRecord: vi.fn(),
+      appendAuditEvent: vi.fn(),
+      completeRomaProjectHealth: vi.fn(),
+      retryRomaProjectHealth: vi.fn(),
+    };
+
+    const report = await runRomaProjectHealthTick({
+      gateway: gateway as any,
+      workspaceId,
+      romaSubjectId: roma,
+    });
+
+    expect(tickRomaProjectHealthSchedules).toHaveBeenCalledWith({
+      subjectId: roma,
+      workspaceId,
+      limit: 10,
+      projectId: null,
+    });
+    expect(report.scheduled.enqueued).toHaveLength(1);
+    expect(report.claimed).toBe(0);
+  });
+
   it('requeues a retryable first-attempt failure instead of consuming the request', async () => {
     const retryRomaProjectHealth = vi.fn(async () => ({
       jobId: 'job-roma-1',
@@ -203,6 +250,12 @@ describe('runRomaProjectHealthTick', () => {
       status: 'failed',
     }));
     const gateway = {
+      tickRomaProjectHealthSchedules: vi.fn(async () => ({
+        count: 0,
+        enqueued: [],
+        disabled: [],
+        errors: [],
+      })),
       deadLetterStaleJobs: vi.fn(async () => ({ deadLettered: 0 })),
       listOutboxPending: vi.fn(async () => ({ count: 1 })),
       claimRomaProjectHealthJobs: vi.fn(async () => ({
@@ -261,6 +314,32 @@ describe('runRomaProjectHealthTick', () => {
       .mockResolvedValueOnce({ count: 0 })
       .mockResolvedValueOnce({ count: 0 });
     const gateway = {
+      tickRomaProjectHealthSchedules: vi
+        .fn()
+        .mockResolvedValueOnce({
+          count: 1,
+          enqueued: [
+            {
+              scheduleId: 'schedule-1',
+              projectId,
+              periodStart: '2026-08-20T01:00:00.000Z',
+              nextRunAt: '2026-08-20T13:00:00.000Z',
+              jobId: 'job-roma-1',
+              inserted: true,
+              skippedIntervals: 0,
+              idempotencyKey:
+                'roma-project-health/44444444-4444-4444-8444-444444444401/schedule-1',
+            },
+          ],
+          disabled: [],
+          errors: [],
+        })
+        .mockResolvedValueOnce({
+          count: 0,
+          enqueued: [],
+          disabled: [],
+          errors: [],
+        }),
       deadLetterStaleJobs: vi.fn(async () => ({ deadLettered: 0 })),
       listOutboxPending,
       claimRomaProjectHealthJobs: vi.fn(async () => {
@@ -307,9 +386,11 @@ describe('runRomaProjectHealthTick', () => {
 
     expect(first.claimed).toBe(1);
     expect(first.completed).toHaveLength(1);
+    expect(first.scheduled.enqueued).toHaveLength(1);
     expect(first.pendingOutbox).toBe(0);
     expect(second.claimed).toBe(0);
     expect(second.completed).toHaveLength(0);
+    expect(second.scheduled.enqueued).toHaveLength(0);
     expect(captureConnectorRecord).toHaveBeenCalledTimes(1);
   });
 });

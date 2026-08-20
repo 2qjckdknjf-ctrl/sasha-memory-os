@@ -73,6 +73,7 @@ type RomaProjectHealthGateway = Pick<
   | 'listProjects'
   | 'projectContext'
   | 'retryRomaProjectHealth'
+  | 'tickRomaProjectHealthSchedules'
 >;
 
 export type RomaProjectHealthRunResult = {
@@ -85,6 +86,21 @@ export type RomaProjectHealthRunResult = {
 };
 
 export type RomaProjectHealthTickReport = {
+  scheduled: {
+    count: number;
+    enqueued: Array<{
+      scheduleId: string;
+      projectId: string;
+      periodStart: string;
+      nextRunAt: string;
+      jobId: string;
+      inserted: boolean;
+      skippedIntervals: number;
+      idempotencyKey: string;
+    }>;
+    disabled: Array<{ scheduleId: string; projectId: string; error: string }>;
+    errors: Array<{ scheduleId: string; projectId: string; error: string }>;
+  };
   claimed: number;
   completed: RomaProjectHealthRunResult[];
   failed: Array<{ jobId: string; projectId: string; error: string }>;
@@ -403,12 +419,19 @@ export async function runRomaProjectHealthTick(options?: {
   workspaceId?: string;
   projectId?: string | null;
   limit?: number;
+  scheduleLimit?: number;
   staleMinutes?: number;
   romaSubjectId?: string;
 }): Promise<RomaProjectHealthTickReport> {
   const gateway = requireGateway(options?.gateway);
   const romaSubjectId = options?.romaSubjectId ?? ROMA_SUBJECT_ID;
   const workspaceId = options?.workspaceId ?? WORKSPACE_ID;
+  const scheduled = await gateway.tickRomaProjectHealthSchedules({
+    subjectId: romaSubjectId,
+    workspaceId,
+    limit: options?.scheduleLimit ?? options?.limit ?? 10,
+    projectId: options?.projectId ?? null,
+  });
   const maxAttempts = Math.max(
     1,
     Number(process.env.MEMORY_OS_ROMA_PROJECT_HEALTH_MAX_ATTEMPTS ?? 3),
@@ -485,6 +508,7 @@ export async function runRomaProjectHealthTick(options?: {
   });
 
   return {
+    scheduled,
     claimed: claimed.count,
     completed,
     failed,

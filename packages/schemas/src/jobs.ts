@@ -41,6 +41,16 @@ export const enqueueRomaProjectHealthJobSchema = z.object({
   reason: z.string().trim().min(1).max(500).optional(),
 });
 
+export const upsertRomaProjectHealthScheduleSchema = z.object({
+  workspace_id: z.string().uuid(),
+  project_id: z.string().uuid(),
+  actor_subject_id: z.string().uuid(),
+  cadence_minutes: z.number().int().min(1).max(10080),
+  enabled: z.boolean().optional(),
+  next_run_at: z.string().datetime({ offset: true }).optional(),
+  reason: z.string().trim().min(1).max(500).optional(),
+});
+
 export const replayConnectorJobSchema = z.object({
   actor_subject_id: z.string().uuid(),
   resync: z.boolean().optional(),
