@@ -51,6 +51,56 @@ describe('SupabaseMemoryGateway.upsertRomaProjectHealthSchedule', () => {
   });
 });
 
+describe('SupabaseMemoryGateway.upsertRomaActionBudget', () => {
+  it('omits enabled RPC arg when it is not provided', async () => {
+    const rpc = vi.fn(async () => ({ data: { ok: true }, error: null }));
+    const gateway = new SupabaseMemoryGateway({ rpc } as any, 'test-secret');
+
+    await gateway.upsertRomaActionBudget({
+      subjectId: '33333333-3333-4333-8333-333333333301',
+      workspaceId: '11111111-1111-4111-8111-111111111111',
+      projectId: '44444444-4444-4444-8444-444444444401',
+      maxActions: 3,
+      windowMinutes: 1440,
+    });
+
+    expect(rpc).toHaveBeenCalledWith(
+      'api_upsert_roma_action_budget',
+      expect.objectContaining({
+        p_secret: 'test-secret',
+        p_subject_id: '33333333-3333-4333-8333-333333333301',
+        p_workspace_id: '11111111-1111-4111-8111-111111111111',
+        p_project_id: '44444444-4444-4444-8444-444444444401',
+        p_max_actions: 3,
+        p_window_minutes: 1440,
+      }),
+    );
+    const args = rpc.mock.calls[0]?.[1] as Record<string, unknown>;
+    expect('p_enabled' in args).toBe(false);
+  });
+
+  it('passes explicit disable RPC args when provided', async () => {
+    const rpc = vi.fn(async () => ({ data: { ok: true }, error: null }));
+    const gateway = new SupabaseMemoryGateway({ rpc } as any, 'test-secret');
+
+    await gateway.upsertRomaActionBudget({
+      subjectId: '33333333-3333-4333-8333-333333333301',
+      workspaceId: '11111111-1111-4111-8111-111111111111',
+      projectId: '44444444-4444-4444-8444-444444444401',
+      maxActions: 5,
+      windowMinutes: 60,
+      enabled: false,
+    });
+
+    expect(rpc).toHaveBeenCalledWith(
+      'api_upsert_roma_action_budget',
+      expect.objectContaining({
+        p_enabled: false,
+      }),
+    );
+  });
+});
+
 describe('SupabaseMemoryGateway.enqueueRomaProjectFindings', () => {
   it('passes bounded enqueue RPC args for one explicit project', async () => {
     const rpc = vi.fn(async () => ({ data: { ok: true }, error: null }));
@@ -159,6 +209,27 @@ describe('SupabaseMemoryGateway.decideApprovalCheckpoint', () => {
       }),
     );
   });
+
+  it('throws structured budget rejections from approval decisions', async () => {
+    const rpc = vi.fn(async () => ({
+      data: {
+        checkpointId: 'checkpoint-1',
+        status: 'pending',
+        error: 'roma action budget exceeded for project 44444444-4444-4444-8444-444444444401 (1 writes per 60 minutes)',
+      },
+      error: null,
+    }));
+    const gateway = new SupabaseMemoryGateway({ rpc } as any, 'test-secret');
+
+    await expect(
+      gateway.decideApprovalCheckpoint({
+        subjectId: '33333333-3333-4333-8333-333333333301',
+        checkpointId: 'checkpoint-1',
+        decision: 'approved',
+        reason: 'Reviewed and approved.',
+      }),
+    ).rejects.toThrow(/roma action budget exceeded/i);
+  });
 });
 
 describe('SupabaseMemoryGateway.completeRomaProjectHealth', () => {
@@ -240,5 +311,32 @@ describe('SupabaseMemoryGateway.completeRomaProjectFindings', () => {
         },
       }),
     );
+  });
+});
+
+describe('SupabaseMemoryGateway.captureConnectorRecord', () => {
+  it('throws structured ROMA budget rejections before a memory write lands', async () => {
+    const rpc = vi.fn(async () => ({
+      data: {
+        error: 'roma action budget not configured for project 44444444-4444-4444-8444-444444444401',
+        budgetAuditEventId: 'audit-budget-1',
+      },
+      error: null,
+    }));
+    const gateway = new SupabaseMemoryGateway({ rpc } as any, 'test-secret');
+
+    await expect(
+      gateway.captureConnectorRecord({
+        subjectId: '33333333-3333-4333-8333-333333333304',
+        workspaceId: '11111111-1111-4111-8111-111111111111',
+        projectId: '44444444-4444-4444-8444-444444444401',
+        provider: 'roma',
+        externalId: 'project-health/44444444-4444-4444-8444-444444444401',
+        eventType: 'roma.project_health.created',
+        title: 'ROMA project health: AISTROYKA',
+        text: 'Bounded summary text',
+        idempotencyKey: 'roma-project-health/test',
+      }),
+    ).rejects.toThrow(/budget not configured/i);
   });
 });

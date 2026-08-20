@@ -38,6 +38,12 @@ const romaApprovalCheckpointsMigrationPath = fileURLToPath(
     import.meta.url,
   ),
 );
+const romaActionBudgetsMigrationPath = fileURLToPath(
+  new URL(
+    '../../../supabase/migrations/20260820030240_m12_slice_06_roma_action_budgets.sql',
+    import.meta.url,
+  ),
+);
 
 describe('m8 slice 03 migration guards', () => {
   const sql = readFileSync(migrationPath, 'utf8');
@@ -51,6 +57,7 @@ describe('m8 slice 03 migration guards', () => {
     romaApprovalCheckpointsMigrationPath,
     'utf8',
   );
+  const romaActionBudgetsSql = readFileSync(romaActionBudgetsMigrationPath, 'utf8');
 
   it('matches connector projects only by unique repository identity', () => {
     expect(sql).toContain(`repo->>'url' = v_repo_url`);
@@ -185,5 +192,34 @@ describe('m8 slice 03 migration guards', () => {
       `this finding stores titles and structured evidence refs only; raw memory bodies are not quoted.`,
     );
     expect(romaApprovalCheckpointsSql).not.toContain(`'content'`);
+  });
+
+  it('adds explicit per-project ROMA action budgets without defaulting to AISTROYKA', () => {
+    expect(romaActionBudgetsSql).toContain(`CREATE TABLE roma_action_budgets`);
+    expect(romaActionBudgetsSql).toContain(`CREATE TABLE roma_action_budget_events`);
+    expect(romaActionBudgetsSql).toContain(`UNIQUE (workspace_id, project_id)`);
+    expect(romaActionBudgetsSql).toContain(`'roma_project_health_write'`);
+    expect(romaActionBudgetsSql).toContain(`'roma_project_finding_write'`);
+    expect(romaActionBudgetsSql).toContain(`'roma_approval_checkpoint_write'`);
+    expect(romaActionBudgetsSql).toContain(`RAISE EXCEPTION 'project_id required'`);
+    expect(romaActionBudgetsSql).not.toContain(`'44444444-4444-4444-8444-444444444401'`);
+  });
+
+  it('prevents ROMA from raising its own budget and audits fail-closed rejections', () => {
+    expect(romaActionBudgetsSql).toContain(`RAISE EXCEPTION 'roma cannot raise its own action budget'`);
+    expect(romaActionBudgetsSql).toContain(`'roma.action_budget.upserted'`);
+    expect(romaActionBudgetsSql).toContain(`'roma.action_budget.rejected'`);
+    expect(romaActionBudgetsSql).toContain(`roma action budget not configured for project`);
+    expect(romaActionBudgetsSql).toContain(`roma action budget exceeded for project`);
+  });
+
+  it('enforces budgets atomically inside capture and approval writes', () => {
+    expect(romaActionBudgetsSql).toContain(`CREATE OR REPLACE FUNCTION app.api_capture_connector_record`);
+    expect(romaActionBudgetsSql).toContain(`v_provider = 'roma'`);
+    expect(romaActionBudgetsSql).toContain(`app.consume_roma_action_budget(`);
+    expect(romaActionBudgetsSql).toContain(`RETURN jsonb_strip_nulls(jsonb_build_object(`);
+    expect(romaActionBudgetsSql).toContain(`'budgetAuditEventId'`);
+    expect(romaActionBudgetsSql).toContain(`IF COALESCE(v_capture->>'error', '') <> '' THEN`);
+    expect(romaActionBudgetsSql).toContain(`'status', v_checkpoint.status`);
   });
 });

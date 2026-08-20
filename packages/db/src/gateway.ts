@@ -23,6 +23,18 @@ export function createMemoryOsClient(config: MemoryOsEnv): SupabaseClient {
   });
 }
 
+function throwReturnedRpcError(data: unknown): void {
+  if (
+    data &&
+    typeof data === 'object' &&
+    'error' in data &&
+    typeof (data as { error?: unknown }).error === 'string' &&
+    (data as { error: string }).error.trim().length > 0
+  ) {
+    throw new Error((data as { error: string }).error);
+  }
+}
+
 export class SupabaseMemoryGateway {
   constructor(
     private readonly client: SupabaseClient,
@@ -614,6 +626,7 @@ export class SupabaseMemoryGateway {
       p_reason: input.reason,
     });
     if (error) throw error;
+    throwReturnedRpcError(data);
     return data as {
       checkpointId: string;
       checkpointType: string;
@@ -630,6 +643,8 @@ export class SupabaseMemoryGateway {
       auditEventId: string | null;
       eventId: string | null;
       decisionAuditEventId: string | null;
+      error?: string | null;
+      budgetAuditEventId?: string | null;
     };
   }
 
@@ -677,6 +692,39 @@ export class SupabaseMemoryGateway {
       disabledAt: string | null;
       disabledReason: string | null;
       reason: string;
+    };
+  }
+
+  async upsertRomaActionBudget(input: {
+    subjectId: string;
+    workspaceId: string;
+    projectId: string;
+    maxActions: number;
+    windowMinutes: number;
+    enabled?: boolean;
+  }) {
+    const args: Record<string, unknown> = {
+      p_secret: this.apiSecret,
+      p_subject_id: input.subjectId,
+      p_workspace_id: input.workspaceId,
+      p_project_id: input.projectId,
+      p_max_actions: input.maxActions,
+      p_window_minutes: input.windowMinutes,
+    };
+    if (input.enabled !== undefined) {
+      args.p_enabled = input.enabled;
+    }
+    const { data, error } = await this.client.rpc('api_upsert_roma_action_budget', args);
+    if (error) throw error;
+    return data as {
+      budgetId: string;
+      workspaceId: string;
+      projectId: string;
+      maxActions: number;
+      windowMinutes: number;
+      enabled: boolean;
+      disabledAt: string | null;
+      disabledReason: string | null;
     };
   }
 
@@ -1457,12 +1505,16 @@ export class SupabaseMemoryGateway {
       p_process_now: input.processNow ?? true,
     });
     if (error) throw error;
+    throwReturnedRpcError(data);
     return data as {
       eventId?: string;
       artifactId?: string;
       jobId?: string;
       checksum?: string;
       process?: { memoryId?: string | null } | null;
+      error?: string | null;
+      budgetAuditEventId?: string | null;
+      budgetId?: string | null;
       [key: string]: unknown;
     };
   }
