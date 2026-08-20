@@ -354,7 +354,7 @@ describe('mcp gateway alpha', () => {
       actor_subject_id: cursor,
       retrieval_mode: 'agentic',
       agentic: {
-        max_steps: 1,
+        max_steps: 2,
         min_evidence_hits: 1,
       },
     })) as {
@@ -362,7 +362,12 @@ describe('mcp gateway alpha', () => {
       agentic: {
         toolAllowlist: string[];
         writeActionsAttempted: number;
-        trace: { steps: Array<{ scopeFilteredCount: number }> };
+        trace: {
+          steps: Array<{
+            scopeFilteredCount: number;
+            hop?: { kind?: string } | null;
+          }>;
+        };
       };
     };
 
@@ -371,6 +376,9 @@ describe('mcp gateway alpha', () => {
     expect(result.agentic.toolAllowlist).toEqual(['memory.search']);
     expect(result.agentic.writeActionsAttempted).toBe(0);
     expect(result.agentic.trace.steps[0]?.scopeFilteredCount).toBe(1);
+    expect(
+      result.agentic.trace.steps.some((step) => step.hop?.kind === 'related_evidence'),
+    ).toBe(true);
     expect(gateway.appendAuditEvent).toHaveBeenCalledWith(
       expect.objectContaining({
         action: 'retrieval.agentic_search.completed',
