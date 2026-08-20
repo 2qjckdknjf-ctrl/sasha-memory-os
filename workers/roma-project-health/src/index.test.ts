@@ -190,15 +190,79 @@ describe('runRomaProjectHealthJob', () => {
 });
 
 describe('runRomaProjectHealthTick', () => {
+  it('requeues a retryable first-attempt failure instead of consuming the request', async () => {
+    const retryRomaProjectHealth = vi.fn(async () => ({
+      jobId: 'job-roma-1',
+      status: 'queued',
+      attempt: 1,
+      jobType: 'roma_project_health',
+      error: 'temporary audit outage',
+    }));
+    const completeRomaProjectHealth = vi.fn(async () => ({
+      jobId: 'job-roma-1',
+      status: 'failed',
+    }));
+    const gateway = {
+      deadLetterStaleJobs: vi.fn(async () => ({ deadLettered: 0 })),
+      listOutboxPending: vi.fn(async () => ({ count: 1 })),
+      claimRomaProjectHealthJobs: vi.fn(async () => ({
+        count: 1,
+        jobs: [buildJob({ attempt: 0 })],
+      })),
+      listProjects: vi.fn(async () => [
+        {
+          id: projectId,
+          slug: 'aistroyka',
+          name: 'AISTROYKA',
+          status: 'active',
+        },
+      ]),
+      projectContext: vi.fn(async () => ({
+        projectId,
+        decisions: [],
+        tasks: [],
+        facts: [],
+        state: null,
+        latestHandoff: null,
+      })),
+      captureConnectorRecord: vi.fn(async () => {
+        throw new Error('temporary audit outage');
+      }),
+      appendAuditEvent: vi.fn(),
+      completeRomaProjectHealth,
+      retryRomaProjectHealth,
+    };
+
+    const report = await runRomaProjectHealthTick({
+      gateway: gateway as any,
+      workspaceId,
+      romaSubjectId: roma,
+    });
+
+    expect(retryRomaProjectHealth).toHaveBeenCalledWith(
+      expect.objectContaining({
+        subjectId: roma,
+        jobId: 'job-roma-1',
+        error: 'temporary audit outage',
+      }),
+    );
+    expect(completeRomaProjectHealth).not.toHaveBeenCalled();
+    expect(report.pendingOutbox).toBe(1);
+  });
+
   it('does not duplicate writes after the queue is drained', async () => {
     let claimCount = 0;
     const captureConnectorRecord = vi.fn(async (_input: Record<string, any>) => ({
       eventId: 'source-roma-1',
       process: { memoryId: 'memory-roma-1' },
     }));
+    const listOutboxPending = vi
+      .fn()
+      .mockResolvedValueOnce({ count: 0 })
+      .mockResolvedValueOnce({ count: 0 });
     const gateway = {
       deadLetterStaleJobs: vi.fn(async () => ({ deadLettered: 0 })),
-      listOutboxPending: vi.fn(async () => ({ count: 1 })),
+      listOutboxPending,
       claimRomaProjectHealthJobs: vi.fn(async () => {
         claimCount += 1;
         return claimCount === 1
@@ -227,6 +291,7 @@ describe('runRomaProjectHealthTick', () => {
         jobId: 'job-roma-1',
         status: 'succeeded',
       })),
+      retryRomaProjectHealth: vi.fn(),
     };
 
     const first = await runRomaProjectHealthTick({
@@ -242,6 +307,7 @@ describe('runRomaProjectHealthTick', () => {
 
     expect(first.claimed).toBe(1);
     expect(first.completed).toHaveLength(1);
+    expect(first.pendingOutbox).toBe(0);
     expect(second.claimed).toBe(0);
     expect(second.completed).toHaveLength(0);
     expect(captureConnectorRecord).toHaveBeenCalledTimes(1);

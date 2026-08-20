@@ -72,6 +72,7 @@ type RomaProjectHealthGateway = Pick<
   | 'listOutboxPending'
   | 'listProjects'
   | 'projectContext'
+  | 'retryRomaProjectHealth'
 >;
 
 export type RomaProjectHealthRunResult = {
@@ -165,6 +166,10 @@ function formatList(label: string, values: string[]): string {
   return `- ${label}: ${values.join('; ')}`;
 }
 
+function isRetryableRomaProjectHealthError(message: string): boolean {
+  return !/project .* not visible to ROMA|project not found/i.test(message);
+}
+
 export function buildRomaProjectHealthSummary(input: {
   project: ProjectRow;
   context: ProjectContextRow;
@@ -252,6 +257,108 @@ export function buildRomaProjectHealthSummary(input: {
   };
 }
 
+async function executeRomaProjectHealthJob(options: {
+  gateway?: RomaProjectHealthGateway;
+  job: ClaimedRomaProjectHealthJob;
+  romaSubjectId?: string;
+}): Promise<RomaProjectHealthRunResult> {
+  const gateway = requireGateway(options.gateway);
+  const romaSubjectId = options.romaSubjectId ?? ROMA_SUBJECT_ID;
+  const job = options.job;
+
+  const projects = await gateway.listProjects(romaSubjectId, job.workspaceId);
+  const project = projects.find((entry) => entry.id === job.projectId);
+  if (!project) {
+    throw new Error(`project ${job.projectId} is not visible to ROMA`);
+  }
+
+  const context = (await gateway.projectContext(
+    romaSubjectId,
+    job.projectId,
+  )) as ProjectContextRow;
+  const summary = buildRomaProjectHealthSummary({
+    project,
+    context,
+    job,
+    romaSubjectId,
+  });
+  const capture = await gateway.captureConnectorRecord({
+    subjectId: romaSubjectId,
+    workspaceId: job.workspaceId,
+    projectId: job.projectId,
+    provider: 'roma',
+    accountId: 'service:roma',
+    externalId: `project-health/${job.projectId}`,
+    externalVersion: '1',
+    eventType: 'roma.project_health.created',
+    title: summary.title,
+    text: summary.text,
+    idempotencyKey: job.idempotencyKey,
+    sensitivity: 'internal',
+    storageMode: 'indexed',
+    observedAt: new Date().toISOString(),
+    filename: `roma-project-health-${job.projectId}.md`,
+    mimeType: 'text/markdown',
+    canonicalReference: `memory-os://roma/project-health/${job.projectId}`,
+    provenance: {
+      automation: {
+        jobType: 'roma_project_health',
+        jobId: job.jobId,
+        requestEventId: job.requestEventId,
+        requestedBy: job.requestedBy,
+        executionSubjectId: romaSubjectId,
+        idempotencyKey: job.idempotencyKey,
+      },
+      scope: {
+        workspaceId: job.workspaceId,
+        projectId: job.projectId,
+      },
+      reason: job.reason ?? DEFAULT_REASON,
+    },
+    metadata: {
+      summary_type: 'project_health',
+      project_slug: project.slug,
+      project_name: project.name,
+      project_status: project.status,
+      source_counts: summary.counts,
+    },
+    processNow: true,
+  });
+  const memoryId = capture.process?.memoryId;
+  if (!memoryId) {
+    throw new Error('roma project health capture did not produce a memory');
+  }
+  const audit = await gateway.appendAuditEvent({
+    subjectId: romaSubjectId,
+    workspaceId: job.workspaceId,
+    action: 'roma.project_health.written',
+    objectType: 'memory',
+    objectId: memoryId,
+    reason: job.reason ?? DEFAULT_REASON,
+    afterState: {
+      projectId: job.projectId,
+      jobId: job.jobId,
+      requestEventId: job.requestEventId,
+      requestedBy: job.requestedBy,
+      executionSubjectId: romaSubjectId,
+      memoryId,
+      sourceEventId: capture.eventId ?? null,
+      summaryTitle: summary.title,
+      quoteTitles: summary.quoteTitles,
+      sourceCounts: summary.counts,
+    },
+  });
+
+  return {
+    jobId: job.jobId,
+    projectId: job.projectId,
+    memoryId,
+    auditEventId: audit.id,
+    summaryTitle: summary.title,
+    projectName: project.name,
+  };
+}
+
 export async function runRomaProjectHealthJob(options: {
   gateway?: RomaProjectHealthGateway;
   job: ClaimedRomaProjectHealthJob;
@@ -262,104 +369,19 @@ export async function runRomaProjectHealthJob(options: {
   const job = options.job;
 
   try {
-    const projects = await gateway.listProjects(romaSubjectId, job.workspaceId);
-    const project = projects.find((entry) => entry.id === job.projectId);
-    if (!project) {
-      throw new Error(`project ${job.projectId} is not visible to ROMA`);
-    }
-
-    const context = (await gateway.projectContext(
-      romaSubjectId,
-      job.projectId,
-    )) as ProjectContextRow;
-    const summary = buildRomaProjectHealthSummary({
-      project,
-      context,
+    const result = await executeRomaProjectHealthJob({
+      gateway,
       job,
       romaSubjectId,
-    });
-    const capture = await gateway.captureConnectorRecord({
-      subjectId: romaSubjectId,
-      workspaceId: job.workspaceId,
-      projectId: job.projectId,
-      provider: 'roma',
-      accountId: 'service:roma',
-      externalId: `project-health/${job.projectId}`,
-      externalVersion: '1',
-      eventType: 'roma.project_health.created',
-      title: summary.title,
-      text: summary.text,
-      idempotencyKey: job.idempotencyKey,
-      sensitivity: 'internal',
-      storageMode: 'indexed',
-      observedAt: new Date().toISOString(),
-      filename: `roma-project-health-${job.projectId}.md`,
-      mimeType: 'text/markdown',
-      canonicalReference: `memory-os://roma/project-health/${job.projectId}`,
-      provenance: {
-        automation: {
-          jobType: 'roma_project_health',
-          jobId: job.jobId,
-          requestEventId: job.requestEventId,
-          requestedBy: job.requestedBy,
-          executionSubjectId: romaSubjectId,
-          idempotencyKey: job.idempotencyKey,
-        },
-        scope: {
-          workspaceId: job.workspaceId,
-          projectId: job.projectId,
-        },
-        reason: job.reason ?? DEFAULT_REASON,
-      },
-      metadata: {
-        summary_type: 'project_health',
-        project_slug: project.slug,
-        project_name: project.name,
-        project_status: project.status,
-        source_counts: summary.counts,
-      },
-      processNow: true,
-    });
-    const memoryId = capture.process?.memoryId;
-    if (!memoryId) {
-      throw new Error('roma project health capture did not produce a memory');
-    }
-    const audit = await gateway.appendAuditEvent({
-      subjectId: romaSubjectId,
-      workspaceId: job.workspaceId,
-      action: 'roma.project_health.written',
-      objectType: 'memory',
-      objectId: memoryId,
-      reason: job.reason ?? DEFAULT_REASON,
-      afterState: {
-        projectId: job.projectId,
-        jobId: job.jobId,
-        requestEventId: job.requestEventId,
-        requestedBy: job.requestedBy,
-        executionSubjectId: romaSubjectId,
-        memoryId,
-        sourceEventId: capture.eventId ?? null,
-        summaryTitle: summary.title,
-        quoteTitles: summary.quoteTitles,
-        sourceCounts: summary.counts,
-      },
     });
     await gateway.completeRomaProjectHealth({
       subjectId: romaSubjectId,
       jobId: job.jobId,
       status: 'succeeded',
-      memoryId,
-      auditEventId: audit.id,
+      memoryId: result.memoryId,
+      auditEventId: result.auditEventId,
     });
-
-    return {
-      jobId: job.jobId,
-      projectId: job.projectId,
-      memoryId,
-      auditEventId: audit.id,
-      summaryTitle: summary.title,
-      projectName: project.name,
-    };
+    return result;
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     try {
@@ -387,18 +409,16 @@ export async function runRomaProjectHealthTick(options?: {
   const gateway = requireGateway(options?.gateway);
   const romaSubjectId = options?.romaSubjectId ?? ROMA_SUBJECT_ID;
   const workspaceId = options?.workspaceId ?? WORKSPACE_ID;
+  const maxAttempts = Math.max(
+    1,
+    Number(process.env.MEMORY_OS_ROMA_PROJECT_HEALTH_MAX_ATTEMPTS ?? 3),
+  );
   const stale = await gateway.deadLetterStaleJobs({
     subjectId: romaSubjectId,
     workspaceId,
     olderThanMinutes:
       options?.staleMinutes ??
       Number(process.env.MEMORY_OS_JOB_STALE_MINUTES ?? 60),
-  });
-  const pending = await gateway.listOutboxPending({
-    subjectId: romaSubjectId,
-    workspaceId,
-    eventType: 'roma.project_health.requested',
-    limit: 20,
   });
   const claimed = await gateway.claimRomaProjectHealthJobs({
     subjectId: romaSubjectId,
@@ -411,21 +431,58 @@ export async function runRomaProjectHealthTick(options?: {
 
   for (const job of claimed.jobs) {
     try {
-      completed.push(
-        await runRomaProjectHealthJob({
-          gateway,
-          job,
-          romaSubjectId,
-        }),
-      );
+      const result = await executeRomaProjectHealthJob({
+        gateway,
+        job,
+        romaSubjectId,
+      });
+      await gateway.completeRomaProjectHealth({
+        subjectId: romaSubjectId,
+        jobId: job.jobId,
+        status: 'succeeded',
+        memoryId: result.memoryId,
+        auditEventId: result.auditEventId,
+      });
+      completed.push(result);
     } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      if (isRetryableRomaProjectHealthError(message)) {
+        if (job.attempt + 1 >= maxAttempts) {
+          await gateway.completeRomaProjectHealth({
+            subjectId: romaSubjectId,
+            jobId: job.jobId,
+            status: 'dead_letter',
+            error: message,
+          });
+        } else {
+          await gateway.retryRomaProjectHealth({
+            subjectId: romaSubjectId,
+            jobId: job.jobId,
+            error: message,
+          });
+        }
+      } else {
+        await gateway.completeRomaProjectHealth({
+          subjectId: romaSubjectId,
+          jobId: job.jobId,
+          status: 'failed',
+          error: message,
+        });
+      }
       failed.push({
         jobId: job.jobId,
         projectId: job.projectId,
-        error: err instanceof Error ? err.message : String(err),
+        error: message,
       });
     }
   }
+
+  const pending = await gateway.listOutboxPending({
+    subjectId: romaSubjectId,
+    workspaceId,
+    eventType: 'roma.project_health.requested',
+    limit: 20,
+  });
 
   return {
     claimed: claimed.count,

@@ -75,6 +75,8 @@ describe('m8 slice 03 migration guards', () => {
     expect(romaProjectHealthSql).toContain(`RAISE EXCEPTION 'project_id required'`);
     expect(romaProjectHealthSql).toContain(`'roma.project_health.requested'`);
     expect(romaProjectHealthSql).toContain(`'roma.project_health.completed'`);
+    expect(romaProjectHealthSql).toContain(`SET published_at = coalesce(published_at, now())`);
+    expect(romaProjectHealthSql).toContain(`AND event_type = 'roma.project_health.requested'`);
     expect(romaProjectHealthSql).not.toContain(`'44444444-4444-4444-8444-444444444401'`);
   });
 
@@ -84,5 +86,12 @@ describe('m8 slice 03 migration guards', () => {
     );
     expect(romaProjectHealthSql).toContain(`RAISE EXCEPTION 'roma subject required'`);
     expect(romaProjectHealthSql).toContain(`'executionSubjectId', v_roma_subject`);
+  });
+
+  it('adds a bounded retry path instead of consuming the request on first failure', () => {
+    expect(romaProjectHealthSql).toContain(`CREATE OR REPLACE FUNCTION app.api_retry_roma_project_health`);
+    expect(romaProjectHealthSql).toContain(`status = 'queued'`);
+    expect(romaProjectHealthSql).toContain(`attempt = attempt + 1`);
+    expect(romaProjectHealthSql).toContain(`last_error = v_error`);
   });
 });

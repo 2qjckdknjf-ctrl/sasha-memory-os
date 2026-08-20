@@ -341,6 +341,98 @@ GRANT EXECUTE ON FUNCTION app.api_claim_roma_project_health_jobs(text, uuid, uui
 GRANT EXECUTE ON FUNCTION public.api_claim_roma_project_health_jobs(text, uuid, uuid, integer, uuid)
   TO anon, authenticated, service_role;
 
+CREATE OR REPLACE FUNCTION app.api_retry_roma_project_health(
+  p_secret text,
+  p_subject_id uuid,
+  p_job_id uuid,
+  p_error text DEFAULT NULL
+)
+RETURNS jsonb
+LANGUAGE plpgsql
+VOLATILE
+SECURITY DEFINER
+SET search_path = public, app, extensions
+AS $$
+DECLARE
+  v_roma_subject constant uuid := '33333333-3333-4333-8333-333333333304';
+  v_job processing_jobs%ROWTYPE;
+  v_error text := coalesce(
+    nullif(btrim(p_error), ''),
+    'retryable ROMA project health failure'
+  );
+BEGIN
+  PERFORM app.assert_api_secret(p_secret);
+  PERFORM app.with_subject(p_subject_id);
+
+  IF p_subject_id <> v_roma_subject THEN
+    RAISE EXCEPTION 'roma subject required' USING ERRCODE = '42501';
+  END IF;
+
+  SELECT * INTO v_job
+  FROM processing_jobs
+  WHERE id = p_job_id
+    AND job_type = 'roma_project_health'
+  FOR UPDATE;
+
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'roma project health job not found' USING ERRCODE = 'P0002';
+  END IF;
+
+  IF NOT app.is_workspace_member(v_job.workspace_id) THEN
+    RAISE EXCEPTION 'forbidden' USING ERRCODE = '42501';
+  END IF;
+
+  UPDATE processing_jobs
+  SET
+    status = 'queued',
+    error = v_error,
+    updated_at = now(),
+    attempt = attempt + 1
+  WHERE id = v_job.id
+  RETURNING * INTO v_job;
+
+  UPDATE outbox_events
+  SET
+    attempts = attempts + 1,
+    last_error = v_error
+  WHERE workspace_id = v_job.workspace_id
+    AND event_type = 'roma.project_health.requested'
+    AND payload->>'jobId' = v_job.id::text;
+
+  RETURN jsonb_build_object(
+    'jobId', v_job.id,
+    'status', v_job.status,
+    'attempt', v_job.attempt,
+    'jobType', v_job.job_type,
+    'error', v_job.error
+  );
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION public.api_retry_roma_project_health(
+  p_secret text,
+  p_subject_id uuid,
+  p_job_id uuid,
+  p_error text DEFAULT NULL
+)
+RETURNS jsonb
+LANGUAGE sql
+SECURITY DEFINER
+SET search_path = public, app, extensions
+AS $$
+  SELECT app.api_retry_roma_project_health(
+    p_secret,
+    p_subject_id,
+    p_job_id,
+    p_error
+  );
+$$;
+
+GRANT EXECUTE ON FUNCTION app.api_retry_roma_project_health(text, uuid, uuid, text)
+  TO anon, authenticated, service_role;
+GRANT EXECUTE ON FUNCTION public.api_retry_roma_project_health(text, uuid, uuid, text)
+  TO anon, authenticated, service_role;
+
 CREATE OR REPLACE FUNCTION app.api_complete_roma_project_health(
   p_secret text,
   p_subject_id uuid,
@@ -359,6 +451,7 @@ AS $$
 DECLARE
   v_roma_subject constant uuid := '33333333-3333-4333-8333-333333333304';
   v_job processing_jobs%ROWTYPE;
+  v_status text := coalesce(nullif(btrim(p_status), ''), 'succeeded');
   v_event_id uuid;
 BEGIN
   PERFORM app.assert_api_secret(p_secret);
@@ -382,16 +475,24 @@ BEGIN
     RAISE EXCEPTION 'forbidden' USING ERRCODE = '42501';
   END IF;
 
-  IF p_status NOT IN ('succeeded', 'failed', 'dead_letter') THEN
-    RAISE EXCEPTION 'invalid status: %', p_status;
+  IF v_status NOT IN ('succeeded', 'failed', 'dead_letter') THEN
+    RAISE EXCEPTION 'invalid status: %', v_status;
   END IF;
 
   UPDATE processing_jobs
   SET
-    status = p_status,
-    error = p_error,
-    updated_at = now()
+    status = v_status,
+    error = CASE WHEN v_status = 'succeeded' THEN NULL ELSE coalesce(p_error, error) END,
+    updated_at = now(),
+    attempt = attempt + 1
   WHERE id = p_job_id;
+
+  UPDATE outbox_events
+  SET published_at = coalesce(published_at, now())
+  WHERE workspace_id = v_job.workspace_id
+    AND event_type = 'roma.project_health.requested'
+    AND payload->>'jobId' = v_job.id::text
+    AND published_at IS NULL;
 
   INSERT INTO outbox_events (
     workspace_id,
@@ -408,7 +509,7 @@ BEGIN
     jsonb_strip_nulls(jsonb_build_object(
       'jobId', v_job.id,
       'workspaceId', v_job.workspace_id,
-      'status', p_status,
+      'status', v_status,
       'memoryId', p_memory_id,
       'auditEventId', p_audit_event_id,
       'error', p_error
@@ -418,13 +519,13 @@ BEGIN
     FROM outbox_events o
     WHERE o.aggregate_id = v_job.id
       AND o.event_type = 'roma.project_health.completed'
-      AND o.payload->>'status' = p_status
+      AND o.payload->>'status' = v_status
   )
   RETURNING id INTO v_event_id;
 
   RETURN jsonb_build_object(
     'jobId', v_job.id,
-    'status', p_status,
+    'status', v_status,
     'jobType', v_job.job_type,
     'error', p_error,
     'memoryId', p_memory_id,

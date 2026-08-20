@@ -565,6 +565,27 @@ export class SupabaseMemoryGateway {
     };
   }
 
+  async retryRomaProjectHealth(input: {
+    subjectId: string;
+    jobId: string;
+    error?: string | null;
+  }) {
+    const { data, error } = await this.client.rpc('api_retry_roma_project_health', {
+      p_secret: this.apiSecret,
+      p_subject_id: input.subjectId,
+      p_job_id: input.jobId,
+      p_error: input.error ?? null,
+    });
+    if (error) throw error;
+    return data as {
+      jobId: string;
+      status: string;
+      attempt: number;
+      jobType: string;
+      error: string | null;
+    };
+  }
+
   async listProjectHints(subjectId: string, workspaceId: string) {
     const { data, error } = await this.client.rpc('api_list_project_hints', {
       p_secret: this.apiSecret,
