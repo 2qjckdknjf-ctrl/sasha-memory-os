@@ -226,13 +226,17 @@ describe('retrieval stub', () => {
     const baseline = searchMemories(
       [store.memories.get(disputed.id)!, store.memories.get(active.id)!],
       'release freeze dispute',
-      { projectId },
+      {
+        projectId,
+        includeHistory: true,
+      },
     );
     const noConflictPenalty = searchMemories(
       [store.memories.get(disputed.id)!, store.memories.get(active.id)!],
       'release freeze dispute',
       {
         projectId,
+        includeHistory: true,
         rankingWeights: createSearchRankingWeightsPack({
           version: 'test-no-conflict-penalty-v1',
           lexical: {
