@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
   parseWorkerIntervalMs,
+  runRomaAutomationOnce,
   runRomaProjectFindingsJob,
   runRomaProjectFindingsTick,
   runRomaProjectHealthJob,
@@ -306,6 +307,73 @@ describe('runRomaProjectFindingsJob', () => {
       expect(Array.isArray(input.metadata.evidence_refs)).toBe(true);
       expect(input.provenance.automation.executionSubjectId).toBe(roma);
     }
+  });
+
+  it('preserves snake_case memory_type values in finding evidence refs', async () => {
+    const captureConnectorRecord = vi.fn(async (input: Record<string, any>) => ({
+      eventId: `source-${input.metadata.finding_key}`,
+      process: { memoryId: `memory-${input.metadata.finding_key}` },
+    }));
+    const gateway = {
+      listProjects: vi.fn(async () => [
+        {
+          id: projectId,
+          slug: 'aistroyka',
+          name: 'AISTROYKA',
+          status: 'active',
+        },
+      ]),
+      projectContext: vi.fn(async () => ({
+        projectId,
+        decisions: [],
+        tasks: [
+          {
+            id: 'task-snake-1',
+            title: 'Resolve blocked deploy',
+            memory_type: 'task',
+          },
+        ],
+        facts: [],
+        state: {
+          version: 3,
+          summary: 'Delivery is blocked by deployment access.',
+          state: {
+            blocked: ['deployment access'],
+            next: ['restore deploy access'],
+            risks: [],
+          },
+        },
+        latestHandoff: null,
+      })),
+      captureConnectorRecord,
+      appendAuditEvent: vi.fn(async ({ afterState }: Record<string, any>) => ({
+        id: `audit-${afterState.findingKey}`,
+      })),
+      completeRomaProjectFindings: vi.fn(async () => ({
+        jobId: 'job-findings-1',
+        status: 'succeeded',
+      })),
+    };
+
+    await runRomaProjectFindingsJob({
+      gateway: gateway as any,
+      job: buildFindingsJob(),
+      romaSubjectId: roma,
+    });
+
+    const blockedFinding = captureConnectorRecord.mock.calls.find(
+      (call) => call[0]?.metadata?.finding_key === 'blocked-work',
+    )?.[0] as Record<string, any> | undefined;
+    expect(blockedFinding).toBeTruthy();
+    expect(blockedFinding?.metadata?.evidence_refs).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          kind: 'memory',
+          memoryId: 'task-snake-1',
+          memoryType: 'task',
+        }),
+      ]),
+    );
   });
 
   it('reuses stable finding idempotency keys for identical reruns', async () => {
@@ -664,5 +732,53 @@ describe('runRomaProjectFindingsTick', () => {
     );
     expect(completeRomaProjectFindings).not.toHaveBeenCalled();
     expect(report.pendingOutbox).toBe(1);
+  });
+});
+
+describe('runRomaAutomationOnce', () => {
+  it('still runs the health tick when the findings tick throws', async () => {
+    const tickRomaProjectHealthSchedules = vi.fn(async () => ({
+      count: 1,
+      enqueued: [],
+      disabled: [],
+      errors: [],
+    }));
+    const claimRomaProjectHealthJobs = vi.fn(async () => ({ count: 0, jobs: [] }));
+    const gateway = {
+      deadLetterStaleJobs: vi.fn(async () => ({ deadLettered: 0 })),
+      claimRomaProjectFindingsJobs: vi.fn(async () => {
+        throw new Error('missing findings rpc');
+      }),
+      listOutboxPending: vi.fn(async ({ eventType }: Record<string, any>) => ({
+        count: eventType === 'roma.project_health.requested' ? 0 : 0,
+      })),
+      listProjects: vi.fn(),
+      projectContext: vi.fn(),
+      captureConnectorRecord: vi.fn(),
+      appendAuditEvent: vi.fn(),
+      completeRomaProjectFindings: vi.fn(),
+      retryRomaProjectFindings: vi.fn(),
+      tickRomaProjectHealthSchedules,
+      claimRomaProjectHealthJobs,
+      completeRomaProjectHealth: vi.fn(),
+      retryRomaProjectHealth: vi.fn(),
+    };
+
+    const report = await runRomaAutomationOnce({
+      gateway: gateway as any,
+      workspaceId,
+      romaSubjectId: roma,
+    });
+
+    expect(report.qaFindings.error).toMatch(/missing findings rpc/i);
+    expect(report.qaFindings.claimed).toBe(0);
+    expect(report.projectHealth.error).toBeNull();
+    expect(tickRomaProjectHealthSchedules).toHaveBeenCalledWith({
+      subjectId: roma,
+      workspaceId,
+      limit: 10,
+      projectId: null,
+    });
+    expect(claimRomaProjectHealthJobs).toHaveBeenCalled();
   });
 });

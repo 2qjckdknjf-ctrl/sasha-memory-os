@@ -29,6 +29,7 @@ type ContextMemory = {
   title: string;
   content?: string | null;
   memoryType?: string | null;
+  memory_type?: string | null;
   sensitivity?: string | null;
   metadata?: Record<string, unknown> | null;
 };
@@ -171,6 +172,7 @@ export type RomaProjectHealthTickReport = {
   failed: Array<{ jobId: string; projectId: string; error: string }>;
   pendingOutbox: number;
   deadLettered: number;
+  error: string | null;
 };
 
 export type RomaProjectFindingsTickReport = {
@@ -179,6 +181,7 @@ export type RomaProjectFindingsTickReport = {
   failed: Array<{ jobId: string; projectId: string; error: string }>;
   pendingOutbox: number;
   deadLettered: number;
+  error: string | null;
 };
 
 export type RomaAutomationTickReport = {
@@ -270,7 +273,7 @@ function toMemoryEvidenceRefs(
     .map((item) => ({
       kind: 'memory' as const,
       memoryId: item.id,
-      memoryType: item.memoryType ?? null,
+      memoryType: item.memoryType ?? item.memory_type ?? null,
       title: truncateText(item.title, 120),
     }));
 }
@@ -981,6 +984,7 @@ export async function runRomaProjectFindingsTick(options?: {
     failed,
     pendingOutbox: pending.count,
     deadLettered: stale.deadLettered,
+    error: null,
   };
 }
 
@@ -1084,6 +1088,7 @@ export async function runRomaProjectHealthTick(options?: {
     failed,
     pendingOutbox: pending.count,
     deadLettered: stale.deadLettered,
+    error: null,
   };
 }
 
@@ -1091,9 +1096,52 @@ export async function runRomaProjectHealthOnce(): Promise<RomaProjectHealthTickR
   return runRomaProjectHealthTick();
 }
 
-export async function runRomaAutomationOnce(): Promise<RomaAutomationTickReport> {
-  const qaFindings = await runRomaProjectFindingsTick();
-  const projectHealth = await runRomaProjectHealthTick();
+export async function runRomaAutomationOnce(options?: {
+  gateway?: RomaProjectHealthGateway;
+  workspaceId?: string;
+  projectId?: string | null;
+  limit?: number;
+  scheduleLimit?: number;
+  staleMinutes?: number;
+  romaSubjectId?: string;
+}): Promise<RomaAutomationTickReport> {
+  const qaFindings = await runRomaProjectFindingsTick({
+    gateway: options?.gateway,
+    workspaceId: options?.workspaceId,
+    projectId: options?.projectId,
+    limit: options?.limit,
+    staleMinutes: options?.staleMinutes,
+    romaSubjectId: options?.romaSubjectId,
+  }).catch((err) => ({
+    claimed: 0,
+    completed: [],
+    failed: [],
+    pendingOutbox: 0,
+    deadLettered: 0,
+    error: err instanceof Error ? err.message : String(err),
+  }));
+  const projectHealth = await runRomaProjectHealthTick({
+    gateway: options?.gateway,
+    workspaceId: options?.workspaceId,
+    projectId: options?.projectId,
+    limit: options?.limit,
+    scheduleLimit: options?.scheduleLimit,
+    staleMinutes: options?.staleMinutes,
+    romaSubjectId: options?.romaSubjectId,
+  }).catch((err) => ({
+    scheduled: {
+      count: 0,
+      enqueued: [],
+      disabled: [],
+      errors: [],
+    },
+    claimed: 0,
+    completed: [],
+    failed: [],
+    pendingOutbox: 0,
+    deadLettered: 0,
+    error: err instanceof Error ? err.message : String(err),
+  }));
   return {
     qaFindings,
     projectHealth,
@@ -1118,7 +1166,15 @@ export async function startRomaProjectHealthLoop(
   const intervalMs = parseWorkerIntervalMs(env);
   const tick = async () => {
     const report = await runRomaAutomationOnce();
-    console.log(JSON.stringify({ ok: true, ...report }));
+    const ok = report.qaFindings.error == null && report.projectHealth.error == null;
+    console.log(JSON.stringify({ ok, ...report }));
+    if (!ok) {
+      const errors = [
+        report.qaFindings.error ? `qaFindings: ${report.qaFindings.error}` : null,
+        report.projectHealth.error ? `projectHealth: ${report.projectHealth.error}` : null,
+      ].filter((value): value is string => value !== null);
+      throw new Error(errors.join('; '));
+    }
   };
   await tick();
   if (intervalMs == null) return;
