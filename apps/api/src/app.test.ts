@@ -2102,7 +2102,7 @@ describe('memory api demo slice', () => {
       projectId,
       cadenceMinutes: 720,
       enabled: false,
-      nextRunAt: null,
+      nextRunAt: undefined,
       reason: 'Scheduled ROMA health summary.',
     });
     const body = (await res.json()) as {
