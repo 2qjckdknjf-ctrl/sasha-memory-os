@@ -419,8 +419,8 @@ export function OpsPage({
               </button>
             </div>
 
-            {extractionPreview ? <p className="meta">{extractionPreview}</p> : null}
-            {lastCapture ? <p className="meta">{lastCapture}</p> : null}
+            {extractionPreview ? <p className="meta">{OPS_REDACTION_MESSAGE}</p> : null}
+            {lastCapture ? <p className="meta">{OPS_REDACTION_MESSAGE}</p> : null}
 
             {extractionCandidates.length > 0 ? (
               <ul className="timeline">
@@ -597,14 +597,6 @@ export function OpsPage({
                   <div className="actions">
                     <button
                       type="button"
-                      onClick={() => {
-                        void onSetHitStatus(hit.memory!.id!, 'verified');
-                      }}
-                    >
-                      Approve
-                    </button>
-                    <button
-                      type="button"
                       className="button-secondary"
                       onClick={() => {
                         void onSetHitStatus(hit.memory!.id!, 'disputed');
@@ -651,15 +643,6 @@ export function OpsPage({
               }}
             >
               Load candidates
-            </button>
-            <button
-              type="button"
-              className="button-secondary"
-              onClick={() => {
-                void onBulkReviewStatus('verified');
-              }}
-            >
-              Approve all
             </button>
             <button
               type="button"
@@ -745,15 +728,6 @@ export function OpsPage({
               type="button"
               className="button-secondary"
               onClick={() => {
-                void onExportMemories();
-              }}
-            >
-              Export memories JSON
-            </button>
-            <button
-              type="button"
-              className="button-secondary"
-              onClick={() => {
                 void onDeadLetterJobs();
               }}
             >
@@ -811,15 +785,6 @@ export function OpsPage({
                       }}
                     >
                       Reauth
-                    </button>
-                    <button
-                      type="button"
-                      className="button-secondary"
-                      onClick={() => {
-                        void onUpdateConnectionStatus(connection.id!, 'revoked', null);
-                      }}
-                    >
-                      Revoke
                     </button>
                     <button
                       type="button"

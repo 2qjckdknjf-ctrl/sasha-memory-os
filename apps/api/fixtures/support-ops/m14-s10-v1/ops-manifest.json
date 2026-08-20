@@ -21,6 +21,10 @@
       "hit.memory?.content ?? ''",
       "hit.memory?.content",
       "text: hit.memory?.content",
+      "onExportMemories()",
+      "onUpdateConnectionStatus(connection.id!, 'revoked'",
+      "onSetHitStatus(hit.memory!.id!, 'verified')",
+      "onBulkReviewStatus('verified')",
       "item.content",
       "connection.vaultRef"
     ]

@@ -32,7 +32,7 @@ function renderOpsPage() {
         ]}
         captureTitle="Meeting note"
         captureText="safe demo placeholder"
-        lastCapture="job 1 · memory 2 · chunks 3"
+        lastCapture="capture-secret-should-never-render-998877"
         docTitle="Ops doc"
         docFileName="ops.txt"
         linkUrl="https://example.com"
@@ -61,7 +61,7 @@ function renderOpsPage() {
             body: 'sensitive export payload body',
           },
         }}
-        extractionPreview="extract: 1 candidates"
+        extractionPreview="preview-secret-should-never-render-112233"
         extractionCandidates={[
           {
             title: 'Candidate one',
@@ -161,6 +161,21 @@ describe('OpsPage', () => {
     expect(html).not.toContain('sensitive export payload body');
     expect(html).not.toContain('Bearer live-secret-value should not render');
     expect(html).not.toContain('vault-live-secret-123');
+    expect(html).not.toContain('preview-secret-should-never-render-112233');
+    expect(html).not.toContain('capture-secret-should-never-render-998877');
     expect(html).toContain('Redacted on /ops');
+  });
+
+  it('does not render live approve, export, or revoke controls on the official ops surface', () => {
+    const html = renderOpsPage();
+
+    expect(html).not.toContain('Approve');
+    expect(html).not.toContain('Approve all');
+    expect(html).not.toContain('Export memories JSON');
+    expect(html).not.toContain('Revoke');
+    expect(html).toContain('Dispute');
+    expect(html).toContain('Retract');
+    expect(html).toContain('Reauth');
+    expect(html).toContain('Mark connected');
   });
 });

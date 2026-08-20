@@ -268,7 +268,13 @@ describe('support / ops drill harness', () => {
     const { fixtureDir, opsPagePath } = prepareMutableFixtureCopy('support-ops-payload-leak');
     writeFileSync(
       opsPagePath,
-      `${readFileSync(opsPagePath, 'utf8')}\n// text: hit.memory?.content\n`,
+      `${readFileSync(opsPagePath, 'utf8')}
+// text: hit.memory?.content
+// onExportMemories()
+// onUpdateConnectionStatus(connection.id!, 'revoked'
+// onSetHitStatus(hit.memory!.id!, 'verified')
+// onBulkReviewStatus('verified')
+`,
     );
 
     const report = await runSupportOpsDrill({
@@ -278,11 +284,13 @@ describe('support / ops drill harness', () => {
     });
 
     expect(report.assertions.ok).toBe(false);
-    expect(report.assertions.errors).toEqual(
-      expect.arrayContaining([
-        'ops page source reintroduced raw payload rendering (hit.memory?.content, text: hit.memory?.content)',
-      ]),
-    );
+    const joinedErrors = report.assertions.errors.join(' ');
+    expect(joinedErrors).toContain('hit.memory?.content');
+    expect(joinedErrors).toContain('text: hit.memory?.content');
+    expect(joinedErrors).toContain('onExportMemories()');
+    expect(joinedErrors).toContain("onUpdateConnectionStatus(connection.id!, 'revoked'");
+    expect(joinedErrors).toContain("onSetHitStatus(hit.memory!.id!, 'verified')");
+    expect(joinedErrors).toContain("onBulkReviewStatus('verified')");
     expect(SUPPORT_OPS_REDACTION_SNIPPET.length).toBeGreaterThan(0);
   });
 

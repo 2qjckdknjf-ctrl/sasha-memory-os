@@ -104,6 +104,10 @@ describe('M14 Slice 10 support / ops pack', () => {
     expect(opsPage).not.toContain("hit.memory?.content ?? ''");
     expect(opsPage).not.toContain('hit.memory?.content');
     expect(opsPage).not.toContain('text: hit.memory?.content');
+    expect(opsPage).not.toContain('onExportMemories()');
+    expect(opsPage).not.toContain("onUpdateConnectionStatus(connection.id!, 'revoked'");
+    expect(opsPage).not.toContain("onSetHitStatus(hit.memory!.id!, 'verified')");
+    expect(opsPage).not.toContain("onBulkReviewStatus('verified')");
     expect(opsPage).not.toContain('item.content');
     expect(opsPage).not.toContain('connection.vaultRef');
 
