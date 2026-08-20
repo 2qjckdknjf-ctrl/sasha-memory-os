@@ -4,6 +4,8 @@ import {
   OFFICIAL_M14_DR_RESTORE_DRILL_PACK,
   OFFICIAL_M14_DR_RESTORE_DRILL_PACK_VERSION,
   getSloBudgetSnapshot,
+  OFFICIAL_M14_INCIDENT_RUNBOOK_PACK,
+  OFFICIAL_M14_INCIDENT_RUNBOOK_PACK_VERSION,
   OFFICIAL_M14_SECURITY_REVIEW_PACK,
   OFFICIAL_M14_SECURITY_REVIEW_PACK_VERSION,
   OFFICIAL_M14_SLO_PACK,
@@ -181,6 +183,75 @@ describe('observability package', () => {
         (item) => item.id === 'rls-after-restore',
       )?.evidence,
     ).toContain('tests/security/rls_matrix.test.ts');
+  });
+
+  it('publishes the official M14 Slice 05 incident runbook pack with fail-closed defensive invariants', () => {
+    expect(OFFICIAL_M14_INCIDENT_RUNBOOK_PACK_VERSION).toBe('m14-s05-v1');
+    expect(OFFICIAL_M14_INCIDENT_RUNBOOK_PACK.version).toBe('m14-s05-v1');
+    expect(OFFICIAL_M14_INCIDENT_RUNBOOK_PACK.sloPackVersion).toBe('m14-s01-v1');
+    expect(OFFICIAL_M14_INCIDENT_RUNBOOK_PACK.securityReviewPackVersion).toBe(
+      'm14-s03-v1',
+    );
+    expect(OFFICIAL_M14_INCIDENT_RUNBOOK_PACK.drRestoreDrillPackVersion).toBe(
+      'm14-s04-v1',
+    );
+    expect(OFFICIAL_M14_INCIDENT_RUNBOOK_PACK.roadmapSections).toEqual([
+      '16.4',
+      '20.17',
+    ]);
+    expect(OFFICIAL_M14_INCIDENT_RUNBOOK_PACK.runbooks.map((item) => item.id)).toEqual(
+      expect.arrayContaining([
+        'alert-ownership-and-routing',
+        'key-rotation',
+        'emergency-revoke',
+        'connector-revoke-stop-sync',
+        'webhook-dlq-replay-resync',
+        'service-role-vault-compromise',
+      ]),
+    );
+    expect(OFFICIAL_M14_INCIDENT_RUNBOOK_PACK.alerts.map((item) => item.id)).toEqual(
+      expect.arrayContaining([
+        'slo.api.availability',
+        'slo.mcp.availability',
+        'slo.project.state',
+        'slo.search.hybrid',
+        'slo.search.agentic',
+        'slo.write.receipt',
+        'slo.webhook.ack',
+        'security.acl.leakage',
+        'security.secrets.rotation-overdue',
+        'security.connector-token-compromised',
+      ]),
+    );
+    expect(OFFICIAL_M14_INCIDENT_RUNBOOK_PACK.invariants).toMatchObject({
+      defensiveOnly: true,
+      fixtureOnly: true,
+      modeAToolCount: 7,
+      requireRunbookOwner: true,
+      requireRollbackOrRevokeStep: true,
+      requireExplicitProjectIdOnAdminOrRevokeInvocation: true,
+      requireAlertOwner: true,
+      requireAlertRunbook: true,
+      requireKeyRotationRunbook: true,
+      requireEmergencyRevokeRunbook: true,
+      requireConnectorRevokeStopJobsAndWebhooks: true,
+      requireInvalidateSessionsAfterServiceRoleRotation: true,
+      requireAuditAccessLogReview: true,
+      allowOwnerTokenBypass: false,
+      allowAistroykaFallback: false,
+      allowVerifiedWrites: false,
+      allowLiveRevoke: false,
+      allowLiveRollback: false,
+      allowProductionSqlApply: false,
+      logMemoryBodies: false,
+      logTokens: false,
+      logAlertPayloads: false,
+    });
+    expect(
+      OFFICIAL_M14_INCIDENT_RUNBOOK_PACK.checklist.find(
+        (item) => item.id === 'connector-revoke-stop-jobs',
+      )?.evidence,
+    ).toContain('docs/engineering/runbooks/connector-revoke-stop-sync.md');
   });
 
   it('redacts tokens, bodies, queries, and personal content from structured logs', () => {
