@@ -411,6 +411,7 @@ function buildBurstOperations(
             params: {
               name: 'memory.search',
               arguments: {
+                workspace_id: config.workspaceId,
                 query: config.searchQuery,
                 project_id: config.projectId,
                 pack_context: true,
@@ -436,6 +437,7 @@ function buildBurstOperations(
             params: {
               name: 'context.project',
               arguments: {
+                workspace_id: config.workspaceId,
                 project_id: config.projectId,
               },
             },
@@ -459,6 +461,7 @@ function buildBurstOperations(
             params: {
               name: 'capture.text',
               arguments: {
+                workspace_id: config.workspaceId,
                 project_id: config.projectId,
                 title: config.captureTitle,
                 text: config.captureText,
@@ -679,10 +682,10 @@ export function resolveBoundedSoakConfig(
   };
 }
 
-export function resolveBoundedSoakConfigFromEnv(
+export function boundedSoakConfigInputFromEnv(
   env: NodeJS.ProcessEnv = process.env,
-): ResolvedBoundedSoakConfig {
-  return resolveBoundedSoakConfig({
+): BoundedSoakConfigInput {
+  return {
     baseUrl: env.MEMORY_OS_API_BASE_URL,
     projectId: env.MEMORY_OS_SOAK_PROJECT_ID ?? env.MEMORY_OS_PROJECT_ID,
     workspaceId: env.MEMORY_OS_WORKSPACE_ID ?? env.MEMORY_OS_DEFAULT_WORKSPACE_ID,
@@ -698,7 +701,13 @@ export function resolveBoundedSoakConfigFromEnv(
     captureTitle: env.MEMORY_OS_SOAK_TITLE,
     captureText: env.MEMORY_OS_SOAK_TEXT,
     idempotencyNamespace: env.MEMORY_OS_SOAK_NAMESPACE,
-  });
+  };
+}
+
+export function resolveBoundedSoakConfigFromEnv(
+  env: NodeJS.ProcessEnv = process.env,
+): ResolvedBoundedSoakConfig {
+  return resolveBoundedSoakConfig(boundedSoakConfigInputFromEnv(env));
 }
 
 export function evaluateBoundedSoakReport(

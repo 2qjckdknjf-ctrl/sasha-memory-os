@@ -1,7 +1,7 @@
 import {
   assertBoundedSoakReport,
+  boundedSoakConfigInputFromEnv,
   resolveBoundedSoakConfig,
-  resolveBoundedSoakConfigFromEnv,
   runBoundedSoakRecipe,
   type BoundedSoakConfigInput,
 } from './soakHarness.js';
@@ -75,8 +75,9 @@ async function main(): Promise<void> {
     console.log(usage());
     return;
   }
+  const envInput = boundedSoakConfigInputFromEnv(process.env);
   const merged = resolveBoundedSoakConfig({
-    ...resolveBoundedSoakConfigFromEnv(process.env),
+    ...envInput,
     ...parsed,
     apiSecret: process.env.MEMORY_OS_API_SECRET,
   });
