@@ -19,42 +19,68 @@ const connectionId = '88888888-8888-4888-8888-888888888804';
 const workspaceId = '11111111-1111-4111-8111-111111111111';
 const vaultRef = `vault:local/connectors/google-calendar/${connectionId}`;
 
-const selectedCalendarMetadata = {
-  collections: {
-    selection_mode: 'selected' as const,
-    excluded_ids: ['google-calendar:calendar:cal-hidden'],
-    items: [
-      {
-        id: 'google-calendar:calendar:cal-personal',
-        external_id: 'cal-personal',
-        kind: 'calendar' as const,
-        name: 'Personal Calendar',
-        title: 'Personal Calendar',
-        metadata: {},
+function buildSelectedCalendarMetadata(input?: {
+  personalPrivateContentOptIn?: boolean;
+  teamPrivateContentOptIn?: boolean;
+  hiddenPrivateContentOptIn?: boolean;
+}) {
+  return {
+    collections: {
+      selection_mode: 'selected' as const,
+      excluded_ids: ['google-calendar:calendar:cal-hidden'],
+      items: [
+        {
+          id: 'google-calendar:calendar:cal-personal',
+          external_id: 'cal-personal',
+          kind: 'calendar' as const,
+          name: 'Personal Calendar',
+          title: 'Personal Calendar',
+          metadata: input?.personalPrivateContentOptIn
+            ? {
+                google_calendar: {
+                  private_event_content: true,
+                },
+              }
+            : {},
+        },
+        {
+          id: 'google-calendar:calendar:cal-team',
+          external_id: 'cal-team',
+          kind: 'calendar' as const,
+          name: 'Team Calendar',
+          title: 'Team Calendar',
+          metadata: input?.teamPrivateContentOptIn
+            ? {
+                google_calendar: {
+                  private_event_content: true,
+                },
+              }
+            : {},
+        },
+        {
+          id: 'google-calendar:calendar:cal-hidden',
+          external_id: 'cal-hidden',
+          kind: 'calendar' as const,
+          name: 'Hidden Calendar',
+          title: 'Hidden Calendar',
+          metadata: input?.hiddenPrivateContentOptIn
+            ? {
+                google_calendar: {
+                  private_event_content: true,
+                },
+              }
+            : {},
+        },
+      ],
+      project_bindings: {
+        'google-calendar:calendar:cal-personal': '44444444-4444-4444-8444-444444444431',
+        'google-calendar:calendar:cal-team': '44444444-4444-4444-8444-444444444432',
       },
-      {
-        id: 'google-calendar:calendar:cal-team',
-        external_id: 'cal-team',
-        kind: 'calendar' as const,
-        name: 'Team Calendar',
-        title: 'Team Calendar',
-        metadata: {},
-      },
-      {
-        id: 'google-calendar:calendar:cal-hidden',
-        external_id: 'cal-hidden',
-        kind: 'calendar' as const,
-        name: 'Hidden Calendar',
-        title: 'Hidden Calendar',
-        metadata: {},
-      },
-    ],
-    project_bindings: {
-      'google-calendar:calendar:cal-personal': '44444444-4444-4444-8444-444444444431',
-      'google-calendar:calendar:cal-team': '44444444-4444-4444-8444-444444444432',
     },
-  },
-};
+  };
+}
+
+const selectedCalendarMetadata = buildSelectedCalendarMetadata();
 
 function createCalendarProcessEnv(dir: string) {
   return {
@@ -80,14 +106,20 @@ async function createCalendarVaultFixture(dir: string) {
   };
 }
 
-function selectedCalendarScopeKey(): string {
-  return resolveGoogleCalendarSelectedCalendars(selectedCalendarMetadata)
-    .map((calendar) => `${calendar.collectionId}:${calendar.externalId}:${calendar.storageMode}`)
+function selectedCalendarScopeKey(metadata = selectedCalendarMetadata): string {
+  return resolveGoogleCalendarSelectedCalendars(metadata)
+    .map(
+      (calendar) =>
+        `${calendar.collectionId}:${calendar.externalId}:${calendar.storageMode}:${
+          calendar.privateContentOptIn ? 'private-content-opt-in' : 'private-content-redacted'
+        }`,
+    )
     .sort()
     .join('|');
 }
 
 function buildSelectedCalendarCursor(input?: {
+  metadata?: typeof selectedCalendarMetadata;
   calendarTokens?: Array<{
     calendarId: string;
     collectionId: string;
@@ -102,11 +134,12 @@ function buildSelectedCalendarCursor(input?: {
     storageMode: 'reference';
   }>;
 }) {
-  const selectedCalendars = resolveGoogleCalendarSelectedCalendars(selectedCalendarMetadata);
+  const metadata = input?.metadata ?? selectedCalendarMetadata;
+  const selectedCalendars = resolveGoogleCalendarSelectedCalendars(metadata);
   return buildDefaultCursor(
     'google-calendar:events',
     {
-      scopeKey: selectedCalendarScopeKey(),
+      scopeKey: selectedCalendarScopeKey(metadata),
       queryKey: 'maxResults=250&showDeleted=true&singleEvents=true',
       calendarTokens:
         input?.calendarTokens ??
@@ -123,10 +156,13 @@ function buildSelectedCalendarCursor(input?: {
 
 function calendarEvent(input: {
   id: string;
-  summary: string;
+  summary?: string;
   updated: string;
   status?: string;
+  visibility?: string;
+  transparency?: string;
   description?: string;
+  htmlLink?: string;
   location?: string;
   recurringEventId?: string;
   attendees?: Array<{ email?: string; displayName?: string; responseStatus?: string }>;
@@ -136,9 +172,12 @@ function calendarEvent(input: {
     summary: input.summary,
     status: input.status ?? 'confirmed',
     updated: input.updated,
+    visibility: input.visibility,
+    transparency: input.transparency,
     start: { dateTime: '2026-08-12T10:00:00.000Z', timeZone: 'UTC' },
     end: { dateTime: '2026-08-12T10:30:00.000Z', timeZone: 'UTC' },
     description: input.description,
+    htmlLink: input.htmlLink,
     location: input.location,
     recurringEventId: input.recurringEventId,
     attendees: input.attendees,
@@ -168,11 +207,13 @@ describe('google calendar selected-calendar contract', () => {
         collectionId: 'google-calendar:calendar:cal-personal',
         externalId: 'cal-personal',
         storageMode: 'reference',
+        privateContentOptIn: false,
       }),
       expect.objectContaining({
         collectionId: 'google-calendar:calendar:cal-team',
         externalId: 'cal-team',
         storageMode: 'reference',
+        privateContentOptIn: false,
       }),
     ]);
 
@@ -321,6 +362,214 @@ describe('google calendar selected-calendar contract', () => {
           }),
         ]),
       );
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('redacts private event content by default while preserving public event content', async () => {
+    const dir = await mkdtemp(path.join(os.tmpdir(), 'memory-os-cal-private-redaction-'));
+    try {
+      const { processEnv, vault } = await createCalendarVaultFixture(dir);
+      const fetchImpl = vi.fn(async (url: string) => {
+        const parsed = new URL(url);
+        if (parsed.pathname.endsWith('/calendars/cal-personal/events')) {
+          return Response.json({
+            items: [
+              calendarEvent({
+                id: 'evt-private',
+                summary: 'Performance Review',
+                updated: '2026-08-11T09:15:00.000Z',
+                visibility: 'private',
+                description: 'Discuss compensation changes',
+                htmlLink: 'https://calendar.google.com/private-review',
+                location: 'Room 7',
+                attendees: [{ email: 'manager@example.com', responseStatus: 'accepted' }],
+              }),
+              calendarEvent({
+                id: 'evt-restricted-busy',
+                summary: 'Busy',
+                updated: '2026-08-11T09:16:00.000Z',
+              }),
+            ],
+            nextSyncToken: 'cal-personal-sync-1',
+          });
+        }
+        if (parsed.pathname.endsWith('/calendars/cal-team/events')) {
+          return Response.json({
+            items: [
+              calendarEvent({
+                id: 'evt-public',
+                summary: 'Team planning',
+                updated: '2026-08-11T09:20:00.000Z',
+                visibility: 'default',
+                description: 'Quarterly roadmap',
+                htmlLink: 'https://calendar.google.com/public-planning',
+                location: 'Zoom',
+                attendees: [{ email: 'teammate@example.com', responseStatus: 'accepted' }],
+              }),
+            ],
+            nextSyncToken: 'cal-team-sync-1',
+          });
+        }
+        throw new Error(`Unhandled Google Calendar privacy test URL: ${url}`);
+      });
+
+      const syncRun = await runConnectorSync({
+        connector: googleCalendarConnector,
+        context: {
+          account: {
+            connectionId,
+            connectorId: 'google-calendar',
+            displayName: 'Pilot Calendar',
+            vaultRef,
+            scopes: ['calendar.readonly'],
+            metadata: selectedCalendarMetadata,
+          },
+          workspaceId,
+          processEnv,
+          vault,
+          fetchImpl: fetchImpl as unknown as typeof fetch,
+        },
+      });
+
+      const byExternalId = new Map(
+        syncRun.records.map((record) => [record.externalObject.externalId, record]),
+      );
+      const privateRecord = byExternalId.get('calendar/cal-personal/event/evt-private');
+      const restrictedBusyRecord = byExternalId.get('calendar/cal-personal/event/evt-restricted-busy');
+      const publicRecord = byExternalId.get('calendar/cal-team/event/evt-public');
+
+      expect(syncRun.records).toHaveLength(3);
+      expect(privateRecord?.externalObject.title).toBe('Busy');
+      expect(privateRecord?.externalObject.metadata).toMatchObject({
+        visibility: 'private',
+        privateEvent: true,
+        privateContentOptIn: false,
+        privateContentRedacted: true,
+        privateReason: 'visibility_private',
+        description: null,
+        location: null,
+        htmlLink: null,
+        attendees: [],
+      });
+      expect(privateRecord?.capture.text).toContain('Event: Busy');
+      expect(privateRecord?.capture.text).toContain('Privacy: private event content redacted');
+      expect(privateRecord?.capture.text).not.toContain('Performance Review');
+      expect(privateRecord?.capture.text).not.toContain('Discuss compensation changes');
+      expect(privateRecord?.capture.text).not.toContain('manager@example.com');
+      expect(privateRecord?.capture.text).not.toContain('Room 7');
+      expect(privateRecord?.capture.text).not.toContain('private-review');
+
+      expect(restrictedBusyRecord?.externalObject.metadata).toMatchObject({
+        privateEvent: true,
+        privateContentOptIn: false,
+        privateContentRedacted: true,
+        privateReason: 'restricted_busy',
+      });
+
+      expect(publicRecord?.externalObject.title).toBe('Team planning');
+      expect(publicRecord?.externalObject.metadata).toMatchObject({
+        visibility: 'default',
+        privateEvent: false,
+        privateContentRedacted: false,
+        description: 'Quarterly roadmap',
+        location: 'Zoom',
+        htmlLink: 'https://calendar.google.com/public-planning',
+      });
+      expect(publicRecord?.externalObject.metadata.attendees).toEqual([
+        {
+          email: 'teammate@example.com',
+          responseStatus: 'accepted',
+        },
+      ]);
+      expect(publicRecord?.capture.text).toContain('Event: Team planning');
+      expect(publicRecord?.capture.text).toContain('Description: Quarterly roadmap');
+      expect(publicRecord?.capture.text).toContain('Location: Zoom');
+      expect(publicRecord?.capture.text).toContain('teammate@example.com');
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('retains private event content when the selected calendar explicitly opts in', async () => {
+    const dir = await mkdtemp(path.join(os.tmpdir(), 'memory-os-cal-private-opt-in-'));
+    try {
+      const { processEnv, vault } = await createCalendarVaultFixture(dir);
+      const optInMetadata = buildSelectedCalendarMetadata({
+        personalPrivateContentOptIn: true,
+      });
+      const fetchImpl = vi.fn(async (url: string) => {
+        const parsed = new URL(url);
+        if (parsed.pathname.endsWith('/calendars/cal-personal/events')) {
+          return Response.json({
+            items: [
+              calendarEvent({
+                id: 'evt-private-opt-in',
+                summary: 'Therapy appointment',
+                updated: '2026-08-11T09:25:00.000Z',
+                visibility: 'private',
+                description: 'Weekly check-in',
+                htmlLink: 'https://calendar.google.com/private-opt-in',
+                location: 'Clinic',
+                attendees: [{ email: 'doctor@example.com', responseStatus: 'accepted' }],
+              }),
+            ],
+            nextSyncToken: 'cal-personal-sync-1',
+          });
+        }
+        if (parsed.pathname.endsWith('/calendars/cal-team/events')) {
+          return Response.json({
+            items: [],
+            nextSyncToken: 'cal-team-sync-1',
+          });
+        }
+        throw new Error(`Unhandled Google Calendar opt-in URL: ${url}`);
+      });
+
+      const syncRun = await runConnectorSync({
+        connector: googleCalendarConnector,
+        context: {
+          account: {
+            connectionId,
+            connectorId: 'google-calendar',
+            displayName: 'Pilot Calendar',
+            vaultRef,
+            scopes: ['calendar.readonly'],
+            metadata: optInMetadata,
+          },
+          workspaceId,
+          processEnv,
+          vault,
+          fetchImpl: fetchImpl as unknown as typeof fetch,
+        },
+      });
+
+      const record = syncRun.records.find(
+        (entry) => entry.externalObject.externalId === 'calendar/cal-personal/event/evt-private-opt-in',
+      );
+      expect(record?.externalObject.title).toBe('Therapy appointment');
+      expect(record?.externalObject.metadata).toMatchObject({
+        visibility: 'private',
+        privateEvent: true,
+        privateContentOptIn: true,
+        privateContentRedacted: false,
+        privateReason: 'visibility_private',
+        description: 'Weekly check-in',
+        location: 'Clinic',
+        htmlLink: 'https://calendar.google.com/private-opt-in',
+      });
+      expect(record?.externalObject.metadata.attendees).toEqual([
+        {
+          email: 'doctor@example.com',
+          responseStatus: 'accepted',
+        },
+      ]);
+      expect(record?.capture.text).toContain('Event: Therapy appointment');
+      expect(record?.capture.text).toContain('Description: Weekly check-in');
+      expect(record?.capture.text).toContain('Location: Clinic');
+      expect(record?.capture.text).toContain('doctor@example.com');
+      expect(record?.capture.text).toContain('retained via selected-calendar opt-in');
     } finally {
       await rm(dir, { recursive: true, force: true });
     }
