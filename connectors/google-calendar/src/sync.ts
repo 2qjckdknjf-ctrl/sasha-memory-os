@@ -91,6 +91,11 @@ type CalendarEventActor = {
   self?: boolean;
 };
 
+type CalendarEventAttachment = {
+  title?: string;
+  mimeType?: string;
+};
+
 type CalendarApiEvent = {
   id?: string;
   summary?: string;
@@ -111,6 +116,7 @@ type CalendarApiEvent = {
   creator?: CalendarEventActor;
   iCalUID?: string;
   eventType?: string;
+  attachments?: CalendarEventAttachment[];
 };
 
 type CalendarEvent = CalendarApiEvent & {
@@ -343,6 +349,23 @@ function resolveCalendarInstant(value?: CalendarEventTime): string {
   return value?.dateTime ?? value?.date ?? 'unknown';
 }
 
+function extractCalendarAttachmentSummaries(
+  attachments: CalendarEventAttachment[] | undefined,
+): Array<Record<string, string>> {
+  return (attachments ?? []).flatMap((attachment) => {
+    const summary: Record<string, string> = {};
+    const title = trimToNull(attachment.title);
+    const mimeType = trimToNull(attachment.mimeType);
+    if (title) {
+      summary.title = title;
+    }
+    if (mimeType) {
+      summary.mimeType = mimeType;
+    }
+    return Object.keys(summary).length > 0 ? [summary] : [];
+  });
+}
+
 function buildCalendarKnownEventKey(calendarId: string, eventId: string): string {
   return `${calendarId}:${eventId}`;
 }
@@ -412,6 +435,7 @@ function applyCalendarPrivacyPolicy(input: {
   | 'htmlLink'
   | 'location'
   | 'attendees'
+  | 'attachments'
   | 'organizer'
   | 'creator'
   | 'iCalUID'
@@ -431,6 +455,7 @@ function applyCalendarPrivacyPolicy(input: {
     htmlLink: privateContentRedacted ? undefined : input.event.htmlLink,
     location: privateContentRedacted ? undefined : input.event.location,
     attendees: privateContentRedacted ? undefined : input.event.attendees,
+    attachments: privateContentRedacted ? undefined : input.event.attachments,
     organizer: privateContentRedacted ? undefined : input.event.organizer,
     creator: privateContentRedacted ? undefined : input.event.creator,
     iCalUID: privateContentRedacted ? undefined : input.event.iCalUID,
@@ -1102,6 +1127,7 @@ function normalizeCalendarEvent(input: {
     : input.event.isPrivate && input.event.privateContentOptIn
       ? 'Privacy: private event content retained via selected-calendar opt-in.'
       : null;
+  const attachmentMetadata = extractCalendarAttachmentSummaries(input.event.attachments);
   const object: ExternalObject = {
     provider: 'google-calendar',
     accountId: input.connectionId,
@@ -1113,7 +1139,7 @@ function normalizeCalendarEvent(input: {
     createdAt: observedAt,
     modifiedAt: observedAt,
     deleted: input.event.deleted,
-    attachments: [],
+    attachments: attachmentMetadata,
     permissionsSnapshot: input.event.deleted
       ? {
           reason:

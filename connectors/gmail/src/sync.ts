@@ -71,6 +71,8 @@ type GmailMessagePart = {
   parts?: GmailMessagePart[];
 };
 
+type GmailAttachmentSummary = Record<string, string | number>;
+
 type GmailHistoryMessage = {
   id?: string;
   threadId?: string;
@@ -134,6 +136,10 @@ function headerValue(
 ): string | null {
   const hit = headers?.find((header) => header.name?.toLowerCase() === name.toLowerCase());
   return hit?.value?.trim() || null;
+}
+
+function trimToNull(value?: string): string | null {
+  return typeof value === 'string' && value.trim().length > 0 ? value.trim() : null;
 }
 
 function labelForGmailAccount(input: {
@@ -299,8 +305,40 @@ function decodeBase64Url(data: string): string {
   return Buffer.from(padded, 'base64').toString('utf8');
 }
 
+function isGmailAttachmentPart(part: GmailMessagePart | undefined): boolean {
+  if (!part) return false;
+  return trimToNull(part.filename) !== null || trimToNull(part.body?.attachmentId) !== null;
+}
+
+function buildGmailAttachmentSummary(part: GmailMessagePart): GmailAttachmentSummary | null {
+  if (!isGmailAttachmentPart(part)) return null;
+  const attachment: GmailAttachmentSummary = {};
+  const filename = trimToNull(part.filename);
+  const mimeType = trimToNull(part.mimeType);
+  if (filename) {
+    attachment.filename = filename;
+  }
+  if (mimeType) {
+    attachment.mimeType = mimeType;
+  }
+  if (typeof part.body?.size === 'number' && Number.isFinite(part.body.size) && part.body.size >= 0) {
+    attachment.size = part.body.size;
+  }
+  return Object.keys(attachment).length > 0 ? attachment : null;
+}
+
+function extractGmailAttachmentSummaries(
+  part: GmailMessagePart | undefined,
+): GmailAttachmentSummary[] {
+  if (!part) return [];
+  const nested = (part.parts ?? []).flatMap((child) => extractGmailAttachmentSummaries(child));
+  const attachment = buildGmailAttachmentSummary(part);
+  return attachment ? [...nested, attachment] : nested;
+}
+
 function extractGmailBodyText(part: GmailMessagePart | undefined): string | null {
   if (!part) return null;
+  if (isGmailAttachmentPart(part)) return null;
   if (
     part.mimeType === 'text/plain' &&
     typeof part.body?.data === 'string' &&
@@ -1030,6 +1068,7 @@ function normalizeGmailMessage(input: {
     storageMode === 'indexed' && typeof input.message.bodyText === 'string'
       ? input.message.bodyText.trim()
       : '';
+  const attachmentMetadata = extractGmailAttachmentSummaries(input.message.payload);
   const object: ExternalObject = {
     provider: 'gmail',
     accountId: input.connectionId,
@@ -1041,7 +1080,7 @@ function normalizeGmailMessage(input: {
     createdAt: observedAt,
     modifiedAt: observedAt,
     deleted: input.message.deleted ?? false,
-    attachments: [],
+    attachments: attachmentMetadata,
     permissionsSnapshot: {},
     metadata: {
       from,
