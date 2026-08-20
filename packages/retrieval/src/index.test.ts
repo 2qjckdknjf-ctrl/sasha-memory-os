@@ -1,12 +1,14 @@
 import { describe, expect, it } from 'vitest';
-import { createSeededStore, type MemoryRecord } from '@memory-os/domain';
+import { createSeededStore, MemoryStore, type MemoryRecord } from '@memory-os/domain';
 import {
   AGENTIC_RETRIEVAL_TOOL_ALLOWLIST,
   authorityMultiplier,
   fuseRanksRrf,
   packSearchContext,
+  PERSONALIZED_IMPORTANCE_VERSION,
   projectContext,
   runBoundedAgenticRetrieval,
+  SEARCH_RANKING_VERSION,
   searchMemories,
 } from './index.js';
 
@@ -163,6 +165,89 @@ describe('retrieval stub', () => {
     expect(ctx.decisions.length).toBe(1);
   });
 
+  it('prefers actor personalization over project default without leaking actor pins', () => {
+    const workspaceId = '11111111-1111-4111-8111-111111111111';
+    const projectId = '44444444-4444-4444-8444-444444444401';
+    const owner = '33333333-3333-4333-8333-333333333301';
+    const cursor = '33333333-3333-4333-8333-333333333303';
+    const store = new MemoryStore();
+    const actorPinned = store.createDecision({
+      workspaceId,
+      projectId,
+      title: 'Cursor roadmap note',
+      content: 'shared roadmap evidence for ranking',
+      actorSubjectId: owner,
+      idempotencyKey: 'retrieval-personalization-actor',
+      importance: 0.2,
+    });
+    const projectDefaultPinned = store.createDecision({
+      workspaceId,
+      projectId,
+      title: 'Project roadmap note',
+      content: 'shared roadmap evidence for ranking',
+      actorSubjectId: owner,
+      idempotencyKey: 'retrieval-personalization-project',
+      importance: 0.2,
+    });
+
+    store.setMemoryPersonalization({
+      memoryId: actorPinned.id,
+      projectId,
+      scope: 'actor',
+      reason: 'Cursor wants this memory pinned',
+      actorSubjectId: cursor,
+      pinned: true,
+      importanceDelta: 0.4,
+      rankingVersion: PERSONALIZED_IMPORTANCE_VERSION,
+    });
+    store.setMemoryPersonalization({
+      memoryId: projectDefaultPinned.id,
+      projectId,
+      scope: 'project_default',
+      reason: 'Project default priority',
+      actorSubjectId: owner,
+      pinned: true,
+      importanceDelta: 0.1,
+      rankingVersion: PERSONALIZED_IMPORTANCE_VERSION,
+    });
+
+    const cursorHits = searchMemories(
+      [actorPinned, projectDefaultPinned],
+      'roadmap evidence',
+      {
+        projectId,
+        personalizationByMemoryId: store.listEffectiveMemoryPersonalizations({
+          actorSubjectId: cursor,
+          projectId,
+        }),
+      },
+    );
+    const ownerHits = searchMemories(
+      [actorPinned, projectDefaultPinned],
+      'roadmap evidence',
+      {
+        projectId,
+        personalizationByMemoryId: store.listEffectiveMemoryPersonalizations({
+          actorSubjectId: owner,
+          projectId,
+        }),
+      },
+    );
+
+    expect(cursorHits[0]?.memory.id).toBe(actorPinned.id);
+    expect(cursorHits[0]?.personalization).toMatchObject({
+      scope: 'actor',
+      pinned: true,
+      rankingVersion: PERSONALIZED_IMPORTANCE_VERSION,
+    });
+    expect(ownerHits[0]?.memory.id).toBe(projectDefaultPinned.id);
+    expect(ownerHits[0]?.personalization).toMatchObject({
+      scope: 'project_default',
+      pinned: true,
+      rankingVersion: PERSONALIZED_IMPORTANCE_VERSION,
+    });
+  });
+
   it('records grounded multi-hop trace and keeps every hop scoped to the explicit project', async () => {
     const targetProjectId = '44444444-4444-4444-8444-444444444401';
     const otherProjectId = '44444444-4444-4444-8444-444444444499';
@@ -275,6 +360,7 @@ describe('retrieval stub', () => {
     expect(result.outcome).toBe('answered');
     expect(result.stopReason).toBe('enough_evidence');
     expect(result.toolAllowlist).toEqual(AGENTIC_RETRIEVAL_TOOL_ALLOWLIST);
+    expect(result.rankingVersion).toBe(SEARCH_RANKING_VERSION);
     expect(result.writeActionsAttempted).toBe(0);
     expect(result.trace.steps).toHaveLength(4);
     expect(result.trace.steps[0]?.hop).toBeNull();
@@ -370,6 +456,7 @@ describe('retrieval stub', () => {
     expect(result.trace.steps[1]?.query).not.toContain('guardrails');
     expect(result.outcome).toBe('answered');
     expect(result.stopReason).toBe('enough_evidence');
+    expect(result.rankingVersion).toBe(SEARCH_RANKING_VERSION);
     expect(result.hits.map((hit) => hit.memory.title)).toEqual([
       'Release freeze decision',
       'Release freeze checklist',
@@ -417,6 +504,7 @@ describe('retrieval stub', () => {
 
     expect(result.outcome).toBe('budget_exhausted');
     expect(result.stopReason).toBe('max_steps');
+    expect(result.rankingVersion).toBe(SEARCH_RANKING_VERSION);
     expect(result.budget.usedSteps).toBe(2);
     expect(result.trace.steps[1]?.hop).toMatchObject({
       index: 1,

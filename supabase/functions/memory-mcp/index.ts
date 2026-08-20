@@ -22,6 +22,7 @@ const RESOURCE_METADATA_URL =
 const OAUTH_ISSUER = `${SUPABASE_URL}/auth/v1`;
 const OAUTH_SCOPES = ["openid", "email", "profile"];
 const OAUTH_SECURITY_SCHEMES = [{ type: "oauth2", scopes: OAUTH_SCOPES }];
+const SEARCH_RANKING_VERSION = "hybrid-rrf+m13-s05-v1";
 
 const READ_ONLY = new Set(["memory.search", "memory.get", "context.project"]);
 const tools = EDGE_TOOL_DEFS.map((tool) => ({
@@ -312,10 +313,30 @@ async function embedText(
   }
 }
 
-type Hit = { memory: Record<string, unknown>; score: number; reason: string };
+type Hit = {
+  memory: Record<string, unknown>;
+  score: number;
+  reason: string;
+  personalization?: Record<string, unknown> | null;
+};
+
+function isPinned(hit: Hit): boolean {
+  const personalization = hit.personalization;
+  return Boolean(
+    personalization &&
+      typeof personalization === "object" &&
+      !Array.isArray(personalization) &&
+      personalization.pinned === true,
+  );
+}
 
 function rerankRrf(hits: Hit[], queryVector: number[]): Hit[] {
-  if (!hits.length || !queryVector.length) return hits;
+  if (!hits.length || !queryVector.length) {
+    return [...hits].sort((a, b) => {
+      if (isPinned(a) !== isPinned(b)) return isPinned(a) ? -1 : 1;
+      return Number(b.score) - Number(a.score);
+    });
+  }
   const lexical = [...hits].sort((a, b) => Number(b.score) - Number(a.score));
   const similarity = new Map<string, number>();
   for (const hit of hits) {
@@ -346,7 +367,10 @@ function rerankRrf(hits: Hit[], queryVector: number[]): Hit[] {
       score: (score.get(id) ?? 0) + (similarity.get(id) ?? 0) * 0.01,
       reason: "hybrid:rpc+rrf",
     };
-  }).sort((a, b) => b.score - a.score);
+  }).sort((a, b) => {
+    if (isPinned(a) !== isPinned(b)) return isPinned(a) ? -1 : 1;
+    return Number(b.score) - Number(a.score);
+  });
 }
 
 function packContext(hits: Hit[], maxChars = 4000): Record<string, unknown> {
@@ -450,12 +474,17 @@ async function callTool(
           memory: normalizeMemory(row.memory),
           score: Number(row.score ?? 0),
           reason: String(row.reason ?? "structured+text"),
+          personalization:
+            row.personalization && typeof row.personalization === "object"
+              ? row.personalization as Record<string, unknown>
+              : null,
         } satisfies Hit;
       });
       const ranked = rerankRrf(hits, embedded.vector);
       return {
         hits: ranked,
         ranking: "hybrid-rrf",
+        rankingVersion: SEARCH_RANKING_VERSION,
         ...(Boolean(args.pack_context)
           ? {
             context: packContext(

@@ -67,6 +67,7 @@ import {
   revokeConnectionSchema,
   selectedConnectionCollections,
   setConnectionStatusSchema,
+  setMemoryPersonalizationSchema,
   setMemoryStatusSchema,
   upsertRomaActionBudgetSchema,
   upsertRomaProjectHealthScheduleSchema,
@@ -88,10 +89,12 @@ import {
   packSearchContext,
   planCandidateConsolidations,
   planProactiveConsolidation,
+  PERSONALIZED_IMPORTANCE_VERSION,
   projectContext,
   PROACTIVE_CONSOLIDATION_RULES_VERSION,
   rerankHitsHybrid,
   runBoundedAgenticRetrieval,
+  SEARCH_RANKING_VERSION,
   searchMemoriesHybrid,
 } from '@memory-os/retrieval';
 import { createConfiguredVaultStore } from '@memory-os/db';
@@ -615,6 +618,18 @@ function missingAgenticProjectResponse(c: {
     {
       error:
         'project_id is required for bounded agentic retrieval; never default to AISTROYKA',
+    },
+    400,
+  );
+}
+
+function missingPersonalizationProjectResponse(c: {
+  json: (body: { error: string }, status: 400) => Response;
+}) {
+  return c.json(
+    {
+      error:
+        'project_id is required for personalized importance; never default to AISTROYKA',
     },
     400,
   );
@@ -4901,45 +4916,129 @@ export function createApp(options?: {
 
   app.post('/v1/memories/:id/status', async (c) => {
     const memoryId = c.req.param('id');
-    const body = setMemoryStatusSchema.parse(await c.req.json());
+    const rawBody = (await c.req.json().catch(() => ({}))) as Record<string, unknown>;
     const authz = c.get('authz');
-    if (!authz.isOwner && body.status !== 'disputed') {
-      return c.json({ error: 'forbidden' }, 403);
-    }
-    if (!authz.isOwner && authz.subjectId !== body.actor_subject_id) {
-      return c.json({ error: 'forbidden' }, 403);
-    }
-    const gw = c.get('gateway');
-    if (gw) {
+    if ('status' in rawBody) {
+      const body = setMemoryStatusSchema.parse(rawBody);
+      if (!authz.isOwner && body.status !== 'disputed') {
+        return c.json({ error: 'forbidden' }, 403);
+      }
+      if (!authz.isOwner && authz.subjectId !== body.actor_subject_id) {
+        return c.json({ error: 'forbidden' }, 403);
+      }
+      const gw = c.get('gateway');
+      if (gw) {
+        try {
+          const result = await gw.setMemoryStatus({
+            subjectId: body.actor_subject_id,
+            memoryId,
+            status: body.status,
+            reason: body.reason,
+          });
+          return c.json(result);
+        } catch (err) {
+          if (isForbiddenError(err)) return c.json({ error: 'forbidden' }, 403);
+          return c.json({ error: (err as Error).message }, 500);
+        }
+      }
       try {
-        const result = await gw.setMemoryStatus({
-          subjectId: body.actor_subject_id,
+        const updated = c.get('store').setMemoryStatus({
           memoryId,
           status: body.status,
           reason: body.reason,
+          actorSubjectId: body.actor_subject_id,
+        });
+        return c.json({
+          id: updated.id,
+          status: updated.status,
+          projectId: updated.projectId,
+          title: updated.title,
+          reason: body.reason,
+        });
+      } catch (err) {
+        return c.json({ error: (err as Error).message }, 404);
+      }
+    }
+
+    if (
+      !('project_id' in rawBody) ||
+      typeof rawBody.project_id !== 'string' ||
+      rawBody.project_id.trim() === ''
+    ) {
+      return missingPersonalizationProjectResponse(c);
+    }
+    const body = setMemoryPersonalizationSchema.parse(rawBody);
+    if (authz.subjectId !== body.actor_subject_id) {
+      return c.json({ error: 'forbidden' }, 403);
+    }
+    if (body.scope === 'project_default' && !authz.isOwner) {
+      return c.json({ error: 'forbidden' }, 403);
+    }
+
+    const gw = c.get('gateway');
+    if (gw) {
+      try {
+        const result = await gw.setMemoryPersonalization({
+          subjectId: body.actor_subject_id,
+          projectId: body.project_id,
+          memoryId,
+          scope: body.scope,
+          reason: body.reason,
+          pinned: body.pinned,
+          importanceDelta: body.importance_delta ?? null,
         });
         return c.json(result);
       } catch (err) {
         if (isForbiddenError(err)) return c.json({ error: 'forbidden' }, 403);
-        return c.json({ error: (err as Error).message }, 500);
+        if (isNotFoundError(err)) return c.json({ error: (err as Error).message }, 404);
+        return c.json({ error: (err as Error).message }, 400);
       }
     }
+
+    const storeLocal = c.get('store');
+    const memory = storeLocal.memories.get(memoryId);
+    if (!memory) {
+      return c.json({ error: 'memory not found' }, 404);
+    }
+    if (!memory.projectId || memory.projectId !== body.project_id) {
+      return c.json({ error: 'project mismatch' }, 400);
+    }
+    if (
+      !authorize(authz, {
+        resourceType: 'memory',
+        action: 'read',
+        projectId: memory.projectId,
+        sensitivity: memory.sensitivity,
+      })
+    ) {
+      return c.json({ error: 'forbidden' }, 403);
+    }
+
     try {
-      const updated = c.get('store').setMemoryStatus({
+      const result = storeLocal.setMemoryPersonalization({
         memoryId,
-        status: body.status,
+        projectId: body.project_id,
+        scope: body.scope,
         reason: body.reason,
         actorSubjectId: body.actor_subject_id,
+        pinned: body.pinned,
+        importanceDelta: body.importance_delta ?? null,
+        rankingVersion: PERSONALIZED_IMPORTANCE_VERSION,
       });
       return c.json({
-        id: updated.id,
-        status: updated.status,
-        projectId: updated.projectId,
-        title: updated.title,
-        reason: body.reason,
+        memoryId,
+        projectId: body.project_id,
+        scope: body.scope,
+        actorSubjectId:
+          body.scope === 'actor' ? body.actor_subject_id : null,
+        pinned: result.personalization?.pinned ?? false,
+        importanceDelta: result.personalization?.importanceDelta ?? null,
+        rankingVersion: PERSONALIZED_IMPORTANCE_VERSION,
+        version: result.personalization?.version ?? null,
+        cleared: result.cleared,
       });
     } catch (err) {
-      return c.json({ error: (err as Error).message }, 404);
+      return c.json({ error: (err as Error).message }, 400);
     }
   });
 
@@ -5652,11 +5751,16 @@ export function createApp(options?: {
           recordedBefore: body.recorded_before,
         });
       }
+      const personalizationByMemoryId = storeLocal.listEffectiveMemoryPersonalizations({
+        actorSubjectId: authz.subjectId,
+        projectId: projectId ?? null,
+      });
       return searchMemoriesHybrid(allowed ?? [], input.query, {
         projectId,
         includeHistory: input.includeHistory,
         recordedAfter: body.recorded_after,
         recordedBefore: body.recorded_before,
+        personalizationByMemoryId,
       });
     };
 
@@ -5688,6 +5792,7 @@ export function createApp(options?: {
           includeHistory: Boolean(body.include_history),
           recordedAfter: body.recorded_after ?? null,
           recordedBefore: body.recorded_before ?? null,
+          rankingVersion: result.rankingVersion,
           outcome: result.outcome,
           stopReason: result.stopReason,
           writeActionsAttempted: result.writeActionsAttempted,
@@ -5732,9 +5837,11 @@ export function createApp(options?: {
         return c.json({
           hits: result.hits,
           ranking: result.ranking,
+          rankingVersion: result.rankingVersion,
           backend: gw ? 'supabase' : 'memory-store',
           ...(pack ? { context: result.context } : {}),
           agentic: {
+            rankingVersion: result.rankingVersion,
             outcome: result.outcome,
             stopReason: result.stopReason,
             writeActionsAttempted: result.writeActionsAttempted,
@@ -5761,6 +5868,7 @@ export function createApp(options?: {
           hits,
           backend: 'supabase',
           ranking: 'hybrid-rrf',
+          rankingVersion: SEARCH_RANKING_VERSION,
           ...(pack
             ? {
                 context: packSearchContext(hits, {
@@ -5783,6 +5891,7 @@ export function createApp(options?: {
     return c.json({
       hits,
       ranking: 'hybrid-rrf',
+      rankingVersion: SEARCH_RANKING_VERSION,
       ...(pack
         ? {
             context: packSearchContext(hits, {

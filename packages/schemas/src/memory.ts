@@ -102,6 +102,34 @@ export const setMemoryStatusSchema = z.object({
   actor_subject_id: z.string().uuid(),
 });
 
+export const memoryPersonalizationScopeSchema = z.enum([
+  'actor',
+  'project_default',
+]);
+
+export const setMemoryPersonalizationSchema = z
+  .object({
+    project_id: z.string().uuid(),
+    scope: memoryPersonalizationScopeSchema.default('actor'),
+    reason: z.string().min(1).max(2000),
+    actor_subject_id: z.string().uuid(),
+    pinned: z.boolean().optional(),
+    importance_delta: z.number().min(-0.5).max(0.5).nullable().optional(),
+  })
+  .superRefine((value, ctx) => {
+    if (
+      value.pinned === undefined &&
+      value.importance_delta === undefined
+    ) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message:
+          'pinned or importance_delta is required for personalized importance updates',
+        path: ['pinned'],
+      });
+    }
+  });
+
 export const correctMemorySchema = z
   .object({
     actor_subject_id: z.string().uuid(),
@@ -171,6 +199,9 @@ export type CreateDecisionInput = z.infer<typeof createDecisionSchema>;
 export type UpsertProjectStateInput = z.infer<typeof upsertProjectStateSchema>;
 export type CreateHandoffInput = z.infer<typeof createHandoffSchema>;
 export type SetMemoryStatusInput = z.infer<typeof setMemoryStatusSchema>;
+export type SetMemoryPersonalizationInput = z.infer<
+  typeof setMemoryPersonalizationSchema
+>;
 export type CorrectMemoryInput = z.infer<typeof correctMemorySchema>;
 export type CreatePrivacyRequestInput = z.infer<typeof createPrivacyRequestSchema>;
 export type ApplyExtractionInput = z.infer<typeof applyExtractionSchema>;
