@@ -16,6 +16,8 @@ import {
   type SyncCursor,
   type VaultStore,
 } from '@memory-os/connector-sdk';
+import { parseDocument } from '@memory-os/ingestion';
+import XLSX from 'xlsx';
 
 export type DriveSyncDelta = {
   externalId: string;
@@ -42,7 +44,43 @@ type DriveFile = {
   modifiedTime?: string;
   parents?: string[];
   trashed?: boolean;
+  shared?: boolean;
   __mode?: 'stub' | 'vault';
+};
+
+type DrivePermissionGrant = {
+  principalKey: string;
+  role: string;
+};
+
+type DrivePermissionSnapshot = {
+  access: 'granted' | 'revoked';
+  reason?: string;
+  grants?: Array<
+    DrivePermissionGrant & {
+      type?: string;
+      emailAddress?: string;
+      domain?: string;
+      allowFileDiscovery?: boolean;
+      pendingOwner?: boolean;
+      deleted?: boolean;
+    }
+  >;
+  grantCount?: number;
+  fingerprint?: string | null;
+  shared?: boolean;
+  fetchedAt?: string;
+} & Record<string, unknown>;
+
+type DriveApiPermission = {
+  id?: string;
+  type?: string;
+  role?: string;
+  emailAddress?: string;
+  domain?: string;
+  allowFileDiscovery?: boolean;
+  pendingOwner?: boolean;
+  deleted?: boolean;
 };
 
 type DriveRawObject = {
@@ -55,7 +93,13 @@ type DriveRawObject = {
   deleted?: boolean;
   collectionId?: string;
   storageMode?: DriveStorageMode;
-  permissions?: Record<string, unknown>;
+  permissions?: DrivePermissionSnapshot;
+  parsedText?: string;
+  captureMimeType?: string;
+  captureFilename?: string;
+  exportMimeType?: string;
+  parser?: string;
+  exportError?: string;
   changeState?:
     | 'active'
     | 'removed'
@@ -99,6 +143,8 @@ type DriveKnownFile = {
   collectionId: string;
   storageMode: DriveStorageMode;
   title?: string | null;
+  permissionGrants?: DrivePermissionGrant[];
+  permissionFingerprint?: string | null;
 };
 
 type DriveKnownFolder = {
@@ -119,7 +165,10 @@ const DRIVE_CURSOR_STREAM = 'google-drive:files';
 const DRIVE_CURSOR_SCHEMA_VERSION = '2.0';
 const DRIVE_PAGE_SIZE = 5;
 const DRIVE_FOLDER_MIME = 'application/vnd.google-apps.folder';
-const DRIVE_FILE_FIELDS = 'id,name,mimeType,modifiedTime,parents,trashed';
+const DRIVE_DOC_MIME = 'application/vnd.google-apps.document';
+const DRIVE_SHEET_MIME = 'application/vnd.google-apps.spreadsheet';
+const DRIVE_SLIDES_MIME = 'application/vnd.google-apps.presentation';
+const DRIVE_FILE_FIELDS = 'id,name,mimeType,modifiedTime,parents,trashed,shared';
 const DRIVE_RESTRICTED_SCOPE = 'drive.file';
 
 function labelForDriveAccount(input: {
@@ -150,8 +199,111 @@ function driveFileExternalId(fileId: string): string {
   return `file/${fileId}`;
 }
 
+function parseDriveFileExternalId(externalId: string): string {
+  return externalId.startsWith('file/') ? externalId.slice('file/'.length) : externalId;
+}
+
 function sanitizeObservedAt(value: string | undefined, fallback = new Date().toISOString()): string {
   return typeof value === 'string' && value.trim().length > 0 ? value : fallback;
+}
+
+function wantsDriveExtractedText(storageMode: DriveStorageMode): boolean {
+  return storageMode === 'indexed' || storageMode === 'archived';
+}
+
+function isGoogleNativeDriveMime(mimeType: string | undefined): boolean {
+  return (
+    mimeType === DRIVE_DOC_MIME || mimeType === DRIVE_SHEET_MIME || mimeType === DRIVE_SLIDES_MIME
+  );
+}
+
+function buildDriveCanonicalReference(fileId: string, mimeType: string | undefined): string {
+  switch (mimeType) {
+    case DRIVE_DOC_MIME:
+      return `https://docs.google.com/document/d/${encodeURIComponent(fileId)}/edit`;
+    case DRIVE_SHEET_MIME:
+      return `https://docs.google.com/spreadsheets/d/${encodeURIComponent(fileId)}/edit`;
+    case DRIVE_SLIDES_MIME:
+      return `https://docs.google.com/presentation/d/${encodeURIComponent(fileId)}/edit`;
+    default:
+      return `https://drive.google.com/file/d/${encodeURIComponent(fileId)}/view`;
+  }
+}
+
+function buildDriveVirtualFilename(externalId: string, suffix = ''): string {
+  return `google-drive://${externalId}${suffix}`;
+}
+
+function buildDrivePermissionPrincipalKey(permission: DriveApiPermission): string {
+  if (typeof permission.id === 'string' && permission.id.trim().length > 0) {
+    return `permission:${permission.id.trim()}`;
+  }
+  if (typeof permission.emailAddress === 'string' && permission.emailAddress.trim().length > 0) {
+    return `email:${permission.emailAddress.trim().toLowerCase()}`;
+  }
+  if (typeof permission.domain === 'string' && permission.domain.trim().length > 0) {
+    return `domain:${permission.domain.trim().toLowerCase()}`;
+  }
+  if (typeof permission.type === 'string' && permission.type.trim().length > 0) {
+    return `type:${permission.type.trim().toLowerCase()}`;
+  }
+  return 'unknown';
+}
+
+function buildDrivePermissionFingerprint(grants: DrivePermissionGrant[]): string | null {
+  if (grants.length === 0) return null;
+  return grants
+    .map((grant) => `${grant.principalKey}:${grant.role}`)
+    .sort()
+    .join('|');
+}
+
+function parseDrivePermissionGrants(value: unknown): DrivePermissionGrant[] {
+  if (!Array.isArray(value)) return [];
+  return value.flatMap((entry) => {
+    if (!isPlainObject(entry)) return [];
+    const principalKey =
+      typeof entry.principalKey === 'string' ? entry.principalKey.trim() : '';
+    const role = typeof entry.role === 'string' ? entry.role.trim() : '';
+    if (!principalKey || !role) return [];
+    return [{ principalKey, role } satisfies DrivePermissionGrant];
+  });
+}
+
+function drivePermissionRoleRank(role: string): number {
+  switch (role) {
+    case 'owner':
+      return 6;
+    case 'organizer':
+      return 5;
+    case 'fileOrganizer':
+      return 4;
+    case 'writer':
+      return 3;
+    case 'commenter':
+      return 2;
+    case 'reader':
+      return 1;
+    default:
+      return 0;
+  }
+}
+
+function didDrivePermissionSnapshotShrink(
+  previousKnown: DriveKnownFile | undefined,
+  currentSnapshot: DrivePermissionSnapshot,
+): boolean {
+  const previousGrants = previousKnown?.permissionGrants ?? [];
+  const currentGrants = parseDrivePermissionGrants(currentSnapshot.grants);
+  if (previousGrants.length === 0 || currentGrants.length === 0) {
+    return false;
+  }
+  const currentRoles = new Map(currentGrants.map((grant) => [grant.principalKey, grant.role]));
+  return previousGrants.some((grant) => {
+    const currentRole = currentRoles.get(grant.principalKey);
+    if (!currentRole) return true;
+    return drivePermissionRoleRank(currentRole) < drivePermissionRoleRank(grant.role);
+  });
 }
 
 function parseDriveCursorState(cursor: SyncCursor | null | undefined): DriveCursorState {
@@ -167,6 +319,11 @@ function parseDriveCursorState(cursor: SyncCursor | null | undefined): DriveCurs
             collectionId,
             storageMode: normalizeDriveStorageMode(entry.storageMode),
             title: typeof entry.title === 'string' ? entry.title : null,
+            permissionGrants: parseDrivePermissionGrants(entry.permissionGrants),
+            permissionFingerprint:
+              typeof entry.permissionFingerprint === 'string'
+                ? entry.permissionFingerprint
+                : null,
           } satisfies DriveKnownFile,
         ];
       })
@@ -301,14 +458,14 @@ function findScopeTargetForDriveFile(input: {
         root.externalId,
         {
           collectionId: root.collectionId,
-          storageMode: root.storageMode === 'archived' ? 'archived' : 'reference',
+          storageMode: root.storageMode,
         },
       ]),
   );
   for (const folder of input.knownFolders ?? []) {
     folderCollections.set(folder.id, {
       collectionId: folder.collectionId,
-      storageMode: folder.storageMode === 'archived' ? 'archived' : 'reference',
+      storageMode: folder.storageMode,
     });
   }
 
@@ -385,7 +542,7 @@ function buildStubDriveObjects(metadata: unknown): DriveRawObject[] {
       observedAt,
       parents: [selectedFolder.externalId],
       collectionId: selectedFolder.collectionId,
-      storageMode: selectedFolder.storageMode === 'archived' ? 'archived' : 'reference',
+      storageMode: selectedFolder.storageMode,
       changeState: 'active',
       __mode: 'stub',
     },
@@ -461,11 +618,15 @@ function buildDriveTombstone(input: {
 }
 
 function buildKnownFileFromRawObject(rawObject: DriveRawObject): DriveKnownFile {
+  const permissionGrants = parseDrivePermissionGrants(rawObject.permissions?.grants);
   return {
     id: rawObject.id,
     collectionId: rawObject.collectionId ?? 'google-drive:unknown',
     storageMode: normalizeDriveStorageMode(rawObject.storageMode),
     title: rawObject.name ?? null,
+    permissionGrants,
+    permissionFingerprint:
+      rawObject.permissions?.fingerprint ?? buildDrivePermissionFingerprint(permissionGrants),
   };
 }
 
@@ -647,10 +808,299 @@ async function listDriveChangesSinceToken(input: {
   };
 }
 
+function buildDrivePermissionSnapshot(input: {
+  permissions: DriveApiPermission[];
+  shared: boolean | undefined;
+  fetchedAt: string;
+}): DrivePermissionSnapshot {
+  const grants = input.permissions
+    .map((permission) => {
+      const role = typeof permission.role === 'string' ? permission.role.trim() : '';
+      if (!role) return null;
+      return {
+        principalKey: buildDrivePermissionPrincipalKey(permission),
+        role,
+        type: typeof permission.type === 'string' ? permission.type : undefined,
+        emailAddress:
+          typeof permission.emailAddress === 'string' ? permission.emailAddress : undefined,
+        domain: typeof permission.domain === 'string' ? permission.domain : undefined,
+        allowFileDiscovery:
+          typeof permission.allowFileDiscovery === 'boolean'
+            ? permission.allowFileDiscovery
+            : undefined,
+        pendingOwner:
+          typeof permission.pendingOwner === 'boolean' ? permission.pendingOwner : undefined,
+        deleted: typeof permission.deleted === 'boolean' ? permission.deleted : undefined,
+      };
+    })
+    .filter((grant): grant is NonNullable<typeof grant> => grant !== null)
+    .sort((left, right) =>
+      `${left.principalKey}:${left.role}`.localeCompare(`${right.principalKey}:${right.role}`),
+    );
+  return {
+    access: 'granted',
+    grants,
+    grantCount: grants.length,
+    fingerprint: buildDrivePermissionFingerprint(grants),
+    shared: input.shared,
+    fetchedAt: input.fetchedAt,
+  };
+}
+
+async function requestDrivePermissionSnapshot(input: {
+  accessToken: string;
+  fetchImpl: typeof fetch;
+  fileId: string;
+}): Promise<DrivePermissionSnapshot> {
+  const fetchedAt = new Date().toISOString();
+  const response = await input.fetchImpl(
+    `https://www.googleapis.com/drive/v3/files/${encodeURIComponent(
+      input.fileId,
+    )}?fields=${encodeURIComponent(
+      'shared,permissions(id,type,role,emailAddress,domain,allowFileDiscovery,pendingOwner,deleted)',
+    )}&supportsAllDrives=true`,
+    {
+      headers: {
+        Authorization: `Bearer ${input.accessToken}`,
+        Accept: 'application/json',
+      },
+    },
+  );
+  if (response.status === 403 || response.status === 404) {
+    return {
+      access: 'granted',
+      reason: 'permission_snapshot_unavailable',
+      fetchedAt,
+    };
+  }
+  const errorText = response.ok ? '' : await parseDriveErrorText(response);
+  assertDriveResponseOk({
+    response,
+    errorText,
+    action: 'files.get permissions',
+  });
+  const payload = (await response.json()) as {
+    shared?: boolean;
+    permissions?: DriveApiPermission[];
+  };
+  return buildDrivePermissionSnapshot({
+    permissions: payload.permissions ?? [],
+    shared: payload.shared,
+    fetchedAt,
+  });
+}
+
+type DriveNativeExportPlan = {
+  exportMimeType: string;
+  exportFilename: string;
+  parser: string;
+};
+
+function resolveDriveNativeExportPlan(input: {
+  fileId: string;
+  name?: string;
+  mimeType?: string;
+}): DriveNativeExportPlan | null {
+  const baseName = input.name?.trim() || input.fileId;
+  switch (input.mimeType) {
+    case DRIVE_DOC_MIME:
+      return {
+        exportMimeType: 'text/plain',
+        exportFilename: `${baseName}.txt`,
+        parser: 'google-doc-text',
+      };
+    case DRIVE_SHEET_MIME:
+      return {
+        exportMimeType:
+          'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        exportFilename: `${baseName}.xlsx`,
+        parser: 'google-sheet-xlsx',
+      };
+    case DRIVE_SLIDES_MIME:
+      return {
+        exportMimeType: 'application/pdf',
+        exportFilename: `${baseName}.pdf`,
+        parser: 'google-slides-pdf',
+      };
+    default:
+      return null;
+  }
+}
+
+function parseDriveSheetWorkbook(input: {
+  bytes: Buffer;
+  filename: string;
+}): {
+  text: string;
+  mimeType: 'text/plain';
+  filename: string;
+} {
+  const workbook = XLSX.read(input.bytes, { type: 'buffer' });
+  const sheetTexts = workbook.SheetNames.map((sheetName) => {
+    const sheet = workbook.Sheets[sheetName];
+    if (!sheet) return '';
+    const rows = XLSX.utils.sheet_to_json<(string | number | boolean | null)[]>(sheet, {
+      header: 1,
+      raw: false,
+      defval: '',
+      blankrows: false,
+    });
+    const lines = rows
+      .map((row) =>
+        row
+          .map((cell) => String(cell ?? '').trim())
+          .join('\t')
+          .trim(),
+      )
+      .filter((line) => line.length > 0);
+    if (lines.length === 0) {
+      return `Sheet: ${sheetName}`;
+    }
+    return [`Sheet: ${sheetName}`, ...lines].join('\n');
+  }).filter((text) => text.trim().length > 0);
+  const text = sheetTexts.join('\n\n').trim();
+  if (!text) {
+    throw new Error('no extractable text in Google Sheets export');
+  }
+  return {
+    text,
+    mimeType: 'text/plain',
+    filename: input.filename,
+  };
+}
+
+async function exportAndParseDriveNativeFile(input: {
+  accessToken: string;
+  fetchImpl: typeof fetch;
+  rawObject: DriveRawObject;
+}): Promise<{
+  parsedText: string;
+  captureMimeType: 'text/plain';
+  captureFilename: string;
+  exportMimeType: string;
+  parser: string;
+} | null> {
+  const plan = resolveDriveNativeExportPlan({
+    fileId: input.rawObject.id,
+    name: input.rawObject.name,
+    mimeType: input.rawObject.mimeType,
+  });
+  if (!plan) return null;
+  const response = await input.fetchImpl(
+    `https://www.googleapis.com/drive/v3/files/${encodeURIComponent(
+      input.rawObject.id,
+    )}/export?mimeType=${encodeURIComponent(plan.exportMimeType)}`,
+    {
+      headers: {
+        Authorization: `Bearer ${input.accessToken}`,
+        Accept: plan.exportMimeType,
+      },
+    },
+  );
+  const errorText = response.ok ? '' : await parseDriveErrorText(response);
+  assertDriveResponseOk({
+    response,
+    errorText,
+    action: 'files.export',
+  });
+  const bytes = Buffer.from(await response.arrayBuffer());
+  const parsed =
+    plan.exportMimeType ===
+    'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+      ? parseDriveSheetWorkbook({
+          bytes,
+          filename: plan.exportFilename,
+        })
+      : await parseDocument({
+          filename: plan.exportFilename,
+          mimeType: plan.exportMimeType,
+          bytes,
+        });
+  return {
+    parsedText: parsed.text.trim(),
+    captureMimeType: 'text/plain',
+    captureFilename: buildDriveVirtualFilename(driveFileExternalId(input.rawObject.id), '.indexed.txt'),
+    exportMimeType: plan.exportMimeType,
+    parser: plan.parser,
+  };
+}
+
+async function enrichActiveDriveObject(input: {
+  rawObject: DriveRawObject;
+  accessToken: string;
+  fetchImpl: typeof fetch;
+  previousKnown?: DriveKnownFile;
+}): Promise<DriveRawObject> {
+  const permissions = await requestDrivePermissionSnapshot({
+    accessToken: input.accessToken,
+    fetchImpl: input.fetchImpl,
+    fileId: input.rawObject.id,
+  });
+  if (didDrivePermissionSnapshotShrink(input.previousKnown, permissions)) {
+    return {
+      ...buildDriveTombstone({
+        fileId: input.rawObject.id,
+        observedAt: input.rawObject.observedAt,
+        collectionId: input.rawObject.collectionId ?? 'google-drive:unknown',
+        storageMode: normalizeDriveStorageMode(input.rawObject.storageMode),
+        title: input.rawObject.name ?? null,
+        changeState: 'permission_lost',
+      }),
+      permissions: {
+        access: 'revoked',
+        reason: 'permissions_snapshot_shrank',
+        previousFingerprint: input.previousKnown?.permissionFingerprint ?? null,
+        currentFingerprint: permissions.fingerprint ?? null,
+        previousGrantCount: input.previousKnown?.permissionGrants?.length ?? 0,
+        currentGrantCount: parseDrivePermissionGrants(permissions.grants).length,
+        fetchedAt: permissions.fetchedAt,
+      },
+    };
+  }
+  if (
+    !wantsDriveExtractedText(normalizeDriveStorageMode(input.rawObject.storageMode)) ||
+    !isGoogleNativeDriveMime(input.rawObject.mimeType)
+  ) {
+    return {
+      ...input.rawObject,
+      permissions,
+    };
+  }
+  try {
+    const exported = await exportAndParseDriveNativeFile({
+      accessToken: input.accessToken,
+      fetchImpl: input.fetchImpl,
+      rawObject: input.rawObject,
+    });
+    if (!exported) {
+      return {
+        ...input.rawObject,
+        permissions,
+      };
+    }
+    return {
+      ...input.rawObject,
+      permissions,
+      parsedText: exported.parsedText,
+      captureMimeType: exported.captureMimeType,
+      captureFilename: exported.captureFilename,
+      exportMimeType: exported.exportMimeType,
+      parser: exported.parser,
+    };
+  } catch (error) {
+    return {
+      ...input.rawObject,
+      permissions,
+      exportError: error instanceof Error ? error.message : String(error),
+    };
+  }
+}
+
 async function walkSelectedDriveScope(input: {
   accessToken: string;
   fetchImpl: typeof fetch;
   selectedRoots: DriveSelectedRoot[];
+  previousKnownFiles?: Map<string, DriveKnownFile>;
 }): Promise<{
   rawObjects: DriveRawObject[];
   knownFiles: Map<string, DriveKnownFile>;
@@ -667,7 +1117,7 @@ async function walkSelectedDriveScope(input: {
   }> = input.selectedRoots
     .filter((root) => root.kind === 'folder')
     .map((root) => {
-      const storageMode = root.storageMode === 'archived' ? 'archived' : 'reference';
+      const storageMode = root.storageMode;
       knownFolders.set(root.externalId, {
         id: root.externalId,
         collectionId: root.collectionId,
@@ -687,13 +1137,20 @@ async function walkSelectedDriveScope(input: {
       fileId: root.externalId,
     });
     if (!file || !file.id || file.trashed) continue;
-    const rawObject = buildActiveDriveObject({
-      file: file,
-      collectionId: root.collectionId,
-      storageMode: root.storageMode,
+    const rawObject = await enrichActiveDriveObject({
+      rawObject: buildActiveDriveObject({
+        file: file,
+        collectionId: root.collectionId,
+        storageMode: root.storageMode,
+      }),
+      accessToken: input.accessToken,
+      fetchImpl: input.fetchImpl,
+      previousKnown: input.previousKnownFiles?.get(file.id),
     });
     rawObjects.push(rawObject);
-    knownFiles.set(file.id, buildKnownFileFromRawObject(rawObject));
+    if (!rawObject.deleted) {
+      knownFiles.set(file.id, buildKnownFileFromRawObject(rawObject));
+    }
   }
 
   while (queue.length > 0) {
@@ -719,13 +1176,20 @@ async function walkSelectedDriveScope(input: {
         });
         continue;
       }
-      const rawObject = buildActiveDriveObject({
-        file: child,
-        collectionId: current.collectionId,
-        storageMode: current.storageMode,
+      const rawObject = await enrichActiveDriveObject({
+        rawObject: buildActiveDriveObject({
+          file: child,
+          collectionId: current.collectionId,
+          storageMode: current.storageMode,
+        }),
+        accessToken: input.accessToken,
+        fetchImpl: input.fetchImpl,
+        previousKnown: input.previousKnownFiles?.get(child.id),
       });
       rawObjects.push(rawObject);
-      knownFiles.set(child.id, buildKnownFileFromRawObject(rawObject));
+      if (!rawObject.deleted) {
+        knownFiles.set(child.id, buildKnownFileFromRawObject(rawObject));
+      }
     }
   }
 
@@ -767,14 +1231,15 @@ async function runSelectedScopeInitialSync(input: {
     accessToken: input.accessToken,
     fetchImpl: input.context.fetchImpl ?? fetch,
   });
+  const previousKnownFiles = new Map(
+    (input.previousState?.knownFiles ?? []).map((entry) => [entry.id, entry]),
+  );
   const walked = await walkSelectedDriveScope({
     accessToken: input.accessToken,
     fetchImpl: input.context.fetchImpl ?? fetch,
     selectedRoots: input.selectedRoots,
+    previousKnownFiles,
   });
-  const previousKnownFiles = new Map(
-    (input.previousState?.knownFiles ?? []).map((entry) => [entry.id, entry]),
-  );
   const rawObjects = [...walked.rawObjects];
   for (const [fileId, previousKnown] of previousKnownFiles.entries()) {
     if (walked.knownFiles.has(fileId)) continue;
@@ -964,7 +1429,7 @@ async function syncGoogleDriveFiles(
         nextKnownFolders.set(fileId, {
           id: fileId,
           collectionId: target.collectionId,
-          storageMode: target.storageMode === 'archived' ? 'archived' : 'reference',
+          storageMode: target.storageMode,
         });
         continue;
       }
@@ -973,8 +1438,18 @@ async function syncGoogleDriveFiles(
         collectionId: target.collectionId,
         storageMode: target.storageMode,
       });
-      rawObjects.push(rawObject);
-      nextKnownFiles.set(fileId, buildKnownFileFromRawObject(rawObject));
+      const enrichedRawObject = await enrichActiveDriveObject({
+        rawObject,
+        accessToken: creds.accessToken,
+        fetchImpl: context.fetchImpl ?? fetch,
+        previousKnown: previousKnownFiles.get(fileId),
+      });
+      rawObjects.push(enrichedRawObject);
+      if (enrichedRawObject.deleted) {
+        nextKnownFiles.delete(fileId);
+        continue;
+      }
+      nextKnownFiles.set(fileId, buildKnownFileFromRawObject(enrichedRawObject));
       continue;
     }
 
@@ -1039,9 +1514,13 @@ function normalizeDriveRawObject(input: {
   const sourceMode = input.rawObject.__mode ?? 'vault';
   const title = input.rawObject.name?.trim() || '(untitled file)';
   const storageMode = normalizeDriveStorageMode(input.rawObject.storageMode);
+  const wantsIndexedContent =
+    wantsDriveExtractedText(storageMode) && isGoogleNativeDriveMime(input.rawObject.mimeType);
+  const parsedText = input.rawObject.parsedText?.trim() ?? '';
+  const hasParsedText = parsedText.length > 0;
   const canonicalReference =
     !input.rawObject.deleted && sourceMode === 'vault' && input.rawObject.id
-      ? `https://drive.google.com/file/d/${encodeURIComponent(input.rawObject.id)}/view`
+      ? buildDriveCanonicalReference(input.rawObject.id, input.rawObject.mimeType)
       : undefined;
   const eventVersion = input.rawObject.deleted
     ? `${input.rawObject.changeState ?? 'removed'}:${observedAt}`
@@ -1069,6 +1548,16 @@ function normalizeDriveRawObject(input: {
       parentIds: input.rawObject.parents ?? [],
       sourceMode,
       changeState: input.rawObject.changeState ?? 'active',
+      sourcePermissions: input.rawObject.permissions ?? {},
+      export:
+        wantsIndexedContent || input.rawObject.exportError
+          ? {
+              requested: wantsIndexedContent,
+              parser: input.rawObject.parser ?? null,
+              exportMimeType: input.rawObject.exportMimeType ?? null,
+              error: input.rawObject.exportError ?? null,
+            }
+          : undefined,
     },
     canonicalReference,
   };
@@ -1078,6 +1567,30 @@ function normalizeDriveRawObject(input: {
       : sourceMode === 'stub'
         ? 'Synthetic Google Drive selected-scope sync (vault credentials not read).'
         : 'Source: vault-backed Google Drive selected-scope sync.';
+  const exportNote = hasParsedText
+    ? `Indexed export: ${input.rawObject.parser ?? 'google-native-export'}`
+    : input.rawObject.exportError
+      ? `Indexed export fallback: ${input.rawObject.exportError}`
+      : null;
+  const captureText = [
+    `Connector: Google Drive (${sourceMode})`,
+    `File: ${title}`,
+    `MIME type: ${input.rawObject.mimeType ?? 'unknown'}`,
+    input.rawObject.modifiedTime
+      ? `Modified: ${input.rawObject.modifiedTime}`
+      : 'Modified: unknown',
+    `State: ${input.rawObject.changeState ?? 'active'}`,
+    canonicalReference ? `Reference: ${canonicalReference}` : null,
+    exportNote,
+    note,
+    hasParsedText ? '' : null,
+    hasParsedText ? parsedText : null,
+  ]
+    .filter((line): line is string => line !== null)
+    .join('\n');
+  const permissionGrants = parseDrivePermissionGrants(input.rawObject.permissions?.grants);
+  const permissionFingerprint =
+    input.rawObject.permissions?.fingerprint ?? buildDrivePermissionFingerprint(permissionGrants);
   return {
     externalObject: object,
     envelope: {
@@ -1093,9 +1606,9 @@ function normalizeDriveRawObject(input: {
       observed_at: observedAt,
       idempotency_key: envelopeIdempotencyKey,
       content: {
-        mime_type: 'text/plain',
+        mime_type: input.rawObject.captureMimeType ?? 'text/plain',
         reference: canonicalReference,
-        text: `${label}: ${title}`,
+        text: captureText,
       },
       scope: {
         sensitivity: 'internal',
@@ -1105,25 +1618,17 @@ function normalizeDriveRawObject(input: {
         mimeType: input.rawObject.mimeType ?? 'unknown',
         sourceMode,
         changeState: input.rawObject.changeState ?? 'active',
+        parser: input.rawObject.parser ?? null,
+        exportMimeType: input.rawObject.exportMimeType ?? null,
+        permissionFingerprint,
+        permissionGrantCount: permissionGrants.length,
       },
     },
     capture: {
       title: `${label}: ${title}`,
-      text: [
-        `Connector: Google Drive (${sourceMode})`,
-        `File: ${title}`,
-        `MIME type: ${input.rawObject.mimeType ?? 'unknown'}`,
-        input.rawObject.modifiedTime
-          ? `Modified: ${input.rawObject.modifiedTime}`
-          : 'Modified: unknown',
-        `State: ${input.rawObject.changeState ?? 'active'}`,
-        canonicalReference ? `Reference: ${canonicalReference}` : null,
-        note,
-      ]
-        .filter((line): line is string => Boolean(line))
-        .join('\n'),
-      filename: `google-drive://${externalId}`,
-      mimeType: 'text/plain',
+      text: captureText,
+      filename: input.rawObject.captureFilename ?? buildDriveVirtualFilename(externalId),
+      mimeType: input.rawObject.captureMimeType ?? 'text/plain',
       idempotencyKey: envelopeIdempotencyKey,
     },
   };
@@ -1131,9 +1636,44 @@ function normalizeDriveRawObject(input: {
 
 async function checkpointDriveFiles(input: {
   page: ConnectorSyncPage<DriveRawObject>;
+  records: NormalizedConnectorRecord[];
   previousCursor: SyncCursor | null;
 }): Promise<SyncCursor | null> {
-  return input.page.nextCursor ?? input.previousCursor;
+  const nextCursor = input.page.nextCursor ?? input.previousCursor;
+  if (!nextCursor) return null;
+  const nextState = parseDriveCursorState(nextCursor);
+  const knownFiles = new Map(nextState.knownFiles.map((entry) => [entry.id, entry]));
+  for (const record of input.records) {
+    const fileId = parseDriveFileExternalId(record.externalObject.externalId);
+    if (record.externalObject.deleted) {
+      knownFiles.delete(fileId);
+      continue;
+    }
+    const permissionGrants = parseDrivePermissionGrants(
+      record.externalObject.permissionsSnapshot.grants,
+    );
+    knownFiles.set(fileId, {
+      id: fileId,
+      collectionId: record.externalObject.collectionId ?? 'google-drive:unknown',
+      storageMode: normalizeDriveStorageMode(record.envelope.scope.storage_mode),
+      title: record.externalObject.title ?? null,
+      permissionGrants,
+      permissionFingerprint:
+        typeof record.externalObject.permissionsSnapshot.fingerprint === 'string'
+          ? record.externalObject.permissionsSnapshot.fingerprint
+          : buildDrivePermissionFingerprint(permissionGrants),
+    });
+  }
+  return buildDefaultCursor(
+    DRIVE_CURSOR_STREAM,
+    {
+      startPageToken: nextState.startPageToken,
+      scopeKey: nextState.scopeKey,
+      knownFiles: [...knownFiles.values()],
+      knownFolders: nextState.knownFolders,
+    },
+    nextCursor.schemaVersion,
+  );
 }
 
 async function healthcheckGoogleDrive(
@@ -1302,8 +1842,8 @@ export const googleDriveConnector: RegisteredConnector<DriveRawObject> = {
         rawObject: context.rawObject,
       });
     },
-    async checkpoint({ page, previousCursor }) {
-      return checkpointDriveFiles({ page, previousCursor });
+    async checkpoint({ page, records, previousCursor }) {
+      return checkpointDriveFiles({ page, records, previousCursor });
     },
     async healthcheck(context) {
       return healthcheckGoogleDrive(context);

@@ -13,6 +13,8 @@
     "test": "vitest run --passWithNoTests"
   },
   "dependencies": {
-    "@memory-os/connector-sdk": "workspace:*"
+    "@memory-os/connector-sdk": "workspace:*",
+    "@memory-os/ingestion": "workspace:^",
+    "xlsx": "^0.18.5"
   }
 }
