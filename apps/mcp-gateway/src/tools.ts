@@ -56,6 +56,11 @@ import {
   upsertConnectionSchema,
   type ApplyExtractionInput,
 } from '@memory-os/schemas';
+import {
+  authorize,
+  resolveLocalSubject,
+  type AuthzContext,
+} from '@memory-os/authz';
 import { randomUUID } from 'node:crypto';
 import {
   adaptToolSchemaForProfile,
@@ -74,6 +79,155 @@ const defaultSdkConnectorRegistry = createConnectorRegistry([
   googleDriveConnector,
   googleCalendarConnector,
 ]);
+
+const OWNER_SUBJECT_ID = '33333333-3333-4333-8333-333333333301';
+const CHATGPT_SUBJECT_ID = '33333333-3333-4333-8333-333333333302';
+const CURSOR_SUBJECT_ID = '33333333-3333-4333-8333-333333333303';
+const ROMA_SUBJECT_ID = '33333333-3333-4333-8333-333333333304';
+
+function localAuthzForSubject(
+  subjectId: string,
+  workspaceId = DEFAULT_WORKSPACE_ID,
+): AuthzContext {
+  const resolved = resolveLocalSubject({ subjectId, workspaceId });
+  const effectiveSubjectId = resolved?.id ?? subjectId;
+  const isOwner = effectiveSubjectId === OWNER_SUBJECT_ID;
+  return {
+    subjectId: effectiveSubjectId,
+    workspaceId,
+    isOwner,
+    entries: [
+      {
+        subjectId: CHATGPT_SUBJECT_ID,
+        effect: 'allow',
+        resourceType: 'memory',
+        projectId: DEFAULT_PROJECT_ID,
+        actions: ['read', 'write'],
+        sensitivityMax: 'internal',
+      },
+      {
+        subjectId: CHATGPT_SUBJECT_ID,
+        effect: 'allow',
+        resourceType: 'project_state',
+        projectId: DEFAULT_PROJECT_ID,
+        actions: ['read', 'write'],
+        sensitivityMax: 'internal',
+      },
+      {
+        subjectId: CURSOR_SUBJECT_ID,
+        effect: 'allow',
+        resourceType: 'memory',
+        projectId: DEFAULT_PROJECT_ID,
+        actions: ['read', 'write'],
+        sensitivityMax: 'internal',
+      },
+      {
+        subjectId: CURSOR_SUBJECT_ID,
+        effect: 'allow',
+        resourceType: 'project_state',
+        projectId: DEFAULT_PROJECT_ID,
+        actions: ['read', 'write'],
+        sensitivityMax: 'internal',
+      },
+      {
+        subjectId: CURSOR_SUBJECT_ID,
+        effect: 'allow',
+        resourceType: 'handoff',
+        projectId: DEFAULT_PROJECT_ID,
+        actions: ['read', 'write'],
+        sensitivityMax: 'internal',
+      },
+      {
+        subjectId: ROMA_SUBJECT_ID,
+        effect: 'allow',
+        resourceType: 'memory',
+        projectId: DEFAULT_PROJECT_ID,
+        actions: ['read', 'write'],
+        sensitivityMax: 'internal',
+      },
+      {
+        subjectId: ROMA_SUBJECT_ID,
+        effect: 'allow',
+        resourceType: 'project',
+        projectId: DEFAULT_PROJECT_ID,
+        actions: ['read'],
+        sensitivityMax: 'internal',
+      },
+      {
+        subjectId: ROMA_SUBJECT_ID,
+        effect: 'allow',
+        resourceType: 'project_state',
+        projectId: DEFAULT_PROJECT_ID,
+        actions: ['read'],
+        sensitivityMax: 'internal',
+      },
+      {
+        subjectId: ROMA_SUBJECT_ID,
+        effect: 'allow',
+        resourceType: 'handoff',
+        projectId: DEFAULT_PROJECT_ID,
+        actions: ['read', 'write'],
+        sensitivityMax: 'internal',
+      },
+      {
+        subjectId: CHATGPT_SUBJECT_ID,
+        effect: 'allow',
+        resourceType: 'memory',
+        projectId: null,
+        actions: ['read', 'write'],
+        sensitivityMax: 'internal',
+      },
+      {
+        subjectId: CHATGPT_SUBJECT_ID,
+        effect: 'allow',
+        resourceType: 'handoff',
+        projectId: null,
+        actions: ['read', 'write'],
+        sensitivityMax: 'internal',
+      },
+      {
+        subjectId: CURSOR_SUBJECT_ID,
+        effect: 'allow',
+        resourceType: 'memory',
+        projectId: null,
+        actions: ['read', 'write'],
+        sensitivityMax: 'internal',
+      },
+      {
+        subjectId: CURSOR_SUBJECT_ID,
+        effect: 'allow',
+        resourceType: 'handoff',
+        projectId: null,
+        actions: ['read', 'write'],
+        sensitivityMax: 'internal',
+      },
+    ],
+  };
+}
+
+function canReadOfflineMemory(
+  authz: AuthzContext,
+  memory: {
+    projectId: string | null;
+    sensitivity: 'public' | 'internal' | 'personal' | 'confidential' | 'restricted';
+  },
+): boolean {
+  return authorize(authz, {
+    resourceType: 'memory',
+    action: 'read',
+    projectId: memory.projectId,
+    sensitivity: memory.sensitivity,
+  });
+}
+
+function filterReadableOfflineMemories(
+  authz: AuthzContext,
+  store: MemoryStore,
+) {
+  return [...store.memories.values()].filter((memory) =>
+    canReadOfflineMemory(authz, memory),
+  );
+}
 
 function toSyncCursor(
   row:
@@ -1161,6 +1315,9 @@ export function createMcpHandlers(options?: {
       switch (name) {
         case 'memory.search': {
           const query = String(args.query ?? '');
+          const subjectId = String(args.actor_subject_id);
+          const workspaceId = String(args.workspace_id ?? DEFAULT_WORKSPACE_ID);
+          const authz = localAuthzForSubject(subjectId, workspaceId);
           const resolvedProjectId = await resolveProjectForArgs({
             gateway: gateway ?? undefined,
             args,
@@ -1224,7 +1381,7 @@ export function createMcpHandlers(options?: {
             };
           }
           const hits = await searchMemoriesHybrid(
-            [...store.memories.values()],
+            filterReadableOfflineMemories(authz, store),
             query,
             {
               projectId: resolvedProjectId ?? undefined,
@@ -1253,8 +1410,22 @@ export function createMcpHandlers(options?: {
           if (gateway) {
             return gateway.projectContext(String(args.actor_subject_id), projectId);
           }
+          const authz = localAuthzForSubject(
+            String(args.actor_subject_id),
+            String(args.workspace_id ?? DEFAULT_WORKSPACE_ID),
+          );
+          if (
+            !authorize(authz, {
+              resourceType: 'memory',
+              action: 'read',
+              projectId,
+              sensitivity: 'internal',
+            })
+          ) {
+            throw new Error('forbidden');
+          }
           return {
-            ...projectContext([...store.memories.values()], projectId),
+            ...projectContext(filterReadableOfflineMemories(authz, store), projectId),
             state: store.getProjectState(projectId),
             latest_handoff: store.latestHandoff(projectId),
           };
@@ -1741,6 +1912,13 @@ export function createMcpHandlers(options?: {
           }
           const memory = store.memories.get(memoryId);
           if (!memory) throw new Error('memory not found');
+          const authz = localAuthzForSubject(
+            subjectId,
+            String(args.workspace_id ?? DEFAULT_WORKSPACE_ID),
+          );
+          if (!canReadOfflineMemory(authz, memory)) {
+            throw new Error('forbidden');
+          }
           return {
             memory: {
               id: memory.id,

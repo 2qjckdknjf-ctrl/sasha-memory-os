@@ -1627,6 +1627,127 @@ describe('memory api demo slice', () => {
     expect(body.decisions.length).toBeGreaterThan(0);
   });
 
+  it('keeps personal Gmail and Calendar memories out of agent search/context while owner still sees them', async () => {
+    const app = createApp({});
+    for (const memory of [
+      {
+        title: 'Personal Gmail API memory',
+        text: 'Personal Gmail API memory about family travel must stay private.',
+        idempotency_key: `api-personal-gmail-${Date.now()}`,
+      },
+      {
+        title: 'Personal Calendar API memory',
+        text: 'Personal Calendar API memory about a doctor appointment must stay private.',
+        idempotency_key: `api-personal-calendar-${Date.now()}`,
+      },
+    ]) {
+      const created = await app.request('/v1/capture/text', {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          'x-subject-id': owner,
+          'x-actor-key': 'owner',
+        },
+        body: JSON.stringify({
+          workspace_id: workspaceId,
+          project_id: projectId,
+          title: memory.title,
+          text: memory.text,
+          actor_subject_id: owner,
+          idempotency_key: memory.idempotency_key,
+          sensitivity: 'personal',
+        }),
+      });
+      expect(created.status).toBe(201);
+    }
+
+    const ownerSearch = await app.request('/v1/search', {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'x-subject-id': owner,
+        'x-actor-key': 'owner',
+      },
+      body: JSON.stringify({
+        query: 'personal api memory',
+        project_id: projectId,
+      }),
+    });
+    expect(ownerSearch.status).toBe(200);
+    const ownerSearchBody = await ownerSearch.json();
+    expect(
+      ownerSearchBody.hits.some(
+        (hit: { memory: { title: string } }) => hit.memory.title === 'Personal Gmail API memory',
+      ),
+    ).toBe(true);
+    expect(
+      ownerSearchBody.hits.some(
+        (hit: { memory: { title: string } }) =>
+          hit.memory.title === 'Personal Calendar API memory',
+      ),
+    ).toBe(true);
+
+    const ownerContext = await app.request(`/v1/projects/${projectId}/context`, {
+      headers: {
+        'x-subject-id': owner,
+        'x-actor-key': 'owner',
+      },
+    });
+    expect(ownerContext.status).toBe(200);
+    const ownerContextBody = await ownerContext.json();
+    expect(
+      ownerContextBody.facts.some(
+        (memory: { title: string }) => memory.title === 'Personal Gmail API memory',
+      ),
+    ).toBe(true);
+    expect(
+      ownerContextBody.facts.some(
+        (memory: { title: string }) => memory.title === 'Personal Calendar API memory',
+      ),
+    ).toBe(true);
+
+    for (const actor of [
+      { subjectId: chatgpt, actorKey: 'chatgpt' },
+      { subjectId: cursor, actorKey: 'cursor' },
+      { subjectId: roma, actorKey: 'roma' },
+    ] as const) {
+      const deniedSearch = await app.request('/v1/search', {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          'x-subject-id': actor.subjectId,
+          'x-actor-key': actor.actorKey,
+        },
+        body: JSON.stringify({
+          query: 'personal api memory',
+          project_id: projectId,
+        }),
+      });
+      expect(deniedSearch.status).toBe(200);
+      const deniedSearchBody = await deniedSearch.json();
+      expect(deniedSearchBody.hits).toEqual([]);
+
+      const deniedContext = await app.request(`/v1/projects/${projectId}/context`, {
+        headers: {
+          'x-subject-id': actor.subjectId,
+          'x-actor-key': actor.actorKey,
+        },
+      });
+      expect(deniedContext.status).toBe(200);
+      const deniedContextBody = await deniedContext.json();
+      expect(
+        deniedContextBody.facts.some(
+          (memory: { title: string }) => memory.title === 'Personal Gmail API memory',
+        ),
+      ).toBe(false);
+      expect(
+        deniedContextBody.facts.some(
+          (memory: { title: string }) => memory.title === 'Personal Calendar API memory',
+        ),
+      ).toBe(false);
+    }
+  });
+
   it('lists projects offline', async () => {
     const app = createApp({});
     const res = await app.request(`/v1/projects?workspace_id=${workspaceId}`, {
