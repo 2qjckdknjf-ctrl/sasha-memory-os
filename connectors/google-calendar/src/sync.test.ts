@@ -575,6 +575,97 @@ describe('google calendar selected-calendar contract', () => {
     }
   });
 
+  it('changes private-event capture versioning when a scope-key privacy resync reveals different content', async () => {
+    const dir = await mkdtemp(path.join(os.tmpdir(), 'memory-os-cal-private-versioning-'));
+    try {
+      const { processEnv, vault } = await createCalendarVaultFixture(dir);
+      const optInMetadata = buildSelectedCalendarMetadata({
+        personalPrivateContentOptIn: true,
+      });
+      const fetchImpl = vi.fn(async (url: string) => {
+        const parsed = new URL(url);
+        if (parsed.pathname.endsWith('/calendars/cal-personal/events')) {
+          return Response.json({
+            items: [
+              calendarEvent({
+                id: 'evt-private-versioning',
+                summary: 'Therapy appointment',
+                updated: '2026-08-11T09:25:00.000Z',
+                visibility: 'private',
+                description: 'Weekly check-in',
+                htmlLink: 'https://calendar.google.com/private-versioning',
+                location: 'Clinic',
+                attendees: [{ email: 'doctor@example.com', responseStatus: 'accepted' }],
+              }),
+            ],
+            nextSyncToken: 'cal-personal-sync-1',
+          });
+        }
+        if (parsed.pathname.endsWith('/calendars/cal-team/events')) {
+          return Response.json({
+            items: [],
+            nextSyncToken: 'cal-team-sync-1',
+          });
+        }
+        throw new Error(`Unhandled Google Calendar versioning URL: ${url}`);
+      });
+
+      const initialRun = await runConnectorSync({
+        connector: googleCalendarConnector,
+        context: {
+          account: {
+            connectionId,
+            connectorId: 'google-calendar',
+            displayName: 'Pilot Calendar',
+            vaultRef,
+            scopes: ['calendar.readonly'],
+            metadata: selectedCalendarMetadata,
+          },
+          workspaceId,
+          processEnv,
+          vault,
+          fetchImpl: fetchImpl as unknown as typeof fetch,
+        },
+      });
+      const resyncRun = await runConnectorSync({
+        connector: googleCalendarConnector,
+        context: {
+          account: {
+            connectionId,
+            connectorId: 'google-calendar',
+            displayName: 'Pilot Calendar',
+            vaultRef,
+            scopes: ['calendar.readonly'],
+            metadata: optInMetadata,
+          },
+          workspaceId,
+          processEnv,
+          vault,
+          fetchImpl: fetchImpl as unknown as typeof fetch,
+          cursor: initialRun.nextCursor,
+        },
+      });
+
+      const initialRecord = initialRun.records.find(
+        (entry) => entry.externalObject.externalId === 'calendar/cal-personal/event/evt-private-versioning',
+      );
+      const resyncRecord = resyncRun.records.find(
+        (entry) => entry.externalObject.externalId === 'calendar/cal-personal/event/evt-private-versioning',
+      );
+
+      expect(initialRun.nextCursor).not.toBeNull();
+      expect(resyncRun.page.mode).toBe('initial');
+      expect(initialRecord?.capture.text).toContain('Event: Busy');
+      expect(resyncRecord?.capture.text).toContain('Event: Therapy appointment');
+      expect(resyncRecord?.envelope.idempotency_key).not.toBe(initialRecord?.envelope.idempotency_key);
+      expect(resyncRecord?.externalObject.externalVersion).not.toBe(
+        initialRecord?.externalObject.externalVersion,
+      );
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
   it('uses per-calendar sync tokens for incremental sync and tombstones cancelled events', async () => {
     const dir = await mkdtemp(path.join(os.tmpdir(), 'memory-os-cal-incremental-'));
     try {

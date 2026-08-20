@@ -1069,6 +1069,11 @@ function formatCalendarAttendees(
   });
 }
 
+function calendarPrivacyVersionSuffix(event: CalendarEvent): string {
+  if (!event.isPrivate) return '';
+  return event.privateContentRedacted ? ':privacy-redacted' : ':privacy-retained';
+}
+
 function normalizeCalendarEvent(input: {
   workspaceId: string;
   connectionId: string;
@@ -1085,9 +1090,10 @@ function normalizeCalendarEvent(input: {
   const observedAt = sanitizeObservedAt(input.event.updated ?? input.event.created);
   const sourceMode = input.event.__mode ?? 'vault';
   const changeState = input.event.changeState ?? 'active';
+  const privacyVersionSuffix = calendarPrivacyVersionSuffix(input.event);
   const eventVersion = input.event.deleted
     ? `${changeState}:${input.event.updated ?? observedAt}`
-    : input.event.updated ?? input.event.created ?? observedAt;
+    : `${input.event.updated ?? input.event.created ?? observedAt}${privacyVersionSuffix}`;
   const envelopeIdempotencyKey = `connector-sync/${input.connectionId}/${externalId}/${eventVersion}`;
   const eventType = input.event.deleted
     ? `google-calendar.event.${changeState}`
