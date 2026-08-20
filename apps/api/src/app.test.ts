@@ -2480,31 +2480,23 @@ describe('memory api demo slice', () => {
     });
     expect(stateRead.status).toBe(200);
 
-    const stateWrite = await app.request(`/v1/projects/${projectId}/state`, {
-      method: 'PATCH',
+    const stateWrite = await app.request('/v1/capture/text', {
+      method: 'POST',
       headers: {
         'content-type': 'application/json',
-        'x-subject-id': owner,
+        'x-actor-key': 'cursor',
       },
       body: JSON.stringify({
         workspace_id: workspaceId,
         project_id: projectId,
-        expected_version: 0,
-        state: {
-          stage: 'm14-slice-01',
-          completed: [],
-          in_progress: ['slo snapshot'],
-          blocked: [],
-          next: ['review metrics'],
-          risks: [],
-          active_decisions: [],
-        },
-        summary: 'SLO snapshot test',
-        actor_subject_id: owner,
-        idempotency_key: 'm14-slo-state-1',
+        title: 'Private MCP payload mirror',
+        text: 'private payload body must stay out of telemetry',
+        actor_subject_id: cursor,
+        idempotency_key: 'm14-slo-capture-1',
+        process_now: true,
       }),
     });
-    expect(stateWrite.status).toBe(200);
+    expect(stateWrite.status).toBe(201);
 
     const webhook = await app.request('/v1/webhooks/missing', {
       method: 'POST',

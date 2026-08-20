@@ -121,6 +121,9 @@ importers:
       '@memory-os/ingestion':
         specifier: workspace:*
         version: link:../../packages/ingestion
+      '@memory-os/observability':
+        specifier: workspace:*
+        version: link:../../packages/observability
       '@memory-os/retrieval':
         specifier: workspace:^
         version: link:../../packages/retrieval
