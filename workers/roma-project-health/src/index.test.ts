@@ -354,7 +354,7 @@ describe('runRomaProjectFindingsJob', () => {
     });
 
     expect(result.findingCount).toBeGreaterThan(0);
-    expect(result.notificationSeverity).toBe('high');
+    expect(result.notificationSeverity).toBe('medium');
     expect(captureConnectorRecord).toHaveBeenCalled();
     expect(appendAuditEvent).toHaveBeenCalled();
     expect(completeRomaProjectFindings).toHaveBeenCalledWith(
@@ -364,7 +364,7 @@ describe('runRomaProjectFindingsJob', () => {
         status: 'succeeded',
         findingCount: result.findingCount,
         notificationTitle: 'ROMA QA findings: AISTROYKA (3 open)',
-        notificationSeverity: 'high',
+        notificationSeverity: 'medium',
         notificationSourceMemoryIds: [
           'memory-blocked-work',
           'memory-active-risks',
