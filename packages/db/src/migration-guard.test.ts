@@ -26,6 +26,12 @@ const romaQaFindingsMigrationPath = fileURLToPath(
     import.meta.url,
   ),
 );
+const romaNotificationsMigrationPath = fileURLToPath(
+  new URL(
+    '../../../supabase/migrations/20260820024500_m12_slice_04_roma_notifications.sql',
+    import.meta.url,
+  ),
+);
 
 describe('m8 slice 03 migration guards', () => {
   const sql = readFileSync(migrationPath, 'utf8');
@@ -34,6 +40,7 @@ describe('m8 slice 03 migration guards', () => {
   const replayResyncFixSql = readFileSync(replayResyncFixMigrationPath, 'utf8');
   const romaProjectHealthSql = readFileSync(romaProjectHealthMigrationPath, 'utf8');
   const romaQaFindingsSql = readFileSync(romaQaFindingsMigrationPath, 'utf8');
+  const romaNotificationsSql = readFileSync(romaNotificationsMigrationPath, 'utf8');
 
   it('matches connector projects only by unique repository identity', () => {
     expect(sql).toContain(`repo->>'url' = v_repo_url`);
@@ -119,5 +126,23 @@ describe('m8 slice 03 migration guards', () => {
     expect(romaQaFindingsSql).toContain(`CREATE OR REPLACE FUNCTION app.api_retry_roma_project_findings`);
     expect(romaQaFindingsSql).toContain(`attempt = attempt + 1`);
     expect(romaQaFindingsSql).toContain(`'executionSubjectId', v_roma_subject`);
+  });
+
+  it('adds durable audited project notifications with per-recipient idempotency', () => {
+    expect(romaNotificationsSql).toContain(`CREATE TABLE project_notifications`);
+    expect(romaNotificationsSql).toContain(`UNIQUE (workspace_id, recipient_subject_id, idempotency_key)`);
+    expect(romaNotificationsSql).toContain(`'project.notification.created'`);
+    expect(romaNotificationsSql).toContain(`created_by_subject = '33333333-3333-4333-8333-333333333304'::uuid`);
+    expect(romaNotificationsSql).toContain(`notificationInsertedCount`);
+  });
+
+  it('creates notifications only on succeeded ROMA completion and reuses the existing ACL helper', () => {
+    expect(romaNotificationsSql).toContain(`IF v_status = 'succeeded' AND v_project_id IS NOT NULL THEN`);
+    expect(romaNotificationsSql).toContain(
+      `PERFORM app.assert_roma_project_health_schedule_access(v_job.workspace_id, v_project_id);`,
+    );
+    expect(romaNotificationsSql).toContain(`'roma_project_health_completed'`);
+    expect(romaNotificationsSql).toContain(`'roma_project_findings_completed'`);
+    expect(romaNotificationsSql).not.toContain(`'44444444-4444-4444-8444-444444444401'`);
   });
 });

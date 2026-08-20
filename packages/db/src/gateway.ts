@@ -661,6 +661,10 @@ export class SupabaseMemoryGateway {
     error?: string | null;
     memoryId?: string | null;
     auditEventId?: string | null;
+    notificationTitle?: string | null;
+    notificationSeverity?: 'info' | 'low' | 'medium' | 'high' | null;
+    notificationSourceMemoryIds?: string[] | null;
+    notificationMetadata?: Record<string, unknown> | null;
   }) {
     const { data, error } = await this.client.rpc('api_complete_roma_project_health', {
       p_secret: this.apiSecret,
@@ -670,6 +674,10 @@ export class SupabaseMemoryGateway {
       p_error: input.error ?? null,
       p_memory_id: input.memoryId ?? null,
       p_audit_event_id: input.auditEventId ?? null,
+      p_notification_title: input.notificationTitle ?? null,
+      p_notification_severity: input.notificationSeverity ?? 'info',
+      p_notification_source_memory_ids: input.notificationSourceMemoryIds ?? null,
+      p_notification_metadata: input.notificationMetadata ?? null,
     });
     if (error) throw error;
     return data as {
@@ -680,6 +688,10 @@ export class SupabaseMemoryGateway {
       memoryId: string | null;
       auditEventId: string | null;
       eventId: string | null;
+      notificationIds: string[];
+      notificationEventIds: string[];
+      notificationAuditEventIds: string[];
+      notificationInsertedCount: number;
     };
   }
 
@@ -743,6 +755,10 @@ export class SupabaseMemoryGateway {
     memoryId?: string | null;
     auditEventId?: string | null;
     findingCount?: number | null;
+    notificationTitle?: string | null;
+    notificationSeverity?: 'info' | 'low' | 'medium' | 'high' | null;
+    notificationSourceMemoryIds?: string[] | null;
+    notificationMetadata?: Record<string, unknown> | null;
   }) {
     const { data, error } = await this.client.rpc('api_complete_roma_project_findings', {
       p_secret: this.apiSecret,
@@ -753,6 +769,10 @@ export class SupabaseMemoryGateway {
       p_memory_id: input.memoryId ?? null,
       p_audit_event_id: input.auditEventId ?? null,
       p_finding_count: input.findingCount ?? null,
+      p_notification_title: input.notificationTitle ?? null,
+      p_notification_severity: input.notificationSeverity ?? 'low',
+      p_notification_source_memory_ids: input.notificationSourceMemoryIds ?? null,
+      p_notification_metadata: input.notificationMetadata ?? null,
     });
     if (error) throw error;
     return data as {
@@ -764,6 +784,10 @@ export class SupabaseMemoryGateway {
       auditEventId: string | null;
       findingCount: number | null;
       eventId: string | null;
+      notificationIds: string[];
+      notificationEventIds: string[];
+      notificationAuditEventIds: string[];
+      notificationInsertedCount: number;
     };
   }
 
