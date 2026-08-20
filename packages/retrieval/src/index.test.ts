@@ -303,6 +303,32 @@ describe('retrieval stub', () => {
     expect(result.writeActionsAttempted).toBe(0);
   });
 
+  it('requires at least minEvidenceHits eligible hits even when the only hit is verified', async () => {
+    const result = await runBoundedAgenticRetrieval({
+      query: 'single verified hit',
+      projectId: '44444444-4444-4444-8444-444444444401',
+      budget: { minEvidenceHits: 2, maxSteps: 4 },
+      search: async () => [
+        {
+          memory: {
+            id: 'verified-only',
+            projectId: '44444444-4444-4444-8444-444444444401',
+            title: 'Only verified result',
+            content: 'One verified result is still insufficient here.',
+            status: 'verified',
+          },
+          score: 0.88,
+          reason: 'hybrid:rpc+rrf',
+        },
+      ],
+    });
+
+    expect(result.outcome).toBe('not_enough_data');
+    expect(result.stopReason).toBe('not_enough_data');
+    expect(result.hits).toHaveLength(1);
+    expect(result.writeActionsAttempted).toBe(0);
+  });
+
   it('stops bounded agentic retrieval with not enough data when the first search is empty', async () => {
     const result = await runBoundedAgenticRetrieval({
       query: 'missing evidence query',

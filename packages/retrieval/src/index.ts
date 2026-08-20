@@ -688,13 +688,7 @@ function hasEnoughEvidence<T extends HybridHitLike>(
   budget: AgenticRetrievalBudget,
 ): boolean {
   const eligible = hits.filter((hit) => !CONFLICTING_MEMORY_STATUSES.has(hitStatusOf(hit) ?? ''));
-  if (eligible.length >= budget.minEvidenceHits) {
-    return true;
-  }
-  return eligible.some((hit) => {
-    const status = hitStatusOf(hit);
-    return (status === 'verified' || status === 'active') && Number(hit.score) > 0;
-  });
+  return eligible.length >= budget.minEvidenceHits;
 }
 
 export async function runBoundedAgenticRetrieval<T extends HybridHitLike>(input: {
