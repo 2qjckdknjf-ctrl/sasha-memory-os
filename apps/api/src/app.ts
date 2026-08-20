@@ -108,6 +108,19 @@ import {
   resolveGitHubWebhookRepositoryCollection,
   verifyGitHubWebhookSignature,
 } from './githubWebhook.js';
+import {
+  buildGoogleDriveWatchCursorPayload,
+  GOOGLE_DRIVE_WATCH_CHANNEL_ID_HEADER,
+  GOOGLE_DRIVE_WATCH_CHANNEL_TOKEN_HEADER,
+  GOOGLE_DRIVE_WATCH_CURSOR_STREAM,
+  GOOGLE_DRIVE_WATCH_MESSAGE_NUMBER_HEADER,
+  GOOGLE_DRIVE_WATCH_RESOURCE_ID_HEADER,
+  GOOGLE_DRIVE_WATCH_RESOURCE_STATE_HEADER,
+  GOOGLE_DRIVE_WATCH_RESOURCE_URI_HEADER,
+  hasSeenGoogleDriveWatchMessage,
+  verifyGoogleDriveWatchToken,
+  resolveGoogleDriveWebhookConnectionId,
+} from './googleDriveWebhook.js';
 import { requireHttpApiSecret } from './httpAuth.js';
 import { withRequestId } from './requestId.js';
 
@@ -706,6 +719,20 @@ function resolveCollectionProjectId(
   const normalized = normalizeConnectionMetadata(metadata);
   if (!collectionId) return null;
   return normalized.collections?.project_bindings?.[collectionId] ?? null;
+}
+
+function resolveRecordProjectId(
+  metadata: Record<string, unknown> | undefined,
+  record: {
+    externalObject: { collectionId?: string };
+    envelope: { scope?: { project_id?: string } };
+  },
+): string | null {
+  const boundProjectId = resolveCollectionProjectId(metadata, record.externalObject.collectionId);
+  if (boundProjectId) return boundProjectId;
+  return typeof record.envelope.scope?.project_id === 'string'
+    ? record.envelope.scope.project_id
+    : null;
 }
 
 function resolveOwnerSubjectId(
@@ -1691,22 +1718,56 @@ async function ingestSdkConnectorDelta(
     },
   });
   let captured = 0;
+  let tombstoned = 0;
+  let skippedWithoutProject = 0;
   for (const record of syncRun.records) {
-    const projectId =
-      resolveCollectionProjectId(
-        syncedConnection.metadata,
-        record.externalObject.collectionId,
-      ) ?? null;
-    const captureResult = await gateway.captureText({
+    const projectId = resolveRecordProjectId(syncedConnection.metadata, record);
+    if (record.externalObject.deleted) {
+      await gateway.tombstoneConnectorObject({
+        subjectId,
+        workspaceId,
+        projectId,
+        provider: record.externalObject.provider,
+        accountId: record.externalObject.accountId,
+        externalId: record.externalObject.externalId,
+        eventType: record.envelope.event_type,
+        observedAt: record.envelope.observed_at,
+        idempotencyKey: record.envelope.idempotency_key,
+        reason:
+          typeof record.externalObject.permissionsSnapshot.reason === 'string'
+            ? record.externalObject.permissionsSnapshot.reason
+            : String(record.envelope.provenance.changeState ?? 'connector object removed'),
+        provenance: record.envelope.provenance,
+        metadata: record.externalObject.metadata,
+      });
+      tombstoned += 1;
+      continue;
+    }
+    if (!projectId) {
+      skippedWithoutProject += 1;
+      continue;
+    }
+    const captureResult = await gateway.captureConnectorRecord({
       subjectId,
       workspaceId,
       projectId,
+      provider: record.externalObject.provider,
+      accountId: record.externalObject.accountId,
+      externalId: record.externalObject.externalId,
+      externalVersion: record.externalObject.externalVersion ?? null,
+      eventType: record.envelope.event_type,
       title: record.capture.title,
       text: record.capture.text,
-      idempotencyKey: record.capture.idempotencyKey,
-      processNow: true,
+      idempotencyKey: record.envelope.idempotency_key,
+      sensitivity: record.envelope.scope.sensitivity,
+      storageMode: record.envelope.scope.storage_mode,
+      observedAt: record.envelope.observed_at,
       filename: record.capture.filename,
       mimeType: record.capture.mimeType,
+      canonicalReference: record.externalObject.canonicalReference,
+      provenance: record.envelope.provenance,
+      metadata: record.externalObject.metadata,
+      processNow: true,
     });
     await maybeEmbedCapturedMemory(gateway, {
       subjectId,
@@ -1728,7 +1789,13 @@ async function ingestSdkConnectorDelta(
   return {
     captured,
     pullMode: syncRun.page.pullMode ?? 'stub',
-    note: syncRun.page.note ?? `${syncRun.manifest.id} connector sync completed`,
+    note: [
+      syncRun.page.note ?? `${syncRun.manifest.id} connector sync completed`,
+      tombstoned > 0 ? `tombstoned ${tombstoned}` : null,
+      skippedWithoutProject > 0 ? `skipped ${skippedWithoutProject} without project binding` : null,
+    ]
+      .filter((value): value is string => Boolean(value))
+      .join('; '),
   };
 }
 
@@ -1914,11 +1981,151 @@ export function createApp(options?: {
     if (!connector) {
       return c.json({ error: 'connector_not_found' }, 404);
     }
+
+    if (connectorId === 'google-drive') {
+      const gw = c.get('gateway');
+      const resourceState = c.req.header(GOOGLE_DRIVE_WATCH_RESOURCE_STATE_HEADER);
+      const channelId = c.req.header(GOOGLE_DRIVE_WATCH_CHANNEL_ID_HEADER);
+      const resourceId = c.req.header(GOOGLE_DRIVE_WATCH_RESOURCE_ID_HEADER);
+      const resourceUri = c.req.header(GOOGLE_DRIVE_WATCH_RESOURCE_URI_HEADER);
+      const messageNumber = c.req.header(GOOGLE_DRIVE_WATCH_MESSAGE_NUMBER_HEADER);
+      const channelToken = c.req.header(GOOGLE_DRIVE_WATCH_CHANNEL_TOKEN_HEADER);
+      const verification = verifyGoogleDriveWatchToken({
+        channelToken,
+      });
+      if (!verification.ok) {
+        return c.json({ error: 'unauthorized', reason: verification.error }, 401);
+      }
+      const connectionId = resolveGoogleDriveWebhookConnectionId({
+        queryConnectionId: c.req.query('connection_id') ?? null,
+        channelToken,
+      });
+      if (!connectionId) {
+        return c.json({ error: 'connection_id_required' }, 400);
+      }
+      if (!gw) {
+        return c.json(
+          {
+            accepted: true,
+            duplicate: false,
+            connectorId,
+            connectionId,
+            resourceState,
+            enqueued: 0,
+            backend: 'memory-store',
+            note: 'Drive watch receiver requires supabase backend for sync enqueue',
+          },
+          202,
+        );
+      }
+
+      const subjectId = resolveOwnerSubjectId();
+      const receivedAt = new Date().toISOString();
+      try {
+        const connection = await gw.getConnection(subjectId, connectionId);
+        if (connection.connectorId !== connectorId) {
+          return c.json({ error: 'connection_connector_mismatch' }, 400);
+        }
+        const previousCursor = toSyncCursor(
+          await gw.getConnectorCursor({
+            subjectId,
+            accountId: connection.id,
+            stream: GOOGLE_DRIVE_WATCH_CURSOR_STREAM,
+          }),
+        );
+        if (
+          hasSeenGoogleDriveWatchMessage(previousCursor, {
+            channelId,
+            messageNumber,
+          })
+        ) {
+          return c.json({
+            accepted: true,
+            duplicate: true,
+            connectorId,
+            connectionId: connection.id,
+            resourceState,
+            enqueued: 0,
+            note: 'duplicate Drive watch message ignored',
+          });
+        }
+        const enqueued = isConnectionSyncSuppressed(connection)
+          ? { count: 0 }
+          : await gw.enqueueConnectorSync({
+              subjectId,
+              workspaceId: connection.workspaceId ?? seedWorkspace,
+              connectionId: connection.id,
+            });
+        await gw.upsertConnectorCursor({
+          subjectId,
+          accountId: connection.id,
+          stream: GOOGLE_DRIVE_WATCH_CURSOR_STREAM,
+          cursor: buildGoogleDriveWatchCursorPayload({
+            previousCursor,
+            channelId,
+            resourceId,
+            resourceState,
+            resourceUri,
+            messageNumber,
+            receivedAt,
+          }),
+          schemaVersion: '1.0',
+        });
+        await gw.appendAuditEvent({
+          subjectId,
+          workspaceId: connection.workspaceId ?? seedWorkspace,
+          action: 'connection.webhook.received',
+          objectType: 'connector_webhook',
+          objectId:
+            typeof messageNumber === 'string' && typeof channelId === 'string'
+              ? `${channelId}:${messageNumber}`
+              : connection.id,
+          reason: `${connectorId}.${resourceState ?? 'watch'}`,
+          afterState: {
+            connectionId: connection.id,
+            connectorId,
+            resourceState: resourceState ?? null,
+            channelId: channelId ?? null,
+            resourceId: resourceId ?? null,
+            resourceUri: resourceUri ?? null,
+            messageNumber: messageNumber ?? null,
+            enqueued: enqueued.count ?? 0,
+          },
+        });
+        return c.json(
+          {
+            accepted: true,
+            duplicate: false,
+            connectorId,
+            connectionId: connection.id,
+            resourceState,
+            enqueued: enqueued.count ?? 0,
+            note: isConnectionSyncSuppressed(connection)
+              ? 'connection is revoked or disabled; Drive watch acknowledged without enqueue'
+              : 'Drive watch acknowledged and connector sync enqueued',
+          },
+          202,
+        );
+      } catch (err) {
+        if (isForbiddenError(err)) return c.json({ error: 'forbidden' }, 403);
+        console.error(
+          JSON.stringify({
+            event: 'connector_webhook_failed',
+            connectorId,
+            connectionId,
+            resourceState,
+            error: err instanceof Error ? err.message : String(err),
+          }),
+        );
+        return c.json({ error: 'internal_error' }, 500);
+      }
+    }
+
     if (connectorId !== 'github') {
       return c.json(
         {
           error: 'not_implemented',
-          note: 'Webhook receiver currently supports GitHub only. Full GitHub App install remains M10.',
+          note: 'Webhook receiver currently supports GitHub and Google Drive signal-only watch ACK.',
         },
         501,
       );

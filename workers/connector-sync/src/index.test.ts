@@ -9,6 +9,7 @@ import { parseWorkerIntervalMs, planConnectorSync } from './index.js';
 
 const owner = '33333333-3333-4333-8333-333333333301';
 const workspaceId = '11111111-1111-4111-8111-111111111111';
+const fixtureProjectId = '44444444-4444-4444-8444-444444444401';
 const registryConnectionId = '88888888-8888-4888-8888-888888888801';
 const discoverConnectionId = '88888888-8888-4888-8888-888888888802';
 const retryConnectionId = '88888888-8888-4888-8888-888888888803';
@@ -23,6 +24,7 @@ function buildFixtureRecord(
     externalObject: {
       provider: 'fixture',
       accountId: connectionId,
+      collectionId: 'fixture',
       externalId: rawObject.externalId,
       objectType: 'fixture',
       title: rawObject.title,
@@ -49,6 +51,7 @@ function buildFixtureRecord(
         text: rawObject.title,
       },
       scope: {
+        project_id: fixtureProjectId,
         sensitivity: 'internal' as const,
         storage_mode: 'reference' as const,
       },
@@ -201,7 +204,8 @@ describe('planConnectorSync', () => {
         memoryId: '66666666-6666-4666-8666-666666666601',
         collectionId: 'fixture',
       })),
-      captureText: vi.fn(async () => ({ process: null })),
+      captureConnectorRecord: vi.fn(async () => ({ process: null })),
+      tombstoneConnectorObject: vi.fn(async () => ({ affectedCount: 0 })),
       upsertConnectorCursor: vi.fn(async () => null),
       completeConnectorSync: vi.fn(async ({ jobId, status }: { jobId: string; status: string }) => ({
         jobId,
@@ -438,7 +442,8 @@ describe('planConnectorSync', () => {
         return { metadata: metadataState };
       }),
       upsertProjectFromConnector,
-      captureText: vi.fn(async () => ({ process: null })),
+      captureConnectorRecord: vi.fn(async () => ({ process: null })),
+      tombstoneConnectorObject: vi.fn(async () => ({ affectedCount: 0 })),
       upsertConnectorCursor: vi.fn(async () => null),
       completeConnectorSync: vi.fn(async ({ jobId, status }: { jobId: string; status: string }) => ({
         jobId,
@@ -525,7 +530,7 @@ describe('planConnectorSync', () => {
       },
     ]);
 
-    const captureText = vi.fn(async () => ({ process: null }));
+    const captureConnectorRecord = vi.fn(async () => ({ process: null }));
     const gateway = {
       deadLetterStaleJobs: vi.fn(async () => ({ deadLettered: 0 })),
       listOutboxPending: vi.fn(async () => ({ count: 0 })),
@@ -574,7 +579,8 @@ describe('planConnectorSync', () => {
         memoryId: '66666666-6666-4666-8666-666666666601',
         collectionId: 'fixture',
       })),
-      captureText,
+      captureConnectorRecord,
+      tombstoneConnectorObject: vi.fn(async () => ({ affectedCount: 0 })),
       upsertConnectorCursor: vi.fn(async () => null),
       completeConnectorSync: vi.fn(async ({ jobId, status }: { jobId: string; status: string }) => {
         jobStatus = status === 'succeeded' ? 'succeeded' : 'dead_letter';
@@ -652,7 +658,7 @@ describe('planConnectorSync', () => {
       connectorRegistry,
     });
     expect(third.completed[0]?.status).toBe('succeeded');
-    expect(captureText).toHaveBeenCalledTimes(1);
+    expect(captureConnectorRecord).toHaveBeenCalledTimes(1);
   });
 
   it('re-runs an initial sync after operator resync clears the cursor', async () => {
@@ -778,7 +784,8 @@ describe('planConnectorSync', () => {
         memoryId: '66666666-6666-4666-8666-666666666601',
         collectionId: 'fixture',
       })),
-      captureText: vi.fn(async () => ({ process: null })),
+      captureConnectorRecord: vi.fn(async () => ({ process: null })),
+      tombstoneConnectorObject: vi.fn(async () => ({ affectedCount: 0 })),
       upsertConnectorCursor: vi.fn(async () => null),
       completeConnectorSync: vi.fn(async ({ jobId, status }: { jobId: string; status: string }) => ({
         jobId,

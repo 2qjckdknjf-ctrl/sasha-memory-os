@@ -1209,7 +1209,8 @@ describe('memory api demo slice', () => {
       mergeConnectionProjectBindings,
       upsertProjectFromConnector,
       getConnectorCursor: vi.fn(async () => null),
-      captureText: vi.fn(async () => ({ process: null })),
+      captureConnectorRecord: vi.fn(async () => ({ process: null })),
+      tombstoneConnectorObject: vi.fn(async () => ({ affectedCount: 0 })),
       upsertConnectorCursor: vi.fn(async () => null),
       completeConnectorSync: vi.fn(async () => ({
         jobId: 'job-1',
@@ -1241,6 +1242,178 @@ describe('memory api demo slice', () => {
     expect(upsertProjectFromConnector.mock.calls.map(([input]) => input.collectionId)).toEqual([
       'team/repo-a',
     ]);
+  });
+
+  it('skips connector record capture when no explicit project binding exists', async () => {
+    const driveConnectionId = '88888888-8888-4888-8888-888888888804';
+    const connectorRegistry = createConnectorRegistry([
+      {
+        manifest: {
+          id: 'google-drive',
+          version: '1.0.0',
+          sdk_version: '^1.0',
+          auth: 'oauth2',
+          supports: {
+            discover: false,
+            validate_scope: false,
+            initial_sync: true,
+            incremental_sync: false,
+            live_fetch: false,
+            webhooks: false,
+            write: false,
+          },
+          capabilities: ['files.read', 'changes.list'],
+          storage_modes: ['reference'],
+          data_classes: ['internal'],
+        },
+        lifecycle: {
+          async initialSync() {
+            return {
+              stream: 'google-drive:files',
+              mode: 'initial' as const,
+              pullMode: 'stub',
+              note: 'fixture drive sync',
+              rawObjects: [
+                {
+                  externalId: 'file/drive-1',
+                  title: 'Unbound drive record',
+                  observedAt: '2026-08-20T00:20:00.000Z',
+                },
+              ],
+            };
+          },
+          async normalize(context) {
+            return {
+              externalObject: {
+                provider: 'google-drive',
+                accountId: context.account.connectionId,
+                externalId: 'file/drive-1',
+                objectType: 'file',
+                title: 'Unbound drive record',
+                createdAt: '2026-08-20T00:20:00.000Z',
+                modifiedAt: '2026-08-20T00:20:00.000Z',
+                deleted: false,
+                attachments: [],
+                permissionsSnapshot: {},
+                metadata: {},
+              },
+              envelope: {
+                schema_version: '1.0' as const,
+                workspace_id: workspaceId,
+                source: {
+                  provider: 'google-drive',
+                  account_id: driveConnectionId,
+                  external_id: 'file/drive-1',
+                },
+                event_type: 'google-drive.file.updated',
+                observed_at: '2026-08-20T00:20:00.000Z',
+                idempotency_key: 'connector-sync/conn-drive/file/drive-1',
+                content: {
+                  mime_type: 'text/plain',
+                  text: 'Unbound drive record',
+                },
+                scope: {
+                  sensitivity: 'internal' as const,
+                  storage_mode: 'reference' as const,
+                },
+                provenance: {
+                  sourceMode: 'stub',
+                },
+              },
+              capture: {
+                title: 'Unbound drive record',
+                text: 'Unbound drive record',
+                filename: 'google-drive://file/drive-1',
+                mimeType: 'text/plain',
+                idempotencyKey: 'connector-sync/conn-drive/file/drive-1',
+              },
+            };
+          },
+        },
+      },
+    ]);
+    const captureConnectorRecord = vi.fn(async () => ({ process: null }));
+    const gateway = {
+      enqueueConnectorSync: vi.fn(async () => ({
+        count: 1,
+        enqueued: [
+          {
+            connectionId: driveConnectionId,
+            connectorId: 'google-drive',
+            displayName: 'Drive pilot',
+            jobId: 'job-drive-1',
+          },
+        ],
+      })),
+      getConnection: vi.fn(async () => ({
+        id: driveConnectionId,
+        workspaceId,
+        connectorId: 'google-drive',
+        displayName: 'Drive pilot',
+        status: 'connected',
+        scopes: ['drive.file'],
+        lastSyncAt: null,
+        lastError: null,
+        metadata: {
+          collections: {
+            selection_mode: 'selected',
+            excluded_ids: [],
+            items: [
+              {
+                id: 'google-drive:folder:FOLDER-1',
+                external_id: 'FOLDER-1',
+                kind: 'folder',
+                name: 'Specs',
+                title: 'Specs',
+                metadata: {},
+              },
+            ],
+            project_bindings: {},
+          },
+        },
+      })),
+      refreshConnectionCollections: vi.fn(async () => ({ metadata: {} })),
+      mergeConnectionProjectBindings: vi.fn(async () => ({ metadata: {} })),
+      upsertProjectFromConnector: vi.fn(async () => ({
+        projectId: '44444444-4444-4444-8444-444444444421',
+        slug: 'fixture-drive',
+        name: 'Fixture Drive',
+        memoryId: '66666666-6666-4666-8666-666666666602',
+        collectionId: 'google-drive:folder:FOLDER-1',
+      })),
+      getConnectorCursor: vi.fn(async () => null),
+      captureConnectorRecord,
+      tombstoneConnectorObject: vi.fn(async () => ({ affectedCount: 0 })),
+      upsertConnectorCursor: vi.fn(async () => null),
+      completeConnectorSync: vi.fn(async () => ({
+        jobId: 'job-drive-1',
+        status: 'succeeded',
+        connectionId: driveConnectionId,
+      })),
+      appendAuditEvent: vi.fn(async () => ({})),
+    };
+
+    const app = createApp({
+      gateway: gateway as any,
+      connectorRegistry,
+    });
+    const res = await app.request('/v1/connections/sync', {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'x-subject-id': owner,
+      },
+      body: JSON.stringify({
+        workspace_id: workspaceId,
+        connection_id: driveConnectionId,
+        actor_subject_id: owner,
+      }),
+    });
+
+    expect(res.status).toBe(202);
+    expect(captureConnectorRecord).not.toHaveBeenCalled();
+    const body = await res.json();
+    expect(body.captured).toBe(0);
   });
 
   it('patches connection metadata offline', async () => {

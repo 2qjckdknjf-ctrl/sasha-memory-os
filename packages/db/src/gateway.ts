@@ -1032,6 +1032,47 @@ export class SupabaseMemoryGateway {
     };
   }
 
+  async tombstoneConnectorObject(input: {
+    subjectId: string;
+    workspaceId: string;
+    projectId?: string | null;
+    provider: string;
+    accountId?: string | null;
+    externalId: string;
+    eventType?: string;
+    observedAt?: string;
+    idempotencyKey: string;
+    reason: string;
+    provenance?: Record<string, unknown>;
+    metadata?: Record<string, unknown>;
+  }) {
+    const { data, error } = await this.client.rpc('api_tombstone_connector_object', {
+      p_secret: this.apiSecret,
+      p_subject_id: input.subjectId,
+      p_workspace_id: input.workspaceId,
+      p_project_id: input.projectId ?? null,
+      p_provider: input.provider,
+      p_account_id: input.accountId ?? null,
+      p_external_id: input.externalId,
+      p_event_type: input.eventType ?? 'connector.object.deleted',
+      p_observed_at: input.observedAt ?? new Date().toISOString(),
+      p_idempotency_key: input.idempotencyKey,
+      p_reason: input.reason,
+      p_provenance: input.provenance ?? {},
+      p_metadata: input.metadata ?? {},
+    });
+    if (error) throw error;
+    return data as {
+      eventId?: string | null;
+      affectedMemoryIds: string[];
+      affectedCount: number;
+      status: 'deleted';
+      provider: string;
+      externalId: string;
+      reason: string;
+    };
+  }
+
   async setMemoryEmbedding(input: {
     subjectId: string;
     memoryId: string;
