@@ -534,6 +534,105 @@ export class SupabaseMemoryGateway {
     };
   }
 
+  async requestRomaQaFindingApprovalCheckpoint(input: {
+    subjectId: string;
+    workspaceId: string;
+    projectId: string;
+    title: string;
+    summary: string;
+    findingKey: string;
+    severity: 'low' | 'medium' | 'high';
+    findingStatus?: 'open';
+    reason?: string | null;
+    evidenceRefs?: Array<Record<string, unknown>> | null;
+    sourceJobId?: string | null;
+    requestEventId?: string | null;
+    idempotencyKey?: string | null;
+    expiresAt?: string | null;
+  }) {
+    const { data, error } = await this.client.rpc(
+      'api_request_roma_qa_finding_approval_checkpoint',
+      {
+        p_secret: this.apiSecret,
+        p_subject_id: input.subjectId,
+        p_workspace_id: input.workspaceId,
+        p_project_id: input.projectId,
+        p_title: input.title,
+        p_summary: input.summary,
+        p_finding_key: input.findingKey,
+        p_severity: input.severity,
+        p_finding_status: input.findingStatus ?? 'open',
+        p_reason: input.reason ?? null,
+        p_evidence_refs: input.evidenceRefs ?? [],
+        p_source_job_id: input.sourceJobId ?? null,
+        p_request_event_id: input.requestEventId ?? null,
+        p_idempotency_key: input.idempotencyKey ?? null,
+        p_expires_at: input.expiresAt ?? null,
+      },
+    );
+    if (error) throw error;
+    return data as {
+      checkpointId: string;
+      checkpointType: string;
+      workspaceId: string;
+      projectId: string;
+      status: 'pending' | 'approved' | 'denied' | 'expired';
+      requestedBy: string;
+      executionSubjectId: string;
+      sourceJobId: string | null;
+      title: string;
+      findingKey: string;
+      severity: 'low' | 'medium' | 'high';
+      findingStatus: 'open';
+      reason: string;
+      idempotencyKey: string;
+      expiresAt: string;
+      requestedAt: string;
+      decidedAt: string | null;
+      decidedBy: string | null;
+      decisionReason: string | null;
+      memoryId: string | null;
+      sourceEventId: string | null;
+      auditEventId: string | null;
+      auditLogId: string | null;
+      eventId: string | null;
+      inserted: boolean;
+    };
+  }
+
+  async decideApprovalCheckpoint(input: {
+    subjectId: string;
+    checkpointId: string;
+    decision: 'approved' | 'denied';
+    reason: string;
+  }) {
+    const { data, error } = await this.client.rpc('api_decide_approval_checkpoint', {
+      p_secret: this.apiSecret,
+      p_subject_id: input.subjectId,
+      p_checkpoint_id: input.checkpointId,
+      p_decision: input.decision,
+      p_reason: input.reason,
+    });
+    if (error) throw error;
+    return data as {
+      checkpointId: string;
+      checkpointType: string;
+      workspaceId: string;
+      projectId: string;
+      status: 'pending' | 'approved' | 'denied' | 'expired';
+      requestedBy: string;
+      executionSubjectId: string;
+      decidedBy: string | null;
+      decidedAt: string | null;
+      decisionReason: string | null;
+      memoryId: string | null;
+      sourceEventId: string | null;
+      auditEventId: string | null;
+      eventId: string | null;
+      decisionAuditEventId: string | null;
+    };
+  }
+
   async upsertRomaProjectHealthSchedule(input: {
     subjectId: string;
     workspaceId: string;

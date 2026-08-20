@@ -149,6 +149,19 @@ type RomaQaFindingWrite = {
   idempotencyKey: string;
 };
 
+export type RomaQaFindingApprovalCheckpointRequest = {
+  title: string;
+  summary: string;
+  findingKey: string;
+  severity: FindingSeverity;
+  findingStatus: FindingStatus;
+  reason: string;
+  evidenceRefs: QaFindingEvidenceRef[];
+  sourceJobId: string;
+  requestEventId: string;
+  idempotencyKey: string;
+};
+
 export type RomaProjectFindingsRunResult = {
   jobId: string;
   projectId: string;
@@ -655,6 +668,44 @@ function buildRomaQaFindingMemory(input: {
     idempotencyKey,
     title: `ROMA QA finding: ${input.finding.title}`,
     text: lines.join('\n'),
+  };
+}
+
+export function buildRomaQaFindingApprovalCheckpointRequest(input: {
+  job: ClaimedRomaProjectFindingsJob;
+  finding: QaFindingCandidate;
+}): RomaQaFindingApprovalCheckpointRequest {
+  const reason =
+    input.job.reason ?? 'Generate audited ROMA QA findings for one explicit project.';
+  const idempotencyKey = stableFindingIdempotencyKey({
+    projectId: input.job.projectId,
+    findingKey: input.finding.key,
+    severity: input.finding.severity,
+    status: input.finding.status,
+    evidenceRefs: input.finding.evidenceRefs,
+  });
+
+  return {
+    title: `ROMA QA finding: ${input.finding.title}`,
+    summary: input.finding.summary,
+    findingKey: input.finding.key,
+    severity: input.finding.severity,
+    findingStatus: input.finding.status,
+    reason,
+    evidenceRefs: input.finding.evidenceRefs.map((ref) => ({
+      kind: ref.kind,
+      memoryId: ref.memoryId,
+      memoryType: ref.memoryType,
+      handoffId: ref.handoffId,
+      stateVersion: ref.stateVersion ?? null,
+      field: ref.field,
+      title: ref.title,
+      titles: ref.titles ? [...ref.titles] : undefined,
+      createdAt: ref.createdAt ?? null,
+    })),
+    sourceJobId: input.job.jobId,
+    requestEventId: input.job.requestEventId,
+    idempotencyKey,
   };
 }
 

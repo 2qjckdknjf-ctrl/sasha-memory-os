@@ -32,6 +32,12 @@ const romaNotificationsMigrationPath = fileURLToPath(
     import.meta.url,
   ),
 );
+const romaApprovalCheckpointsMigrationPath = fileURLToPath(
+  new URL(
+    '../../../supabase/migrations/20260820031500_m12_slice_05_roma_approval_checkpoints.sql',
+    import.meta.url,
+  ),
+);
 
 describe('m8 slice 03 migration guards', () => {
   const sql = readFileSync(migrationPath, 'utf8');
@@ -41,6 +47,10 @@ describe('m8 slice 03 migration guards', () => {
   const romaProjectHealthSql = readFileSync(romaProjectHealthMigrationPath, 'utf8');
   const romaQaFindingsSql = readFileSync(romaQaFindingsMigrationPath, 'utf8');
   const romaNotificationsSql = readFileSync(romaNotificationsMigrationPath, 'utf8');
+  const romaApprovalCheckpointsSql = readFileSync(
+    romaApprovalCheckpointsMigrationPath,
+    'utf8',
+  );
 
   it('matches connector projects only by unique repository identity', () => {
     expect(sql).toContain(`repo->>'url' = v_repo_url`);
@@ -144,5 +154,34 @@ describe('m8 slice 03 migration guards', () => {
     expect(romaNotificationsSql).toContain(`'roma_project_health_completed'`);
     expect(romaNotificationsSql).toContain(`'roma_project_findings_completed'`);
     expect(romaNotificationsSql).not.toContain(`'44444444-4444-4444-8444-444444444401'`);
+  });
+
+  it('adds additive approval checkpoints that stay project-scoped and ROMA-executed', () => {
+    expect(romaApprovalCheckpointsSql).toContain(`CREATE TABLE approval_checkpoints`);
+    expect(romaApprovalCheckpointsSql).toContain(`'roma_qa_finding_write'`);
+    expect(romaApprovalCheckpointsSql).toContain(`execution_subject_id = '33333333-3333-4333-8333-333333333304'::uuid`);
+    expect(romaApprovalCheckpointsSql).toContain(`UNIQUE (workspace_id, checkpoint_type, idempotency_key)`);
+    expect(romaApprovalCheckpointsSql).toContain(`RAISE EXCEPTION 'project_id required'`);
+    expect(romaApprovalCheckpointsSql).toContain(`app.assert_roma_project_health_schedule_access(p_workspace_id, p_project_id);`);
+    expect(romaApprovalCheckpointsSql).not.toContain(`'44444444-4444-4444-8444-444444444401'`);
+  });
+
+  it('audits approval decisions, rejects ROMA self-approval, and writes as ROMA on approve', () => {
+    expect(romaApprovalCheckpointsSql).toContain(`'approval.checkpoint.requested'`);
+    expect(romaApprovalCheckpointsSql).toContain(`'approval.checkpoint.approved'`);
+    expect(romaApprovalCheckpointsSql).toContain(`'approval.checkpoint.denied'`);
+    expect(romaApprovalCheckpointsSql).toContain(`'approval.checkpoint.expired'`);
+    expect(romaApprovalCheckpointsSql).toContain(`RAISE EXCEPTION 'roma cannot self-approve approval checkpoints'`);
+    expect(romaApprovalCheckpointsSql).toContain(`RAISE EXCEPTION 'owner approval required'`);
+    expect(romaApprovalCheckpointsSql).toContain(`app.api_capture_connector_record(`);
+    expect(romaApprovalCheckpointsSql).toContain(`v_checkpoint.execution_subject_id`);
+    expect(romaApprovalCheckpointsSql).toContain(`'roma.qa_finding.written'`);
+  });
+
+  it('keeps checkpoint payloads bounded to finding metadata instead of raw bodies', () => {
+    expect(romaApprovalCheckpointsSql).toContain(`app.sanitize_roma_qa_finding_evidence_refs`);
+    expect(romaApprovalCheckpointsSql).toContain(`'evidenceRefs', app.sanitize_roma_qa_finding_evidence_refs(p_evidence_refs)`);
+    expect(romaApprovalCheckpointsSql).toContain(`'titles and structured evidence refs only; raw memory bodies are not quoted.'`);
+    expect(romaApprovalCheckpointsSql).not.toContain(`'content'`);
   });
 });

@@ -78,6 +78,89 @@ describe('SupabaseMemoryGateway.enqueueRomaProjectFindings', () => {
   });
 });
 
+describe('SupabaseMemoryGateway.requestRomaQaFindingApprovalCheckpoint', () => {
+  it('passes bounded approval checkpoint request RPC args for one explicit project', async () => {
+    const rpc = vi.fn(async () => ({ data: { ok: true }, error: null }));
+    const gateway = new SupabaseMemoryGateway({ rpc } as any, 'test-secret');
+
+    await gateway.requestRomaQaFindingApprovalCheckpoint({
+      subjectId: '33333333-3333-4333-8333-333333333304',
+      workspaceId: '11111111-1111-4111-8111-111111111111',
+      projectId: '44444444-4444-4444-8444-444444444401',
+      title: 'ROMA QA finding: Blocked work requires review',
+      summary: 'Blocked work needs explicit owner approval before the write lands.',
+      findingKey: 'blocked-work',
+      severity: 'high',
+      reason: 'Await explicit owner approval before ROMA writes this QA finding.',
+      evidenceRefs: [
+        {
+          kind: 'project_state',
+          stateVersion: 7,
+          field: 'blocked',
+          titles: ['Deploy blocked on approval'],
+        },
+      ],
+      sourceJobId: 'job-findings-1',
+      requestEventId: 'event-findings-1',
+      idempotencyKey: 'blocked-work-approval',
+      expiresAt: '2026-08-23T00:00:00.000Z',
+    });
+
+    expect(rpc).toHaveBeenCalledWith(
+      'api_request_roma_qa_finding_approval_checkpoint',
+      expect.objectContaining({
+        p_secret: 'test-secret',
+        p_subject_id: '33333333-3333-4333-8333-333333333304',
+        p_workspace_id: '11111111-1111-4111-8111-111111111111',
+        p_project_id: '44444444-4444-4444-8444-444444444401',
+        p_title: 'ROMA QA finding: Blocked work requires review',
+        p_summary: 'Blocked work needs explicit owner approval before the write lands.',
+        p_finding_key: 'blocked-work',
+        p_severity: 'high',
+        p_finding_status: 'open',
+        p_reason: 'Await explicit owner approval before ROMA writes this QA finding.',
+        p_evidence_refs: [
+          {
+            kind: 'project_state',
+            stateVersion: 7,
+            field: 'blocked',
+            titles: ['Deploy blocked on approval'],
+          },
+        ],
+        p_source_job_id: 'job-findings-1',
+        p_request_event_id: 'event-findings-1',
+        p_idempotency_key: 'blocked-work-approval',
+        p_expires_at: '2026-08-23T00:00:00.000Z',
+      }),
+    );
+  });
+});
+
+describe('SupabaseMemoryGateway.decideApprovalCheckpoint', () => {
+  it('passes owner approval decision RPC args without changing the execution writer', async () => {
+    const rpc = vi.fn(async () => ({ data: { ok: true }, error: null }));
+    const gateway = new SupabaseMemoryGateway({ rpc } as any, 'test-secret');
+
+    await gateway.decideApprovalCheckpoint({
+      subjectId: '33333333-3333-4333-8333-333333333301',
+      checkpointId: 'checkpoint-1',
+      decision: 'approved',
+      reason: 'Reviewed and approved.',
+    });
+
+    expect(rpc).toHaveBeenCalledWith(
+      'api_decide_approval_checkpoint',
+      expect.objectContaining({
+        p_secret: 'test-secret',
+        p_subject_id: '33333333-3333-4333-8333-333333333301',
+        p_checkpoint_id: 'checkpoint-1',
+        p_decision: 'approved',
+        p_reason: 'Reviewed and approved.',
+      }),
+    );
+  });
+});
+
 describe('SupabaseMemoryGateway.completeRomaProjectHealth', () => {
   it('passes notification RPC args for audited ROMA health completion', async () => {
     const rpc = vi.fn(async () => ({ data: { ok: true }, error: null }));
