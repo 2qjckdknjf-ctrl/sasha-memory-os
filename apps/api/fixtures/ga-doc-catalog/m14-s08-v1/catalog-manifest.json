@@ -1,0 +1,165 @@
+{
+  "manifestVersion": "m14-s08-v1",
+  "packVersion": "m14-s08-v1",
+  "source": "fixture-local",
+  "roadmapSections": ["20.17"],
+  "blockedFallbackProjectIds": [
+    "44444444-4444-4444-8444-444444444401"
+  ],
+  "catalog": {
+    "docPath": "docs/engineering/M14_DOC_CATALOG.md",
+    "requiredSnippets": [
+      "Version: `m14-s08-v1`",
+      "Roadmap section: `20.17`",
+      "## Documentation contract",
+      "GA candidate docs must be findable and versioned.",
+      "Do not log memory bodies, tokens, or payload bodies in catalog text or local validator output.",
+      "Production SQL apply is not implied by these docs."
+    ]
+  },
+  "sliceDoc": {
+    "docPath": "docs/engineering/M14_SLICE_08.md",
+    "requiredSnippets": [
+      "Official pack version: `m14-s08-v1`",
+      "Roadmap section: `20.17`",
+      "every required surface has a checked-in owner and status in the catalog",
+      "`MEMORY_OS_DEFAULT_PROJECT_ID` is ignored",
+      "no AISTROYKA fallback",
+      "no verified-memory writes",
+      "No production SQL apply is part of this work."
+    ]
+  },
+  "requiredDocs": [
+    {
+      "id": "slo-error-budgets",
+      "title": "SLO + error budgets",
+      "owner": "Platform owner",
+      "status": "current official",
+      "catalogSectionHeading": "SLO + error budgets",
+      "primaryDocPath": "docs/engineering/M14_SLICE_01.md",
+      "requiredSnippets": [
+        "Primary doc: `docs/engineering/M14_SLICE_01.md`",
+        "Version: `m14-s01-v1`",
+        "packages/observability/src/index.ts"
+      ]
+    },
+    {
+      "id": "bounded-soak",
+      "title": "Bounded soak",
+      "owner": "Platform owner",
+      "status": "current official",
+      "catalogSectionHeading": "Bounded soak",
+      "primaryDocPath": "docs/engineering/M14_SLICE_02.md",
+      "requiredSnippets": [
+        "Primary doc: `docs/engineering/M14_SLICE_02.md`",
+        "Version: `m14-s02-v1`",
+        "apps/api/src/soakHarness.ts"
+      ]
+    },
+    {
+      "id": "security-review",
+      "title": "Security review",
+      "owner": "Security owner",
+      "status": "current official",
+      "catalogSectionHeading": "Security review",
+      "primaryDocPath": "docs/engineering/M14_SLICE_03.md",
+      "requiredSnippets": [
+        "Primary doc: `docs/engineering/M14_SLICE_03.md`",
+        "Version: `m14-s03-v1`",
+        "docs/engineering/RLS_MATRIX.md"
+      ]
+    },
+    {
+      "id": "dr-restore-drill",
+      "title": "DR restore drill",
+      "owner": "Platform owner",
+      "status": "current official",
+      "catalogSectionHeading": "DR restore drill",
+      "primaryDocPath": "docs/engineering/M14_SLICE_04.md",
+      "requiredSnippets": [
+        "Primary doc: `docs/engineering/M14_SLICE_04.md`",
+        "Version: `m14-s04-v1`",
+        "apps/api/src/restoreDrill.ts"
+      ]
+    },
+    {
+      "id": "incident-runbooks",
+      "title": "Incident runbooks",
+      "owner": "Platform owner",
+      "status": "current official",
+      "catalogSectionHeading": "Incident runbooks",
+      "primaryDocPath": "docs/engineering/M14_SLICE_05.md",
+      "requiredSnippets": [
+        "Primary doc: `docs/engineering/M14_SLICE_05.md`",
+        "Version: `m14-s05-v1`",
+        "docs/engineering/runbooks/"
+      ]
+    },
+    {
+      "id": "export-deletion-slas",
+      "title": "Export + deletion SLAs",
+      "owner": "Privacy owner",
+      "status": "current official",
+      "catalogSectionHeading": "Export + deletion SLAs",
+      "primaryDocPath": "docs/engineering/privacy/EXPORT_DELETION_SLAS.md",
+      "requiredSnippets": [
+        "Primary doc: `docs/engineering/privacy/EXPORT_DELETION_SLAS.md`",
+        "Version: `m14-s06-v1`",
+        "docs/engineering/M14_SLICE_06.md"
+      ]
+    },
+    {
+      "id": "dependency-upgrade-policy",
+      "title": "Dependency upgrade policy",
+      "owner": "Platform owner",
+      "status": "current official",
+      "catalogSectionHeading": "Dependency upgrade policy",
+      "primaryDocPath": "docs/engineering/DEPENDENCY_UPGRADE_POLICY.md",
+      "requiredSnippets": [
+        "Primary doc: `docs/engineering/DEPENDENCY_UPGRADE_POLICY.md`",
+        "Version: `m14-s07-v1`",
+        "docs/engineering/M14_SLICE_07.md"
+      ]
+    },
+    {
+      "id": "rls-matrix",
+      "title": "RLS matrix",
+      "owner": "Security owner",
+      "status": "current official",
+      "catalogSectionHeading": "RLS matrix",
+      "primaryDocPath": "docs/engineering/RLS_MATRIX.md",
+      "requiredSnippets": [
+        "Primary doc: `docs/engineering/RLS_MATRIX.md`",
+        "Version anchor: `m14-s08-v1`",
+        "tests/security/rls_matrix.test.ts"
+      ]
+    },
+    {
+      "id": "secrets-policy",
+      "title": "Secrets policy",
+      "owner": "Security owner",
+      "status": "current official",
+      "catalogSectionHeading": "Secrets policy",
+      "primaryDocPath": "docs/engineering/SECRETS_POLICY.md",
+      "requiredSnippets": [
+        "Primary doc: `docs/engineering/SECRETS_POLICY.md`",
+        "Version anchor: `m14-s08-v1`",
+        "docs/adr/ADR-005-secrets-and-environments.md"
+      ]
+    },
+    {
+      "id": "mcp-mode-a",
+      "title": "MCP Mode A",
+      "owner": "Platform owner",
+      "status": "current official",
+      "catalogSectionHeading": "MCP Mode A",
+      "primaryDocPath": "docs/m0/CHATGPT_MCP_PLAN.md",
+      "requiredSnippets": [
+        "Primary doc: `docs/m0/CHATGPT_MCP_PLAN.md`",
+        "Version anchor: `m14-s08-v1`",
+        "ChatGPT Mode A tool count: `7`",
+        "`memory.store_decision`"
+      ]
+    }
+  ]
+}
