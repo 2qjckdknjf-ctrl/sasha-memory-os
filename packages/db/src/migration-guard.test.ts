@@ -181,7 +181,9 @@ describe('m8 slice 03 migration guards', () => {
   it('keeps checkpoint payloads bounded to finding metadata instead of raw bodies', () => {
     expect(romaApprovalCheckpointsSql).toContain(`app.sanitize_roma_qa_finding_evidence_refs`);
     expect(romaApprovalCheckpointsSql).toContain(`'evidenceRefs', app.sanitize_roma_qa_finding_evidence_refs(p_evidence_refs)`);
-    expect(romaApprovalCheckpointsSql).toContain(`'titles and structured evidence refs only; raw memory bodies are not quoted.'`);
+    expect(romaApprovalCheckpointsSql).toContain(
+      `this finding stores titles and structured evidence refs only; raw memory bodies are not quoted.`,
+    );
     expect(romaApprovalCheckpointsSql).not.toContain(`'content'`);
   });
 });
