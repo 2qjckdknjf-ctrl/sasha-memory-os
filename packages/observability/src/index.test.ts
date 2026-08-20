@@ -2,6 +2,8 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   createLogger,
   getSloBudgetSnapshot,
+  OFFICIAL_M14_SECURITY_REVIEW_PACK,
+  OFFICIAL_M14_SECURITY_REVIEW_PACK_VERSION,
   OFFICIAL_M14_SLO_PACK,
   OFFICIAL_M14_SLO_PACK_VERSION,
   recordHandledAvailability,
@@ -86,6 +88,42 @@ describe('observability package', () => {
         }),
       ]),
     );
+  });
+
+  it('publishes the official M14 Slice 03 security review pack with defensive-only invariants', () => {
+    expect(OFFICIAL_M14_SECURITY_REVIEW_PACK_VERSION).toBe('m14-s03-v1');
+    expect(OFFICIAL_M14_SECURITY_REVIEW_PACK.version).toBe('m14-s03-v1');
+    expect(OFFICIAL_M14_SECURITY_REVIEW_PACK.sloPackVersion).toBe('m14-s01-v1');
+    expect(OFFICIAL_M14_SECURITY_REVIEW_PACK.roadmapSections).toEqual(['20.17']);
+    expect(
+      OFFICIAL_M14_SECURITY_REVIEW_PACK.checklist.map((item) => item.id),
+    ).toEqual(
+      expect.arrayContaining([
+        'rls-matrix',
+        'acl-default-deny',
+        'mcp-unauthenticated-reject',
+        'mode-a-surface',
+        'no-owner-token-bypass',
+        'no-aistroyka-fallback',
+        'no-verified-write-or-payload-leak',
+      ]),
+    );
+    expect(OFFICIAL_M14_SECURITY_REVIEW_PACK.invariants).toMatchObject({
+      defensiveOnly: true,
+      modeAToolCount: 7,
+      requireExplicitProjectIdOnWrites: true,
+      rejectUnauthenticatedMcp: true,
+      allowOwnerTokenBypass: false,
+      allowAistroykaFallback: false,
+      allowVerifiedWrites: false,
+      logMemoryBodies: false,
+      logTokens: false,
+    });
+    expect(
+      OFFICIAL_M14_SECURITY_REVIEW_PACK.checklist.find(
+        (item) => item.id === 'mcp-unauthenticated-reject',
+      )?.evidence,
+    ).toContain('apps/mcp-gateway/src/httpAuth.test.ts');
   });
 
   it('redacts tokens, bodies, queries, and personal content from structured logs', () => {
