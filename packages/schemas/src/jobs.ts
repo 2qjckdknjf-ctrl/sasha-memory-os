@@ -8,6 +8,7 @@ export const processingJobTypeSchema = z.enum([
   'consolidate',
   'ingest',
   'connector_sync',
+  'roma_project_health',
 ]);
 
 export const processingJobStatusSchema = z.enum([
@@ -31,6 +32,13 @@ export const enqueueJobSchema = z.object({
   job_type: processingJobTypeSchema,
   idempotency_key: z.string().min(1),
   source_event_id: z.string().uuid().optional(),
+});
+
+export const enqueueRomaProjectHealthJobSchema = z.object({
+  workspace_id: z.string().uuid(),
+  project_id: z.string().uuid(),
+  idempotency_key: z.string().min(1).optional(),
+  reason: z.string().trim().min(1).max(500).optional(),
 });
 
 export const replayConnectorJobSchema = z.object({

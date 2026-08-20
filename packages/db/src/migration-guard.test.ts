@@ -14,12 +14,19 @@ const projectRefFixMigrationPath = fileURLToPath(
 const replayResyncFixMigrationPath = fileURLToPath(
   new URL('../../../supabase/migrations/20260819224917_fix_replay_resync_claimability.sql', import.meta.url),
 );
+const romaProjectHealthMigrationPath = fileURLToPath(
+  new URL(
+    '../../../supabase/migrations/20260820014948_m12_slice_01_roma_project_health_job.sql',
+    import.meta.url,
+  ),
+);
 
 describe('m8 slice 03 migration guards', () => {
   const sql = readFileSync(migrationPath, 'utf8');
   const aclScopeSql = readFileSync(aclScopeMigrationPath, 'utf8');
   const projectRefFixSql = readFileSync(projectRefFixMigrationPath, 'utf8');
   const replayResyncFixSql = readFileSync(replayResyncFixMigrationPath, 'utf8');
+  const romaProjectHealthSql = readFileSync(romaProjectHealthMigrationPath, 'utf8');
 
   it('matches connector projects only by unique repository identity', () => {
     expect(sql).toContain(`repo->>'url' = v_repo_url`);
@@ -61,5 +68,21 @@ describe('m8 slice 03 migration guards', () => {
     expect(replayResyncFixSql).toContain(`RAISE EXCEPTION 'connection is not eligible for replay'`);
     expect(replayResyncFixSql).toContain(`ELSE 'connected'`);
     expect(replayResyncFixSql).toContain(`last_error = NULL`);
+  });
+
+  it('adds a dedicated ROMA project-health job with explicit project scope', () => {
+    expect(romaProjectHealthSql).toContain(`'roma_project_health'`);
+    expect(romaProjectHealthSql).toContain(`RAISE EXCEPTION 'project_id required'`);
+    expect(romaProjectHealthSql).toContain(`'roma.project_health.requested'`);
+    expect(romaProjectHealthSql).toContain(`'roma.project_health.completed'`);
+    expect(romaProjectHealthSql).not.toContain(`'44444444-4444-4444-8444-444444444401'`);
+  });
+
+  it('forces claim and completion through the ROMA subject instead of owner identity', () => {
+    expect(romaProjectHealthSql).toContain(
+      `v_roma_subject constant uuid := '33333333-3333-4333-8333-333333333304'`,
+    );
+    expect(romaProjectHealthSql).toContain(`RAISE EXCEPTION 'roma subject required'`);
+    expect(romaProjectHealthSql).toContain(`'executionSubjectId', v_roma_subject`);
   });
 });
