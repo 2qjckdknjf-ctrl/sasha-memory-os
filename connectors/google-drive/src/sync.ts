@@ -1,6 +1,7 @@
 import {
   buildConnectionHealthReport,
   buildDefaultCursor,
+  classifyConnectorError,
   connectorCursorExpiredError,
   connectorRateLimitError,
   resolvePullCredentials,
@@ -290,7 +291,10 @@ function findScopeTargetForDriveFile(input: {
     };
   }
 
-  const folderCollections = new Map(
+  const folderCollections = new Map<
+    string,
+    { collectionId: string; storageMode: DriveStorageMode }
+  >(
     input.selectedRoots
       .filter((root) => root.kind === 'folder')
       .map((root) => [
@@ -656,7 +660,11 @@ async function walkSelectedDriveScope(input: {
   const knownFiles = new Map<string, DriveKnownFile>();
   const knownFolders = new Map<string, DriveKnownFolder>();
 
-  const queue = input.selectedRoots
+  const queue: Array<{
+    folderId: string;
+    collectionId: string;
+    storageMode: DriveStorageMode;
+  }> = input.selectedRoots
     .filter((root) => root.kind === 'folder')
     .map((root) => {
       const storageMode = root.storageMode === 'archived' ? 'archived' : 'reference';
@@ -868,11 +876,30 @@ async function syncGoogleDriveFiles(
 
   const previousKnownFiles = new Map(previousState.knownFiles.map((entry) => [entry.id, entry]));
   const previousKnownFolders = new Map(previousState.knownFolders.map((entry) => [entry.id, entry]));
-  const changesResult = await listDriveChangesSinceToken({
-    accessToken: creds.accessToken,
-    fetchImpl: context.fetchImpl ?? fetch,
-    startPageToken: previousState.startPageToken,
-  });
+  let changesResult: {
+    changes: NonNullable<DriveChangesResponse['changes']>;
+    newStartPageToken: string;
+  };
+  try {
+    changesResult = await listDriveChangesSinceToken({
+      accessToken: creds.accessToken,
+      fetchImpl: context.fetchImpl ?? fetch,
+      startPageToken: previousState.startPageToken,
+    });
+  } catch (error) {
+    const classified = classifyConnectorError(error);
+    if (classified.kind !== 'cursor_expired') {
+      throw error;
+    }
+    return runSelectedScopeInitialSync({
+      context,
+      accessToken: creds.accessToken,
+      pullMode: 'vault',
+      selectedRoots,
+      previousState,
+      reason: 'bounded Google Drive selected-scope resync after expired change token',
+    });
+  }
   let requiresBoundedResync = false;
   const nextKnownFiles = new Map(previousKnownFiles);
   const nextKnownFolders = new Map(previousKnownFolders);
