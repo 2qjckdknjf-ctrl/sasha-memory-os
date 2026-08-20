@@ -1,6 +1,5 @@
 import { describe, expect, it } from 'vitest';
 import {
-  connectionMetadataSchema,
   githubAppConnectionMetadata,
   githubAppInstallationId,
   githubAppReconcileRequestSchema,
@@ -82,7 +81,7 @@ describe('GitHub App connection metadata', () => {
   });
 
   it('rejects malformed GitHub App metadata instead of keeping broken state', () => {
-    const parsed = connectionMetadataSchema.parse({
+    const parsed = normalizeConnectionMetadata({
       github_app: {
         installation_id: 'not-a-number',
       },
@@ -105,6 +104,6 @@ describe('githubAppReconcileRequestSchema', () => {
         actor_subject_id: '33333333-3333-4333-8333-333333333301',
         max_deliveries: 75,
       }),
-    ).toThrow(/less than or equal to 50/i);
+    ).toThrow(/<=50/i);
   });
 });

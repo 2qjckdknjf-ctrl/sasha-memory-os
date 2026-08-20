@@ -429,7 +429,6 @@ describe('github webhook api', () => {
           'selected',
         );
         expect((state.metadataState.github_app as Record<string, unknown>).selected_repository_ids).toEqual([
-          1000,
           1001,
         ]);
         expect(

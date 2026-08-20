@@ -19,6 +19,7 @@ import {
 import {
   githubConnector,
   reconcileGitHubAppWebhookDeliveries,
+  type GitHubRepositoryRecord,
 } from '@memory-os/connector-github';
 import { gmailConnector } from '@memory-os/connector-gmail';
 import { googleCalendarConnector } from '@memory-os/connector-google-calendar';
@@ -1388,7 +1389,10 @@ async function processGitHubWebhookForConnection(input: {
       if (!collection) {
         throw new Error('repository_payload_required');
       }
-      if (!isGitHubRepositorySelectedForRoute(input)) {
+      if (
+        input.routeMode === 'app' &&
+        !isGitHubRepositorySelectedForRoute(input)
+      ) {
         return {
           connection: input.connection,
           projectId: null,
@@ -2592,7 +2596,7 @@ export function createApp(options?: {
     }
 
     try {
-      let connection = await gw.getConnection(body.actor_subject_id, connectionId);
+      let connection: ConnectionLike = await gw.getConnection(body.actor_subject_id, connectionId);
       if (connection.connectorId !== 'github') {
         return c.json({ error: 'connection_connector_mismatch' }, 400);
       }

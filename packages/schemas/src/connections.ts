@@ -149,6 +149,12 @@ export function normalizeConnectionMetadata(metadata: unknown): ConnectionMetada
   if (!parsedDefaultProjectId.success) {
     delete next.default_project_id;
   }
+  const parsedGitHubApp = githubAppConnectionMetadataSchema.safeParse(next.github_app);
+  if (parsedGitHubApp.success) {
+    next.github_app = parsedGitHubApp.data;
+  } else {
+    delete next.github_app;
+  }
   return next as ConnectionMetadata;
 }
 
