@@ -155,6 +155,9 @@ export function PrivacyPage({
         <Link to="/audit" className="button-link button-link--secondary">
           Открыть аудит
         </Link>
+        <Link to="/transferred-objects" className="button-link button-link--secondary">
+          Apple transferred objects
+        </Link>
         <Link to="/conflicts" className="button-link button-link--secondary">
           Открыть конфликты
         </Link>
@@ -181,6 +184,11 @@ export function PrivacyPage({
         </div>
         <p className="hint" id="privacy-export-hint">
           {exportHint}
+        </p>
+        <p className="hint">
+          Для Apple companion Slice 05 фактический project-scoped tombstone delete находится на
+          странице Apple transferred objects; этот экран по-прежнему отвечает за privacy requests и
+          экспорт.
         </p>
         <div className="actions">
           <button

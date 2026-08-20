@@ -7,17 +7,20 @@ public final class AppleCompanionPreviewModel: ObservableObject {
     @Published public var session: AppleCompanionAuthSession
     @Published public var permissions: AppleCompanionPermissionSnapshot
     @Published public var queue: [AppleCompanionQueueItem]
+    @Published public var transferredObjects: [AppleTransferredObject]
     @Published public var connectionStatusNote: String
 
     public init(
         session: AppleCompanionAuthSession,
         permissions: AppleCompanionPermissionSnapshot,
         queue: [AppleCompanionQueueItem],
+        transferredObjects: [AppleTransferredObject],
         connectionStatusNote: String
     ) {
         self.session = session
         self.permissions = permissions
         self.queue = queue
+        self.transferredObjects = transferredObjects
         self.connectionStatusNote = connectionStatusNote
     }
 
@@ -51,6 +54,50 @@ public final class AppleCompanionPreviewModel: ObservableObject {
             ]
         )
         let queue = AppleCompanionQueueReducer.enqueue([], payload: seed)
+        let transferredObjects = [
+            AppleTransferredObject(
+                id: "dddddddd-dddd-4ddd-8ddd-dddddddddddd",
+                workspaceID: "11111111-1111-4111-8111-111111111111",
+                projectID: "sasha-memory-os",
+                title: "Shared whiteboard",
+                status: "candidate",
+                kind: .photo,
+                source: .shareExtension,
+                sensitivity: .internalData,
+                memoryType: .idea,
+                sourceEventID: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+                deviceID: "preview-mac",
+                connectionID: "88888888-8888-4888-8888-888888888810",
+                itemID: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+                filename: "whiteboard.jpeg",
+                canonicalReference: "apple://photo/APPLE-LOCAL-1",
+                observedAt: "2026-08-19T23:15:00.000Z",
+                recordedAt: "2026-08-19T23:16:00.000Z",
+                deleteLocalAfterAck: true,
+                identifiers: AppleCompanionIdentifiers(
+                    localIdentifier: "APPLE-LOCAL-1",
+                    cloudIdentifier: "APPLE-CLOUD-1"
+                )
+            ),
+            AppleTransferredObject(
+                id: "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee",
+                workspaceID: "11111111-1111-4111-8111-111111111111",
+                projectID: "sasha-memory-os",
+                title: "PhotoKit-selected receipt",
+                status: "verified",
+                kind: .photo,
+                source: .photoLibrary,
+                sensitivity: .personal,
+                sourceEventID: "cccccccc-cccc-4ccc-8ccc-cccccccccccc",
+                deviceID: "preview-mac",
+                itemID: "ffffffff-ffff-4fff-8fff-ffffffffffff",
+                filename: "receipt.heic",
+                canonicalReference: "apple://photo/RECEIPT-LOCAL-1",
+                observedAt: "2026-08-19T23:17:00.000Z",
+                recordedAt: "2026-08-19T23:18:00.000Z",
+                identifiers: AppleCompanionIdentifiers(localIdentifier: "RECEIPT-LOCAL-1")
+            )
+        ]
         return AppleCompanionPreviewModel(
             session: AppleCompanionAuthSession(
                 status: .connected,
@@ -64,7 +111,8 @@ public final class AppleCompanionPreviewModel: ObservableObject {
                 shareExtension: .full
             ),
             queue: queue,
-            connectionStatusNote: "Slice 04 placeholder: share-contract intake, limited-library permissions, Files bookmarks, and durable queue status only."
+            transferredObjects: transferredObjects,
+            connectionStatusNote: "Slice 05 placeholder: share-contract intake, limited-library permissions, Files bookmarks, transferred-object list/delete, and durable queue status only."
         )
     }
 
@@ -117,6 +165,10 @@ public final class AppleCompanionPreviewModel: ObservableObject {
     public func acknowledgeCompleted() {
         guard let item = queue.first(where: { $0.state == .done }) else { return }
         queue = AppleCompanionQueueReducer.acknowledge(queue, itemID: item.id)
+    }
+
+    public func deleteTransferredObject(_ object: AppleTransferredObject) {
+        transferredObjects.removeAll(where: { $0.id == object.id })
     }
 }
 
@@ -196,9 +248,62 @@ public struct MemoryOSAppleCompanionRootView: View {
             }
 
             NavigationStack {
+                List(model.transferredObjects) { object in
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text(object.title)
+                            .font(.headline)
+                        Text("\(object.source.rawValue) • \(object.kind.rawValue) • \(object.status)")
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                        Text("Project: \(object.projectID)")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                        if let filename = object.filename {
+                            Text(filename)
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                        if let canonicalReference = object.canonicalReference {
+                            Text(canonicalReference)
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                        if object.deleteLocalAfterAck {
+                            Text("Delete local bytes after acknowledgment")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                    .swipeActions {
+                        Button(role: .destructive) {
+                            model.deleteTransferredObject(object)
+                        } label: {
+                            Text("Delete")
+                        }
+                    }
+                }
+                .safeAreaInset(edge: .bottom) {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Slice 05 contract stub")
+                            .font(.headline)
+                        Text("Delete calls are placeholders for POST /v1/apple/transferred-objects/:id/delete, which tombstones through the existing memory status path.")
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding()
+                    .background(.thinMaterial)
+                }
+                .navigationTitle("Objects")
+            }
+            .tabItem {
+                Label("Objects", systemImage: "externaldrive.badge.checkmark")
+            }
+
+            NavigationStack {
                 Form {
                     Section("Share item intake stub") {
-                        Text("Slice 04 keeps the Share Extension contract testable in CI. Live PhotoKit enumeration, bookmark resolution, signed appex wiring, and the runtime Share Extension target land in later slices.")
+                        Text("Slice 05 keeps the Share Extension and transferred-object contracts testable in CI. Live PhotoKit enumeration, bookmark resolution, signed appex wiring, and the runtime Share Extension target land in later slices.")
                             .font(.footnote)
                             .foregroundStyle(.secondary)
                         Button("Queue shared text contract") {

@@ -36,6 +36,7 @@ import {
 } from './projectScope';
 import { SearchPage } from './SearchPage';
 import { TasksPage } from './TasksPage';
+import { TransferredObjectsPage } from './TransferredObjectsPage';
 import {
   type AgentActor,
   ACTOR_IDS,
@@ -1779,6 +1780,21 @@ export function App() {
               backend={backend}
               backendResolved={backendResolved}
               subjectId={subjectId}
+            />
+          }
+        />
+        <Route
+          path="/transferred-objects"
+          element={
+            <TransferredObjectsPage
+              actor={actor}
+              backend={backend}
+              backendResolved={backendResolved}
+              subjectId={subjectId}
+              projectId={readProjectId}
+              projectName={scopedProject?.name ?? null}
+              scopeLabel={scopeLabel}
+              scopePanel={globalScopePanel}
             />
           }
         />

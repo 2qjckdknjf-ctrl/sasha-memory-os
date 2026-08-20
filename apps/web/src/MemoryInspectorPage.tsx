@@ -179,6 +179,10 @@ export function MemoryInspectorPage({
     () => (memory ? extractSupplementaryField(memory, 'evidence') : undefined),
     [memory],
   );
+  const isAppleTransferred = useMemo(
+    () => isRecord(sourceValue) && sourceValue.provider === 'apple',
+    [sourceValue],
+  );
   const provenanceValue = useMemo(
     () => (memory ? extractSupplementaryField(memory, 'provenance') : undefined),
     [memory],
@@ -324,6 +328,11 @@ export function MemoryInspectorPage({
           <Link to="/" className="button-link button-link--secondary">
             На главную
           </Link>
+          {isAppleTransferred ? (
+            <Link to="/transferred-objects" className="button-link button-link--secondary">
+              К Apple objects
+            </Link>
+          ) : null}
           {projectLink ? (
             <Link to={`/projects/${projectLink}`} className="button-link button-link--secondary">
               К проекту

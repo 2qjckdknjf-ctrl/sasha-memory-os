@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { sensitivitySchema, storageModeSchema } from './ingestion.js';
-import { memoryTypeSchema } from './memory.js';
+import { memoryStatusSchema, memoryTypeSchema } from './memory.js';
 
 export const applePermissionStateSchema = z.enum([
   'not_determined',
@@ -104,6 +104,71 @@ export const appleCompanionFileBookmarkResolutionSchema = z.discriminatedUnion('
 ]);
 
 export const appleCompanionProjectRefSchema = z.string().min(1);
+
+export const appleCompanionTransferredObjectSourceSchema = z.enum([
+  'companion_app',
+  'share_extension',
+  'document_picker',
+  'photo_library',
+]);
+
+export const appleCompanionTransferredObjectsListQuerySchema = z
+  .object({
+    workspace_id: z.string().uuid(),
+    project_id: appleCompanionProjectRefSchema,
+    limit: z.coerce.number().int().positive().max(200).default(50),
+  })
+  .superRefine((value, ctx) => {
+    if (!value.project_id.trim()) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['project_id'],
+        message: 'project_id is required for this read',
+      });
+    }
+  });
+
+export const appleCompanionTransferredObjectSchema = z.object({
+  id: z.string().uuid(),
+  workspace_id: z.string().uuid(),
+  project_id: z.string().uuid(),
+  title: z.string().min(1),
+  status: memoryStatusSchema,
+  kind: appleCompanionItemKindSchema,
+  source: appleCompanionTransferredObjectSourceSchema,
+  sensitivity: sensitivitySchema,
+  memory_type: memoryTypeSchema.nullable().default(null),
+  source_event_id: z.string().uuid().nullable().default(null),
+  device_id: z.string().min(1).nullable().default(null),
+  connection_id: z.string().min(1).nullable().default(null),
+  item_id: z.string().min(1).nullable().default(null),
+  filename: z.string().min(1).nullable().default(null),
+  canonical_reference: z.string().min(1).nullable().default(null),
+  observed_at: z.string().datetime().nullable().default(null),
+  recorded_at: z.string().datetime(),
+  delete_local_after_ack: z.boolean().default(false),
+  identifiers: appleCompanionIdentifierSchema.default({}),
+});
+
+export const appleCompanionTransferredObjectsListResponseSchema = z.object({
+  objects: z.array(appleCompanionTransferredObjectSchema).default([]),
+});
+
+export const appleCompanionTransferredObjectDeleteRequestSchema = z
+  .object({
+    project_id: appleCompanionProjectRefSchema,
+    actor_subject_id: z.string().uuid(),
+    reason: z.string().min(1).max(2000),
+  })
+  .superRefine((value, ctx) => {
+    if (!value.project_id.trim()) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['project_id'],
+        message: 'project_id is required for this write',
+      });
+    }
+  });
 
 export const appleCompanionSharePayloadSchema = z
   .discriminatedUnion('kind', [
@@ -379,6 +444,21 @@ export type AppleCompanionFileBookmarkResolution = z.infer<
 >;
 export type AppleCompanionSharePayload = z.infer<typeof appleCompanionSharePayloadSchema>;
 export type AppleCompanionIngestRequest = z.infer<typeof appleCompanionIngestRequestSchema>;
+export type AppleCompanionTransferredObjectSource = z.infer<
+  typeof appleCompanionTransferredObjectSourceSchema
+>;
+export type AppleCompanionTransferredObjectsListQuery = z.infer<
+  typeof appleCompanionTransferredObjectsListQuerySchema
+>;
+export type AppleCompanionTransferredObject = z.infer<
+  typeof appleCompanionTransferredObjectSchema
+>;
+export type AppleCompanionTransferredObjectsListResponse = z.infer<
+  typeof appleCompanionTransferredObjectsListResponseSchema
+>;
+export type AppleCompanionTransferredObjectDeleteRequest = z.infer<
+  typeof appleCompanionTransferredObjectDeleteRequestSchema
+>;
 export type AppleCompanionQueueState = z.infer<typeof appleCompanionQueueStateSchema>;
 export type AppleCompanionVisibleQueueState = z.infer<
   typeof appleCompanionVisibleQueueStateSchema

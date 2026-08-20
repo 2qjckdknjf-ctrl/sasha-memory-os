@@ -3,6 +3,7 @@ import {
   buildHandoffsPath,
   buildMemoriesPath,
   buildSearchRequest,
+  buildTransferredObjectsPath,
   requireExplicitProjectId,
   resolveWriteProjectId,
   shouldLoadProjectScopedContext,
@@ -54,6 +55,18 @@ describe('project scope helpers', () => {
     });
 
     expect(body).not.toHaveProperty('project_id');
+  });
+
+  it('builds explicit project-scoped transferred-object paths without a workspace fallback project', () => {
+    const path = buildTransferredObjectsPath({
+      workspaceId,
+      projectId: otherProjectId,
+      limit: 25,
+    });
+
+    expect(path).toContain(`workspace_id=${workspaceId}`);
+    expect(path).toContain(`project_id=${otherProjectId}`);
+    expect(path).not.toContain(seedProjectId);
   });
 
   it('rejects writes without an explicit project instead of falling back to AISTROYKA', () => {

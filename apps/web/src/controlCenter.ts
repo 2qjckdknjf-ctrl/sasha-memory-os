@@ -102,6 +102,32 @@ export type MemoryDetail = {
   embeddingDims?: number | null;
 };
 
+export type TransferredObjectRecord = {
+  id: string;
+  workspace_id: string;
+  project_id: string;
+  title: string;
+  status: string;
+  kind: 'text' | 'file' | 'photo' | 'video' | 'url';
+  source: 'companion_app' | 'share_extension' | 'document_picker' | 'photo_library';
+  sensitivity: string;
+  memory_type?: string | null;
+  source_event_id?: string | null;
+  device_id?: string | null;
+  connection_id?: string | null;
+  item_id?: string | null;
+  filename?: string | null;
+  canonical_reference?: string | null;
+  observed_at?: string | null;
+  recorded_at: string;
+  delete_local_after_ack: boolean;
+  identifiers: {
+    local_identifier?: string;
+    cloud_identifier?: string;
+    provider_item_identifier?: string;
+  };
+};
+
 export type ConnectionRecord = {
   id?: string;
   connectorId?: string;

@@ -1,6 +1,6 @@
 import Foundation
 
-// Mirrors packages/schemas/src/appleCompanion.ts for Slice 04.
+// Mirrors packages/schemas/src/appleCompanion.ts for Slice 05.
 public enum ApplePermissionState: String, Codable, CaseIterable, Sendable {
     case notDetermined = "not_determined"
     case limited
@@ -546,6 +546,151 @@ public struct AppleCompanionIngestRequest: Codable, Hashable, Identifiable, Send
         case source
         case identifiers
         case metadata
+    }
+}
+
+public enum AppleTransferredObjectSource: String, Codable, CaseIterable, Sendable {
+    case companionApp = "companion_app"
+    case shareExtension = "share_extension"
+    case documentPicker = "document_picker"
+    case photoLibrary = "photo_library"
+}
+
+public struct AppleTransferredObjectsListRequest: Codable, Hashable, Sendable {
+    public var workspaceID: String
+    public var projectID: String
+    public var limit: Int
+
+    public init(
+        workspaceID: String,
+        projectID: String,
+        limit: Int = 50
+    ) {
+        self.workspaceID = workspaceID
+        self.projectID = projectID
+        self.limit = limit
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case workspaceID = "workspace_id"
+        case projectID = "project_id"
+        case limit
+    }
+}
+
+public struct AppleTransferredObject: Codable, Hashable, Identifiable, Sendable {
+    public var id: String
+    public var workspaceID: String
+    public var projectID: String
+    public var title: String
+    public var status: String
+    public var kind: AppleCompanionItemKind
+    public var source: AppleTransferredObjectSource
+    public var sensitivity: AppleSensitivity
+    public var memoryType: AppleMemoryType?
+    public var sourceEventID: String?
+    public var deviceID: String?
+    public var connectionID: String?
+    public var itemID: String?
+    public var filename: String?
+    public var canonicalReference: String?
+    public var observedAt: String?
+    public var recordedAt: String
+    public var deleteLocalAfterAck: Bool
+    public var identifiers: AppleCompanionIdentifiers
+
+    public init(
+        id: String,
+        workspaceID: String,
+        projectID: String,
+        title: String,
+        status: String,
+        kind: AppleCompanionItemKind,
+        source: AppleTransferredObjectSource,
+        sensitivity: AppleSensitivity,
+        memoryType: AppleMemoryType? = nil,
+        sourceEventID: String? = nil,
+        deviceID: String? = nil,
+        connectionID: String? = nil,
+        itemID: String? = nil,
+        filename: String? = nil,
+        canonicalReference: String? = nil,
+        observedAt: String? = nil,
+        recordedAt: String,
+        deleteLocalAfterAck: Bool = false,
+        identifiers: AppleCompanionIdentifiers = .init()
+    ) {
+        self.id = id
+        self.workspaceID = workspaceID
+        self.projectID = projectID
+        self.title = title
+        self.status = status
+        self.kind = kind
+        self.source = source
+        self.sensitivity = sensitivity
+        self.memoryType = memoryType
+        self.sourceEventID = sourceEventID
+        self.deviceID = deviceID
+        self.connectionID = connectionID
+        self.itemID = itemID
+        self.filename = filename
+        self.canonicalReference = canonicalReference
+        self.observedAt = observedAt
+        self.recordedAt = recordedAt
+        self.deleteLocalAfterAck = deleteLocalAfterAck
+        self.identifiers = identifiers
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case id
+        case workspaceID = "workspace_id"
+        case projectID = "project_id"
+        case title
+        case status
+        case kind
+        case source
+        case sensitivity
+        case memoryType = "memory_type"
+        case sourceEventID = "source_event_id"
+        case deviceID = "device_id"
+        case connectionID = "connection_id"
+        case itemID = "item_id"
+        case filename
+        case canonicalReference = "canonical_reference"
+        case observedAt = "observed_at"
+        case recordedAt = "recorded_at"
+        case deleteLocalAfterAck = "delete_local_after_ack"
+        case identifiers
+    }
+}
+
+public struct AppleTransferredObjectsListResponse: Codable, Hashable, Sendable {
+    public var objects: [AppleTransferredObject]
+
+    public init(objects: [AppleTransferredObject] = []) {
+        self.objects = objects
+    }
+}
+
+public struct AppleTransferredObjectDeleteRequest: Codable, Hashable, Sendable {
+    public var projectID: String
+    public var actorSubjectID: String
+    public var reason: String
+
+    public init(
+        projectID: String,
+        actorSubjectID: String,
+        reason: String
+    ) {
+        self.projectID = projectID
+        self.actorSubjectID = actorSubjectID
+        self.reason = reason
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case projectID = "project_id"
+        case actorSubjectID = "actor_subject_id"
+        case reason
     }
 }
 

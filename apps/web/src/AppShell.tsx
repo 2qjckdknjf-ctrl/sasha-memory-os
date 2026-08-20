@@ -31,6 +31,7 @@ const primaryLinks: PrimaryLink[] = [
 
 const secondaryLinks: PrimaryLink[] = [
   { to: '/audit', label: 'Аудит' },
+  { to: '/transferred-objects', label: 'Apple objects' },
   { to: '/privacy', label: 'Приватность' },
 ];
 
