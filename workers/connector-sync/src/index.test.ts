@@ -19,12 +19,28 @@ function buildFixtureRecord(
   connectionId: string,
   workspaceId: string,
   rawObject: { externalId: string; title: string; observedAt: string },
+  options?: {
+    collectionId?: string;
+    projectId?: string | null;
+  },
 ) {
+  const collectionId = options?.collectionId ?? 'fixture';
+  const scope =
+    options?.projectId === null
+      ? {
+          sensitivity: 'internal' as const,
+          storage_mode: 'reference' as const,
+        }
+      : {
+          project_id: options?.projectId ?? fixtureProjectId,
+          sensitivity: 'internal' as const,
+          storage_mode: 'reference' as const,
+        };
   return {
     externalObject: {
       provider: 'fixture',
       accountId: connectionId,
-      collectionId: 'fixture',
+      collectionId,
       externalId: rawObject.externalId,
       objectType: 'fixture',
       title: rawObject.title,
@@ -50,11 +66,7 @@ function buildFixtureRecord(
         mime_type: 'text/plain',
         text: rawObject.title,
       },
-      scope: {
-        project_id: fixtureProjectId,
-        sensitivity: 'internal' as const,
-        storage_mode: 'reference' as const,
-      },
+      scope,
       provenance: {
         sourceMode: 'stub',
       },
@@ -225,6 +237,139 @@ describe('planConnectorSync', () => {
     expect(initialSyncCalled).toBe(true);
     expect(normalizeCalled).toBe(true);
     expect(plan.count).toBe(1);
+  });
+
+  it('skips connector capture when no collection project binding is present', async () => {
+    const connectorRegistry = createConnectorRegistry([
+      {
+        manifest: {
+          id: 'projectless-fixture',
+          version: '1.0.0',
+          sdk_version: '^1.0',
+          auth: 'oauth2',
+          supports: {
+            discover: false,
+            validate_scope: false,
+            initial_sync: true,
+            incremental_sync: false,
+            live_fetch: false,
+            webhooks: false,
+            write: false,
+          },
+          capabilities: ['fixture.read'],
+          storage_modes: ['reference'],
+          data_classes: ['personal'],
+        },
+        lifecycle: {
+          async initialSync() {
+            return {
+              stream: 'projectless:stream',
+              mode: 'initial' as const,
+              pullMode: 'stub',
+              note: 'projectless fixture connector sync',
+              rawObjects: [
+                {
+                  externalId: 'fixture/no-project',
+                  title: 'Unbound fixture item',
+                  observedAt: '2026-08-11T10:00:00.000Z',
+                },
+              ],
+            };
+          },
+          async normalize(context) {
+            return buildFixtureRecord(
+              context.account.connectionId,
+              context.workspaceId,
+              context.rawObject,
+              {
+                collectionId: 'fixture-unbound',
+                projectId: null,
+              },
+            );
+          },
+        },
+      },
+    ]);
+
+    const captureConnectorRecord = vi.fn(async () => ({ process: null }));
+    const gateway = {
+      deadLetterStaleJobs: vi.fn(async () => ({ deadLettered: 0 })),
+      listOutboxPending: vi.fn(async () => ({ count: 0 })),
+      enqueueConnectorSync: vi.fn(async () => ({
+        count: 1,
+        enqueued: [
+          {
+            connectionId: registryConnectionId,
+            connectorId: 'projectless-fixture',
+            displayName: 'Projectless fixture connector',
+            jobId: 'job-projectless',
+          },
+        ],
+      })),
+      claimConnectorSyncJobs: vi.fn(async () => ({
+        count: 1,
+        jobs: [
+          {
+            jobId: 'job-projectless',
+            workspaceId,
+            status: 'running',
+            attempt: 0,
+            error: null,
+            idempotencyKey: `connector-sync/${registryConnectionId}/job-projectless`,
+            connectionId: registryConnectionId,
+            connectorId: 'projectless-fixture',
+            displayName: 'Projectless fixture connector',
+            vaultRef: null,
+          },
+        ],
+      })),
+      getConnection: vi.fn(async () => ({
+        id: registryConnectionId,
+        workspaceId,
+        connectorId: 'projectless-fixture',
+        displayName: 'Projectless fixture connector',
+        status: 'connected',
+        scopes: [],
+        lastSyncAt: null,
+        lastError: null,
+        metadata: {},
+      })),
+      getConnectorCursor: vi.fn(async () => null),
+      refreshConnectionCollections: vi.fn(async () => ({ metadata: {} })),
+      mergeConnectionProjectBindings: vi.fn(async () => ({ metadata: {} })),
+      upsertProjectFromConnector: vi.fn(async () => ({
+        projectId: fixtureProjectId,
+        slug: 'fixture',
+        name: 'Fixture',
+        memoryId: '66666666-6666-4666-8666-666666666601',
+        collectionId: 'fixture',
+      })),
+      captureConnectorRecord,
+      tombstoneConnectorObject: vi.fn(async () => ({ affectedCount: 0 })),
+      upsertConnectorCursor: vi.fn(async () => null),
+      completeConnectorSync: vi.fn(async ({ jobId, status }: { jobId: string; status: string }) => ({
+        jobId,
+        status,
+        connectionId: registryConnectionId,
+      })),
+      retryConnectorSync: vi.fn(),
+    };
+
+    const plan = await planConnectorSync({
+      gateway: gateway as any,
+      subjectId: owner,
+      workspaceId,
+      connectorRegistry,
+    });
+
+    expect(plan.count).toBe(1);
+    expect(captureConnectorRecord).not.toHaveBeenCalled();
+    expect(gateway.completeConnectorSync).toHaveBeenCalledWith(
+      expect.objectContaining({
+        jobId: 'job-projectless',
+        status: 'succeeded',
+      }),
+    );
   });
 
   it('discovers a new repository on a later tick', async () => {
