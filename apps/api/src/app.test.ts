@@ -2115,6 +2115,52 @@ describe('memory api demo slice', () => {
     expect(body.backend).toBe('supabase');
   });
 
+  it('preserves omitted enabled and reason fields on a partial ROMA schedule update', async () => {
+    const gateway = {
+      upsertRomaProjectHealthSchedule: vi.fn(async () => ({
+        scheduleId: 'schedule-1',
+        workspaceId,
+        projectId,
+        cadenceMinutes: 1440,
+        nextRunAt: '2026-08-20T12:00:00.000Z',
+        lastEnqueuedAt: null,
+        lastPeriodStart: null,
+        lastJobId: null,
+        lastError: null,
+        enabled: false,
+        disabledAt: '2026-08-20T02:10:00.000Z',
+        disabledReason: 'disabled by operator',
+        reason: 'Keep the stored reason.',
+      })),
+    };
+    const app = createApp({ gateway: gateway as any });
+    const res = await app.request('/v1/roma/project-health/schedules', {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'x-subject-id': cursor,
+        'x-actor-key': 'cursor',
+      },
+      body: JSON.stringify({
+        workspace_id: workspaceId,
+        project_id: projectId,
+        actor_subject_id: cursor,
+        cadence_minutes: 1440,
+      }),
+    });
+
+    expect(res.status).toBe(200);
+    expect(gateway.upsertRomaProjectHealthSchedule).toHaveBeenCalledWith({
+      subjectId: cursor,
+      workspaceId,
+      projectId,
+      cadenceMinutes: 1440,
+      enabled: undefined,
+      nextRunAt: undefined,
+      reason: undefined,
+    });
+  });
+
   it('serves health with embed/vault modes', async () => {
     const app = createApp({});
     const mcpHealth = await app.request('/mcp/health');

@@ -112,7 +112,7 @@ CREATE OR REPLACE FUNCTION app.api_upsert_roma_project_health_schedule(
   p_workspace_id uuid,
   p_project_id uuid,
   p_cadence_minutes integer,
-  p_enabled boolean DEFAULT true,
+  p_enabled boolean DEFAULT NULL,
   p_next_run_at timestamptz DEFAULT NULL,
   p_reason text DEFAULT NULL
 )
@@ -126,12 +126,8 @@ DECLARE
   v_existing roma_project_health_schedules%ROWTYPE;
   v_row roma_project_health_schedules%ROWTYPE;
   v_now timestamptz := now();
-  v_enabled boolean := coalesce(p_enabled, true);
   v_cadence integer := coalesce(p_cadence_minutes, 0);
-  v_reason text := coalesce(
-    nullif(btrim(p_reason), ''),
-    'Scheduled ROMA project-health summary for one explicit project.'
-  );
+  v_reason text := nullif(btrim(p_reason), '');
   v_before jsonb;
 BEGIN
   PERFORM app.assert_api_secret(p_secret);
@@ -166,7 +162,7 @@ BEGIN
     SET
       cadence_minutes = v_cadence,
       next_run_at = CASE
-        WHEN v_enabled THEN coalesce(
+        WHEN p_enabled IS TRUE THEN coalesce(
           p_next_run_at,
           CASE
             WHEN v_existing.disabled_at IS NULL THEN v_existing.next_run_at
@@ -175,11 +171,16 @@ BEGIN
         )
         ELSE coalesce(p_next_run_at, v_existing.next_run_at)
       END,
-      reason = v_reason,
-      disabled_at = CASE WHEN v_enabled THEN NULL ELSE coalesce(v_existing.disabled_at, v_now) END,
+      reason = coalesce(v_reason, v_existing.reason),
+      disabled_at = CASE
+        WHEN p_enabled IS TRUE THEN NULL
+        WHEN p_enabled IS FALSE THEN coalesce(v_existing.disabled_at, v_now)
+        ELSE v_existing.disabled_at
+      END,
       disabled_reason = CASE
-        WHEN v_enabled THEN NULL
-        ELSE 'disabled by operator'
+        WHEN p_enabled IS TRUE THEN NULL
+        WHEN p_enabled IS FALSE THEN 'disabled by operator'
+        ELSE v_existing.disabled_reason
       END,
       updated_at = v_now,
       updated_by_subject = p_subject_id
@@ -202,9 +203,9 @@ BEGIN
       p_project_id,
       v_cadence,
       coalesce(p_next_run_at, v_now),
-      v_reason,
-      CASE WHEN v_enabled THEN NULL ELSE v_now END,
-      CASE WHEN v_enabled THEN NULL ELSE 'disabled by operator' END,
+      coalesce(v_reason, 'Scheduled ROMA project-health summary for one explicit project.'),
+      CASE WHEN coalesce(p_enabled, true) THEN NULL ELSE v_now END,
+      CASE WHEN coalesce(p_enabled, true) THEN NULL ELSE 'disabled by operator' END,
       p_subject_id,
       p_subject_id
     )
@@ -218,7 +219,7 @@ BEGIN
     'roma.project_health.schedule.upserted',
     'roma_project_health_schedule',
     v_row.id,
-    v_reason,
+    v_row.reason,
     v_before,
     jsonb_build_object(
       'scheduleId', v_row.id,
@@ -256,7 +257,7 @@ CREATE OR REPLACE FUNCTION public.api_upsert_roma_project_health_schedule(
   p_workspace_id uuid,
   p_project_id uuid,
   p_cadence_minutes integer,
-  p_enabled boolean DEFAULT true,
+  p_enabled boolean DEFAULT NULL,
   p_next_run_at timestamptz DEFAULT NULL,
   p_reason text DEFAULT NULL
 )

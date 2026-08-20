@@ -514,18 +514,25 @@ export class SupabaseMemoryGateway {
     nextRunAt?: string | null;
     reason?: string | null;
   }) {
+    const args: Record<string, unknown> = {
+      p_secret: this.apiSecret,
+      p_subject_id: input.subjectId,
+      p_workspace_id: input.workspaceId,
+      p_project_id: input.projectId,
+      p_cadence_minutes: input.cadenceMinutes,
+    };
+    if (input.enabled !== undefined) {
+      args.p_enabled = input.enabled;
+    }
+    if (input.nextRunAt !== undefined) {
+      args.p_next_run_at = input.nextRunAt;
+    }
+    if (input.reason !== undefined) {
+      args.p_reason = input.reason;
+    }
     const { data, error } = await this.client.rpc(
       'api_upsert_roma_project_health_schedule',
-      {
-        p_secret: this.apiSecret,
-        p_subject_id: input.subjectId,
-        p_workspace_id: input.workspaceId,
-        p_project_id: input.projectId,
-        p_cadence_minutes: input.cadenceMinutes,
-        p_enabled: input.enabled ?? true,
-        p_next_run_at: input.nextRunAt ?? null,
-        p_reason: input.reason ?? null,
-      },
+      args,
     );
     if (error) throw error;
     return data as {

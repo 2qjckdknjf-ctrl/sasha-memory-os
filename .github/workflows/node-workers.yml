@@ -40,6 +40,7 @@ jobs:
         run: pnpm --filter @memory-os/worker-consolidation consolidate:once
 
       - name: ROMA scheduled project health once
+        continue-on-error: true
         env:
           MEMORY_OS_SUPABASE_URL: ${{ secrets.MEMORY_OS_SUPABASE_URL }}
           MEMORY_OS_SUPABASE_ANON_KEY: ${{ secrets.MEMORY_OS_SUPABASE_ANON_KEY }}

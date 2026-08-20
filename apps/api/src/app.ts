@@ -3969,8 +3969,8 @@ export function createApp(options?: {
         projectId: body.project_id,
         cadenceMinutes: body.cadence_minutes,
         enabled: body.enabled,
-        nextRunAt: body.next_run_at ?? null,
-        reason: body.reason ?? null,
+        nextRunAt: body.next_run_at,
+        reason: body.reason,
       });
       return c.json({ ...result, backend: 'supabase' });
     } catch (err) {

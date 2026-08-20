@@ -213,6 +213,33 @@ describeRemote('remote Supabase RPCs (vault / embed / consolidation)', () => {
   );
 
   it(
+    'keeps a disabled schedule disabled when enabled and reason are omitted',
+    async () => {
+      const reason = `rpc-disabled-${Date.now()}`;
+      const disabled = await gateway().upsertRomaProjectHealthSchedule({
+        subjectId: owner,
+        workspaceId,
+        projectId,
+        cadenceMinutes: 720,
+        enabled: false,
+        reason,
+      });
+      expect(disabled.enabled).toBe(false);
+      expect(disabled.reason).toBe(reason);
+
+      const updated = await gateway().upsertRomaProjectHealthSchedule({
+        subjectId: owner,
+        workspaceId,
+        projectId,
+        cadenceMinutes: 1440,
+      });
+      expect(updated.enabled).toBe(false);
+      expect(updated.reason).toBe(reason);
+    },
+    20_000,
+  );
+
+  it(
     'persists 32-dim embedding and hybrid-searches',
     async () => {
       const key = `remote-test/embed-${Date.now()}`;
