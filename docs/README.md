@@ -26,6 +26,7 @@
 | [engineering/M14_DOC_CATALOG.md](engineering/M14_DOC_CATALOG.md) | Versioned GA doc catalog for current official surfaces |
 | [engineering/ONBOARDING.md](engineering/ONBOARDING.md) | First-hour onboarding guide on current MCP + Control Center surfaces |
 | [engineering/M14_SLICE_05.md](engineering/M14_SLICE_05.md) | M14 Slice 05: incident runbook pack |
+| [engineering/M14_SLICE_10.md](engineering/M14_SLICE_10.md) | M14 Slice 10: bounded support / ops surface pack |
 | [engineering/runbooks/](engineering/runbooks/) | Checked-in incident runbooks for alert ownership, revoke, and rotation |
 | [engineering/DEMO_SLICE.md](engineering/DEMO_SLICE.md) | decision → state → MCP → handoff |
 | [engineering/SUPABASE.md](engineering/SUPABASE.md) | Live project ref, region, migrations |

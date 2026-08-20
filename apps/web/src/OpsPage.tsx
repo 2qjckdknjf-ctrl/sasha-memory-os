@@ -1,5 +1,42 @@
 import type { ReactNode } from 'react';
+import { Link } from 'react-router-dom';
+import { OFFICIAL_M14_SUPPORT_OPS_PACK } from '@memory-os/observability';
 import { ACTOR_LABELS, type Actor, type BackendMode, type ConnectionRecord, type ExtractionCandidate, type OutboxPendingItem, type ReviewQueueItem, type SearchContext, type SearchHit } from './controlCenter';
+
+const SUPPORT_OPS_REPOSITORY_BLOB_BASE =
+  'https://github.com/2qjckdknjf-ctrl/sasha-memory-os/blob/main/';
+const OPS_REDACTION_MESSAGE =
+  'Redacted on /ops — use scoped pages, privacy, or runbooks instead of raw payloads.';
+const SAFE_METADATA_STRING_KEYS = new Set([
+  'action',
+  'connectorId',
+  'engine',
+  'eventId',
+  'id',
+  'jobId',
+  'kind',
+  'label',
+  'level',
+  'memoryId',
+  'mode',
+  'name',
+  'objectId',
+  'objectType',
+  'outcome',
+  'ownerRole',
+  'path',
+  'projectId',
+  'reason',
+  'requestId',
+  'route',
+  'service',
+  'status',
+  'title',
+  'toolName',
+  'workspaceId',
+]);
+const OPS_SENSITIVE_FIELD_NAME_PATTERN =
+  /(?:^|[_-])(token|secret|password|authorization|cookie|content|text|body|payload|query|prompt|context|memory|personal|email|subject|message|reason|correction|vault)(?:[_-]|$)/i;
 
 type Props = {
   actor: Actor;
@@ -76,6 +113,52 @@ type Props = {
 
 const actorOptions: Actor[] = ['owner', 'chatgpt', 'cursor', 'roma'];
 
+function toSupportDocHref(path: string): string {
+  return `${SUPPORT_OPS_REPOSITORY_BLOB_BASE}${path}`;
+}
+
+function sanitizeOpsString(key: string, value: string): string {
+  if (SAFE_METADATA_STRING_KEYS.has(key)) {
+    return value;
+  }
+  return OPS_REDACTION_MESSAGE;
+}
+
+function sanitizeOpsValue(key: string, value: unknown): unknown {
+  if (value === null || value === undefined) return value;
+  if (typeof value === 'string') {
+    return sanitizeOpsString(key, value);
+  }
+  if (typeof value === 'number' || typeof value === 'boolean') {
+    return value;
+  }
+  if (Array.isArray(value)) {
+    return value.map((item) => sanitizeOpsValue(key, item));
+  }
+  if (typeof value === 'object') {
+    const sanitized: Record<string, unknown> = {};
+    for (const [childKey, childValue] of Object.entries(value)) {
+      sanitized[childKey] = OPS_SENSITIVE_FIELD_NAME_PATTERN.test(childKey)
+        ? OPS_REDACTION_MESSAGE
+        : sanitizeOpsValue(childKey, childValue);
+    }
+    return sanitized;
+  }
+  return String(value);
+}
+
+function sanitizeOpsLookup(value: Record<string, unknown> | null): string | null {
+  if (!value) return null;
+  return JSON.stringify(sanitizeOpsValue('jobLookup', value), null, 2);
+}
+
+function describeConnectionNote(connection: ConnectionRecord): string {
+  if (connection.lastError) {
+    return 'Sync issue present — inspect the linked runbooks or audit trail, not raw connector payloads.';
+  }
+  return 'No sync errors reported.';
+}
+
 export function OpsPage({
   actor,
   backend,
@@ -136,6 +219,8 @@ export function OpsPage({
   onAckOutbox,
   onUpdateConnectionStatus,
 }: Props) {
+  const sanitizedJobLookup = sanitizeOpsLookup(jobLookup);
+
   return (
     <section className="page">
       <header className="page-header">
@@ -150,7 +235,98 @@ export function OpsPage({
       {scopePanel}
 
       <section className="panel">
-        <h2>Сеанс разработчика</h2>
+        <div className="meta">
+          <span className="badge state">{OFFICIAL_M14_SUPPORT_OPS_PACK.version}</span>
+          <span>{OFFICIAL_M14_SUPPORT_OPS_PACK.roadmapSections.join(' · ')}</span>
+        </div>
+        <h2>Official support / ops surface</h2>
+        <p className="hint">
+          This bounded pack makes <code>/ops</code> the official metadata-only support surface on
+          the current Control Center. It reuses existing routes and checked-in docs instead of
+          inventing a pager product or a parallel operations app.
+        </p>
+        <p className="hint">
+          Actor switching below stays demo-only. It does not bypass owner tokens, ACL, or explicit{' '}
+          <code>project_id</code> requirements.
+        </p>
+
+        <div className="stat-grid">
+          <article className="stat-card">
+            <span className="stat-card__label">SLO pack</span>
+            <strong>{OFFICIAL_M14_SUPPORT_OPS_PACK.summary.sloTargetCount} targets</strong>
+          </article>
+          <article className="stat-card">
+            <span className="stat-card__label">Runbooks</span>
+            <strong>{OFFICIAL_M14_SUPPORT_OPS_PACK.summary.incidentRunbookCount} official docs</strong>
+          </article>
+          <article className="stat-card">
+            <span className="stat-card__label">ChatGPT Mode A</span>
+            <strong>{OFFICIAL_M14_SUPPORT_OPS_PACK.summary.modeAToolCount} tools</strong>
+          </article>
+        </div>
+
+        <div className="grid surface-grid">
+          <section className="panel">
+            <h3>Ownership</h3>
+            <ul className="surface-selector" aria-label="Support ownership">
+              {OFFICIAL_M14_SUPPORT_OPS_PACK.ownership.map((area) => {
+                const primaryLink = OFFICIAL_M14_SUPPORT_OPS_PACK.supportLinks.find(
+                  (item) => item.id === area.primaryLinkId,
+                );
+                return (
+                  <li key={area.id}>
+                    <article className="surface-selector__button">
+                      <span className="meta">
+                        <span className="badge state">{area.ownerRole}</span>
+                        <span>{primaryLink?.label ?? area.primaryLinkId}</span>
+                      </span>
+                      <strong>{area.id}</strong>
+                      <p>{area.description}</p>
+                    </article>
+                  </li>
+                );
+              })}
+            </ul>
+          </section>
+
+          <section className="panel">
+            <h3>Official links</h3>
+            <ul className="surface-selector" aria-label="Official support links">
+              {OFFICIAL_M14_SUPPORT_OPS_PACK.supportLinks.map((item) => (
+                <li key={item.id}>
+                  <article className="surface-selector__button">
+                    <span className="meta">
+                      <span className="badge state">{item.ownerRole}</span>
+                      <span>{item.kind === 'route' ? item.target : item.target}</span>
+                    </span>
+                    <strong>{item.label}</strong>
+                    <p>{item.description}</p>
+                    <div className="actions">
+                      {item.kind === 'route' ? (
+                        <Link to={item.target} className="button-link button-link--secondary">
+                          Open {item.target}
+                        </Link>
+                      ) : (
+                        <a
+                          href={toSupportDocHref(item.target)}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="button-link button-link--secondary"
+                        >
+                          Open doc
+                        </a>
+                      )}
+                    </div>
+                  </article>
+                </li>
+              ))}
+            </ul>
+          </section>
+        </div>
+      </section>
+
+      <section className="panel">
+        <h2>Demo-only developer session</h2>
         <div className="toolbar" role="group" aria-label="Actor">
           {actorOptions.map((key) => (
             <button
@@ -176,6 +352,10 @@ export function OpsPage({
           </button>
         </div>
         <p className="hint">Текущий backend: {backend}</p>
+        <p className="hint">
+          Demo-only actor switching lives here for validation and screenshots. It must never become
+          an owner-token bypass.
+        </p>
         {!writeProjectName ? (
           <p className="hint">
             Записывающие actions отключены, пока не выбран проект в фильтре выше.
@@ -260,7 +440,7 @@ export function OpsPage({
                       ) : null}
                     </div>
                     <h3>{candidate.title}</h3>
-                    <p>{candidate.content.slice(0, 240)}</p>
+                    <p className="hint">{OPS_REDACTION_MESSAGE}</p>
                   </li>
                 ))}
               </ul>
@@ -360,9 +540,7 @@ export function OpsPage({
                 Process job now
               </button>
             </div>
-            {jobLookup ? (
-              <pre className="preformatted">{JSON.stringify(jobLookup, null, 2)}</pre>
-            ) : null}
+            {sanitizedJobLookup ? <pre className="preformatted">{sanitizedJobLookup}</pre> : null}
           </form>
         </section>
 
@@ -398,7 +576,7 @@ export function OpsPage({
                     {searchContext.truncated ? ' · truncated' : ''}
                   </span>
                 </div>
-                <pre className="preformatted">{searchContext.text}</pre>
+                <p className="hint">{OPS_REDACTION_MESSAGE}</p>
               </div>
             ) : null}
           </form>
@@ -414,7 +592,7 @@ export function OpsPage({
                   ) : null}
                 </div>
                 <h3>{hit.memory?.title ?? 'hit'}</h3>
-                <p>{hit.memory?.content ?? ''}</p>
+                <p className="hint">{OPS_REDACTION_MESSAGE}</p>
                 {hit.memory?.id ? (
                   <div className="actions">
                     <button
@@ -520,7 +698,7 @@ export function OpsPage({
                   <span className="badge state">{item.status}</span>
                 </div>
                 <h3>{item.title}</h3>
-                <p>{item.content}</p>
+                <p className="hint">{OPS_REDACTION_MESSAGE}</p>
               </li>
             ))}
           </ul>
@@ -620,8 +798,7 @@ export function OpsPage({
                   {connection.lastSyncAt ? <span>sync {connection.lastSyncAt}</span> : null}
                 </div>
                 <h3>{connection.displayName ?? connection.connectorId}</h3>
-                <p>{connection.lastError ?? 'No sync errors reported.'}</p>
-                {connection.vaultRef ? <p className="meta">vault {connection.vaultRef}</p> : null}
+                <p>{describeConnectionNote(connection)}</p>
                 {connection.id && backend !== 'local' ? (
                   <div className="actions">
                     <button

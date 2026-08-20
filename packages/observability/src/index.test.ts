@@ -1,5 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
+  OFFICIAL_M14_SUPPORT_OPS_PACK,
+  OFFICIAL_M14_SUPPORT_OPS_PACK_VERSION,
   OFFICIAL_M14_FIRST_HOUR_ONBOARDING_PACK,
   OFFICIAL_M14_FIRST_HOUR_ONBOARDING_PACK_VERSION,
   createLogger,
@@ -505,6 +507,81 @@ describe('observability package', () => {
         'docs/engineering/M6_CHATGPT_PRODUCTION.md',
       ]),
     );
+  });
+
+  it('publishes the official M14 Slice 10 support / ops pack with bounded ownership links', () => {
+    expect(OFFICIAL_M14_SUPPORT_OPS_PACK_VERSION).toBe('m14-s10-v1');
+    expect(OFFICIAL_M14_SUPPORT_OPS_PACK.version).toBe('m14-s10-v1');
+    expect(OFFICIAL_M14_SUPPORT_OPS_PACK.sloPackVersion).toBe('m14-s01-v1');
+    expect(OFFICIAL_M14_SUPPORT_OPS_PACK.incidentRunbookPackVersion).toBe('m14-s05-v1');
+    expect(OFFICIAL_M14_SUPPORT_OPS_PACK.privacySlaPackVersion).toBe('m14-s06-v1');
+    expect(OFFICIAL_M14_SUPPORT_OPS_PACK.firstHourOnboardingPackVersion).toBe(
+      'm14-s09-v1',
+    );
+    expect(OFFICIAL_M14_SUPPORT_OPS_PACK.roadmapSections).toEqual([
+      '20.17',
+      'RG5 support+ownership',
+    ]);
+    expect(OFFICIAL_M14_SUPPORT_OPS_PACK.entryRoute).toBe('/ops');
+    expect(OFFICIAL_M14_SUPPORT_OPS_PACK.supportLinks.map((item) => item.id)).toEqual(
+      expect.arrayContaining([
+        'ops-route',
+        'slo-pack',
+        'alert-routing-runbook',
+        'emergency-revoke-runbook',
+        'connector-revoke-runbook',
+        'privacy-route',
+        'privacy-sla-doc',
+        'audit-route',
+        'connections-route',
+        'onboarding-guide',
+      ]),
+    );
+    expect(OFFICIAL_M14_SUPPORT_OPS_PACK.ownership.map((item) => item.id)).toEqual(
+      expect.arrayContaining([
+        'slo-and-error-budgets',
+        'revoke-and-rollback',
+        'export-and-privacy',
+        'on-call-routing',
+      ]),
+    );
+    expect(OFFICIAL_M14_SUPPORT_OPS_PACK.summary).toMatchObject({
+      sloTargetCount: 8,
+      incidentRunbookCount: 6,
+      modeAToolCount: 7,
+    });
+    expect(OFFICIAL_M14_SUPPORT_OPS_PACK.invariants).toMatchObject({
+      defensiveOnly: true,
+      fixtureOnly: true,
+      reuseExistingOpsPage: true,
+      actorSwitchingDemoOnly: true,
+      requireExplicitProjectIdOnWriteAdminOrExportInvocation: true,
+      ignoreDefaultProjectIdEnv: true,
+      modeAToolCount: 7,
+      allowOwnerTokenBypass: false,
+      allowAistroykaFallback: false,
+      allowVerifiedWrites: false,
+      allowLiveRevoke: false,
+      allowLiveRollback: false,
+      allowProductionSqlApply: false,
+      allowParallelOpsApp: false,
+      allowNewPagerProduct: false,
+      allowNewVendor: false,
+      logMemoryBodies: false,
+      logTokens: false,
+      logPayloadBodies: false,
+      logExportPayloads: false,
+    });
+    expect(
+      OFFICIAL_M14_SUPPORT_OPS_PACK.supportLinks.find(
+        (item) => item.id === 'privacy-route',
+      ),
+    ).toMatchObject({
+      ownerRole: 'Privacy owner',
+      target: '/privacy',
+      explicitProjectIdRequired: true,
+      metadataOnly: true,
+    });
   });
 
   it('redacts tokens, bodies, queries, and personal content from structured logs', () => {

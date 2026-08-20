@@ -1,0 +1,113 @@
+{
+  "manifestVersion": "m14-s10-v1",
+  "packVersion": "m14-s10-v1",
+  "source": "fixture-local",
+  "roadmapSections": ["20.17", "RG5 support+ownership"],
+  "blockedFallbackProjectIds": [
+    "44444444-4444-4444-8444-444444444401"
+  ],
+  "opsPage": {
+    "docPath": "apps/web/src/OpsPage.tsx",
+    "requiredSnippets": [
+      "OFFICIAL_M14_SUPPORT_OPS_PACK.version",
+      "OFFICIAL_M14_SUPPORT_OPS_PACK.supportLinks.map",
+      "Official support / ops surface",
+      "Actor switching below stays demo-only",
+      "Redacted on /ops"
+    ],
+    "forbiddenSnippets": [
+      "JSON.stringify(jobLookup, null, 2)",
+      "candidate.content.slice(0, 240)",
+      "hit.memory?.content ?? ''",
+      "item.content",
+      "connection.vaultRef"
+    ]
+  },
+  "sliceDoc": {
+    "docPath": "docs/engineering/M14_SLICE_10.md",
+    "requiredSnippets": [
+      "Official pack version: `m14-s10-v1`",
+      "Roadmap sections: `20.17`, `RG5 support+ownership`",
+      "current Control Center `/ops` page",
+      "ChatGPT Mode A stays exactly 7 tools",
+      "`MEMORY_OS_DEFAULT_PROJECT_ID` is ignored",
+      "no AISTROYKA fallback",
+      "no owner-token bypass",
+      "no verified-memory writes",
+      "no tokens, memory bodies, or export payloads in the official ops surface",
+      "No production SQL apply is part of this work."
+    ]
+  },
+  "requiredLinks": [
+    {
+      "id": "ops-route",
+      "owner": "Platform on-call",
+      "kind": "route",
+      "target": "/ops",
+      "requiredSnippets": []
+    },
+    {
+      "id": "slo-pack",
+      "owner": "Platform on-call",
+      "kind": "doc",
+      "target": "docs/engineering/M14_SLICE_01.md",
+      "requiredSnippets": []
+    },
+    {
+      "id": "alert-routing-runbook",
+      "owner": "Platform on-call",
+      "kind": "doc",
+      "target": "docs/engineering/runbooks/alert-ownership-and-routing.md",
+      "requiredSnippets": []
+    },
+    {
+      "id": "emergency-revoke-runbook",
+      "owner": "Security on-call",
+      "kind": "doc",
+      "target": "docs/engineering/runbooks/emergency-revoke.md",
+      "requiredSnippets": []
+    },
+    {
+      "id": "connector-revoke-runbook",
+      "owner": "Connector on-call",
+      "kind": "doc",
+      "target": "docs/engineering/runbooks/connector-revoke-stop-sync.md",
+      "requiredSnippets": []
+    },
+    {
+      "id": "privacy-route",
+      "owner": "Privacy owner",
+      "kind": "route",
+      "target": "/privacy",
+      "requiredSnippets": []
+    },
+    {
+      "id": "privacy-sla-doc",
+      "owner": "Privacy owner",
+      "kind": "doc",
+      "target": "docs/engineering/privacy/EXPORT_DELETION_SLAS.md",
+      "requiredSnippets": []
+    },
+    {
+      "id": "audit-route",
+      "owner": "Security on-call",
+      "kind": "route",
+      "target": "/audit",
+      "requiredSnippets": []
+    },
+    {
+      "id": "connections-route",
+      "owner": "Connector on-call",
+      "kind": "route",
+      "target": "/connections",
+      "requiredSnippets": []
+    },
+    {
+      "id": "onboarding-guide",
+      "owner": "Platform on-call",
+      "kind": "doc",
+      "target": "docs/engineering/ONBOARDING.md",
+      "requiredSnippets": []
+    }
+  ]
+}

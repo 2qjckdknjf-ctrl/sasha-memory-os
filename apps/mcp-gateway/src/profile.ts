@@ -42,7 +42,6 @@ export type McpProfile = {
   defaults: {
     actorSubjectId: string;
     workspaceId: string;
-    projectId: string;
   };
   instructions: string;
 };
@@ -74,9 +73,6 @@ export function getMcpProfile(name?: McpProfileName | string | null): McpProfile
         workspaceId:
           process.env.MEMORY_OS_DEFAULT_WORKSPACE_ID?.trim() ||
           DEFAULT_WORKSPACE_ID,
-        projectId:
-          process.env.MEMORY_OS_DEFAULT_PROJECT_ID?.trim() ||
-          DEFAULT_PROJECT_ID,
       },
       instructions: [
         'Sasha Memory OS ChatGPT pilot. Prefer memory.search (pack_context=true) then context.project before writing.',
@@ -96,9 +92,6 @@ export function getMcpProfile(name?: McpProfileName | string | null): McpProfile
       workspaceId:
         process.env.MEMORY_OS_DEFAULT_WORKSPACE_ID?.trim() ||
         DEFAULT_WORKSPACE_ID,
-      projectId:
-        process.env.MEMORY_OS_DEFAULT_PROJECT_ID?.trim() ||
-        DEFAULT_PROJECT_ID,
     },
     instructions: [
       'Sasha Memory OS MCP gateway (full tool surface).',
