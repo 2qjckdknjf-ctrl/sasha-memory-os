@@ -1,0 +1,126 @@
+{
+  "manifestVersion": "m14-s05-v1",
+  "packVersion": "m14-s05-v1",
+  "source": "fixture-local",
+  "roadmapSections": ["16.4", "20.17"],
+  "alerts": [
+    {
+      "id": "slo.api.availability",
+      "owner": "Platform on-call",
+      "runbookId": "alert-ownership-and-routing"
+    },
+    {
+      "id": "slo.mcp.availability",
+      "owner": "Platform on-call",
+      "runbookId": "alert-ownership-and-routing"
+    },
+    {
+      "id": "slo.project.state",
+      "owner": "Platform on-call",
+      "runbookId": "alert-ownership-and-routing"
+    },
+    {
+      "id": "slo.search.hybrid",
+      "owner": "Platform on-call",
+      "runbookId": "alert-ownership-and-routing"
+    },
+    {
+      "id": "slo.search.agentic",
+      "owner": "Platform on-call",
+      "runbookId": "alert-ownership-and-routing"
+    },
+    {
+      "id": "slo.write.receipt",
+      "owner": "Platform on-call",
+      "runbookId": "alert-ownership-and-routing"
+    },
+    {
+      "id": "slo.webhook.ack",
+      "owner": "Connector on-call",
+      "runbookId": "webhook-dlq-replay-resync"
+    },
+    {
+      "id": "security.acl.leakage",
+      "owner": "Security on-call",
+      "runbookId": "service-role-vault-compromise"
+    },
+    {
+      "id": "security.secrets.rotation-overdue",
+      "owner": "Security on-call",
+      "runbookId": "key-rotation"
+    },
+    {
+      "id": "security.connector-token-compromised",
+      "owner": "Connector on-call",
+      "runbookId": "emergency-revoke"
+    }
+  ],
+  "runbooks": [
+    {
+      "id": "alert-ownership-and-routing",
+      "title": "Alert ownership and routing",
+      "owner": "Platform on-call",
+      "docPath": "docs/engineering/runbooks/alert-ownership-and-routing.md",
+      "alertIds": [
+        "slo.api.availability",
+        "slo.mcp.availability",
+        "slo.project.state",
+        "slo.search.hybrid",
+        "slo.search.agentic",
+        "slo.write.receipt"
+      ],
+      "writeAdminPaths": [],
+      "explicitProjectIdRequired": true
+    },
+    {
+      "id": "key-rotation",
+      "title": "Key rotation",
+      "owner": "Security on-call",
+      "docPath": "docs/engineering/runbooks/key-rotation.md",
+      "alertIds": ["security.secrets.rotation-overdue"],
+      "writeAdminPaths": [],
+      "explicitProjectIdRequired": true
+    },
+    {
+      "id": "emergency-revoke",
+      "title": "Emergency revoke",
+      "owner": "Security on-call",
+      "docPath": "docs/engineering/runbooks/emergency-revoke.md",
+      "alertIds": ["security.connector-token-compromised"],
+      "writeAdminPaths": ["POST /v1/connections/:id/revoke"],
+      "explicitProjectIdRequired": true
+    },
+    {
+      "id": "connector-revoke-stop-sync",
+      "title": "Connector revoke and stop sync",
+      "owner": "Connector on-call",
+      "docPath": "docs/engineering/runbooks/connector-revoke-stop-sync.md",
+      "alertIds": ["security.connector-token-compromised"],
+      "writeAdminPaths": ["POST /v1/connections/:id/revoke"],
+      "explicitProjectIdRequired": true
+    },
+    {
+      "id": "webhook-dlq-replay-resync",
+      "title": "Webhook DLQ, replay, and resync",
+      "owner": "Connector on-call",
+      "docPath": "docs/engineering/runbooks/webhook-dlq-replay-resync.md",
+      "alertIds": ["slo.webhook.ack"],
+      "writeAdminPaths": [
+        "POST /v1/jobs/dead-letter-stale",
+        "POST /v1/jobs/:id/replay",
+        "POST /v1/connections/:id/resync",
+        "POST /v1/connections/:id/github/reconcile"
+      ],
+      "explicitProjectIdRequired": true
+    },
+    {
+      "id": "service-role-vault-compromise",
+      "title": "service_role or vault key compromise",
+      "owner": "Security on-call",
+      "docPath": "docs/engineering/runbooks/service-role-vault-compromise.md",
+      "alertIds": ["security.acl.leakage"],
+      "writeAdminPaths": [],
+      "explicitProjectIdRequired": true
+    }
+  ]
+}

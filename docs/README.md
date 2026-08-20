@@ -23,6 +23,8 @@
 | [engineering/ENVIRONMENT_MATRIX.md](engineering/ENVIRONMENT_MATRIX.md) | local / dev / staging / prod |
 | [engineering/SECRETS_POLICY.md](engineering/SECRETS_POLICY.md) | Хранение и запреты для secrets |
 | [engineering/RLS_MATRIX.md](engineering/RLS_MATRIX.md) | RLS / ACL matrix и negative cases |
+| [engineering/M14_SLICE_05.md](engineering/M14_SLICE_05.md) | M14 Slice 05: incident runbook pack |
+| [engineering/runbooks/](engineering/runbooks/) | Checked-in incident runbooks for alert ownership, revoke, and rotation |
 | [engineering/DEMO_SLICE.md](engineering/DEMO_SLICE.md) | decision → state → MCP → handoff |
 | [engineering/SUPABASE.md](engineering/SUPABASE.md) | Live project ref, region, migrations |
 | [engineering/MCP_CURSOR.md](engineering/MCP_CURSOR.md) | MCP stdio gateway for Cursor / Claude Desktop |

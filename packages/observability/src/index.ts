@@ -6,6 +6,7 @@ export const REDACTED_LOG_VALUE = '[REDACTED]' as const;
 export const OFFICIAL_M14_SLO_PACK_VERSION = 'm14-s01-v1' as const;
 export const OFFICIAL_M14_SECURITY_REVIEW_PACK_VERSION = 'm14-s03-v1' as const;
 export const OFFICIAL_M14_DR_RESTORE_DRILL_PACK_VERSION = 'm14-s04-v1' as const;
+export const OFFICIAL_M14_INCIDENT_RUNBOOK_PACK_VERSION = 'm14-s05-v1' as const;
 
 const LATENCY_P95_ERROR_BUDGET_RATIO = 0.05;
 const MAX_SLO_SAMPLES_PER_TARGET = 1_024;
@@ -449,6 +450,298 @@ export const OFFICIAL_M14_DR_RESTORE_DRILL_PACK = {
     allowProductionSqlApply: false,
     logMemoryBodies: false,
     logTokens: false,
+  },
+} as const;
+
+type IncidentRunbookId =
+  | 'alert-ownership-and-routing'
+  | 'key-rotation'
+  | 'emergency-revoke'
+  | 'connector-revoke-stop-sync'
+  | 'webhook-dlq-replay-resync'
+  | 'service-role-vault-compromise';
+
+type IncidentAlertId =
+  | 'slo.api.availability'
+  | 'slo.mcp.availability'
+  | 'slo.project.state'
+  | 'slo.search.hybrid'
+  | 'slo.search.agentic'
+  | 'slo.write.receipt'
+  | 'slo.webhook.ack'
+  | 'security.acl.leakage'
+  | 'security.secrets.rotation-overdue'
+  | 'security.connector-token-compromised';
+
+type IncidentRunbookOwnerRole =
+  | 'Platform on-call'
+  | 'Security on-call'
+  | 'Connector on-call';
+
+type IncidentRunbookSpec = {
+  id: IncidentRunbookId;
+  ownerRole: IncidentRunbookOwnerRole;
+  description: string;
+  requiredSnippets: readonly string[];
+};
+
+type IncidentAlertSpec = {
+  id: IncidentAlertId;
+  ownerRole: IncidentRunbookOwnerRole;
+  runbookId: IncidentRunbookId;
+  metadataOnly: true;
+};
+
+type IncidentRunbookChecklistItemId =
+  | 'alert-owner-routing'
+  | 'key-rotation'
+  | 'emergency-revoke'
+  | 'connector-revoke-stop-jobs'
+  | 'webhook-dlq-replay-resync'
+  | 'service-role-vault-compromise'
+  | 'no-payload-in-alerts';
+
+type IncidentRunbookChecklistItem = {
+  id: IncidentRunbookChecklistItemId;
+  description: string;
+  defensiveOnly: true;
+  evidence: readonly string[];
+};
+
+export const OFFICIAL_M14_INCIDENT_RUNBOOK_PACK = {
+  version: OFFICIAL_M14_INCIDENT_RUNBOOK_PACK_VERSION,
+  sloPackVersion: OFFICIAL_M14_SLO_PACK_VERSION,
+  securityReviewPackVersion: OFFICIAL_M14_SECURITY_REVIEW_PACK_VERSION,
+  drRestoreDrillPackVersion: OFFICIAL_M14_DR_RESTORE_DRILL_PACK_VERSION,
+  roadmapSections: ['16.4', '20.17'],
+  runbooks: [
+    {
+      id: 'alert-ownership-and-routing',
+      ownerRole: 'Platform on-call',
+      description:
+        'Maps the current official alerts to named owners and existing rollback/revoke paths.',
+      requiredSnippets: [
+        'Do not paste tokens, payloads, or memory bodies into alerts, logs, or tickets.',
+        'STAGING_PROMOTE.md',
+        'owner approval',
+      ],
+    },
+    {
+      id: 'key-rotation',
+      ownerRole: 'Security on-call',
+      description:
+        'Defines the bounded vault-first key rotation path and links emergency revoke.',
+      requiredSnippets: ['rotation cadence', 'vault first', '## Rollback / revoke'],
+    },
+    {
+      id: 'emergency-revoke',
+      ownerRole: 'Security on-call',
+      description:
+        'Defines immediate containment for secret compromise before any restore or re-enable.',
+      requiredSnippets: [
+        'stop jobs/webhooks immediately',
+        'explicit `project_id`',
+        '## Rollback / revoke',
+      ],
+    },
+    {
+      id: 'connector-revoke-stop-sync',
+      ownerRole: 'Connector on-call',
+      description:
+        'Documents connector revoke on the current API surface and requires immediate job/webhook stop plus retention.',
+      requiredSnippets: [
+        'POST /v1/connections/:id/revoke',
+        'stop jobs/webhooks immediately',
+        'apply retention',
+      ],
+    },
+    {
+      id: 'webhook-dlq-replay-resync',
+      ownerRole: 'Connector on-call',
+      description:
+        'Documents bounded webhook DLQ, replay, reconcile, and resync recovery using the existing API surface.',
+      requiredSnippets: [
+        'POST /v1/jobs/:id/replay',
+        'POST /v1/connections/:id/resync',
+        'POST /v1/jobs/dead-letter-stale',
+      ],
+    },
+    {
+      id: 'service-role-vault-compromise',
+      ownerRole: 'Security on-call',
+      description:
+        'Documents bounded response to compromised service_role or vault key without live production action.',
+      requiredSnippets: [
+        'rotate the compromised `service_role` or vault key',
+        'invalidate sessions',
+        'audit access logs',
+      ],
+    },
+  ] satisfies readonly IncidentRunbookSpec[],
+  alerts: [
+    {
+      id: 'slo.api.availability',
+      ownerRole: 'Platform on-call',
+      runbookId: 'alert-ownership-and-routing',
+      metadataOnly: true,
+    },
+    {
+      id: 'slo.mcp.availability',
+      ownerRole: 'Platform on-call',
+      runbookId: 'alert-ownership-and-routing',
+      metadataOnly: true,
+    },
+    {
+      id: 'slo.project.state',
+      ownerRole: 'Platform on-call',
+      runbookId: 'alert-ownership-and-routing',
+      metadataOnly: true,
+    },
+    {
+      id: 'slo.search.hybrid',
+      ownerRole: 'Platform on-call',
+      runbookId: 'alert-ownership-and-routing',
+      metadataOnly: true,
+    },
+    {
+      id: 'slo.search.agentic',
+      ownerRole: 'Platform on-call',
+      runbookId: 'alert-ownership-and-routing',
+      metadataOnly: true,
+    },
+    {
+      id: 'slo.write.receipt',
+      ownerRole: 'Platform on-call',
+      runbookId: 'alert-ownership-and-routing',
+      metadataOnly: true,
+    },
+    {
+      id: 'slo.webhook.ack',
+      ownerRole: 'Connector on-call',
+      runbookId: 'webhook-dlq-replay-resync',
+      metadataOnly: true,
+    },
+    {
+      id: 'security.acl.leakage',
+      ownerRole: 'Security on-call',
+      runbookId: 'service-role-vault-compromise',
+      metadataOnly: true,
+    },
+    {
+      id: 'security.secrets.rotation-overdue',
+      ownerRole: 'Security on-call',
+      runbookId: 'key-rotation',
+      metadataOnly: true,
+    },
+    {
+      id: 'security.connector-token-compromised',
+      ownerRole: 'Connector on-call',
+      runbookId: 'emergency-revoke',
+      metadataOnly: true,
+    },
+  ] satisfies readonly IncidentAlertSpec[],
+  checklist: [
+    {
+      id: 'alert-owner-routing',
+      description:
+        'Every current official alert maps to a checked-in runbook and a named owner on the existing stack.',
+      defensiveOnly: true,
+      evidence: [
+        'docs/engineering/runbooks/alert-ownership-and-routing.md',
+        'apps/api/fixtures/incident-runbooks/m14-s05-v1/runbook-manifest.json',
+        'apps/api/src/incidentRunbookDrill.test.ts',
+      ],
+    },
+    {
+      id: 'key-rotation',
+      description:
+        'Key rotation stays documented as a bounded vault-first runbook before beta.',
+      defensiveOnly: true,
+      evidence: [
+        'docs/engineering/runbooks/key-rotation.md',
+        'docs/engineering/SECRETS_POLICY.md',
+        'docs/adr/ADR-005-secrets-and-environments.md',
+      ],
+    },
+    {
+      id: 'emergency-revoke',
+      description:
+        'Emergency revoke stays documented as a bounded containment path that does not rely on new product surfaces.',
+      defensiveOnly: true,
+      evidence: [
+        'docs/engineering/runbooks/emergency-revoke.md',
+        'docs/engineering/SECRETS_POLICY.md',
+        'apps/api/src/incidentRunbookDrill.test.ts',
+      ],
+    },
+    {
+      id: 'connector-revoke-stop-jobs',
+      description:
+        'Connector revoke must stop jobs/webhooks immediately and only then apply retention.',
+      defensiveOnly: true,
+      evidence: [
+        'docs/engineering/runbooks/connector-revoke-stop-sync.md',
+        'apps/api/src/app.ts',
+        'apps/api/src/incidentRunbookDrill.test.ts',
+      ],
+    },
+    {
+      id: 'webhook-dlq-replay-resync',
+      description:
+        'Webhook incident recovery stays on the existing DLQ/replay/resync/reconcile surface with explicit ownership.',
+      defensiveOnly: true,
+      evidence: [
+        'docs/engineering/runbooks/webhook-dlq-replay-resync.md',
+        'docs/engineering/M8_GITHUB_WEBHOOK_RECEIVER.md',
+        'apps/api/src/incidentRunbookDrill.test.ts',
+      ],
+    },
+    {
+      id: 'service-role-vault-compromise',
+      description:
+        'Compromised service_role or vault key requires rotation, session invalidation, and audit-log review.',
+      defensiveOnly: true,
+      evidence: [
+        'docs/engineering/runbooks/service-role-vault-compromise.md',
+        'docs/engineering/SECRETS_POLICY.md',
+        'docs/adr/ADR-005-secrets-and-environments.md',
+      ],
+    },
+    {
+      id: 'no-payload-in-alerts',
+      description:
+        'Incident runbooks and alert mappings stay metadata-only and do not include tokens, payloads, or memory bodies.',
+      defensiveOnly: true,
+      evidence: [
+        'docs/engineering/runbooks/alert-ownership-and-routing.md',
+        'apps/api/src/incidentRunbookDrill.ts',
+        'apps/api/src/incidentRunbookDrill.test.ts',
+      ],
+    },
+  ] satisfies readonly IncidentRunbookChecklistItem[],
+  invariants: {
+    defensiveOnly: true,
+    fixtureOnly: true,
+    modeAToolCount: 7,
+    requireRunbookOwner: true,
+    requireRollbackOrRevokeStep: true,
+    requireExplicitProjectIdOnAdminOrRevokeInvocation: true,
+    requireAlertOwner: true,
+    requireAlertRunbook: true,
+    requireKeyRotationRunbook: true,
+    requireEmergencyRevokeRunbook: true,
+    requireConnectorRevokeStopJobsAndWebhooks: true,
+    requireInvalidateSessionsAfterServiceRoleRotation: true,
+    requireAuditAccessLogReview: true,
+    allowOwnerTokenBypass: false,
+    allowAistroykaFallback: false,
+    allowVerifiedWrites: false,
+    allowLiveRevoke: false,
+    allowLiveRollback: false,
+    allowProductionSqlApply: false,
+    logMemoryBodies: false,
+    logTokens: false,
+    logAlertPayloads: false,
   },
 } as const;
 
