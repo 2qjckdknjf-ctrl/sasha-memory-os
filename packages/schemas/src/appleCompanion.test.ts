@@ -6,6 +6,9 @@ import {
   appleCompanionPhotoLibraryCheckpointSchema,
   appleCompanionQueueSchema,
   appleCompanionQueueSnapshotSchema,
+  appleCompanionTransferredObjectDeleteRequestSchema,
+  appleCompanionTransferredObjectSchema,
+  appleCompanionTransferredObjectsListQuerySchema,
   canIngestAppleCompanionFile,
   canIngestApplePhotoLibraryAsset,
   createAppleCompanionQueueItem,
@@ -72,6 +75,58 @@ describe('appleCompanionIngestRequestSchema', () => {
     const parsed = appleCompanionIngestRequestSchema.parse(basePayload);
     expect(parsed.project_id).toBe('sasha-memory-os');
     expect(parsed.identifiers.cloud_identifier).toBe('A1B2C3D4-CLOUD');
+  });
+});
+
+describe('apple transferred objects contracts', () => {
+  it('requires project_id for project-scoped transferred-object reads', () => {
+    expect(() =>
+      appleCompanionTransferredObjectsListQuerySchema.parse({
+        workspace_id: '11111111-1111-4111-8111-111111111111',
+        project_id: '',
+      }),
+    ).toThrow(/project_id is required for this read/i);
+  });
+
+  it('round-trips a transferred Apple object summary', () => {
+    const parsed = appleCompanionTransferredObjectSchema.parse({
+      id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+      workspace_id: '11111111-1111-4111-8111-111111111111',
+      project_id: '44444444-4444-4444-8444-444444444401',
+      title: 'Shared whiteboard',
+      status: 'candidate',
+      kind: 'photo',
+      source: 'share_extension',
+      sensitivity: 'internal',
+      memory_type: 'idea',
+      source_event_id: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
+      device_id: 'iphone-15-pro',
+      connection_id: '88888888-8888-4888-8888-888888888810',
+      item_id: 'cccccccc-cccc-4ccc-8ccc-cccccccccccc',
+      filename: 'whiteboard.jpeg',
+      canonical_reference: 'apple://photo/APPLE-LOCAL-1',
+      observed_at: '2026-08-19T23:15:00.000Z',
+      recorded_at: '2026-08-19T23:16:00.000Z',
+      delete_local_after_ack: true,
+      identifiers: {
+        local_identifier: 'APPLE-LOCAL-1',
+        cloud_identifier: 'APPLE-CLOUD-1',
+      },
+    });
+
+    expect(parsed.source).toBe('share_extension');
+    expect(parsed.kind).toBe('photo');
+    expect(parsed.delete_local_after_ack).toBe(true);
+  });
+
+  it('requires project_id for transferred-object tombstones', () => {
+    expect(() =>
+      appleCompanionTransferredObjectDeleteRequestSchema.parse({
+        project_id: '',
+        actor_subject_id: '33333333-3333-4333-8333-333333333301',
+        reason: 'User requested deletion from Memory OS.',
+      }),
+    ).toThrow(/project_id is required for this write/i);
   });
 });
 

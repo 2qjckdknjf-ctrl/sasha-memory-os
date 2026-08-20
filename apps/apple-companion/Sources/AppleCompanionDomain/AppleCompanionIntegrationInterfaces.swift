@@ -36,8 +36,9 @@ public protocol AppleCompanionAuthenticating: Sendable {
     var currentSession: AppleCompanionAuthSession? { get }
 }
 
-// Slice 04 keeps the native Apple surface contract-only: PhotoKit limited selection, Files bookmarks,
-// queue-only Share Extension intake, security-scoped leases, and explicit stale-bookmark reselect flows.
+// Slice 05 keeps the native Apple surface contract-only: PhotoKit limited selection, Files bookmarks,
+// queue-only Share Extension intake, transferred-object list/delete stubs, security-scoped leases,
+// and explicit stale-bookmark reselect flows.
 public protocol ApplePhotoLibraryInspecting: Sendable {
     func currentPhotoLibraryCheckpoint() async -> AppleCompanionPhotoLibraryCheckpoint
     func currentPhotoLibrarySelectionDelta(
@@ -63,4 +64,17 @@ public protocol AppleDocumentBookmarkManaging: Sendable {
 
 public protocol AppleShareItemIntaking: Sendable {
     func enqueueSharedItem(_ request: AppleCompanionIngestRequest) async throws
+}
+
+public protocol AppleTransferredObjectsListing: Sendable {
+    func listTransferredObjects(
+        _ request: AppleTransferredObjectsListRequest
+    ) async throws -> AppleTransferredObjectsListResponse
+}
+
+public protocol AppleTransferredObjectDeleting: Sendable {
+    func deleteTransferredObject(
+        memoryID: String,
+        request: AppleTransferredObjectDeleteRequest
+    ) async throws
 }

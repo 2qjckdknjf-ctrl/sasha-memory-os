@@ -36,6 +36,9 @@ import {
 } from '@memory-os/connector-sdk';
 import {
   appleCompanionIngestRequestSchema,
+  appleCompanionTransferredObjectDeleteRequestSchema,
+  appleCompanionTransferredObjectSchema,
+  appleCompanionTransferredObjectsListQuerySchema,
   applyExtractionSchema,
   bindAuthUserSchema,
   captureDocumentSchema,
@@ -354,8 +357,85 @@ function buildLocalAgentRow(subjectId: string) {
   };
 }
 
-function buildLocalMemoryDetail(memory: MemoryRecord) {
+const appleTransferredSources = [
+  'companion_app',
+  'share_extension',
+  'document_picker',
+  'photo_library',
+] as const;
+
+type AppleTransferredSource = (typeof appleTransferredSources)[number];
+
+const APPLE_TRANSFERRED_SOURCES = new Set<AppleTransferredSource>(appleTransferredSources);
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function pickString(...values: unknown[]): string | null {
+  for (const value of values) {
+    if (typeof value === 'string' && value.trim()) {
+      return value;
+    }
+  }
+  return null;
+}
+
+function pickBoolean(...values: unknown[]): boolean | null {
+  for (const value of values) {
+    if (typeof value === 'boolean') {
+      return value;
+    }
+  }
+  return null;
+}
+
+function stripMemorySourceContent(payload: Record<string, unknown>): Record<string, unknown> {
+  if (!('content' in payload)) {
+    return payload;
+  }
+  const { content: _content, ...rest } = payload;
+  return rest;
+}
+
+function buildLocalMemoryDetail(store: MemoryStore, memory: MemoryRecord) {
   const metadata = memory.metadata ?? {};
+  const sourceEvent = memory.sourceEventId ? store.events.get(memory.sourceEventId) ?? null : null;
+  const sourcePayload =
+    sourceEvent && isRecord(sourceEvent.payload) ? stripMemorySourceContent(sourceEvent.payload) : null;
+  const metadataSource = isRecord(metadata.source) ? metadata.source : null;
+  const source =
+    sourceEvent && sourcePayload
+      ? {
+          sourceEventId: sourceEvent.id,
+          provider: sourceEvent.provider,
+          eventType: sourceEvent.eventType,
+          observedAt: sourceEvent.observedAt,
+          recordedAt: sourceEvent.recordedAt,
+          payload: sourcePayload,
+        }
+      : metadataSource;
+  const metadataProvenance = isRecord(metadata.provenance) ? metadata.provenance : null;
+  const payloadProvenance =
+    sourcePayload && isRecord(sourcePayload.provenance) ? sourcePayload.provenance : null;
+  const provenance =
+    metadataProvenance || payloadProvenance
+      ? {
+          ...(payloadProvenance ?? {}),
+          ...(metadataProvenance ?? {}),
+        }
+      : undefined;
+  const evidence =
+    Array.isArray(metadata.evidence) && metadata.evidence.length > 0
+      ? metadata.evidence
+      : sourceEvent
+        ? [
+            {
+              sourceEventId: sourceEvent.id,
+              evidenceSpan: { kind: 'local_source_event' },
+            },
+          ]
+        : undefined;
   return {
     id: memory.id,
     title: memory.title,
@@ -375,11 +455,95 @@ function buildLocalMemoryDetail(memory: MemoryRecord) {
     importance: memory.importance,
     confidence: memory.confidence,
     schemaVersion: memory.schemaVersion,
-    source: metadata.source,
-    evidence: metadata.evidence,
-    provenance: metadata.provenance,
+    source,
+    evidence,
+    provenance,
     metadata,
   };
+}
+
+type MemoryDetailLike = {
+  id: string;
+  title: string;
+  status: string;
+  sensitivity: string;
+  memoryType?: string | null;
+  projectId?: string | null;
+  workspaceId?: string | null;
+  observedAt?: string | null;
+  recordedAt: string;
+  sourceEventId?: string | null;
+  source?: Record<string, unknown> | null;
+};
+
+function extractAppleTransferredKind(source: Record<string, unknown> | null): string | null {
+  const eventType = pickString(source?.eventType, isRecord(source?.payload) ? source.payload.event_type : null);
+  if (!eventType) return null;
+  const match = /^apple\.(text|file|photo|video|url)\.captured$/i.exec(eventType);
+  return match?.[1]?.toLowerCase() ?? null;
+}
+
+function extractAppleTransferredObject(memory: MemoryDetailLike) {
+  const source = isRecord(memory.source) ? memory.source : null;
+  if (pickString(source?.provider) !== 'apple') {
+    return null;
+  }
+  const payload = source && isRecord(source.payload) ? source.payload : null;
+  const payloadMetadata = payload && isRecord(payload.metadata) ? payload.metadata : null;
+  const payloadProvenance = payload && isRecord(payload.provenance) ? payload.provenance : null;
+  const transferredSource = pickString(payloadProvenance?.source, payloadMetadata?.source);
+  if (
+    !transferredSource ||
+    !APPLE_TRANSFERRED_SOURCES.has(transferredSource as AppleTransferredSource)
+  ) {
+    return null;
+  }
+  const projectId = pickString(memory.projectId);
+  const workspaceId = pickString(memory.workspaceId);
+  const kind = extractAppleTransferredKind(source);
+  if (!projectId || !workspaceId || !kind) {
+    return null;
+  }
+  const identifiersRecord = payloadMetadata && isRecord(payloadMetadata.identifiers) ? payloadMetadata.identifiers : null;
+  return appleCompanionTransferredObjectSchema.parse({
+    id: memory.id,
+    workspace_id: workspaceId,
+    project_id: projectId,
+    title: memory.title,
+    status: memory.status,
+    kind,
+    source: transferredSource,
+    sensitivity: memory.sensitivity,
+    memory_type: pickString(memory.memoryType),
+    source_event_id: pickString(memory.sourceEventId),
+    device_id: pickString(payloadProvenance?.device_id, payloadMetadata?.deviceId),
+    connection_id: pickString(payloadMetadata?.connectionId),
+    item_id: pickString(payloadMetadata?.itemId),
+    filename: pickString(payload?.filename),
+    canonical_reference: pickString(payloadProvenance?.canonical_reference),
+    observed_at: pickString(memory.observedAt, source?.observedAt),
+    recorded_at: memory.recordedAt,
+    delete_local_after_ack:
+      pickBoolean(payloadProvenance?.delete_local_after_ack, payloadMetadata?.deleteLocalAfterAck) ??
+      false,
+    identifiers: {
+      local_identifier: pickString(
+        identifiersRecord?.local_identifier,
+        identifiersRecord?.localIdentifier,
+        payloadProvenance?.local_identifier,
+      ) ?? undefined,
+      cloud_identifier: pickString(
+        identifiersRecord?.cloud_identifier,
+        identifiersRecord?.cloudIdentifier,
+        payloadProvenance?.cloud_identifier,
+      ) ?? undefined,
+      provider_item_identifier: pickString(
+        identifiersRecord?.provider_item_identifier,
+        identifiersRecord?.providerItemIdentifier,
+        payloadProvenance?.provider_item_identifier,
+      ) ?? undefined,
+    },
+  });
 }
 
 function auditProjectId(entry: {
@@ -404,6 +568,10 @@ function isNotFoundError(err: unknown): boolean {
 
 function missingProjectResponse(c: { json: (body: { error: string }, status: 400) => Response }) {
   return c.json({ error: 'project_id is required for this write' }, 400);
+}
+
+function missingProjectReadResponse(c: { json: (body: { error: string }, status: 400) => Response }) {
+  return c.json({ error: 'project_id is required for this read' }, 400);
 }
 
 async function resolveProjectIdForWrite(input: {
@@ -2219,6 +2387,216 @@ export function createApp(options?: {
     );
   });
 
+  app.get('/v1/apple/transferred-objects', async (c) => {
+    const rawProjectId = c.req.query('project_id') ?? '';
+    if (!rawProjectId.trim()) {
+      return missingProjectReadResponse(c);
+    }
+
+    const parsed = appleCompanionTransferredObjectsListQuerySchema.safeParse({
+      workspace_id: c.req.query('workspace_id') ?? seedWorkspace,
+      project_id: rawProjectId,
+      limit: c.req.query('limit') ?? '50',
+    });
+    if (!parsed.success) {
+      return c.json(
+        {
+          error: parsed.error.issues[0]?.message ?? 'invalid transferred objects query',
+        },
+        400,
+      );
+    }
+
+    const authz = c.get('authz');
+    const gw = c.get('gateway');
+    const resolved = await resolveProjectIdForWrite({
+      gateway: gw,
+      subjectId: authz.subjectId,
+      workspaceId: parsed.data.workspace_id,
+      projectRef: parsed.data.project_id,
+    });
+    if (!resolved.projectId) {
+      return c.json(
+        {
+          error:
+            resolved.error === 'ambiguous'
+              ? 'project_id is ambiguous'
+              : 'project_id was not found',
+        },
+        resolved.error === 'ambiguous' ? 409 : 404,
+      );
+    }
+
+    const requestedLimit = parsed.data.limit;
+    const fetchLimit = Math.max(requestedLimit, 500);
+
+    if (gw) {
+      try {
+        const rows = await gw.listMemories({
+          subjectId: authz.subjectId,
+          workspaceId: parsed.data.workspace_id,
+          projectId: resolved.projectId,
+          limit: fetchLimit,
+        });
+        const objects = [];
+        for (const row of rows) {
+          const memory = await gw.getMemory({
+            subjectId: authz.subjectId,
+            memoryId: row.id,
+          });
+          if (
+            memory.projectId !== resolved.projectId ||
+            memory.status === 'deleted' ||
+            memory.status === 'retracted' ||
+            memory.status === 'superseded'
+          ) {
+            continue;
+          }
+          const object = extractAppleTransferredObject(memory);
+          if (!object) {
+            continue;
+          }
+          objects.push(object);
+          if (objects.length >= requestedLimit) {
+            break;
+          }
+        }
+        return c.json({ objects, backend: 'supabase' });
+      } catch (err) {
+        if (isForbiddenError(err)) return c.json({ error: 'forbidden' }, 403);
+        return c.json({ error: (err as Error).message }, 500);
+      }
+    }
+
+    const objects = [...c.get('store').memories.values()]
+      .filter((memory) => {
+        if (memory.workspaceId !== parsed.data.workspace_id) return false;
+        if (memory.projectId !== resolved.projectId) return false;
+        if (
+          memory.status === 'deleted' ||
+          memory.status === 'retracted' ||
+          memory.status === 'superseded'
+        ) {
+          return false;
+        }
+        return authorize(authz, {
+          resourceType: 'memory',
+          action: 'read',
+          projectId: memory.projectId,
+          sensitivity: memory.sensitivity,
+        });
+      })
+      .map((memory) => extractAppleTransferredObject(buildLocalMemoryDetail(c.get('store'), memory)))
+      .filter((memory): memory is NonNullable<typeof memory> => memory !== null)
+      .sort((left, right) => right.recorded_at.localeCompare(left.recorded_at))
+      .slice(0, requestedLimit);
+
+    return c.json({ objects, backend: 'memory-store' });
+  });
+
+  app.post('/v1/apple/transferred-objects/:id/delete', async (c) => {
+    const memoryId = c.req.param('id');
+    const parsed = appleCompanionTransferredObjectDeleteRequestSchema.safeParse(
+      await c.req.json().catch(() => ({})),
+    );
+    if (!parsed.success) {
+      const missingProject = parsed.error.issues.some((issue) => issue.path[0] === 'project_id');
+      return c.json(
+        {
+          error: missingProject
+            ? 'project_id is required for this write'
+            : parsed.error.issues[0]?.message ?? 'invalid transferred object delete request',
+        },
+        400,
+      );
+    }
+
+    const body = parsed.data;
+    const authz = c.get('authz');
+    if (!authz.isOwner || authz.subjectId !== body.actor_subject_id) {
+      return c.json({ error: 'forbidden' }, 403);
+    }
+
+    const gw = c.get('gateway');
+    try {
+      const memory = gw
+        ? await gw.getMemory({
+            subjectId: authz.subjectId,
+            memoryId,
+          })
+        : (() => {
+            const record = c.get('store').memories.get(memoryId);
+            if (!record) {
+              throw new Error('memory not found');
+            }
+            if (
+              !authorize(authz, {
+                resourceType: 'memory',
+                action: 'read',
+                projectId: record.projectId,
+                sensitivity: record.sensitivity,
+              })
+            ) {
+              throw new Error('forbidden');
+            }
+            return buildLocalMemoryDetail(c.get('store'), record);
+          })();
+
+      const transferredObject = extractAppleTransferredObject(memory);
+      if (!transferredObject) {
+        return c.json({ error: 'transferred apple object not found' }, 404);
+      }
+
+      const resolved = await resolveProjectIdForWrite({
+        gateway: gw,
+        subjectId: body.actor_subject_id,
+        workspaceId: transferredObject.workspace_id,
+        projectRef: body.project_id,
+      });
+      if (!resolved.projectId) {
+        return c.json(
+          {
+            error:
+              resolved.error === 'ambiguous'
+                ? 'project_id is ambiguous'
+                : 'project_id was not found',
+          },
+          resolved.error === 'ambiguous' ? 409 : 404,
+        );
+      }
+      if (resolved.projectId !== transferredObject.project_id) {
+        return c.json({ error: 'memory does not belong to the requested project_id' }, 409);
+      }
+
+      const result = gw
+        ? await gw.setMemoryStatus({
+            subjectId: body.actor_subject_id,
+            memoryId,
+            status: 'deleted',
+            reason: body.reason,
+          })
+        : c.get('store').setMemoryStatus({
+            memoryId,
+            status: 'deleted',
+            reason: body.reason,
+            actorSubjectId: body.actor_subject_id,
+          });
+
+      return c.json({
+        id: result.id,
+        status: 'deleted',
+        projectId: resolved.projectId,
+        deleted: true,
+        reason: body.reason,
+        backend: gw ? 'supabase' : 'memory-store',
+      });
+    } catch (err) {
+      if (isForbiddenError(err)) return c.json({ error: 'forbidden' }, 403);
+      if (isNotFoundError(err)) return c.json({ error: 'memory not found' }, 404);
+      return c.json({ error: (err as Error).message }, 500);
+    }
+  });
+
   app.post('/v1/capture/text', async (c) => {
     const body = captureTextSchema.parse(await c.req.json());
     if (!body.project_id) return missingProjectResponse(c);
@@ -2871,7 +3249,7 @@ export function createApp(options?: {
       return c.json({ error: 'forbidden' }, 403);
     }
     return c.json({
-      memory: buildLocalMemoryDetail(memory),
+      memory: buildLocalMemoryDetail(c.get('store'), memory),
       backend: 'memory-store',
     });
   });

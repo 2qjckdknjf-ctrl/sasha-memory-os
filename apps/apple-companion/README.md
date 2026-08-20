@@ -1,15 +1,20 @@
 # Apple companion
 
-Slice 04 defines the Share Extension contract for the native Apple path in M9 (§14.6, §14.7), while keeping the Slice 02 limited-photos and Slice 03 Files bookmark contracts intact:
+Slice 05 extends the native Apple path in M9 (§14.6, §14.7, §20.12) with a contract-only transferred-objects list/delete surface, while keeping the Slice 04 Share Extension contract plus the Slice 02 limited-photos and Slice 03 Files bookmark contracts intact:
 
 - a Swift Package that Xcode can open today,
 - a shared Swift domain mirror for the Apple companion ingest, share-intake, limited-selection, Files bookmark, and encrypted-queue JSON contract,
-- a SwiftUI scaffold for auth/session status, permission inspection, queue inspection, and share-item intake stubs,
+- a SwiftUI scaffold for auth/session status, permission inspection, queue inspection, transferred-object list/delete stubs, and share-item intake stubs,
 - no TestFlight, no signing setup, no live PhotoKit or UIDocumentPicker enumeration on device, no iCloud Drive crawl beyond selected bookmarks, and no runtime Share Extension target yet.
 
-## What Slice 04 does
+## What Slice 05 does
 
 - Mirrors the TypeScript source-of-truth contract from `packages/schemas/src/appleCompanion.ts`.
+- Adds the transferred-objects contract from §14.7 / §20.12:
+  - explicit project-scoped list of Apple-transferred objects already captured into Memory OS
+  - sources limited to `share_extension`, `companion_app`, `photo_library`, and `document_picker`
+  - delete request contract that requires explicit `project_id` and reuses the existing memory tombstone/status path
+  - no hidden workspace fallback to AISTROYKA
 - Adds the Share Extension intake contract from §14.6:
   - incoming share kinds for `photo`, `video`, `file`, `url`, and selected `text`
   - required `project_id`, `sensitivity`, and `storage_mode`, plus optional `memory_type`
@@ -52,9 +57,10 @@ Slice 04 defines the Share Extension contract for the native Apple path in M9 (�
   - auth session placeholder
   - connection and permission inspector placeholder
   - queue list
+  - transferred-object list + delete stub
   - share-text contract stub
 
-## What Slice 04 does not do
+## What Slice 05 does not do
 
 - No TestFlight or signing workflow
 - No full-library PhotoKit scan
@@ -64,6 +70,7 @@ Slice 04 defines the Share Extension contract for the native Apple path in M9 (�
 - No live Share Extension target
 - No signed Share Extension target in this slice
 - No server-side iCloud or Photos scraping
+- No direct physical purge API; delete remains a user-visible tombstone through existing memory status flows
 - No M10/M11/M12 scope
 
 ## Open in Xcode

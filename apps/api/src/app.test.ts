@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { createConnectorRegistry } from '@memory-os/connector-sdk';
+import { MemoryStore, type MemoryRecord } from '@memory-os/domain';
 import { createApp } from './app.js';
 
 const projectId = '44444444-4444-4444-8444-444444444401';
@@ -9,6 +10,100 @@ const owner = '33333333-3333-4333-8333-333333333301';
 const cursor = '33333333-3333-4333-8333-333333333303';
 const chatgpt = '33333333-3333-4333-8333-333333333302';
 const roma = '33333333-3333-4333-8333-333333333304';
+
+function seedAppleTransferredMemory(
+  store: MemoryStore,
+  input: {
+    memoryId: string;
+    title: string;
+    source: 'companion_app' | 'share_extension' | 'document_picker' | 'photo_library';
+    kind: 'text' | 'file' | 'photo' | 'video' | 'url';
+    itemId: string;
+    filename?: string;
+    text?: string;
+    sensitivity?: MemoryRecord['sensitivity'];
+    status?: MemoryRecord['status'];
+  },
+) {
+  const observedAt = '2026-08-19T23:15:00.000Z';
+  const idempotencyKey = `apple-share/${input.itemId}`;
+  const sourceEvent = store.ingestEvent({
+    workspaceId,
+    projectId,
+    provider: 'apple',
+    eventType: `apple.${input.kind}.captured`,
+    idempotencyKey,
+    observedAt,
+    sensitivity: input.sensitivity ?? 'internal',
+    payload: {
+      schema_version: '1.0',
+      title: input.title,
+      filename: input.filename ?? null,
+      source: {
+        provider: 'apple',
+        account_id: 'device:iphone-15-pro',
+        external_id: input.itemId,
+        external_version: observedAt,
+      },
+      event_type: `apple.${input.kind}.captured`,
+      observed_at: observedAt,
+      idempotency_key: idempotencyKey,
+      scope: {
+        project_id: projectId,
+        sensitivity: input.sensitivity ?? 'internal',
+        storage_mode: 'indexed',
+      },
+      provenance: {
+        provider: 'apple',
+        device_id: 'iphone-15-pro',
+        source: input.source,
+        local_identifier: `${input.itemId}-LOCAL`,
+        cloud_identifier: `${input.itemId}-CLOUD`,
+        provider_item_identifier:
+          input.source === 'document_picker' ? `/Projects/A/${input.filename ?? input.itemId}` : null,
+        canonical_reference: `apple://${input.kind}/${input.itemId}`,
+        delete_local_after_ack: true,
+      },
+      metadata: {
+        source: input.source,
+        connectionId: '88888888-8888-4888-8888-888888888810',
+        itemId: input.itemId,
+        deleteLocalAfterAck: true,
+        identifiers: {
+          local_identifier: `${input.itemId}-LOCAL`,
+          cloud_identifier: `${input.itemId}-CLOUD`,
+          provider_item_identifier:
+            input.source === 'document_picker' ? `/Projects/A/${input.filename ?? input.itemId}` : null,
+        },
+      },
+    },
+    createdBySubject: owner,
+  });
+
+  const memory: MemoryRecord = {
+    id: input.memoryId,
+    workspaceId,
+    projectId,
+    memoryType: 'fact',
+    title: input.title,
+    content: input.text ?? `${input.title} imported from Apple.`,
+    status: input.status ?? 'candidate',
+    importance: 0.55,
+    confidence: 0.6,
+    sensitivity: input.sensitivity ?? 'internal',
+    validFrom: null,
+    validTo: null,
+    observedAt,
+    recordedAt: '2026-08-19T23:16:00.000Z',
+    supersededBy: null,
+    sourceEventId: sourceEvent.id,
+    createdBySubject: owner,
+    schemaVersion: '1.0',
+    metadata: {},
+  };
+  store.memories.set(memory.id, memory);
+  return memory;
+}
 
 describe('memory api demo slice', () => {
   it('starts oauth stub offline', async () => {
@@ -2640,5 +2735,166 @@ describe('memory api demo slice', () => {
     expect(body.normalized.envelope.scope.storage_mode).toBe('reference');
     expect(body.normalized.envelope.provenance.local_identifier).toBe('APPLE-LOCAL-1');
     expect(body.normalized.envelope.provenance.cloud_identifier).toBe('APPLE-CLOUD-1');
+  });
+
+  it('lists project-scoped Apple transferred objects across companion, share, PhotoKit, and Files sources', async () => {
+    const store = new MemoryStore();
+    seedAppleTransferredMemory(store, {
+      memoryId: '10101010-1010-4010-8010-101010101010',
+      title: 'Shared whiteboard',
+      source: 'share_extension',
+      kind: 'photo',
+      itemId: 'SHARE-1',
+      filename: 'whiteboard.jpeg',
+    });
+    seedAppleTransferredMemory(store, {
+      memoryId: '20202020-2020-4020-8020-202020202020',
+      title: 'Companion note',
+      source: 'companion_app',
+      kind: 'text',
+      itemId: 'COMPANION-1',
+      text: 'Captured from the companion app.',
+    });
+    seedAppleTransferredMemory(store, {
+      memoryId: '30303030-3030-4030-8030-303030303030',
+      title: 'Selected receipt',
+      source: 'photo_library',
+      kind: 'photo',
+      itemId: 'PHOTO-1',
+      filename: 'receipt.heic',
+      sensitivity: 'personal',
+    });
+    seedAppleTransferredMemory(store, {
+      memoryId: '40404040-4040-4040-8040-404040404040',
+      title: 'Picked roadmap',
+      source: 'document_picker',
+      kind: 'file',
+      itemId: 'FILE-1',
+      filename: 'roadmap.md',
+    });
+    store.captureText({
+      workspaceId,
+      projectId,
+      title: 'Manual capture',
+      text: 'This should not appear in Apple transferred objects.',
+      actorSubjectId: owner,
+      idempotencyKey: 'manual-capture-1',
+    });
+
+    const app = createApp({ store });
+    const res = await app.request(
+      `/v1/apple/transferred-objects?workspace_id=${workspaceId}&project_id=aistroyka&limit=10`,
+      {
+        headers: {
+          'x-subject-id': owner,
+          'x-actor-key': 'owner',
+        },
+      },
+    );
+
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.objects).toHaveLength(4);
+    expect(body.objects.map((object: { source: string }) => object.source).sort()).toEqual([
+      'companion_app',
+      'document_picker',
+      'photo_library',
+      'share_extension',
+    ]);
+  });
+
+  it('rejects transferred-object listing without an explicit project_id', async () => {
+    const app = createApp({ store: new MemoryStore() });
+    const res = await app.request(`/v1/apple/transferred-objects?workspace_id=${workspaceId}`, {
+      headers: {
+        'x-subject-id': owner,
+        'x-actor-key': 'owner',
+      },
+    });
+
+    expect(res.status).toBe(400);
+    expect(await res.json()).toEqual({
+      error: 'project_id is required for this read',
+    });
+  });
+
+  it('tombstones a transferred Apple object through the existing memory status path', async () => {
+    const store = new MemoryStore();
+    const memory = seedAppleTransferredMemory(store, {
+      memoryId: '50505050-5050-4050-8050-505050505050',
+      title: 'Delete me from Apple list',
+      source: 'share_extension',
+      kind: 'photo',
+      itemId: 'DELETE-1',
+      filename: 'delete-me.jpeg',
+    });
+    const app = createApp({ store });
+
+    const denied = await app.request(`/v1/apple/transferred-objects/${memory.id}/delete`, {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'x-subject-id': owner,
+        'x-actor-key': 'owner',
+      },
+      body: JSON.stringify({
+        actor_subject_id: owner,
+        reason: 'Missing project_id must fail.',
+      }),
+    });
+    expect(denied.status).toBe(400);
+    expect(await denied.json()).toEqual({
+      error: 'project_id is required for this write',
+    });
+
+    const deleted = await app.request(`/v1/apple/transferred-objects/${memory.id}/delete`, {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'x-subject-id': owner,
+        'x-actor-key': 'owner',
+      },
+      body: JSON.stringify({
+        project_id: 'aistroyka',
+        actor_subject_id: owner,
+        reason: 'User requested deletion from Memory OS.',
+      }),
+    });
+    expect(deleted.status).toBe(200);
+    expect(await deleted.json()).toEqual(
+      expect.objectContaining({
+        id: memory.id,
+        status: 'deleted',
+        deleted: true,
+        projectId: projectId,
+      }),
+    );
+
+    const listed = await app.request(
+      `/v1/apple/transferred-objects?workspace_id=${workspaceId}&project_id=${projectId}&limit=10`,
+      {
+        headers: {
+          'x-subject-id': owner,
+          'x-actor-key': 'owner',
+        },
+      },
+    );
+    expect(listed.status).toBe(200);
+    expect((await listed.json()).objects).toEqual([]);
+
+    const search = await app.request('/v1/search', {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'x-subject-id': owner,
+        'x-actor-key': 'owner',
+      },
+      body: JSON.stringify({
+        query: 'Delete me from Apple list',
+        project_id: projectId,
+      }),
+    });
+    expect(search.status).toBe(200);
+    expect((await search.json()).hits).toEqual([]);
   });
 });

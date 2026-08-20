@@ -23,6 +23,12 @@ type SearchRequestInput = {
   maxContextChars: number;
 };
 
+type TransferredObjectsPathInput = {
+  workspaceId: string;
+  projectId: string;
+  limit?: number;
+};
+
 function setOptionalParam(params: URLSearchParams, key: string, value: string | null | undefined) {
   if (value) {
     params.set(key, value);
@@ -140,4 +146,17 @@ export function buildSearchRequest(input: SearchRequestInput): {
     body.project_id = input.projectId;
   }
   return body;
+}
+
+export function buildTransferredObjectsPath({
+  workspaceId,
+  projectId,
+  limit = 50,
+}: TransferredObjectsPathInput): string {
+  const params = new URLSearchParams({
+    workspace_id: workspaceId,
+    project_id: projectId,
+    limit: String(limit),
+  });
+  return `/v1/apple/transferred-objects?${params.toString()}`;
 }
