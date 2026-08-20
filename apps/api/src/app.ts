@@ -104,6 +104,7 @@ import {
   handleMcpJsonRpc,
   type JsonRpcReq,
 } from '@memory-os/mcp-gateway';
+import { recordSloObservation } from '@memory-os/observability';
 import type { SupabaseMemoryGateway } from './supabase.js';
 import {
   describeGitHubWebhookAction,
@@ -5689,6 +5690,7 @@ export function createApp(options?: {
     const pack = Boolean(body.pack_context);
     const retrievalMode =
       body.retrieval_mode === 'agentic' || body.agentic ? 'agentic' : 'hybrid';
+    const searchStartedAt = Date.now();
     const requestId = c.get('requestId');
     const storeLocal = c.get('store');
     const allowed = gw
@@ -5836,6 +5838,10 @@ export function createApp(options?: {
             afterState: auditState,
           });
         }
+        recordSloObservation({
+          targetId: 'search.agentic',
+          durationMs: Date.now() - searchStartedAt,
+        });
         return c.json({
           hits: result.hits,
           ranking: result.ranking,
@@ -5856,6 +5862,11 @@ export function createApp(options?: {
           },
         });
       } catch (err) {
+        recordSloObservation({
+          targetId: 'search.agentic',
+          durationMs: Date.now() - searchStartedAt,
+          outcome: isForbiddenError(err) ? 'ok' : 'error',
+        });
         if (isForbiddenError(err)) return c.json({ error: 'forbidden' }, 403);
         return c.json({ error: (err as Error).message }, 500);
       }
@@ -5867,6 +5878,10 @@ export function createApp(options?: {
           query: body.query ?? '',
           projectId: body.project_id ?? '',
           includeHistory: Boolean(body.include_history),
+        });
+        recordSloObservation({
+          targetId: 'search.hybrid',
+          durationMs: Date.now() - searchStartedAt,
         });
         return c.json({
           hits,
@@ -5883,6 +5898,11 @@ export function createApp(options?: {
             : {}),
         });
       } catch (err) {
+        recordSloObservation({
+          targetId: 'search.hybrid',
+          durationMs: Date.now() - searchStartedAt,
+          outcome: isForbiddenError(err) ? 'ok' : 'error',
+        });
         if (isForbiddenError(err)) return c.json({ error: 'forbidden' }, 403);
         return c.json({ error: (err as Error).message }, 500);
       }
@@ -5892,6 +5912,10 @@ export function createApp(options?: {
       query: body.query ?? '',
       projectId: body.project_id ?? '',
       includeHistory: Boolean(body.include_history),
+    });
+    recordSloObservation({
+      targetId: 'search.hybrid',
+      durationMs: Date.now() - searchStartedAt,
     });
     return c.json({
       hits,

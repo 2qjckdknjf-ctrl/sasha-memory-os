@@ -1,6 +1,10 @@
 import { describe, expect, it, vi } from 'vitest';
 import { createSeededStore } from '@memory-os/domain';
 import {
+  getSloBudgetSnapshot,
+  resetSloObservations,
+} from '@memory-os/observability';
+import {
   SEARCH_RANKING_VERSION,
   SEARCH_RANKING_WEIGHTS_VERSION,
 } from '@memory-os/retrieval';
@@ -268,6 +272,7 @@ describe('mcp gateway alpha', () => {
   });
 
   it('searches with RRF and packed context offline', async () => {
+    resetSloObservations();
     const mcp = createMcpHandlers();
     const result = (await mcp.call('memory.search', {
       query: 'Slice 01',
@@ -289,6 +294,57 @@ describe('mcp gateway alpha', () => {
     expect(result.hits[0]?.reason).toBe('hybrid:rrf');
     expect(result.context?.packedCount).toBeGreaterThan(0);
     expect(result.context?.text).toContain('[1]');
+    const snapshot = getSloBudgetSnapshot();
+    expect(
+      snapshot.targets.find((target) => target.id === 'search.hybrid')?.observations,
+    ).toMatchObject({
+      sampleCount: 1,
+    });
+  });
+
+  it('records MCP availability, project state, and write receipt observations without leaking payloads', async () => {
+    resetSloObservations();
+    const mcp = createMcpHandlers();
+
+    await mcp.call('memory.search', {
+      query: 'family travel top-secret-token',
+      project_id: projectId,
+      actor_subject_id: cursor,
+    });
+    await mcp.call('context.project', {
+      project_id: projectId,
+      actor_subject_id: cursor,
+    });
+    await mcp.call('capture.text', {
+      workspace_id: workspaceId,
+      project_id: projectId,
+      title: 'Private MCP payload',
+      text: 'private payload body must stay out of telemetry',
+      actor_subject_id: cursor,
+      idempotency_key: 'm14-slo-mcp-capture-1',
+      process_now: true,
+    });
+
+    const snapshot = getSloBudgetSnapshot();
+    const byId = Object.fromEntries(snapshot.targets.map((target) => [target.id, target]));
+
+    expect(byId['mcp.availability']?.observations).toMatchObject({
+      totalCount: 3,
+      errorCount: 0,
+    });
+    expect(byId['search.hybrid']?.observations).toMatchObject({
+      sampleCount: 1,
+    });
+    expect(byId['project.state']?.observations).toMatchObject({
+      sampleCount: 1,
+    });
+    expect(byId['write.receipt']?.observations).toMatchObject({
+      sampleCount: 1,
+    });
+
+    const serialized = JSON.stringify(snapshot);
+    expect(serialized).not.toContain('family travel top-secret-token');
+    expect(serialized).not.toContain('private payload body must stay out of telemetry');
   });
 
   it('requires explicit project_id for bounded agentic memory.search instead of inferring AISTROYKA', async () => {
@@ -308,6 +364,7 @@ describe('mcp gateway alpha', () => {
   });
 
   it('traces bounded agentic memory.search without widening scope or writing', async () => {
+    resetSloObservations();
     const gateway = {
       resolveProjectRef: vi.fn(async ({ projectRef }: { projectRef?: string | null }) => {
         if (projectRef === projectId || projectRef === 'aistroyka') {
@@ -405,6 +462,12 @@ describe('mcp gateway alpha', () => {
     );
     expect(gateway.createDecision).not.toHaveBeenCalled();
     expect(gateway.captureText).not.toHaveBeenCalled();
+    const snapshot = getSloBudgetSnapshot();
+    expect(
+      snapshot.targets.find((target) => target.id === 'search.agentic')?.observations,
+    ).toMatchObject({
+      sampleCount: 1,
+    });
   });
 
   it('default-denies personal Gmail and Calendar memories for Cursor, ROMA, and ChatGPT offline', async () => {
