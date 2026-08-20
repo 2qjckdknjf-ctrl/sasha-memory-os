@@ -93,7 +93,34 @@ function gmailMessageResponse(input: {
   from?: string;
   snippet?: string;
   bodyText?: string | null;
+  attachments?: Array<{
+    filename?: string;
+    mimeType?: string;
+    size?: number;
+    attachmentId?: string;
+    bodyText?: string;
+  }>;
 }) {
+  const parts = [];
+  if (input.bodyText && input.bodyText.length > 0) {
+    parts.push({
+      mimeType: 'text/plain',
+      body: {
+        data: encodeBody(input.bodyText),
+      },
+    });
+  }
+  for (const attachment of input.attachments ?? []) {
+    parts.push({
+      mimeType: attachment.mimeType,
+      filename: attachment.filename,
+      body: {
+        size: attachment.size,
+        attachmentId: attachment.attachmentId,
+        data: attachment.bodyText ? encodeBody(attachment.bodyText) : undefined,
+      },
+    });
+  }
   return Response.json({
     id: input.id,
     labelIds: input.labelIds,
@@ -106,17 +133,7 @@ function gmailMessageResponse(input: {
         { name: 'Subject', value: input.subject },
         { name: 'From', value: input.from ?? 'owner@example.com' },
       ],
-      parts:
-        input.bodyText && input.bodyText.length > 0
-          ? [
-              {
-                mimeType: 'text/plain',
-                body: {
-                  data: encodeBody(input.bodyText),
-                },
-              },
-            ]
-          : [],
+      parts,
     },
   });
 }
@@ -187,7 +204,7 @@ describe('gmail selected-label contract', () => {
     expect(JSON.stringify(result)).not.toMatch(/Bearer|access_token|INBOX/i);
   });
 
-  it('syncs selected labels only, ignores unselected siblings, and indexes bodies only for indexed labels', async () => {
+  it('syncs selected labels only, ignores unselected siblings, indexes only body text, and never fetches attachment bytes', async () => {
     const dir = await mkdtemp(path.join(os.tmpdir(), 'memory-os-gmail-selected-'));
     try {
       const { processEnv, vault } = await createGmailVaultFixture(dir);
@@ -225,6 +242,15 @@ describe('gmail selected-label contract', () => {
             subject: 'Indexed action item',
             snippet: 'Should use full body.',
             bodyText: 'Indexed body for Action label.',
+            attachments: [
+              {
+                filename: 'action-items.txt',
+                mimeType: 'text/plain',
+                size: 2048,
+                attachmentId: 'att-idx-1',
+                bodyText: 'Attachment bytes must never be indexed.',
+              },
+            ],
           });
         }
         if (parsed.pathname.endsWith('/messages/m-shared')) {
@@ -280,6 +306,16 @@ describe('gmail selected-label contract', () => {
       );
       expect(byExternalId.get('msg/m-idx')?.envelope.scope.storage_mode).toBe('indexed');
       expect(byExternalId.get('msg/m-idx')?.capture.text).toContain('Indexed body for Action label.');
+      expect(byExternalId.get('msg/m-idx')?.capture.text).not.toContain(
+        'Attachment bytes must never be indexed.',
+      );
+      expect(byExternalId.get('msg/m-idx')?.externalObject.attachments).toEqual([
+        {
+          filename: 'action-items.txt',
+          mimeType: 'text/plain',
+          size: 2048,
+        },
+      ]);
       expect(byExternalId.get('msg/m-shared')?.externalObject.collectionId).toBe(
         'gmail:label:LBL-IDX',
       );
@@ -287,6 +323,9 @@ describe('gmail selected-label contract', () => {
       expect(byExternalId.get('msg/m-ref')?.envelope.scope.sensitivity).toBe('personal');
       expect(
         fetchImpl.mock.calls.some(([value]) => String(value).includes('labelIds=INBOX')),
+      ).toBe(false);
+      expect(
+        fetchImpl.mock.calls.some(([value]) => String(value).includes('/attachments/')),
       ).toBe(false);
       expect(syncRun.nextCursor?.opaque.startHistoryId).toBe('303');
     } finally {
@@ -528,6 +567,14 @@ describe('gmailConnector certification', () => {
             subject: 'Certification indexed',
             snippet: 'Indexed cert message.',
             bodyText: 'Certification indexed body.',
+            attachments: [
+              {
+                filename: 'cert-attachment.pdf',
+                mimeType: 'application/pdf',
+                size: 4096,
+                attachmentId: 'cert-att-1',
+              },
+            ],
           });
         }
         if (parsed.pathname.endsWith('/history')) {
@@ -561,6 +608,19 @@ describe('gmailConnector certification', () => {
       });
 
       expect(result.records).toHaveLength(2);
+      const indexedRecord = result.records.find(
+        (record) => record.externalObject.externalId === 'msg/cert-idx',
+      );
+      expect(indexedRecord?.externalObject.attachments).toEqual([
+        {
+          filename: 'cert-attachment.pdf',
+          mimeType: 'application/pdf',
+          size: 4096,
+        },
+      ]);
+      expect(
+        fetchImpl.mock.calls.some(([value]) => String(value).includes('/attachments/')),
+      ).toBe(false);
       expect(result.nextCursor?.opaque.startHistoryId).toBe('502');
     } finally {
       await rm(dir, { recursive: true, force: true });

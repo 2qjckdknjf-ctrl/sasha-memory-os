@@ -166,6 +166,7 @@ function calendarEvent(input: {
   location?: string;
   recurringEventId?: string;
   attendees?: Array<{ email?: string; displayName?: string; responseStatus?: string }>;
+  attachments?: Array<{ title?: string; mimeType?: string }>;
 }) {
   return {
     id: input.id,
@@ -181,6 +182,7 @@ function calendarEvent(input: {
     location: input.location,
     recurringEventId: input.recurringEventId,
     attendees: input.attendees,
+    attachments: input.attachments,
   };
 }
 
@@ -267,7 +269,7 @@ describe('google calendar selected-calendar contract', () => {
     }
   });
 
-  it('syncs selected calendars only, ignores unselected siblings, and uses personal reference storage', async () => {
+  it('syncs selected calendars only, keeps attachment metadata only, and never downloads attachment media', async () => {
     const dir = await mkdtemp(path.join(os.tmpdir(), 'memory-os-cal-selected-'));
     try {
       const { processEnv, vault } = await createCalendarVaultFixture(dir);
@@ -281,6 +283,12 @@ describe('google calendar selected-calendar contract', () => {
                 summary: 'Shared personal event',
                 updated: '2026-08-11T09:00:00.000Z',
                 description: 'Personal description',
+                attachments: [
+                  {
+                    title: 'agenda.pdf',
+                    mimeType: 'application/pdf',
+                  },
+                ],
               }),
               calendarEvent({
                 id: 'evt-personal-only',
@@ -338,17 +346,29 @@ describe('google calendar selected-calendar contract', () => {
       expect(byExternalId.get('calendar/cal-team/event/evt-shared')?.externalObject.collectionId).toBe(
         'google-calendar:calendar:cal-team',
       );
+      expect(
+        byExternalId.get('calendar/cal-personal/event/evt-shared')?.externalObject.attachments,
+      ).toEqual([
+        {
+          title: 'agenda.pdf',
+          mimeType: 'application/pdf',
+        },
+      ]);
       expect(byExternalId.get('calendar/cal-personal/event/evt-shared')?.envelope.scope.storage_mode).toBe(
         'reference',
       );
       expect(byExternalId.get('calendar/cal-team/event/evt-shared')?.envelope.scope.sensitivity).toBe(
         'personal',
       );
+      expect(fetchImpl).toHaveBeenCalledTimes(2);
       expect(
         fetchImpl.mock.calls.some(([value]) => String(value).includes('/calendars/primary/')),
       ).toBe(false);
       expect(
         fetchImpl.mock.calls.some(([value]) => String(value).includes('/calendars/cal-hidden/')),
+      ).toBe(false);
+      expect(
+        fetchImpl.mock.calls.some(([value]) => String(value).includes('alt=media')),
       ).toBe(false);
       expect(syncRun.nextCursor?.opaque.calendarTokens).toEqual(
         expect.arrayContaining([
@@ -843,6 +863,12 @@ describe('googleCalendarConnector certification', () => {
                 id: 'cert-personal',
                 summary: 'Certification personal event',
                 updated: '2026-08-11T12:00:00.000Z',
+                attachments: [
+                  {
+                    title: 'briefing.docx',
+                    mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+                  },
+                ],
               }),
             ],
             nextSyncToken: 'cal-personal-sync-1',
@@ -889,6 +915,18 @@ describe('googleCalendarConnector certification', () => {
       });
 
       expect(result.records).toHaveLength(2);
+      const personalRecord = result.records.find(
+        (record) => record.externalObject.externalId === 'calendar/cal-personal/event/cert-personal',
+      );
+      expect(personalRecord?.externalObject.attachments).toEqual([
+        {
+          title: 'briefing.docx',
+          mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        },
+      ]);
+      expect(fetchImpl.mock.calls.some(([value]) => String(value).includes('alt=media'))).toBe(
+        false,
+      );
       expect(result.nextCursor?.opaque.calendarTokens).toEqual(
         expect.arrayContaining([
           expect.objectContaining({
