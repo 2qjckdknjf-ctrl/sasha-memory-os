@@ -1,14 +1,16 @@
 import { describe, expect, it } from 'vitest';
 import {
+  enqueueRomaProjectFindingsJobSchema,
   enqueueRomaProjectHealthJobSchema,
   processingJobTypeSchema,
   upsertRomaProjectHealthScheduleSchema,
 } from './jobs.js';
 
 describe('processingJobTypeSchema', () => {
-  it('accepts the ROMA project-health job type', () => {
-    expect(processingJobTypeSchema.parse('roma_project_health')).toBe(
-      'roma_project_health',
+  it('accepts the ROMA automation job types', () => {
+    expect(processingJobTypeSchema.parse('roma_project_health')).toBe('roma_project_health');
+    expect(processingJobTypeSchema.parse('roma_project_findings')).toBe(
+      'roma_project_findings',
     );
   });
 });
@@ -31,6 +33,30 @@ describe('enqueueRomaProjectHealthJobSchema', () => {
       reason: 'Generate one audited summary.',
     });
     expect(parsed.project_id).toBe('44444444-4444-4444-8444-444444444401');
+  });
+});
+
+describe('enqueueRomaProjectFindingsJobSchema', () => {
+  it('requires an explicit project_id', () => {
+    expect(() =>
+      enqueueRomaProjectFindingsJobSchema.parse({
+        workspace_id: '11111111-1111-4111-8111-111111111111',
+        actor_subject_id: '33333333-3333-4333-8333-333333333304',
+        reason: 'Generate bounded ROMA QA findings.',
+      }),
+    ).toThrow();
+  });
+
+  it('accepts a bounded enqueue payload for one explicit project', () => {
+    const parsed = enqueueRomaProjectFindingsJobSchema.parse({
+      workspace_id: '11111111-1111-4111-8111-111111111111',
+      project_id: '44444444-4444-4444-8444-444444444401',
+      actor_subject_id: '33333333-3333-4333-8333-333333333304',
+      idempotency_key: 'slice-03',
+      reason: 'Generate bounded ROMA QA findings.',
+    });
+    expect(parsed.project_id).toBe('44444444-4444-4444-8444-444444444401');
+    expect(parsed.actor_subject_id).toBe('33333333-3333-4333-8333-333333333304');
   });
 });
 

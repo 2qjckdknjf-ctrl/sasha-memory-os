@@ -2059,6 +2059,78 @@ describe('memory api demo slice', () => {
     expect(gateway.upsertRomaProjectHealthSchedule).not.toHaveBeenCalled();
   });
 
+  it('rejects ROMA QA findings enqueue without an explicit project_id', async () => {
+    const gateway = {
+      enqueueRomaProjectFindings: vi.fn(),
+    };
+    const app = createApp({ gateway: gateway as any });
+    const res = await app.request('/v1/roma/qa-findings', {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'x-subject-id': cursor,
+        'x-actor-key': 'cursor',
+      },
+      body: JSON.stringify({
+        workspace_id: workspaceId,
+        actor_subject_id: cursor,
+        reason: 'Generate bounded ROMA QA findings.',
+      }),
+    });
+
+    expect(res.status).toBe(400);
+    expect(gateway.enqueueRomaProjectFindings).not.toHaveBeenCalled();
+  });
+
+  it('enqueues ROMA QA findings for one explicit project uuid', async () => {
+    const gateway = {
+      enqueueRomaProjectFindings: vi.fn(async () => ({
+        jobId: 'job-findings-1',
+        eventId: 'event-findings-1',
+        workspaceId,
+        projectId,
+        requestedBy: cursor,
+        executionSubjectId: roma,
+        reason: 'Generate bounded ROMA QA findings.',
+        idempotencyKey: 'roma-project-findings/test',
+        inserted: true,
+      })),
+    };
+    const app = createApp({ gateway: gateway as any });
+    const res = await app.request('/v1/roma/qa-findings', {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'x-subject-id': cursor,
+        'x-actor-key': 'cursor',
+      },
+      body: JSON.stringify({
+        workspace_id: workspaceId,
+        project_id: projectId,
+        actor_subject_id: cursor,
+        idempotency_key: 'slice-03',
+        reason: 'Generate bounded ROMA QA findings.',
+      }),
+    });
+
+    expect(res.status).toBe(200);
+    expect(gateway.enqueueRomaProjectFindings).toHaveBeenCalledWith({
+      subjectId: cursor,
+      workspaceId,
+      projectId,
+      idempotencyKey: 'slice-03',
+      reason: 'Generate bounded ROMA QA findings.',
+    });
+    const body = (await res.json()) as {
+      projectId: string;
+      executionSubjectId: string;
+      backend: string;
+    };
+    expect(body.projectId).toBe(projectId);
+    expect(body.executionSubjectId).toBe(roma);
+    expect(body.backend).toBe('supabase');
+  });
+
   it('upserts and disables a ROMA project-health schedule with one explicit project uuid', async () => {
     const gateway = {
       upsertRomaProjectHealthSchedule: vi.fn(async () => ({

@@ -50,3 +50,30 @@ describe('SupabaseMemoryGateway.upsertRomaProjectHealthSchedule', () => {
     );
   });
 });
+
+describe('SupabaseMemoryGateway.enqueueRomaProjectFindings', () => {
+  it('passes bounded enqueue RPC args for one explicit project', async () => {
+    const rpc = vi.fn(async () => ({ data: { ok: true }, error: null }));
+    const gateway = new SupabaseMemoryGateway({ rpc } as any, 'test-secret');
+
+    await gateway.enqueueRomaProjectFindings({
+      subjectId: '33333333-3333-4333-8333-333333333304',
+      workspaceId: '11111111-1111-4111-8111-111111111111',
+      projectId: '44444444-4444-4444-8444-444444444401',
+      idempotencyKey: 'slice-03',
+      reason: 'Generate bounded ROMA QA findings.',
+    });
+
+    expect(rpc).toHaveBeenCalledWith(
+      'api_enqueue_roma_project_findings',
+      expect.objectContaining({
+        p_secret: 'test-secret',
+        p_subject_id: '33333333-3333-4333-8333-333333333304',
+        p_workspace_id: '11111111-1111-4111-8111-111111111111',
+        p_project_id: '44444444-4444-4444-8444-444444444401',
+        p_idempotency_key: 'slice-03',
+        p_reason: 'Generate bounded ROMA QA findings.',
+      }),
+    );
+  });
+});

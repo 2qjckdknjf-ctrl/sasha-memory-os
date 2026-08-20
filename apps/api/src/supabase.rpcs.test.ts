@@ -240,6 +240,45 @@ describeRemote('remote Supabase RPCs (vault / embed / consolidation)', () => {
   );
 
   it(
+    'enqueues and claims bounded ROMA QA findings for one explicit project',
+    async () => {
+      const reason = `rpc-findings-${Date.now()}`;
+      const enqueued = await gateway().enqueueRomaProjectFindings({
+        subjectId: owner,
+        workspaceId,
+        projectId,
+        idempotencyKey: reason,
+        reason,
+      });
+      expect(enqueued.projectId).toBe(projectId);
+      expect(enqueued.executionSubjectId).toBe(roma);
+
+      const claimed = await gateway().claimRomaProjectFindingsJobs({
+        subjectId: roma,
+        workspaceId,
+        limit: 50,
+        projectId,
+      });
+      const job = claimed.jobs.find((entry) => entry.idempotencyKey === enqueued.idempotencyKey);
+      expect(job?.projectId).toBe(projectId);
+      expect(job?.requestedBy).toBe(owner);
+
+      if (job) {
+        const completed = await gateway().completeRomaProjectFindings({
+          subjectId: roma,
+          jobId: job.jobId,
+          status: 'failed',
+          error: 'rpc cleanup',
+          findingCount: 0,
+        });
+        expect(completed.status).toBe('failed');
+        expect(completed.jobType).toBe('roma_project_findings');
+      }
+    },
+    20_000,
+  );
+
+  it(
     'persists 32-dim embedding and hybrid-searches',
     async () => {
       const key = `remote-test/embed-${Date.now()}`;
