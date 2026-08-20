@@ -139,6 +139,7 @@ describe('runRomaProjectHealthJob', () => {
     });
 
     expect(result.memoryId).toBe('memory-roma-1');
+    expect(result.notificationSeverity).toBe('info');
     expect(captureConnectorRecord).toHaveBeenCalledWith(
       expect.objectContaining({
         subjectId: roma,
@@ -162,6 +163,14 @@ describe('runRomaProjectHealthJob', () => {
         status: 'succeeded',
         memoryId: 'memory-roma-1',
         auditEventId: 'audit-roma-1',
+        notificationTitle: 'ROMA project health updated: AISTROYKA',
+        notificationSeverity: 'info',
+        notificationSourceMemoryIds: ['memory-roma-1'],
+        notificationMetadata: expect.objectContaining({
+          projectId,
+          sourceJobId: 'job-roma-1',
+          summaryTitle: 'ROMA project health: AISTROYKA',
+        }),
       }),
     );
 
@@ -178,6 +187,67 @@ describe('runRomaProjectHealthJob', () => {
     );
     expect(captureInput?.provenance?.automation?.requestedBy).toBe(owner);
     expect(captureInput?.metadata?.summary_type).toBe('project_health');
+  });
+
+  it('fails closed when succeeded completion loses ROMA notification ACL', async () => {
+    const captureConnectorRecord = vi.fn(async () => ({
+      eventId: 'source-roma-1',
+      process: { memoryId: 'memory-roma-1' },
+    }));
+    const appendAuditEvent = vi.fn(async () => ({ id: 'audit-roma-1' }));
+    const completeRomaProjectHealth = vi
+      .fn()
+      .mockRejectedValueOnce(new Error('roma project access required'))
+      .mockResolvedValueOnce({
+        jobId: 'job-roma-1',
+        status: 'failed',
+      });
+    const gateway = {
+      listProjects: vi.fn(async () => [
+        {
+          id: projectId,
+          slug: 'aistroyka',
+          name: 'AISTROYKA',
+          status: 'active',
+        },
+      ]),
+      projectContext: vi.fn(async () => ({
+        projectId,
+        decisions: [],
+        tasks: [],
+        facts: [],
+        state: null,
+        latestHandoff: null,
+      })),
+      captureConnectorRecord,
+      appendAuditEvent,
+      completeRomaProjectHealth,
+    };
+
+    await expect(
+      runRomaProjectHealthJob({
+        gateway: gateway as any,
+        job: buildJob(),
+        romaSubjectId: roma,
+      }),
+    ).rejects.toThrow(/roma project access required/i);
+
+    expect(completeRomaProjectHealth).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({
+        subjectId: roma,
+        status: 'succeeded',
+        notificationTitle: 'ROMA project health updated: AISTROYKA',
+      }),
+    );
+    expect(completeRomaProjectHealth).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({
+        subjectId: roma,
+        status: 'failed',
+        error: 'roma project access required',
+      }),
+    );
   });
 
   it('fails the job when the project is not visible to ROMA', async () => {
@@ -284,6 +354,7 @@ describe('runRomaProjectFindingsJob', () => {
     });
 
     expect(result.findingCount).toBeGreaterThan(0);
+    expect(result.notificationSeverity).toBe('high');
     expect(captureConnectorRecord).toHaveBeenCalled();
     expect(appendAuditEvent).toHaveBeenCalled();
     expect(completeRomaProjectFindings).toHaveBeenCalledWith(
@@ -292,6 +363,19 @@ describe('runRomaProjectFindingsJob', () => {
         jobId: 'job-findings-1',
         status: 'succeeded',
         findingCount: result.findingCount,
+        notificationTitle: 'ROMA QA findings: AISTROYKA (3 open)',
+        notificationSeverity: 'high',
+        notificationSourceMemoryIds: [
+          'memory-blocked-work',
+          'memory-active-risks',
+          'memory-missing-handoff',
+        ],
+        notificationMetadata: expect.objectContaining({
+          projectId,
+          sourceJobId: 'job-findings-1',
+          findingCount: 3,
+          findingKeys: ['blocked-work', 'active-risks', 'missing-handoff'],
+        }),
       }),
     );
 

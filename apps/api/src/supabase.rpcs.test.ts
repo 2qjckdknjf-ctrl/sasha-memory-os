@@ -213,6 +213,81 @@ describeRemote('remote Supabase RPCs (vault / embed / consolidation)', () => {
   );
 
   it(
+    'creates one durable notification set for ROMA health completion and treats duplicate complete as a no-op',
+    async () => {
+      const reason = `rpc-health-notification-${Date.now()}`;
+      const enqueued = await gateway().enqueueRomaProjectHealth({
+        subjectId: owner,
+        workspaceId,
+        projectId,
+        idempotencyKey: reason,
+        reason,
+      });
+      expect(enqueued.projectId).toBe(projectId);
+
+      const claimed = await gateway().claimRomaProjectHealthJobs({
+        subjectId: roma,
+        workspaceId,
+        limit: 50,
+        projectId,
+      });
+      const job = claimed.jobs.find((entry) => entry.idempotencyKey === enqueued.idempotencyKey);
+      expect(job).toBeTruthy();
+
+      if (!job) return;
+
+      const sourceMemoryId = randomUUID();
+      const auditEventId = randomUUID();
+      const completionInput = {
+        subjectId: roma,
+        jobId: job.jobId,
+        status: 'succeeded' as const,
+        memoryId: sourceMemoryId,
+        auditEventId,
+        notificationTitle: 'ROMA project health updated: AISTROYKA',
+        notificationSeverity: 'info' as const,
+        notificationSourceMemoryIds: [sourceMemoryId],
+        notificationMetadata: {
+          projectId,
+          sourceJobId: job.jobId,
+          summaryTitle: 'RPC smoke notification',
+        },
+      };
+
+      const first = await gateway().completeRomaProjectHealth(completionInput);
+      expect(first.notificationIds.length).toBeGreaterThan(0);
+      expect(first.notificationInsertedCount).toBe(first.notificationIds.length);
+
+      const second = await gateway().completeRomaProjectHealth(completionInput);
+      expect(second.notificationIds).toEqual(first.notificationIds);
+      expect(second.notificationInsertedCount).toBe(0);
+      expect(second.notificationEventIds).toHaveLength(0);
+      expect(second.notificationAuditEventIds).toHaveLength(0);
+
+      const pending = await gateway().listOutboxPending({
+        subjectId: owner,
+        workspaceId,
+        eventType: 'project.notification.created',
+        limit: 50,
+      });
+      const relevant = pending.events.filter((event) =>
+        first.notificationIds.includes(String(event.payload?.notificationId ?? '')),
+      );
+      expect(relevant).toHaveLength(first.notificationIds.length);
+
+      for (const event of relevant) {
+        const published = await gateway().publishOutboxEvent({
+          subjectId: owner,
+          eventId: event.id,
+          error: 'acked in rpc smoke',
+        });
+        expect(published.publishedAt).toBeTruthy();
+      }
+    },
+    20_000,
+  );
+
+  it(
     'keeps a disabled schedule disabled when enabled and reason are omitted',
     async () => {
       const reason = `rpc-disabled-${Date.now()}`;

@@ -77,3 +77,85 @@ describe('SupabaseMemoryGateway.enqueueRomaProjectFindings', () => {
     );
   });
 });
+
+describe('SupabaseMemoryGateway.completeRomaProjectHealth', () => {
+  it('passes notification RPC args for audited ROMA health completion', async () => {
+    const rpc = vi.fn(async () => ({ data: { ok: true }, error: null }));
+    const gateway = new SupabaseMemoryGateway({ rpc } as any, 'test-secret');
+
+    await gateway.completeRomaProjectHealth({
+      subjectId: '33333333-3333-4333-8333-333333333304',
+      jobId: 'job-roma-1',
+      status: 'succeeded',
+      memoryId: 'memory-roma-1',
+      auditEventId: 'audit-roma-1',
+      notificationTitle: 'ROMA project health updated: AISTROYKA',
+      notificationSeverity: 'info',
+      notificationSourceMemoryIds: ['memory-roma-1'],
+      notificationMetadata: {
+        projectId: '44444444-4444-4444-8444-444444444401',
+      },
+    });
+
+    expect(rpc).toHaveBeenCalledWith(
+      'api_complete_roma_project_health',
+      expect.objectContaining({
+        p_secret: 'test-secret',
+        p_subject_id: '33333333-3333-4333-8333-333333333304',
+        p_job_id: 'job-roma-1',
+        p_status: 'succeeded',
+        p_memory_id: 'memory-roma-1',
+        p_audit_event_id: 'audit-roma-1',
+        p_notification_title: 'ROMA project health updated: AISTROYKA',
+        p_notification_severity: 'info',
+        p_notification_source_memory_ids: ['memory-roma-1'],
+        p_notification_metadata: {
+          projectId: '44444444-4444-4444-8444-444444444401',
+        },
+      }),
+    );
+  });
+});
+
+describe('SupabaseMemoryGateway.completeRomaProjectFindings', () => {
+  it('passes notification RPC args for audited ROMA findings completion', async () => {
+    const rpc = vi.fn(async () => ({ data: { ok: true }, error: null }));
+    const gateway = new SupabaseMemoryGateway({ rpc } as any, 'test-secret');
+
+    await gateway.completeRomaProjectFindings({
+      subjectId: '33333333-3333-4333-8333-333333333304',
+      jobId: 'job-findings-1',
+      status: 'succeeded',
+      memoryId: 'memory-blocked-work',
+      auditEventId: 'audit-blocked-work',
+      findingCount: 2,
+      notificationTitle: 'ROMA QA findings: AISTROYKA (2 open)',
+      notificationSeverity: 'high',
+      notificationSourceMemoryIds: ['memory-blocked-work', 'memory-active-risks'],
+      notificationMetadata: {
+        projectId: '44444444-4444-4444-8444-444444444401',
+        findingKeys: ['blocked-work', 'active-risks'],
+      },
+    });
+
+    expect(rpc).toHaveBeenCalledWith(
+      'api_complete_roma_project_findings',
+      expect.objectContaining({
+        p_secret: 'test-secret',
+        p_subject_id: '33333333-3333-4333-8333-333333333304',
+        p_job_id: 'job-findings-1',
+        p_status: 'succeeded',
+        p_memory_id: 'memory-blocked-work',
+        p_audit_event_id: 'audit-blocked-work',
+        p_finding_count: 2,
+        p_notification_title: 'ROMA QA findings: AISTROYKA (2 open)',
+        p_notification_severity: 'high',
+        p_notification_source_memory_ids: ['memory-blocked-work', 'memory-active-risks'],
+        p_notification_metadata: {
+          projectId: '44444444-4444-4444-8444-444444444401',
+          findingKeys: ['blocked-work', 'active-risks'],
+        },
+      }),
+    );
+  });
+});

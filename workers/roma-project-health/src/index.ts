@@ -107,10 +107,16 @@ export type RomaProjectHealthRunResult = {
   auditEventId: string;
   summaryTitle: string;
   projectName: string;
+  notificationIds: string[];
+  notificationEventIds: string[];
+  notificationAuditEventIds: string[];
+  notificationInsertedCount: number;
+  notificationSeverity: 'info';
 };
 
 type FindingSeverity = 'low' | 'medium' | 'high';
 type FindingStatus = 'open';
+type NotificationSeverity = 'info' | 'low' | 'medium' | 'high';
 
 type QaFindingEvidenceRef = {
   kind: 'memory' | 'project_state' | 'handoff';
@@ -149,6 +155,11 @@ export type RomaProjectFindingsRunResult = {
   projectName: string;
   findingCount: number;
   findings: RomaQaFindingWrite[];
+  notificationIds: string[];
+  notificationEventIds: string[];
+  notificationAuditEventIds: string[];
+  notificationInsertedCount: number;
+  notificationSeverity: FindingSeverity;
 };
 
 export type RomaProjectHealthTickReport = {
@@ -305,6 +316,67 @@ function stableFindingIdempotencyKey(input: {
     .digest('hex')
     .slice(0, 24);
   return `roma-project-findings/${input.projectId}/${input.findingKey}/${fingerprint}`;
+}
+
+function maxFindingSeverity(findings: RomaQaFindingWrite[]): FindingSeverity {
+  let severity: FindingSeverity = 'low';
+  for (const finding of findings) {
+    switch (finding.severity) {
+      case 'high':
+        return 'high';
+      case 'medium':
+        severity = 'medium';
+        break;
+      case 'low':
+        break;
+      default: {
+        const _exhaustive: never = finding.severity;
+        return _exhaustive;
+      }
+    }
+  }
+  return severity;
+}
+
+function buildHealthNotification(input: {
+  result: Pick<RomaProjectHealthRunResult, 'jobId' | 'projectId' | 'projectName' | 'memoryId' | 'summaryTitle'>;
+}): {
+  title: string;
+  severity: Extract<NotificationSeverity, 'info'>;
+  sourceMemoryIds: string[];
+  metadata: Record<string, unknown>;
+} {
+  return {
+    title: `ROMA project health updated: ${input.result.projectName}`,
+    severity: 'info',
+    sourceMemoryIds: [input.result.memoryId],
+    metadata: {
+      projectId: input.result.projectId,
+      sourceJobId: input.result.jobId,
+      summaryTitle: input.result.summaryTitle,
+    },
+  };
+}
+
+function buildFindingsNotification(input: {
+  result: Pick<RomaProjectFindingsRunResult, 'jobId' | 'projectId' | 'projectName' | 'findingCount' | 'findings'>;
+}): {
+  title: string;
+  severity: FindingSeverity;
+  sourceMemoryIds: string[];
+  metadata: Record<string, unknown>;
+} {
+  return {
+    title: `ROMA QA findings: ${input.result.projectName} (${input.result.findingCount} open)`,
+    severity: maxFindingSeverity(input.result.findings),
+    sourceMemoryIds: input.result.findings.map((finding) => finding.memoryId),
+    metadata: {
+      projectId: input.result.projectId,
+      sourceJobId: input.result.jobId,
+      findingCount: input.result.findingCount,
+      findingKeys: input.result.findings.map((finding) => finding.findingKey),
+    },
+  };
 }
 
 function isRetryableRomaProjectHealthError(message: string): boolean {
@@ -685,6 +757,11 @@ async function executeRomaProjectHealthJob(options: {
     auditEventId: audit.id,
     summaryTitle: summary.title,
     projectName: project.name,
+    notificationIds: [],
+    notificationEventIds: [],
+    notificationAuditEventIds: [],
+    notificationInsertedCount: 0,
+    notificationSeverity: 'info',
   };
 }
 
@@ -703,14 +780,26 @@ export async function runRomaProjectHealthJob(options: {
       job,
       romaSubjectId,
     });
-    await gateway.completeRomaProjectHealth({
+    const notification = buildHealthNotification({ result });
+    const completion = await gateway.completeRomaProjectHealth({
       subjectId: romaSubjectId,
       jobId: job.jobId,
       status: 'succeeded',
       memoryId: result.memoryId,
       auditEventId: result.auditEventId,
+      notificationTitle: notification.title,
+      notificationSeverity: notification.severity,
+      notificationSourceMemoryIds: notification.sourceMemoryIds,
+      notificationMetadata: notification.metadata,
     });
-    return result;
+    return {
+      ...result,
+      notificationIds: completion.notificationIds ?? [],
+      notificationEventIds: completion.notificationEventIds ?? [],
+      notificationAuditEventIds: completion.notificationAuditEventIds ?? [],
+      notificationInsertedCount: completion.notificationInsertedCount ?? 0,
+      notificationSeverity: notification.severity,
+    };
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     try {
@@ -848,6 +937,11 @@ async function executeRomaProjectFindingsJob(options: {
     projectName: project.name,
     findingCount: findings.length,
     findings,
+    notificationIds: [],
+    notificationEventIds: [],
+    notificationAuditEventIds: [],
+    notificationInsertedCount: 0,
+    notificationSeverity: maxFindingSeverity(findings),
   };
 }
 
@@ -866,15 +960,27 @@ export async function runRomaProjectFindingsJob(options: {
       job,
       romaSubjectId,
     });
-    await gateway.completeRomaProjectFindings({
+    const notification = buildFindingsNotification({ result });
+    const completion = await gateway.completeRomaProjectFindings({
       subjectId: romaSubjectId,
       jobId: job.jobId,
       status: 'succeeded',
       memoryId: result.findings[0]?.memoryId ?? null,
       auditEventId: result.findings[0]?.auditEventId ?? null,
       findingCount: result.findingCount,
+      notificationTitle: notification.title,
+      notificationSeverity: notification.severity,
+      notificationSourceMemoryIds: notification.sourceMemoryIds,
+      notificationMetadata: notification.metadata,
     });
-    return result;
+    return {
+      ...result,
+      notificationIds: completion.notificationIds ?? [],
+      notificationEventIds: completion.notificationEventIds ?? [],
+      notificationAuditEventIds: completion.notificationAuditEventIds ?? [],
+      notificationInsertedCount: completion.notificationInsertedCount ?? 0,
+      notificationSeverity: notification.severity,
+    };
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     try {
@@ -929,15 +1035,27 @@ export async function runRomaProjectFindingsTick(options?: {
         job,
         romaSubjectId,
       });
-      await gateway.completeRomaProjectFindings({
+      const notification = buildFindingsNotification({ result });
+      const completion = await gateway.completeRomaProjectFindings({
         subjectId: romaSubjectId,
         jobId: job.jobId,
         status: 'succeeded',
         memoryId: result.findings[0]?.memoryId ?? null,
         auditEventId: result.findings[0]?.auditEventId ?? null,
         findingCount: result.findingCount,
+        notificationTitle: notification.title,
+        notificationSeverity: notification.severity,
+        notificationSourceMemoryIds: notification.sourceMemoryIds,
+        notificationMetadata: notification.metadata,
       });
-      completed.push(result);
+      completed.push({
+        ...result,
+        notificationIds: completion.notificationIds ?? [],
+        notificationEventIds: completion.notificationEventIds ?? [],
+        notificationAuditEventIds: completion.notificationAuditEventIds ?? [],
+        notificationInsertedCount: completion.notificationInsertedCount ?? 0,
+        notificationSeverity: notification.severity,
+      });
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       if (isRetryableRomaProjectFindingsError(message)) {
@@ -1033,14 +1151,26 @@ export async function runRomaProjectHealthTick(options?: {
         job,
         romaSubjectId,
       });
-      await gateway.completeRomaProjectHealth({
+      const notification = buildHealthNotification({ result });
+      const completion = await gateway.completeRomaProjectHealth({
         subjectId: romaSubjectId,
         jobId: job.jobId,
         status: 'succeeded',
         memoryId: result.memoryId,
         auditEventId: result.auditEventId,
+        notificationTitle: notification.title,
+        notificationSeverity: notification.severity,
+        notificationSourceMemoryIds: notification.sourceMemoryIds,
+        notificationMetadata: notification.metadata,
       });
-      completed.push(result);
+      completed.push({
+        ...result,
+        notificationIds: completion.notificationIds ?? [],
+        notificationEventIds: completion.notificationEventIds ?? [],
+        notificationAuditEventIds: completion.notificationAuditEventIds ?? [],
+        notificationInsertedCount: completion.notificationInsertedCount ?? 0,
+        notificationSeverity: notification.severity,
+      });
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       if (isRetryableRomaProjectHealthError(message)) {
