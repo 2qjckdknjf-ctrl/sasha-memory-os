@@ -918,9 +918,9 @@ function resolveDriveNativeExportPlan(input: {
       };
     case DRIVE_SLIDES_MIME:
       return {
-        exportMimeType: 'application/pdf',
-        exportFilename: `${baseName}.pdf`,
-        parser: 'google-slides-pdf',
+        exportMimeType: 'text/plain',
+        exportFilename: `${baseName}.txt`,
+        parser: 'google-slides-text',
       };
     default:
       return null;

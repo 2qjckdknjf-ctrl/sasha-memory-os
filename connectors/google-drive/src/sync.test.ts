@@ -112,35 +112,6 @@ function createWorkbookBuffer(sheets: Record<string, string[][]>) {
   });
 }
 
-function escapePdfText(value: string) {
-  return value.replace(/\\/g, '\\\\').replace(/\(/g, '\\(').replace(/\)/g, '\\)');
-}
-
-function createPdfBuffer(text: string) {
-  const stream = `BT\n/F1 24 Tf\n72 72 Td\n(${escapePdfText(text)}) Tj\nET`;
-  const objects = [
-    '<< /Type /Catalog /Pages 2 0 R >>',
-    '<< /Type /Pages /Kids [3 0 R] /Count 1 >>',
-    '<< /Type /Page /Parent 2 0 R /MediaBox [0 0 300 144] /Contents 4 0 R /Resources << /Font << /F1 5 0 R >> >> >>',
-    `<< /Length ${Buffer.byteLength(stream, 'utf8')} >>\nstream\n${stream}\nendstream`,
-    '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>',
-  ];
-  let pdf = '%PDF-1.4\n';
-  const offsets = [0];
-  objects.forEach((object, index) => {
-    offsets.push(Buffer.byteLength(pdf, 'utf8'));
-    pdf += `${index + 1} 0 obj\n${object}\nendobj\n`;
-  });
-  const xrefOffset = Buffer.byteLength(pdf, 'utf8');
-  pdf += `xref\n0 ${objects.length + 1}\n`;
-  pdf += '0000000000 65535 f \n';
-  for (const offset of offsets.slice(1)) {
-    pdf += `${String(offset).padStart(10, '0')} 00000 n \n`;
-  }
-  pdf += `trailer\n<< /Size ${objects.length + 1} /Root 1 0 R >>\nstartxref\n${xrefOffset}\n%%EOF`;
-  return Buffer.from(pdf, 'utf8');
-}
-
 function driveFetchFixtureSequence() {
   const fetchImpl = vi
     .fn()
@@ -155,6 +126,9 @@ function driveFetchFixtureSequence() {
       }),
     )
     .mockResolvedValueOnce(
+      drivePermissionResponse(),
+    )
+    .mockResolvedValueOnce(
       Response.json({
         files: [
           {
@@ -167,7 +141,7 @@ function driveFetchFixtureSequence() {
         ],
       }),
     );
-  return appendDrivePermissionResponses(fetchImpl, 2);
+  return appendDrivePermissionResponses(fetchImpl, 1);
 }
 
 function appendDriveInitialSyncResponses(fetchImpl: ReturnType<typeof vi.fn>) {
@@ -183,6 +157,9 @@ function appendDriveInitialSyncResponses(fetchImpl: ReturnType<typeof vi.fn>) {
       }),
     )
     .mockResolvedValueOnce(
+      drivePermissionResponse(),
+    )
+    .mockResolvedValueOnce(
       Response.json({
         files: [
           {
@@ -195,7 +172,7 @@ function appendDriveInitialSyncResponses(fetchImpl: ReturnType<typeof vi.fn>) {
         ],
       }),
     );
-  return appendDrivePermissionResponses(fetchImpl, 2);
+  return appendDrivePermissionResponses(fetchImpl, 1);
 }
 
 describe('pullGoogleDriveDelta', () => {
@@ -501,8 +478,8 @@ describe('pullGoogleDriveDelta', () => {
         )
         .mockResolvedValueOnce(drivePermissionResponse())
         .mockResolvedValueOnce(
-          new Response(createPdfBuffer('Slide export body for search indexing.'), {
-            headers: { 'content-type': 'application/pdf' },
+          new Response('Slide export body for search indexing.', {
+            headers: { 'content-type': 'text/plain' },
           }),
         )
         .mockResolvedValueOnce(

@@ -31,7 +31,7 @@ and stays inside the roadmap scope from `§13.2` and `§20.13`.
 - Indexed exports use provider-supported document conversions:
   - Docs -> plain text
   - Sheets -> XLSX workbook parsed into plain text rows
-  - Slides -> PDF parsed into plain text
+  - Slides -> plain text
 - Permission propagation is handled in connector sync state and normalized
   metadata so later ACL shrink can tombstone the prior indexed object without
   introducing a parallel deletion path.
