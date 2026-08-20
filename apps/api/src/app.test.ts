@@ -1,6 +1,10 @@
 import { describe, expect, it, vi } from 'vitest';
 import { createConnectorRegistry } from '@memory-os/connector-sdk';
 import { createSeededStore, MemoryStore, type MemoryRecord } from '@memory-os/domain';
+import {
+  SEARCH_RANKING_VERSION,
+  SEARCH_RANKING_WEIGHTS_VERSION,
+} from '@memory-os/retrieval';
 import { createApp } from './app.js';
 
 const projectId = '44444444-4444-4444-8444-444444444401';
@@ -2425,6 +2429,8 @@ describe('memory api demo slice', () => {
     expect(res.status).toBe(200);
     const body = await res.json();
     expect(body.ranking).toBe('hybrid-rrf');
+    expect(body.rankingVersion).toBe(SEARCH_RANKING_VERSION);
+    expect(body.rankingWeightsVersion).toBe(SEARCH_RANKING_WEIGHTS_VERSION);
     expect(Array.isArray(body.hits)).toBe(true);
     expect(body.hits.length).toBeGreaterThan(0);
     expect(body.hits[0]?.reason).toBe('hybrid:rrf');
@@ -2474,6 +2480,9 @@ describe('memory api demo slice', () => {
     const body = await res.json();
     expect(body.agentic.outcome).toBe('answered');
     expect(body.agentic.stopReason).toBe('enough_evidence');
+    expect(body.rankingVersion).toBe(SEARCH_RANKING_VERSION);
+    expect(body.rankingWeightsVersion).toBe(SEARCH_RANKING_WEIGHTS_VERSION);
+    expect(body.agentic.rankingWeightsVersion).toBe(SEARCH_RANKING_WEIGHTS_VERSION);
     expect(body.agentic.toolAllowlist).toEqual(['memory.search']);
     expect(body.agentic.writeActionsAttempted).toBe(0);
     expect(body.agentic.trace.projectId).toBe(projectId);

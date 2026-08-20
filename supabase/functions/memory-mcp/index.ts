@@ -22,7 +22,8 @@ const RESOURCE_METADATA_URL =
 const OAUTH_ISSUER = `${SUPABASE_URL}/auth/v1`;
 const OAUTH_SCOPES = ["openid", "email", "profile"];
 const OAUTH_SECURITY_SCHEMES = [{ type: "oauth2", scopes: OAUTH_SCOPES }];
-const SEARCH_RANKING_VERSION = "hybrid-rrf+m13-s05-v1";
+const SEARCH_RANKING_VERSION = "hybrid-rrf+m13-s06-v1";
+const SEARCH_RANKING_WEIGHTS_VERSION = "m13-s06-v1";
 
 const READ_ONLY = new Set(["memory.search", "memory.get", "context.project"]);
 const tools = EDGE_TOOL_DEFS.map((tool) => ({
@@ -485,6 +486,7 @@ async function callTool(
         hits: ranked,
         ranking: "hybrid-rrf",
         rankingVersion: SEARCH_RANKING_VERSION,
+        rankingWeightsVersion: SEARCH_RANKING_WEIGHTS_VERSION,
         ...(Boolean(args.pack_context)
           ? {
             context: packContext(

@@ -95,6 +95,7 @@ import {
   rerankHitsHybrid,
   runBoundedAgenticRetrieval,
   SEARCH_RANKING_VERSION,
+  SEARCH_RANKING_WEIGHTS_VERSION,
   searchMemoriesHybrid,
 } from '@memory-os/retrieval';
 import { createConfiguredVaultStore } from '@memory-os/db';
@@ -5793,6 +5794,7 @@ export function createApp(options?: {
           recordedAfter: body.recorded_after ?? null,
           recordedBefore: body.recorded_before ?? null,
           rankingVersion: result.rankingVersion,
+          rankingWeightsVersion: result.rankingWeightsVersion,
           outcome: result.outcome,
           stopReason: result.stopReason,
           writeActionsAttempted: result.writeActionsAttempted,
@@ -5838,10 +5840,12 @@ export function createApp(options?: {
           hits: result.hits,
           ranking: result.ranking,
           rankingVersion: result.rankingVersion,
+          rankingWeightsVersion: result.rankingWeightsVersion,
           backend: gw ? 'supabase' : 'memory-store',
           ...(pack ? { context: result.context } : {}),
           agentic: {
             rankingVersion: result.rankingVersion,
+            rankingWeightsVersion: result.rankingWeightsVersion,
             outcome: result.outcome,
             stopReason: result.stopReason,
             writeActionsAttempted: result.writeActionsAttempted,
@@ -5869,6 +5873,7 @@ export function createApp(options?: {
           backend: 'supabase',
           ranking: 'hybrid-rrf',
           rankingVersion: SEARCH_RANKING_VERSION,
+          rankingWeightsVersion: SEARCH_RANKING_WEIGHTS_VERSION,
           ...(pack
             ? {
                 context: packSearchContext(hits, {
@@ -5892,6 +5897,7 @@ export function createApp(options?: {
       hits,
       ranking: 'hybrid-rrf',
       rankingVersion: SEARCH_RANKING_VERSION,
+      rankingWeightsVersion: SEARCH_RANKING_WEIGHTS_VERSION,
       ...(pack
         ? {
             context: packSearchContext(hits, {

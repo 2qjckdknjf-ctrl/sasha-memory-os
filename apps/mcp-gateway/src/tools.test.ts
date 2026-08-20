@@ -1,5 +1,9 @@
 import { describe, expect, it, vi } from 'vitest';
 import { createSeededStore } from '@memory-os/domain';
+import {
+  SEARCH_RANKING_VERSION,
+  SEARCH_RANKING_WEIGHTS_VERSION,
+} from '@memory-os/retrieval';
 import { createMcpHandlers } from './tools.js';
 
 const projectId = '44444444-4444-4444-8444-444444444401';
@@ -273,10 +277,14 @@ describe('mcp gateway alpha', () => {
       max_context_chars: 1500,
     })) as {
       ranking: string;
+      rankingVersion: string;
+      rankingWeightsVersion: string;
       hits: Array<{ reason?: string }>;
       context?: { packedCount: number; text: string };
     };
     expect(result.ranking).toBe('hybrid-rrf');
+    expect(result.rankingVersion).toBe(SEARCH_RANKING_VERSION);
+    expect(result.rankingWeightsVersion).toBe(SEARCH_RANKING_WEIGHTS_VERSION);
     expect(result.hits.length).toBeGreaterThan(0);
     expect(result.hits[0]?.reason).toBe('hybrid:rrf');
     expect(result.context?.packedCount).toBeGreaterThan(0);
@@ -358,8 +366,11 @@ describe('mcp gateway alpha', () => {
         min_evidence_hits: 1,
       },
     })) as {
+      rankingVersion: string;
+      rankingWeightsVersion: string;
       hits: Array<{ memory: { projectId?: string | null } }>;
       agentic: {
+        rankingWeightsVersion: string;
         toolAllowlist: string[];
         writeActionsAttempted: number;
         trace: {
@@ -372,6 +383,9 @@ describe('mcp gateway alpha', () => {
     };
 
     expect(result.hits).toHaveLength(1);
+    expect(result.rankingVersion).toBe(SEARCH_RANKING_VERSION);
+    expect(result.rankingWeightsVersion).toBe(SEARCH_RANKING_WEIGHTS_VERSION);
+    expect(result.agentic.rankingWeightsVersion).toBe(SEARCH_RANKING_WEIGHTS_VERSION);
     expect(result.hits[0]?.memory.projectId).toBe(projectId);
     expect(result.agentic.toolAllowlist).toEqual(['memory.search']);
     expect(result.agentic.writeActionsAttempted).toBe(0);

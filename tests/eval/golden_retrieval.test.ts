@@ -2,7 +2,11 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { createSeededStore } from '@memory-os/domain';
-import { searchMemoriesHybrid } from '@memory-os/retrieval';
+import {
+  createSearchRankingWeightsPack,
+  DEFAULT_SEARCH_RANKING_WEIGHTS_PACK,
+  searchMemoriesHybrid,
+} from '@memory-os/retrieval';
 import { authorize, resolveLocalSubject, type AuthzContext } from '@memory-os/authz';
 
 type GoldenCase = {
@@ -76,6 +80,20 @@ describe('golden retrieval harness', () => {
       personalizationByMemoryId: new Map(),
     });
     expect(withEmptyPersonalization.map((hit) => hit.memory.id)).toEqual(
+      baseline.map((hit) => hit.memory.id),
+    );
+  });
+
+  it('keeps unpersonalized golden retrieval stable when the official weights pack is supplied explicitly', async () => {
+    const records = [...store.memories.values()];
+    const baseline = await searchMemoriesHybrid(records, 'Slice 01', {
+      projectId,
+    });
+    const withExplicitWeights = await searchMemoriesHybrid(records, 'Slice 01', {
+      projectId,
+      rankingWeights: DEFAULT_SEARCH_RANKING_WEIGHTS_PACK,
+    });
+    expect(withExplicitWeights.map((hit) => hit.memory.id)).toEqual(
       baseline.map((hit) => hit.memory.id),
     );
   });
@@ -976,5 +994,48 @@ describe('golden retrieval harness', () => {
         hits.some((hit) => hit.memory.title === 'Personal Calendar beta event'),
       ).toBe(false);
     }
+  });
+
+  it('does not widen ACL when alternative ranking weights are evaluated on the golden corpus', async () => {
+    store.captureText({
+      workspaceId,
+      projectId,
+      title: 'Personal Gmail weights leak probe',
+      text: 'Personal Gmail weights leak probe must stay private.',
+      actorSubjectId: owner,
+      idempotencyKey: 'eval/personal-gmail-weights-probe',
+      sensitivity: 'personal',
+    });
+    const experimentalWeights = createSearchRankingWeightsPack({
+      version: 'golden-acl-probe-v1',
+      lexical: {
+        importanceWeight: 0.5,
+        conflictPenaltyWeight: 0,
+        recencyWeight: 1,
+      },
+      hybrid: {
+        lexicalRankWeight: 0.5,
+        vectorRankWeight: 2,
+        vectorSimilarityTieBreakWeight: 0.05,
+      },
+    });
+
+    const hits = (
+      await searchMemoriesHybrid([...store.memories.values()], 'personal gmail weights leak probe', {
+        projectId,
+        rankingWeights: experimentalWeights,
+      })
+    ).filter((hit) =>
+      authorize(authzFor('cursor'), {
+        resourceType: 'memory',
+        action: 'read',
+        projectId: hit.memory.projectId,
+        sensitivity: hit.memory.sensitivity,
+      }),
+    );
+
+    expect(
+      hits.some((hit) => hit.memory.title === 'Personal Gmail weights leak probe'),
+    ).toBe(false);
   });
 });
