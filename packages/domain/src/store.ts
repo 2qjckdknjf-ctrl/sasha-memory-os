@@ -4,6 +4,7 @@ import {
   type PrivacyRequest,
   nextProjectStateVersion,
   type Handoff,
+  type MemoryConflictRecord,
   type MemoryRecord,
   type ProjectStateVersion,
 } from './memory.js';
@@ -35,6 +36,8 @@ export class MemoryStore {
   readonly events = new Map<string, SourceEvent>();
   readonly eventByIdempotency = new Map<string, string>();
   readonly memories = new Map<string, MemoryRecord>();
+  readonly memoryConflicts = new Map<string, MemoryConflictRecord>();
+  readonly memoryConflictByKey = new Map<string, string>();
   readonly projectStates = new Map<string, ProjectStateVersion[]>();
   readonly handoffs = new Map<string, Handoff[]>();
   readonly auditLog: AuditLogEntry[] = [];
@@ -168,6 +171,72 @@ export class MemoryStore {
       return true;
     });
     return filterCurrentMemories(all);
+  }
+
+  upsertMemoryConflict(input: {
+    workspaceId: string;
+    projectId: string;
+    conflictKey: string;
+    title: string;
+    reason: string;
+    memoryIds: [string, string];
+    evidence: [
+      { memoryId: string; title: string },
+      { memoryId: string; title: string },
+    ];
+    detectorVersion: string;
+    actorSubjectId: string;
+  }): MemoryConflictRecord {
+    const existingId = this.memoryConflictByKey.get(
+      `${input.workspaceId}:${input.projectId}:${input.conflictKey}`,
+    );
+    const detectedAt = new Date().toISOString();
+    if (existingId) {
+      const existing = this.memoryConflicts.get(existingId);
+      if (!existing) {
+        throw new Error('memory conflict index corrupt');
+      }
+      const next: MemoryConflictRecord = {
+        ...existing,
+        title: input.title,
+        reason: input.reason,
+        memoryIds: input.memoryIds,
+        evidence: input.evidence,
+        detectorVersion: input.detectorVersion,
+        detectionCount: existing.detectionCount + 1,
+        lastDetectedAt: detectedAt,
+      };
+      this.memoryConflicts.set(next.id, next);
+      return next;
+    }
+    const record: MemoryConflictRecord = {
+      id: newId(),
+      workspaceId: input.workspaceId,
+      projectId: input.projectId,
+      conflictKey: input.conflictKey,
+      status: 'candidate',
+      title: input.title,
+      reason: input.reason,
+      memoryIds: input.memoryIds,
+      evidence: input.evidence,
+      detectorVersion: input.detectorVersion,
+      detectionCount: 1,
+      firstDetectedAt: detectedAt,
+      lastDetectedAt: detectedAt,
+      createdBySubject: input.actorSubjectId,
+    };
+    this.memoryConflicts.set(record.id, record);
+    this.memoryConflictByKey.set(
+      `${input.workspaceId}:${input.projectId}:${input.conflictKey}`,
+      record.id,
+    );
+    return record;
+  }
+
+  listMemoryConflicts(workspaceId: string, projectId: string): MemoryConflictRecord[] {
+    return [...this.memoryConflicts.values()]
+      .filter((record) => record.workspaceId === workspaceId && record.projectId === projectId)
+      .sort((left, right) => right.lastDetectedAt.localeCompare(left.lastDetectedAt));
   }
 
   getProjectState(projectId: string): ProjectStateVersion | null {

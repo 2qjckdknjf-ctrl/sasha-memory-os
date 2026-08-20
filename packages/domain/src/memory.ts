@@ -77,6 +77,26 @@ export interface AuditLogEntry {
   recordedAt: string;
 }
 
+export interface MemoryConflictRecord {
+  id: string;
+  workspaceId: string;
+  projectId: string;
+  conflictKey: string;
+  status: 'candidate';
+  title: string;
+  reason: string;
+  memoryIds: [string, string];
+  evidence: [
+    { memoryId: string; title: string },
+    { memoryId: string; title: string },
+  ];
+  detectorVersion: string;
+  detectionCount: number;
+  firstDetectedAt: string;
+  lastDetectedAt: string;
+  createdBySubject: string | null;
+}
+
 export interface PrivacyRequest {
   id: string;
   workspaceId: string;

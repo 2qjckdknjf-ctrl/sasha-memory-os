@@ -9,7 +9,13 @@ const WORKSPACE =
   "11111111-1111-4111-8111-111111111111";
 const PROACTIVE_CONSOLIDATION_PROJECT_ERROR =
   "project_id is required for proactive consolidation; never default to AISTROYKA";
-const PROACTIVE_CONSOLIDATION_RULES_VERSION = "m13-s03-v1";
+const PROACTIVE_CONSOLIDATION_RULES_VERSION = "m13-s04-v1";
+const CONFLICTING_MEMORY_STATUSES = new Set([
+  "disputed",
+  "superseded",
+  "retracted",
+  "deleted",
+]);
 
 type MemoryRow = {
   id: string;
@@ -18,6 +24,8 @@ type MemoryRow = {
   status: string;
   recordedAt?: string;
   embedding?: number[] | null;
+  projectId?: string | null;
+  metadata?: Record<string, unknown>;
 };
 
 type Pair = {
@@ -33,6 +41,23 @@ type CandidateConflict = {
   memoryIds: string[];
   statuses: string[];
   recordedAts: string[];
+};
+
+type DetectedConflict = {
+  key: string;
+  title: string;
+  projectId: string | null;
+  reason:
+    | "same-title-divergent-content"
+    | "disputed-current-fact"
+    | "superseded-current-fact"
+    | "retracted-current-fact"
+    | "corrected-current-fact";
+  memoryIds: [string, string];
+  evidence: [
+    { memoryId: string; title: string },
+    { memoryId: string; title: string },
+  ];
 };
 
 function json(data: unknown, status = 200): Response {
@@ -71,6 +96,66 @@ function normalizeContent(content: string): string {
     .toLowerCase()
     .replace(/\s+/g, " ")
     .trim();
+}
+
+function projectScopeKey(projectId?: string | null): string {
+  return projectId?.trim() || "__workspace__";
+}
+
+function normalizeProjectScopedTitle(projectId: string | null | undefined, title: string): string {
+  const normalizedTitle = normalizeTitle(title);
+  return normalizedTitle ? `${projectScopeKey(projectId)}::${normalizedTitle}` : "";
+}
+
+function asRecord(value: unknown): Record<string, unknown> | null {
+  return typeof value === "object" && value !== null && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : null;
+}
+
+function correctedFromOf(row: MemoryRow): string | null {
+  const metadata = asRecord(row.metadata);
+  const correctedFrom = metadata?.corrected_from;
+  return typeof correctedFrom === "string" && correctedFrom.trim()
+    ? correctedFrom
+    : null;
+}
+
+function correctedByOf(row: MemoryRow): string | null {
+  const metadata = asRecord(row.metadata);
+  const correctedBy = metadata?.corrected_by;
+  return typeof correctedBy === "string" && correctedBy.trim()
+    ? correctedBy
+    : null;
+}
+
+function inferPairConflictReason(left: MemoryRow, right: MemoryRow): DetectedConflict["reason"] | null {
+  const correctedRelation =
+    correctedFromOf(left) === right.id ||
+    correctedFromOf(right) === left.id ||
+    correctedByOf(left) === right.id ||
+    correctedByOf(right) === left.id;
+  if (correctedRelation) return "corrected-current-fact";
+  const statuses = [left.status, right.status];
+  if (statuses.some((status) => CONFLICTING_MEMORY_STATUSES.has(status))) {
+    if (statuses.includes("disputed")) return "disputed-current-fact";
+    if (statuses.includes("retracted")) return "retracted-current-fact";
+    if (statuses.includes("superseded")) return "superseded-current-fact";
+  }
+  if (isCurrentishStatus(left.status) && isCurrentishStatus(right.status)) {
+    return normalizeContent(left.content) !== normalizeContent(right.content)
+      ? "same-title-divergent-content"
+      : null;
+  }
+  return null;
+}
+
+function pairConflictKey(
+  leftId: string,
+  rightId: string,
+  reason: DetectedConflict["reason"],
+): string {
+  return [leftId, rightId].sort((a, b) => a.localeCompare(b)).join("::") + `::${reason}`;
 }
 
 function sortForProactive(left: MemoryRow, right: MemoryRow): number {
@@ -124,7 +209,7 @@ function planPairs(candidates: MemoryRow[], threshold = 0.92): Pair[] {
   const used = new Set<string>();
   const byTitle = new Map<string, MemoryRow[]>();
   for (const item of pool) {
-    const key = normalizeTitle(item.title);
+    const key = normalizeProjectScopedTitle(item.projectId, item.title);
     if (!key) continue;
     const list = byTitle.get(key) ?? [];
     list.push(item);
@@ -159,6 +244,7 @@ function planPairs(candidates: MemoryRow[], threshold = 0.92): Pair[] {
     for (let j = i + 1; j < remaining.length; j += 1) {
       const right = remaining[j]!;
       if (used.has(right.id)) continue;
+      if (projectScopeKey(left.projectId) !== projectScopeKey(right.projectId)) continue;
       const score = cosine(vectors[i] ?? [], vectors[j] ?? []);
       if (score < threshold) continue;
       const keeper =
@@ -183,7 +269,7 @@ function buildCandidateConflicts(
   const grouped = new Map<string, MemoryRow[]>();
   for (const candidate of candidates) {
     if (!isCurrentishStatus(candidate.status)) continue;
-    const key = normalizeTitle(candidate.title);
+    const key = normalizeProjectScopedTitle(candidate.projectId, candidate.title);
     if (!key) continue;
     const list = grouped.get(key) ?? [];
     list.push(candidate);
@@ -215,6 +301,67 @@ function buildCandidateConflicts(
     });
 }
 
+function buildDetectedConflicts(
+  candidates: MemoryRow[],
+  pairs: Pair[],
+): DetectedConflict[] {
+  const grouped = new Map<string, MemoryRow[]>();
+  for (const candidate of candidates) {
+    const key = normalizeProjectScopedTitle(candidate.projectId, candidate.title);
+    if (!key) continue;
+    const list = grouped.get(key) ?? [];
+    list.push(candidate);
+    grouped.set(key, list);
+  }
+  const mergedIds = new Set<string>();
+  for (const pair of pairs) {
+    mergedIds.add(pair.keeperId);
+    mergedIds.add(pair.duplicateId);
+  }
+  const detected = new Map<string, DetectedConflict>();
+  for (const group of grouped.values()) {
+    if (group.length < 2) continue;
+    const sorted = [...group].sort(sortForProactive);
+    for (let i = 0; i < sorted.length; i += 1) {
+      const left = sorted[i]!;
+      for (let j = i + 1; j < sorted.length; j += 1) {
+        const right = sorted[j]!;
+        const reason = inferPairConflictReason(left, right);
+        if (!reason) continue;
+        const bothCandidate = left.status === "candidate" && right.status === "candidate";
+        const sameBody = normalizeContent(left.content) === normalizeContent(right.content);
+        if (bothCandidate && sameBody && mergedIds.has(left.id) && mergedIds.has(right.id)) {
+          continue;
+        }
+        const key = pairConflictKey(left.id, right.id, reason);
+        if (detected.has(key)) continue;
+        const pair = [left, right].sort((a, b) => a.id.localeCompare(b.id)) as [
+          MemoryRow,
+          MemoryRow,
+        ];
+        detected.set(key, {
+          key,
+          title: pair[0].title || pair[1].title || "untitled",
+          projectId: pair[0].projectId ?? pair[1].projectId ?? null,
+          reason,
+          memoryIds: [pair[0].id, pair[1].id],
+          evidence: [
+            { memoryId: pair[0].id, title: pair[0].title || "untitled" },
+            { memoryId: pair[1].id, title: pair[1].title || "untitled" },
+          ],
+        });
+      }
+    }
+  }
+  return [...detected.values()].sort((left, right) => {
+    const byProject = projectScopeKey(left.projectId).localeCompare(projectScopeKey(right.projectId));
+    if (byProject !== 0) return byProject;
+    const byTitle = normalizeTitle(left.title).localeCompare(normalizeTitle(right.title));
+    if (byTitle !== 0) return byTitle;
+    return left.key.localeCompare(right.key);
+  });
+}
+
 function buildProactiveReason(runId: string, pairReason: string): string {
   return `consolidation.proactive ${PROACTIVE_CONSOLIDATION_RULES_VERSION} run ${runId}: ${pairReason}`;
 }
@@ -233,14 +380,17 @@ function planProactiveConsolidation(
   const scannedPool = [...candidates].sort(sortForProactive).slice(0, scanLimit);
   const mergeCandidatesAll = planPairs(scannedPool);
   const candidateConflictsAll = buildCandidateConflicts(scannedPool, mergeCandidatesAll);
+  const detectedConflictsAll = buildDetectedConflicts(scannedPool, mergeCandidatesAll);
   const mergeCandidates = mergeCandidatesAll.slice(0, maxMerges);
   const candidateConflicts = candidateConflictsAll.slice(0, maxConflicts);
+  const detectedConflicts = detectedConflictsAll.slice(0, maxConflicts);
   const stopReason =
     candidates.length > scanLimit
       ? "max_records"
       : mergeCandidatesAll.length > mergeCandidates.length
       ? "max_merges"
-      : candidateConflictsAll.length > candidateConflicts.length
+      : candidateConflictsAll.length > candidateConflicts.length ||
+          detectedConflictsAll.length > detectedConflicts.length
       ? "max_conflicts"
       : "completed";
   return {
@@ -250,6 +400,8 @@ function planProactiveConsolidation(
     mergeCandidatesTotal: mergeCandidatesAll.length,
     candidateConflicts,
     candidateConflictsTotal: candidateConflictsAll.length,
+    detectedConflicts,
+    detectedConflictsTotal: detectedConflictsAll.length,
     stopReason,
     exhausted: stopReason !== "completed",
     verifiedWrites: 0 as const,
@@ -496,6 +648,48 @@ Deno.serve(async (req: Request) => {
           maxMerges: body.max_merges,
           maxConflicts: body.max_conflicts,
         });
+        const persistedConflictIds: string[] = [];
+        for (const conflict of plan.detectedConflicts) {
+          const persisted = await client.rpc("api_upsert_memory_conflict", {
+            p_secret: secret,
+            p_subject_id: subjectId,
+            p_workspace_id: workspaceId,
+            p_project_id: projectId,
+            p_conflict_key: conflict.key,
+            p_title: conflict.title,
+            p_reason: conflict.reason,
+            p_left_memory_id: conflict.memoryIds[0],
+            p_right_memory_id: conflict.memoryIds[1],
+            p_evidence_refs: conflict.evidence,
+            p_detector_version: PROACTIVE_CONSOLIDATION_RULES_VERSION,
+          });
+          if (persisted.error) throw persisted.error;
+          const conflictId = (persisted.data as { id?: string })?.id ?? null;
+          if (conflictId) {
+            persistedConflictIds.push(conflictId);
+            const conflictAudit = await client.rpc("api_append_audit_event", {
+              p_secret: secret,
+              p_subject_id: subjectId,
+              p_workspace_id: workspaceId,
+              p_action: "memory_conflict.detected",
+              p_object_type: "memory_conflict",
+              p_object_id: conflictId,
+              p_reason: conflict.reason,
+              p_before_state: null,
+              p_after_state: {
+                runId,
+                projectId,
+                rulesVersion: PROACTIVE_CONSOLIDATION_RULES_VERSION,
+                conflictKey: conflict.key,
+                title: conflict.title,
+                reason: conflict.reason,
+                memoryIds: conflict.memoryIds,
+                evidence: conflict.evidence,
+              },
+            });
+            if (conflictAudit.error) throw conflictAudit.error;
+          }
+        }
         const applied: Pair[] = [];
         const failed: Array<{ pair: Pair; error: string }> = [];
         for (const pair of plan.mergeCandidates) {
@@ -542,6 +736,9 @@ Deno.serve(async (req: Request) => {
             mergeCandidatesTotal: plan.mergeCandidatesTotal,
             candidateConflicts: plan.candidateConflicts,
             candidateConflictsTotal: plan.candidateConflictsTotal,
+            detectedConflicts: plan.detectedConflicts,
+            detectedConflictsTotal: plan.detectedConflictsTotal,
+            persistedConflictIds,
             appliedPairs: applied,
             failedPairs: failed,
             stopReason: plan.stopReason,
@@ -561,6 +758,9 @@ Deno.serve(async (req: Request) => {
           mergeCandidatesTotal: plan.mergeCandidatesTotal,
           candidateConflicts: plan.candidateConflicts,
           candidateConflictsTotal: plan.candidateConflictsTotal,
+          detectedConflicts: plan.detectedConflicts,
+          detectedConflictsTotal: plan.detectedConflictsTotal,
+          persistedConflictIds,
           applied,
           failed,
           stopReason: plan.stopReason,

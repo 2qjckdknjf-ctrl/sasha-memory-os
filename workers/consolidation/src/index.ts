@@ -10,6 +10,7 @@ import {
   buildProactiveConsolidationReason,
   type ConsolidationPair,
   type ProactiveConsolidationConflict,
+  type ProactiveDetectedConflict,
   type ProactiveConsolidationStopReason,
   PROACTIVE_CONSOLIDATION_RULES_VERSION,
 } from '@memory-os/retrieval';
@@ -64,6 +65,7 @@ export async function consolidateLocalStore(
       content: m.content,
       status: m.status,
       recordedAt: m.recordedAt,
+      projectId: m.projectId,
     }));
   const planned = await planCandidateConsolidations(candidates, {
     similarityThreshold: options?.similarityThreshold,
@@ -123,6 +125,7 @@ export async function planConsolidation(options?: {
       status: row.status,
       recordedAt: row.recordedAt,
       embedding: Array.isArray(row.embedding) ? row.embedding : null,
+      projectId: row.projectId,
     })),
     { similarityThreshold: options?.similarityThreshold },
   );
@@ -175,6 +178,9 @@ export type ProactiveConsolidationReport = {
   mergeCandidatesTotal: number;
   candidateConflicts: ProactiveConsolidationConflict[];
   candidateConflictsTotal: number;
+  detectedConflicts: ProactiveDetectedConflict[];
+  detectedConflictsTotal: number;
+  persistedConflictIds: string[];
   applied: ConsolidationPair[];
   failed: Array<{ pair: ConsolidationPair; error: string }>;
   stopReason: ProactiveConsolidationStopReason;
@@ -254,6 +260,7 @@ async function runPlannedProactiveConsolidation(input: {
     recordedAt?: string;
     embedding?: number[] | null;
     projectId?: string | null;
+    metadata?: Record<string, unknown>;
   }>;
   apply?: boolean;
   similarityThreshold?: number;
@@ -278,6 +285,16 @@ async function runPlannedProactiveConsolidation(input: {
     keeperId: string;
     reason: string;
   }) => Promise<void>;
+  upsertConflict: (input: {
+    conflictKey: string;
+    title: string;
+    reason: string;
+    memoryIds: [string, string];
+    evidence: [
+      { memoryId: string; title: string },
+      { memoryId: string; title: string },
+    ];
+  }) => Promise<{ id: string }>;
   backend: 'memory-store' | 'supabase';
 }): Promise<ProactiveConsolidationReport> {
   const apply = input.apply !== false;
@@ -293,6 +310,34 @@ async function runPlannedProactiveConsolidation(input: {
 
   const applied: ConsolidationPair[] = [];
   const failed: Array<{ pair: ConsolidationPair; error: string }> = [];
+  const persistedConflictIds: string[] = [];
+
+  for (const conflict of plan.detectedConflicts) {
+    const persisted = await input.upsertConflict({
+      conflictKey: conflict.key,
+      title: conflict.title,
+      reason: conflict.reason,
+      memoryIds: conflict.memoryIds,
+      evidence: conflict.evidence,
+    });
+    persistedConflictIds.push(persisted.id);
+    await input.audit({
+      action: 'memory_conflict.detected',
+      objectType: 'memory_conflict',
+      objectId: persisted.id,
+      reason: conflict.reason,
+      afterState: {
+        runId,
+        projectId: input.projectId,
+        rulesVersion: PROACTIVE_CONSOLIDATION_RULES_VERSION,
+        conflictKey: conflict.key,
+        title: conflict.title,
+        reason: conflict.reason,
+        memoryIds: conflict.memoryIds,
+        evidence: conflict.evidence,
+      },
+    });
+  }
 
   if (apply) {
     for (const pair of plan.mergeCandidates) {
@@ -366,6 +411,9 @@ async function runPlannedProactiveConsolidation(input: {
       mergeCandidates: plan.mergeCandidates,
       candidateConflictsTotal: plan.candidateConflictsTotal,
       candidateConflicts: plan.candidateConflicts,
+      detectedConflictsTotal: plan.detectedConflictsTotal,
+      detectedConflicts: plan.detectedConflicts,
+      persistedConflictIds,
       appliedPairs: applied,
       failedPairs: failed,
       stopReason: plan.stopReason,
@@ -383,6 +431,9 @@ async function runPlannedProactiveConsolidation(input: {
     mergeCandidatesTotal: plan.mergeCandidatesTotal,
     candidateConflicts: plan.candidateConflicts,
     candidateConflictsTotal: plan.candidateConflictsTotal,
+    detectedConflicts: plan.detectedConflicts,
+    detectedConflictsTotal: plan.detectedConflictsTotal,
+    persistedConflictIds,
     applied,
     failed,
     stopReason: plan.stopReason,
@@ -498,6 +549,7 @@ export async function runProactiveConsolidationTick(options: {
       recordedAt: row.recordedAt,
       embedding: Array.isArray(row.embedding) ? row.embedding : null,
       projectId: row.projectId,
+      metadata: row.metadata,
     })),
     apply: options.apply,
     similarityThreshold: options.similarityThreshold,
@@ -530,6 +582,18 @@ export async function runProactiveConsolidationTick(options: {
         reason,
       });
     },
+    upsertConflict: async ({ conflictKey, title, reason, memoryIds, evidence }) =>
+      gateway.upsertMemoryConflict({
+        subjectId,
+        workspaceId,
+        projectId,
+        conflictKey,
+        title,
+        reason,
+        memoryIds,
+        evidence,
+        detectorVersion: PROACTIVE_CONSOLIDATION_RULES_VERSION,
+      }),
     backend: 'supabase',
   });
 }
@@ -557,6 +621,7 @@ export async function runProactiveConsolidationLocalStore(input: {
       status: memory.status,
       recordedAt: memory.recordedAt,
       projectId: memory.projectId,
+      metadata: memory.metadata,
     }));
   return runPlannedProactiveConsolidation({
     workspaceId: input.workspaceId,
@@ -579,6 +644,20 @@ export async function runProactiveConsolidationLocalStore(input: {
         actorSubjectId: input.subjectId,
       });
     },
+    upsertConflict: async ({ conflictKey, title, reason, memoryIds, evidence }) =>
+      Promise.resolve(
+        input.store.upsertMemoryConflict({
+          workspaceId: input.workspaceId,
+          projectId,
+          conflictKey,
+          title,
+          reason,
+          memoryIds,
+          evidence,
+          detectorVersion: PROACTIVE_CONSOLIDATION_RULES_VERSION,
+          actorSubjectId: input.subjectId,
+        }),
+      ),
     backend: 'memory-store',
   });
 }

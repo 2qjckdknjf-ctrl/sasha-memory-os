@@ -7,10 +7,12 @@ import {
   cosineSimilarity,
   createEmbeddingAdapter,
 } from './embeddings.js';
+import { CONFLICTING_MEMORY_STATUSES } from './conflicts.js';
 
 export const packageName = 'retrieval' as const;
 export * from './embeddings.js';
 export * from './consolidate.js';
+export * from './conflicts.js';
 export * from './extraction.js';
 
 /** Classic RRF constant (Cormack et al.). */
@@ -526,13 +528,6 @@ const AGENTIC_RETRIEVAL_STOPWORDS = new Set([
   'the',
   'to',
   'with',
-]);
-
-const CONFLICTING_MEMORY_STATUSES = new Set([
-  'disputed',
-  'superseded',
-  'retracted',
-  'deleted',
 ]);
 
 function clampInteger(value: unknown, fallback: number, min: number, max: number): number {

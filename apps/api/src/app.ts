@@ -4513,6 +4513,7 @@ export function createApp(options?: {
               recordedAt: row.recordedAt,
               embedding: Array.isArray(row.embedding) ? row.embedding : null,
               projectId: row.projectId,
+              metadata: row.metadata,
             })),
             {
               scanLimit,
@@ -4521,6 +4522,39 @@ export function createApp(options?: {
               maxTimeMs: body.max_time_ms,
             },
           );
+          const persistedConflictIds: string[] = [];
+          for (const conflict of plan.detectedConflicts) {
+            const persisted = await gw.upsertMemoryConflict({
+              subjectId: actorSubjectId,
+              workspaceId,
+              projectId,
+              conflictKey: conflict.key,
+              title: conflict.title,
+              reason: conflict.reason,
+              memoryIds: conflict.memoryIds,
+              evidence: conflict.evidence,
+              detectorVersion: PROACTIVE_CONSOLIDATION_RULES_VERSION,
+            });
+            persistedConflictIds.push(persisted.id);
+            await gw.appendAuditEvent({
+              subjectId: actorSubjectId,
+              workspaceId,
+              action: 'memory_conflict.detected',
+              objectType: 'memory_conflict',
+              objectId: persisted.id,
+              reason: conflict.reason,
+              afterState: {
+                runId,
+                projectId,
+                rulesVersion: PROACTIVE_CONSOLIDATION_RULES_VERSION,
+                conflictKey: conflict.key,
+                title: conflict.title,
+                reason: conflict.reason,
+                memoryIds: conflict.memoryIds,
+                evidence: conflict.evidence,
+              },
+            });
+          }
           const applied = [];
           const failed = [];
           if (apply) {
@@ -4583,6 +4617,9 @@ export function createApp(options?: {
               mergeCandidatesTotal: plan.mergeCandidatesTotal,
               candidateConflicts: plan.candidateConflicts,
               candidateConflictsTotal: plan.candidateConflictsTotal,
+              detectedConflicts: plan.detectedConflicts,
+              detectedConflictsTotal: plan.detectedConflictsTotal,
+              persistedConflictIds,
               appliedPairs: applied,
               failedPairs: failed,
               stopReason: plan.stopReason,
@@ -4600,6 +4637,9 @@ export function createApp(options?: {
             mergeCandidatesTotal: plan.mergeCandidatesTotal,
             candidateConflicts: plan.candidateConflicts,
             candidateConflictsTotal: plan.candidateConflictsTotal,
+            detectedConflicts: plan.detectedConflicts,
+            detectedConflictsTotal: plan.detectedConflictsTotal,
+            persistedConflictIds,
             applied,
             failed,
             stopReason: plan.stopReason,
@@ -4622,6 +4662,7 @@ export function createApp(options?: {
             status: m.status,
             recordedAt: m.recordedAt,
             projectId: m.projectId,
+            metadata: m.metadata,
           }));
         const plan = await planProactiveConsolidation(candidates, {
           scanLimit,
@@ -4629,6 +4670,39 @@ export function createApp(options?: {
           maxConflicts: body.max_conflicts,
           maxTimeMs: body.max_time_ms,
         });
+        const persistedConflictIds: string[] = [];
+        for (const conflict of plan.detectedConflicts) {
+          const persisted = storeLocal.upsertMemoryConflict({
+            workspaceId,
+            projectId,
+            conflictKey: conflict.key,
+            title: conflict.title,
+            reason: conflict.reason,
+            memoryIds: conflict.memoryIds,
+            evidence: conflict.evidence,
+            detectorVersion: PROACTIVE_CONSOLIDATION_RULES_VERSION,
+            actorSubjectId,
+          });
+          persistedConflictIds.push(persisted.id);
+          storeLocal.createAuditEvent({
+            workspaceId,
+            actorSubjectId,
+            action: 'memory_conflict.detected',
+            objectType: 'memory_conflict',
+            objectId: persisted.id,
+            reason: conflict.reason,
+            afterState: {
+              runId,
+              projectId,
+              rulesVersion: PROACTIVE_CONSOLIDATION_RULES_VERSION,
+              conflictKey: conflict.key,
+              title: conflict.title,
+              reason: conflict.reason,
+              memoryIds: conflict.memoryIds,
+              evidence: conflict.evidence,
+            },
+          });
+        }
         const applied = [];
         const failed = [];
         if (apply) {
@@ -4673,6 +4747,9 @@ export function createApp(options?: {
             mergeCandidatesTotal: plan.mergeCandidatesTotal,
             candidateConflicts: plan.candidateConflicts,
             candidateConflictsTotal: plan.candidateConflictsTotal,
+            detectedConflicts: plan.detectedConflicts,
+            detectedConflictsTotal: plan.detectedConflictsTotal,
+            persistedConflictIds,
             appliedPairs: applied,
             failedPairs: failed,
             stopReason: plan.stopReason,
@@ -4690,6 +4767,9 @@ export function createApp(options?: {
           mergeCandidatesTotal: plan.mergeCandidatesTotal,
           candidateConflicts: plan.candidateConflicts,
           candidateConflictsTotal: plan.candidateConflictsTotal,
+          detectedConflicts: plan.detectedConflicts,
+          detectedConflictsTotal: plan.detectedConflictsTotal,
+          persistedConflictIds,
           applied,
           failed,
           stopReason: plan.stopReason,
@@ -4725,6 +4805,7 @@ export function createApp(options?: {
             status: row.status,
             recordedAt: row.recordedAt,
             embedding: Array.isArray(row.embedding) ? row.embedding : null,
+            projectId: row.projectId,
           })),
         );
         const applied = [];
@@ -4788,6 +4869,7 @@ export function createApp(options?: {
           content: m.content,
           status: m.status,
           recordedAt: m.recordedAt,
+            projectId: m.projectId,
         }));
       const planned = await planCandidateConsolidations(candidates);
       const applied = [];

@@ -111,6 +111,77 @@ describe('planProactiveConsolidation', () => {
         statuses: ['candidate', 'verified'],
       }),
     ]);
+    expect(plan.detectedConflicts).toEqual([
+      expect.objectContaining({
+        reason: 'same-title-divergent-content',
+        memoryIds: ['candidate-memory', 'verified-memory'],
+        evidence: [
+          { memoryId: 'candidate-memory', title: 'api base url' },
+          { memoryId: 'verified-memory', title: 'API base URL' },
+        ],
+      }),
+    ]);
+    expect(plan.verifiedWrites).toBe(0);
+  });
+
+  it('does not merge or detect contradictions across projects', async () => {
+    const plan = await planProactiveConsolidation([
+      {
+        id: 'project-a',
+        projectId: 'project-a',
+        title: 'Release checklist',
+        content: 'Scope A content',
+        status: 'candidate',
+        recordedAt: '2026-08-20T02:00:00.000Z',
+      },
+      {
+        id: 'project-b',
+        projectId: 'project-b',
+        title: 'release checklist',
+        content: 'Scope B content',
+        status: 'verified',
+        recordedAt: '2026-08-20T01:00:00.000Z',
+      },
+    ]);
+
+    expect(plan.mergeCandidates).toEqual([]);
+    expect(plan.candidateConflicts).toEqual([]);
+    expect(plan.detectedConflicts).toEqual([]);
+    expect(plan.detectedConflictsTotal).toBe(0);
+  });
+
+  it('detects corrected history as a durable contradiction pair without writing verified truth', async () => {
+    const plan = await planProactiveConsolidation([
+      {
+        id: 'corrected-old',
+        projectId: 'project-a',
+        title: 'API region',
+        content: 'Use us-east-1.',
+        status: 'superseded',
+        recordedAt: '2026-08-20T01:00:00.000Z',
+        metadata: {
+          corrected_by: 'corrected-new',
+        },
+      },
+      {
+        id: 'corrected-new',
+        projectId: 'project-a',
+        title: 'api region',
+        content: 'Use eu-central-1.',
+        status: 'verified',
+        recordedAt: '2026-08-20T02:00:00.000Z',
+        metadata: {
+          corrected_from: 'corrected-old',
+        },
+      },
+    ]);
+
+    expect(plan.detectedConflicts).toEqual([
+      expect.objectContaining({
+        reason: 'corrected-current-fact',
+        memoryIds: ['corrected-new', 'corrected-old'],
+      }),
+    ]);
     expect(plan.verifiedWrites).toBe(0);
   });
 

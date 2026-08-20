@@ -50,6 +50,12 @@ const proactiveConsolidationMigrationPath = fileURLToPath(
     import.meta.url,
   ),
 );
+const contradictionDetectionMigrationPath = fileURLToPath(
+  new URL(
+    '../../../supabase/migrations/20260820043913_m13_slice_04_advanced_contradiction_detection.sql',
+    import.meta.url,
+  ),
+);
 
 describe('m8 slice 03 migration guards', () => {
   const sql = readFileSync(migrationPath, 'utf8');
@@ -66,6 +72,10 @@ describe('m8 slice 03 migration guards', () => {
   const romaActionBudgetsSql = readFileSync(romaActionBudgetsMigrationPath, 'utf8');
   const proactiveConsolidationSql = readFileSync(
     proactiveConsolidationMigrationPath,
+    'utf8',
+  );
+  const contradictionDetectionSql = readFileSync(
+    contradictionDetectionMigrationPath,
     'utf8',
   );
 
@@ -272,5 +282,27 @@ describe('m8 slice 03 migration guards', () => {
     expect(proactiveConsolidationSql).toContain(
       `AND o.payload->>'idempotencyKey' = v_idem`,
     );
+  });
+
+  it('adds durable contradiction candidates without defaulting to AISTROYKA', () => {
+    expect(contradictionDetectionSql).toContain(`CREATE TABLE memory_conflicts`);
+    expect(contradictionDetectionSql).toContain(`UNIQUE (workspace_id, project_id, conflict_key)`);
+    expect(contradictionDetectionSql).toContain(`CREATE OR REPLACE FUNCTION app.api_upsert_memory_conflict`);
+    expect(contradictionDetectionSql).toContain(`RAISE EXCEPTION 'project_id required'`);
+    expect(contradictionDetectionSql).toContain(
+      `RAISE EXCEPTION 'owner subject required for contradiction detection'`,
+    );
+    expect(contradictionDetectionSql).not.toContain(
+      `'44444444-4444-4444-8444-444444444401'`,
+    );
+  });
+
+  it('sanitizes contradiction evidence refs down to memory ids and titles only', () => {
+    expect(contradictionDetectionSql).toContain(
+      `CREATE OR REPLACE FUNCTION app.sanitize_memory_conflict_evidence_refs`,
+    );
+    expect(contradictionDetectionSql).toContain(`'memoryId'`);
+    expect(contradictionDetectionSql).toContain(`'title'`);
+    expect(contradictionDetectionSql).not.toContain(`'content'`);
   });
 });

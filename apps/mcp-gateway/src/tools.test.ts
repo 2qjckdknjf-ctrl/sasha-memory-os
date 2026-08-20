@@ -657,6 +657,14 @@ describe('mcp gateway alpha', () => {
 
   it('keeps proactive consolidation scoped to one explicit project and audits the run offline', async () => {
     const mcp = createMcpHandlers();
+    await mcp.call('memory.store_decision', {
+      workspace_id: workspaceId,
+      project_id: projectId,
+      actor_subject_id: owner,
+      title: 'API base URL',
+      content: 'Use https://api.example.com.',
+      idempotency_key: 'mcp-proactive-decision-1',
+    });
     await mcp.call('capture.text', {
       workspace_id: workspaceId,
       project_id: projectId,
@@ -673,7 +681,14 @@ describe('mcp gateway alpha', () => {
       actor_subject_id: chatgpt,
       idempotency_key: 'mcp-proactive-dup-2',
     });
-
+    await mcp.call('capture.text', {
+      workspace_id: workspaceId,
+      project_id: projectId,
+      title: 'api base url',
+      text: 'Use https://staging.example.com until cutover.',
+      actor_subject_id: chatgpt,
+      idempotency_key: 'mcp-proactive-conflict-1',
+    });
     const report = (await mcp.call('consolidation.run', {
       workspace_id: workspaceId,
       actor_subject_id: owner,
@@ -686,6 +701,8 @@ describe('mcp gateway alpha', () => {
       applied: unknown[];
       verifiedWrites: number;
       auditEventId: string;
+      detectedConflicts: Array<{ reason: string; memoryIds: string[] }>;
+      persistedConflictIds: string[];
     };
 
     expect(report.projectId).toBe(projectId);
@@ -693,6 +710,12 @@ describe('mcp gateway alpha', () => {
     expect(report.applied.length).toBeGreaterThanOrEqual(1);
     expect(report.verifiedWrites).toBe(0);
     expect(report.auditEventId).toBeTruthy();
+    expect(
+      report.detectedConflicts.some(
+        (conflict) => conflict.reason === 'same-title-divergent-content',
+      ),
+    ).toBe(true);
+    expect(report.persistedConflictIds.length).toBeGreaterThanOrEqual(1);
   });
 
   it('sets memory status offline', async () => {
