@@ -2233,6 +2233,82 @@ describe('memory api demo slice', () => {
     });
   });
 
+  it('rejects ROMA action budgets without an explicit project_id', async () => {
+    const gateway = {
+      upsertRomaActionBudget: vi.fn(),
+    };
+    const app = createApp({ gateway: gateway as any });
+    const res = await app.request('/v1/roma/action-budgets', {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'x-subject-id': owner,
+        'x-actor-key': 'owner',
+      },
+      body: JSON.stringify({
+        workspace_id: workspaceId,
+        actor_subject_id: owner,
+        max_actions: 3,
+        window_minutes: 1440,
+      }),
+    });
+
+    expect(res.status).toBe(400);
+    expect(gateway.upsertRomaActionBudget).not.toHaveBeenCalled();
+  });
+
+  it('upserts and disables a ROMA action budget for one explicit project uuid', async () => {
+    const gateway = {
+      upsertRomaActionBudget: vi.fn(async () => ({
+        budgetId: 'budget-1',
+        workspaceId,
+        projectId,
+        maxActions: 3,
+        windowMinutes: 1440,
+        enabled: false,
+        disabledAt: '2026-08-20T03:00:00.000Z',
+        disabledReason: 'disabled by operator',
+      })),
+    };
+    const app = createApp({ gateway: gateway as any });
+    const res = await app.request('/v1/roma/action-budgets', {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'x-subject-id': owner,
+        'x-actor-key': 'owner',
+      },
+      body: JSON.stringify({
+        workspace_id: workspaceId,
+        project_id: projectId,
+        actor_subject_id: owner,
+        max_actions: 3,
+        window_minutes: 1440,
+        enabled: false,
+      }),
+    });
+
+    expect(res.status).toBe(200);
+    expect(gateway.upsertRomaActionBudget).toHaveBeenCalledWith({
+      subjectId: owner,
+      workspaceId,
+      projectId,
+      maxActions: 3,
+      windowMinutes: 1440,
+      enabled: false,
+    });
+    const body = (await res.json()) as {
+      projectId: string;
+      enabled: boolean;
+      backend: string;
+      disabledReason: string | null;
+    };
+    expect(body.projectId).toBe(projectId);
+    expect(body.enabled).toBe(false);
+    expect(body.backend).toBe('supabase');
+    expect(body.disabledReason).toBe('disabled by operator');
+  });
+
   it('serves health with embed/vault modes', async () => {
     const app = createApp({});
     const mcpHealth = await app.request('/mcp/health');

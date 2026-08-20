@@ -392,6 +392,13 @@ function buildFindingsNotification(input: {
   };
 }
 
+function assertStructuredWriteSuccess<T extends { error?: unknown }>(result: T): T {
+  if (typeof result.error === 'string' && result.error.trim().length > 0) {
+    throw new Error(result.error);
+  }
+  return result;
+}
+
 function isRetryableRomaProjectHealthError(message: string): boolean {
   return !/project .* not visible to ROMA|project not found/i.test(message);
 }
@@ -734,7 +741,7 @@ async function executeRomaProjectHealthJob(options: {
     job,
     romaSubjectId,
   });
-  const capture = await gateway.captureConnectorRecord({
+  const capture = assertStructuredWriteSuccess(await gateway.captureConnectorRecord({
     subjectId: romaSubjectId,
     workspaceId: job.workspaceId,
     projectId: job.projectId,
@@ -775,7 +782,7 @@ async function executeRomaProjectHealthJob(options: {
       source_counts: summary.counts,
     },
     processNow: true,
-  });
+  }));
   const memoryId = capture.process?.memoryId;
   if (!memoryId) {
     throw new Error('roma project health capture did not produce a memory');
@@ -899,7 +906,7 @@ async function executeRomaProjectFindingsJob(options: {
       finding: candidate,
       romaSubjectId,
     });
-    const capture = await gateway.captureConnectorRecord({
+    const capture = assertStructuredWriteSuccess(await gateway.captureConnectorRecord({
       subjectId: romaSubjectId,
       workspaceId: job.workspaceId,
       projectId: job.projectId,
@@ -944,7 +951,7 @@ async function executeRomaProjectFindingsJob(options: {
         evidence_refs: candidate.evidenceRefs,
       },
       processNow: true,
-    });
+    }));
     const memoryId = capture.process?.memoryId;
     if (!memoryId) {
       throw new Error(`roma qa finding capture did not produce a memory for ${candidate.key}`);

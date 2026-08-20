@@ -68,6 +68,7 @@ import {
   selectedConnectionCollections,
   setConnectionStatusSchema,
   setMemoryStatusSchema,
+  upsertRomaActionBudgetSchema,
   upsertRomaProjectHealthScheduleSchema,
   upsertConnectionSchema,
   upsertProjectStateSchema,
@@ -3973,6 +3974,48 @@ export function createApp(options?: {
         enabled: body.enabled,
         nextRunAt: body.next_run_at,
         reason: body.reason,
+      });
+      return c.json({ ...result, backend: 'supabase' });
+    } catch (err) {
+      if (isForbiddenError(err)) return c.json({ error: 'forbidden' }, 403);
+      if (isNotFoundError(err)) return c.json({ error: 'project_not_found' }, 404);
+      return c.json({ error: (err as Error).message }, 500);
+    }
+  });
+
+  app.post('/v1/roma/action-budgets', async (c) => {
+    const rawBody = (await c.req.json().catch(() => ({}))) as Record<string, unknown>;
+    const parsed = upsertRomaActionBudgetSchema.safeParse(rawBody);
+    if (!parsed.success) {
+      const firstIssue = parsed.error.issues[0]?.message ?? 'invalid request';
+      return c.json({ error: firstIssue }, 400);
+    }
+
+    const body = parsed.data;
+    const authz = c.get('authz');
+    if (authz.subjectId !== body.actor_subject_id) {
+      return c.json({ error: 'forbidden' }, 403);
+    }
+
+    const gw = c.get('gateway');
+    if (!gw) {
+      return c.json(
+        {
+          error: 'not_implemented',
+          note: 'ROMA action budgets require supabase backend',
+        },
+        501,
+      );
+    }
+
+    try {
+      const result = await gw.upsertRomaActionBudget({
+        subjectId: body.actor_subject_id,
+        workspaceId: body.workspace_id,
+        projectId: body.project_id,
+        maxActions: body.max_actions,
+        windowMinutes: body.window_minutes,
+        enabled: body.enabled,
       });
       return c.json({ ...result, backend: 'supabase' });
     } catch (err) {

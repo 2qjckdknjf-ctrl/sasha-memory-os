@@ -280,6 +280,57 @@ describe('runRomaProjectHealthJob', () => {
       }),
     );
   });
+
+  it('fails closed when the action budget blocks the write before any memory lands', async () => {
+    const captureConnectorRecord = vi.fn(async () => ({
+      error:
+        'roma action budget exceeded for project 44444444-4444-4444-8444-444444444401 (1 writes per 60 minutes)',
+      budgetAuditEventId: 'audit-budget-1',
+    }));
+    const completeRomaProjectHealth = vi.fn(async () => ({
+      jobId: 'job-roma-1',
+      status: 'failed',
+    }));
+    const gateway = {
+      listProjects: vi.fn(async () => [
+        {
+          id: projectId,
+          slug: 'aistroyka',
+          name: 'AISTROYKA',
+          status: 'active',
+        },
+      ]),
+      projectContext: vi.fn(async () => ({
+        projectId,
+        decisions: [],
+        tasks: [],
+        facts: [],
+        state: null,
+        latestHandoff: null,
+      })),
+      captureConnectorRecord,
+      appendAuditEvent: vi.fn(),
+      completeRomaProjectHealth,
+    };
+
+    await expect(
+      runRomaProjectHealthJob({
+        gateway: gateway as any,
+        job: buildJob(),
+        romaSubjectId: roma,
+      }),
+    ).rejects.toThrow(/action budget exceeded/i);
+
+    expect(gateway.appendAuditEvent).not.toHaveBeenCalled();
+    expect(completeRomaProjectHealth).toHaveBeenCalledWith(
+      expect.objectContaining({
+        subjectId: roma,
+        jobId: 'job-roma-1',
+        status: 'failed',
+        error: expect.stringMatching(/action budget exceeded/i),
+      }),
+    );
+  });
 });
 
 describe('runRomaProjectFindingsJob', () => {
@@ -547,6 +598,65 @@ describe('runRomaProjectFindingsJob', () => {
         subjectId: roma,
         jobId: 'job-findings-1',
         status: 'failed',
+      }),
+    );
+  });
+
+  it('produces no finding memory when the action budget rejects the write', async () => {
+    const captureConnectorRecord = vi.fn(async () => ({
+      error:
+        'roma action budget not configured for project 44444444-4444-4444-8444-444444444401',
+      budgetAuditEventId: 'audit-budget-1',
+    }));
+    const completeRomaProjectFindings = vi.fn(async () => ({
+      jobId: 'job-findings-1',
+      status: 'failed',
+    }));
+    const gateway = {
+      listProjects: vi.fn(async () => [
+        {
+          id: projectId,
+          slug: 'aistroyka',
+          name: 'AISTROYKA',
+          status: 'active',
+        },
+      ]),
+      projectContext: vi.fn(async () => ({
+        projectId,
+        decisions: [],
+        tasks: [],
+        facts: [],
+        state: {
+          version: 3,
+          summary: 'Delivery is blocked by deployment access.',
+          state: {
+            blocked: ['deployment access'],
+            next: ['restore deploy access'],
+            risks: [],
+          },
+        },
+        latestHandoff: null,
+      })),
+      captureConnectorRecord,
+      appendAuditEvent: vi.fn(),
+      completeRomaProjectFindings,
+    };
+
+    await expect(
+      runRomaProjectFindingsJob({
+        gateway: gateway as any,
+        job: buildFindingsJob(),
+        romaSubjectId: roma,
+      }),
+    ).rejects.toThrow(/budget not configured/i);
+
+    expect(gateway.appendAuditEvent).not.toHaveBeenCalled();
+    expect(completeRomaProjectFindings).toHaveBeenCalledWith(
+      expect.objectContaining({
+        subjectId: roma,
+        jobId: 'job-findings-1',
+        status: 'failed',
+        error: expect.stringMatching(/budget not configured/i),
       }),
     );
   });
