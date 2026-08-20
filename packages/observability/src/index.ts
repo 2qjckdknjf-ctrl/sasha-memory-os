@@ -8,6 +8,7 @@ export const OFFICIAL_M14_SECURITY_REVIEW_PACK_VERSION = 'm14-s03-v1' as const;
 export const OFFICIAL_M14_DR_RESTORE_DRILL_PACK_VERSION = 'm14-s04-v1' as const;
 export const OFFICIAL_M14_INCIDENT_RUNBOOK_PACK_VERSION = 'm14-s05-v1' as const;
 export const OFFICIAL_M14_PRIVACY_SLA_PACK_VERSION = 'm14-s06-v1' as const;
+export const OFFICIAL_M14_DEPENDENCY_UPGRADE_POLICY_PACK_VERSION = 'm14-s07-v1' as const;
 
 const LATENCY_P95_ERROR_BUDGET_RATIO = 0.05;
 const MAX_SLO_SAMPLES_PER_TARGET = 1_024;
@@ -923,6 +924,148 @@ export const OFFICIAL_M14_PRIVACY_SLA_PACK = {
     logTokens: false,
     logExportPayloads: false,
     logPrivacyRequestReasons: false,
+  },
+} as const;
+
+type DependencyUpgradeControlId =
+  | 'upgrade-owner'
+  | 'rollback-note'
+  | 'contract-and-smoke-gate'
+  | 'protocol-adr-and-contract-tests'
+  | 'mode-a-seven-tools'
+  | 'explicit-project-id-no-default-fallback'
+  | 'no-secret-payload-or-verified-write-leaks';
+
+type DependencyUpgradeOwnerRole = 'Platform owner';
+
+type DependencyUpgradeControl = {
+  id: DependencyUpgradeControlId;
+  ownerRole: DependencyUpgradeOwnerRole;
+  description: string;
+  defensiveOnly: true;
+  evidence: readonly string[];
+};
+
+export const OFFICIAL_M14_DEPENDENCY_UPGRADE_POLICY_PACK = {
+  version: OFFICIAL_M14_DEPENDENCY_UPGRADE_POLICY_PACK_VERSION,
+  sloPackVersion: OFFICIAL_M14_SLO_PACK_VERSION,
+  securityReviewPackVersion: OFFICIAL_M14_SECURITY_REVIEW_PACK_VERSION,
+  drRestoreDrillPackVersion: OFFICIAL_M14_DR_RESTORE_DRILL_PACK_VERSION,
+  incidentRunbookPackVersion: OFFICIAL_M14_INCIDENT_RUNBOOK_PACK_VERSION,
+  privacySlaPackVersion: OFFICIAL_M14_PRIVACY_SLA_PACK_VERSION,
+  roadmapSections: ['20.17'],
+  controls: [
+    {
+      id: 'upgrade-owner',
+      ownerRole: 'Platform owner',
+      description:
+        'Every dependency upgrade batch stays owned, versioned, and bounded to the current stack before merge.',
+      defensiveOnly: true,
+      evidence: [
+        'docs/engineering/DEPENDENCY_UPGRADE_POLICY.md',
+        'docs/engineering/M14_SLICE_07.md',
+        'apps/api/fixtures/dependency-upgrade/m14-s07-v1/policy-manifest.json',
+        'apps/api/src/dependencyUpgradeDrill.test.ts',
+      ],
+    },
+    {
+      id: 'rollback-note',
+      ownerRole: 'Platform owner',
+      description:
+        'Every dependency upgrade batch carries an explicit rollback note before any merge or staging promote.',
+      defensiveOnly: true,
+      evidence: [
+        'docs/engineering/DEPENDENCY_UPGRADE_POLICY.md',
+        'apps/api/fixtures/dependency-upgrade/m14-s07-v1/policy-manifest.json',
+        'apps/api/src/dependencyUpgradeDrill.test.ts',
+      ],
+    },
+    {
+      id: 'contract-and-smoke-gate',
+      ownerRole: 'Platform owner',
+      description:
+        'Dependency changes stay gated by the current contract tests, typecheck, critical audit, and ChatGPT MCP smoke.',
+      defensiveOnly: true,
+      evidence: [
+        '.github/workflows/ci.yml',
+        'scripts/smoke-mcp-chatgpt.sh',
+        'apps/api/src/dependencyUpgradeDrill.test.ts',
+      ],
+    },
+    {
+      id: 'protocol-adr-and-contract-tests',
+      ownerRole: 'Platform owner',
+      description:
+        'MCP protocol and SDK changes require ADR references plus updated contract and smoke evidence instead of silent bumps.',
+      defensiveOnly: true,
+      evidence: [
+        'docs/adr/ADR-001-canonical-memory.md',
+        'docs/adr/ADR-005-secrets-and-environments.md',
+        'apps/mcp-gateway/src/profile.test.ts',
+        'apps/mcp-gateway/src/rpc.test.ts',
+        'scripts/smoke-mcp-chatgpt.sh',
+      ],
+    },
+    {
+      id: 'mode-a-seven-tools',
+      ownerRole: 'Platform owner',
+      description:
+        'ChatGPT Mode A stays at exactly 7 tools with no owner or operations expansion during upgrades.',
+      defensiveOnly: true,
+      evidence: [
+        'apps/mcp-gateway/src/profile.ts',
+        'apps/mcp-gateway/src/profile.test.ts',
+        'apps/api/src/dependencyUpgradeDrill.test.ts',
+      ],
+    },
+    {
+      id: 'explicit-project-id-no-default-fallback',
+      ownerRole: 'Platform owner',
+      description:
+        'Any write, admin, or apply path requires explicit project scope and ignores MEMORY_OS_DEFAULT_PROJECT_ID / AISTROYKA fallback.',
+      defensiveOnly: true,
+      evidence: [
+        'docs/engineering/DEPENDENCY_UPGRADE_POLICY.md',
+        'apps/api/src/dependencyUpgradeDrill.ts',
+        'apps/api/src/dependencyUpgradeDrill.test.ts',
+      ],
+    },
+    {
+      id: 'no-secret-payload-or-verified-write-leaks',
+      ownerRole: 'Platform owner',
+      description:
+        'Upgrade notes, CI output, and local validation remain metadata-only with no verified-memory writes, tokens, or memory bodies.',
+      defensiveOnly: true,
+      evidence: [
+        'docs/engineering/SECRETS_POLICY.md',
+        'packages/observability/src/index.test.ts',
+        'apps/api/src/dependencyUpgradeDrill.test.ts',
+      ],
+    },
+  ] satisfies readonly DependencyUpgradeControl[],
+  invariants: {
+    defensiveOnly: true,
+    fixtureOnly: true,
+    modeAToolCount: 7,
+    requireUpgradeOwner: true,
+    requireRollbackNote: true,
+    requireContractTests: true,
+    requireSmokeTest: true,
+    requireProtocolAdrForMcpOrSdkChanges: true,
+    requireProtocolContractTests: true,
+    requireExplicitProjectIdOnWriteAdminOrApplyInvocation: true,
+    ignoreDefaultProjectIdEnv: true,
+    allowOwnerTokenBypass: false,
+    allowAistroykaFallback: false,
+    allowVerifiedWrites: false,
+    allowProductionSqlApply: false,
+    allowLiveMassUpgrade: false,
+    allowNewVendor: false,
+    allowSilentProtocolBump: false,
+    logMemoryBodies: false,
+    logTokens: false,
+    logUpgradePayloads: false,
+    logCiSecrets: false,
   },
 } as const;
 
