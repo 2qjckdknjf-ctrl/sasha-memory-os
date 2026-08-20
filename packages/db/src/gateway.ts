@@ -1865,18 +1865,34 @@ export class SupabaseMemoryGateway {
   async enqueueConsolidation(input: {
     subjectId: string;
     workspaceId: string;
+    projectId?: string | null;
+    proactive?: boolean;
+    reason?: string | null;
   }) {
-    const { data, error } = await this.client.rpc('api_enqueue_consolidation', {
+    const rpcName =
+      input.projectId && input.proactive
+        ? 'api_enqueue_project_consolidation'
+        : 'api_enqueue_consolidation';
+    const args: Record<string, unknown> = {
       p_secret: this.apiSecret,
       p_subject_id: input.subjectId,
       p_workspace_id: input.workspaceId,
-    });
+    };
+    if (input.projectId) {
+      args.p_project_id = input.projectId;
+    }
+    if (input.reason !== undefined) {
+      args.p_reason = input.reason;
+    }
+    const { data, error } = await this.client.rpc(rpcName, args);
     if (error) throw error;
     return data as {
       jobId: string;
       eventId: string;
       idempotencyKey: string;
       workspaceId: string;
+      projectId?: string | null;
+      mode?: string | null;
       inserted?: boolean;
     };
   }

@@ -128,6 +128,48 @@ describe('SupabaseMemoryGateway.enqueueRomaProjectFindings', () => {
   });
 });
 
+describe('SupabaseMemoryGateway.enqueueConsolidation', () => {
+  it('keeps the legacy workspace enqueue for manual consolidation', async () => {
+    const rpc = vi.fn(async () => ({ data: { ok: true }, error: null }));
+    const gateway = new SupabaseMemoryGateway({ rpc } as any, 'test-secret');
+
+    await gateway.enqueueConsolidation({
+      subjectId: '33333333-3333-4333-8333-333333333301',
+      workspaceId: '11111111-1111-4111-8111-111111111111',
+    });
+
+    expect(rpc).toHaveBeenCalledWith('api_enqueue_consolidation', {
+      p_secret: 'test-secret',
+      p_subject_id: '33333333-3333-4333-8333-333333333301',
+      p_workspace_id: '11111111-1111-4111-8111-111111111111',
+    });
+  });
+
+  it('uses the project-scoped proactive enqueue when project_id is explicit', async () => {
+    const rpc = vi.fn(async () => ({ data: { ok: true }, error: null }));
+    const gateway = new SupabaseMemoryGateway({ rpc } as any, 'test-secret');
+
+    await gateway.enqueueConsolidation({
+      subjectId: '33333333-3333-4333-8333-333333333301',
+      workspaceId: '11111111-1111-4111-8111-111111111111',
+      projectId: '44444444-4444-4444-8444-444444444401',
+      proactive: true,
+      reason: 'tick',
+    });
+
+    expect(rpc).toHaveBeenCalledWith(
+      'api_enqueue_project_consolidation',
+      expect.objectContaining({
+        p_secret: 'test-secret',
+        p_subject_id: '33333333-3333-4333-8333-333333333301',
+        p_workspace_id: '11111111-1111-4111-8111-111111111111',
+        p_project_id: '44444444-4444-4444-8444-444444444401',
+        p_reason: 'tick',
+      }),
+    );
+  });
+});
+
 describe('SupabaseMemoryGateway.requestRomaQaFindingApprovalCheckpoint', () => {
   it('passes bounded approval checkpoint request RPC args for one explicit project', async () => {
     const rpc = vi.fn(async () => ({ data: { ok: true }, error: null }));

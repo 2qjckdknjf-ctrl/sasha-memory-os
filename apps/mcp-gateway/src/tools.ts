@@ -26,11 +26,14 @@ import {
 import {
   createEmbeddingAdapter,
   createExtractionAdapter,
+  buildProactiveConsolidationReason,
   embedMemoryText,
   type HybridHitLike,
   packSearchContext,
   planCandidateConsolidations,
+  planProactiveConsolidation,
   projectContext,
+  PROACTIVE_CONSOLIDATION_RULES_VERSION,
   rerankHitsHybrid,
   runBoundedAgenticRetrieval,
   searchMemoriesHybrid,
@@ -86,6 +89,8 @@ const OWNER_SUBJECT_ID = '33333333-3333-4333-8333-333333333301';
 const CHATGPT_SUBJECT_ID = '33333333-3333-4333-8333-333333333302';
 const CURSOR_SUBJECT_ID = '33333333-3333-4333-8333-333333333303';
 const ROMA_SUBJECT_ID = '33333333-3333-4333-8333-333333333304';
+const PROACTIVE_CONSOLIDATION_PROJECT_ERROR =
+  'project_id is required for proactive consolidation; never default to AISTROYKA';
 
 function localAuthzForSubject(
   subjectId: string,
@@ -500,6 +505,37 @@ async function resolveExplicitProjectId(
     throw new Error(
       'project_id is required for bounded agentic retrieval; never default to AISTROYKA',
     );
+  }
+  const subjectId = resolveActorSubjectId(args);
+  const workspaceId = resolveWorkspaceId(args);
+  const resolution = gateway
+    ? await gateway.resolveProjectRef({
+        subjectId,
+        workspaceId,
+        projectRef: explicitRef,
+      })
+    : localResolveProjectRef(explicitRef);
+  if (resolution.matchCount > 1) {
+    throw new Error(
+      `project reference "${explicitRef}" is ambiguous. Candidates: ${formatProjectCandidates(
+        resolution.candidates,
+      )}`,
+    );
+  }
+  if (!resolution.projectId) {
+    throw new Error('project not found; pass a valid project UUID or slug from /projects');
+  }
+  return resolution.projectId;
+}
+
+async function resolveExplicitConsolidationProjectId(
+  gateway: SupabaseMemoryGateway | null,
+  args: Record<string, unknown>,
+): Promise<string> {
+  const explicitRef =
+    typeof args.project_id === 'string' ? args.project_id.trim() : '';
+  if (!explicitRef) {
+    throw new Error(PROACTIVE_CONSOLIDATION_PROJECT_ERROR);
   }
   const subjectId = resolveActorSubjectId(args);
   const workspaceId = resolveWorkspaceId(args);
@@ -962,8 +998,19 @@ export const mcpTools: McpTool[] = [
       properties: {
         workspace_id: { type: 'string' },
         actor_subject_id: { type: 'string' },
+        project_id: { type: 'string' },
         apply: { type: 'boolean' },
         limit: { type: 'number' },
+        proactive: {
+          type: 'boolean',
+          description:
+            'Run the bounded proactive project-scoped consolidation pass; requires project_id',
+        },
+        scan_limit: { type: 'number' },
+        max_merges: { type: 'number' },
+        max_conflicts: { type: 'number' },
+        max_time_ms: { type: 'number' },
+        reason: { type: 'string' },
         enqueue: {
           type: 'boolean',
           description: 'Also enqueue consolidate job + outbox event',
@@ -1912,6 +1959,245 @@ export function createMcpHandlers(options?: {
           const subjectId = String(args.actor_subject_id);
           const workspaceId = String(args.workspace_id);
           const apply = args.apply !== false;
+          const proactive = args.proactive === true;
+          if (proactive) {
+            const resolvedProjectId = await resolveExplicitConsolidationProjectId(
+              gateway,
+              args,
+            );
+            const runId = randomUUID();
+            const scanLimit =
+              typeof args.scan_limit === 'number'
+                ? args.scan_limit
+                : typeof args.limit === 'number'
+                  ? args.limit
+                  : 100;
+            if (!gateway) {
+              const candidates = [...store.memories.values()]
+                .filter((m) => m.workspaceId === workspaceId)
+                .filter((m) => m.projectId === resolvedProjectId)
+                .map((m) => ({
+                  id: m.id,
+                  title: m.title,
+                  content: m.content,
+                  status: m.status,
+                  recordedAt: m.recordedAt,
+                  projectId: m.projectId,
+                }));
+              const plan = await planProactiveConsolidation(candidates, {
+                scanLimit,
+                maxMerges:
+                  typeof args.max_merges === 'number' ? args.max_merges : undefined,
+                maxConflicts:
+                  typeof args.max_conflicts === 'number'
+                    ? args.max_conflicts
+                    : undefined,
+                maxTimeMs:
+                  typeof args.max_time_ms === 'number' ? args.max_time_ms : undefined,
+              });
+              const applied = [];
+              const failed = [];
+              if (apply) {
+                for (const pair of plan.mergeCandidates) {
+                  const reason = buildProactiveConsolidationReason({
+                    runId,
+                    pairReason: pair.reason,
+                  });
+                  try {
+                    store.supersedeMemory({
+                      duplicateId: pair.duplicateId,
+                      keeperId: pair.keeperId,
+                      reason,
+                      actorSubjectId: subjectId,
+                    });
+                    applied.push(pair);
+                  } catch (err) {
+                    failed.push({
+                      pair,
+                      error: err instanceof Error ? err.message : String(err),
+                    });
+                  }
+                }
+              }
+              const audit = store.createAuditEvent({
+                workspaceId,
+                actorSubjectId: subjectId,
+                action: apply
+                  ? 'consolidation.proactive.completed'
+                  : 'consolidation.proactive.planned',
+                objectType: 'consolidation_run',
+                objectId: runId,
+                reason: 'project-scoped proactive consolidation',
+                afterState: {
+                  runId,
+                  projectId: resolvedProjectId,
+                  rulesVersion: PROACTIVE_CONSOLIDATION_RULES_VERSION,
+                  apply,
+                  scanned: plan.scanned,
+                  inputMemoryIds: plan.inputMemoryIds,
+                  mergeCandidates: plan.mergeCandidates,
+                  mergeCandidatesTotal: plan.mergeCandidatesTotal,
+                  candidateConflicts: plan.candidateConflicts,
+                  candidateConflictsTotal: plan.candidateConflictsTotal,
+                  appliedPairs: applied,
+                  failedPairs: failed,
+                  stopReason: plan.stopReason,
+                  exhausted: plan.exhausted,
+                  verifiedWrites: 0,
+                },
+              });
+              return {
+                runId,
+                projectId: resolvedProjectId,
+                rulesVersion: PROACTIVE_CONSOLIDATION_RULES_VERSION,
+                scanned: plan.scanned,
+                planned: plan.mergeCandidates.length,
+                pairs: plan.mergeCandidates,
+                mergeCandidatesTotal: plan.mergeCandidatesTotal,
+                candidateConflicts: plan.candidateConflicts,
+                candidateConflictsTotal: plan.candidateConflictsTotal,
+                applied,
+                failed,
+                stopReason: plan.stopReason,
+                exhausted: plan.exhausted,
+                verifiedWrites: 0,
+                auditEventId: audit.id,
+                backend: 'memory-store',
+              };
+            }
+            let jobMeta: {
+              jobId: string;
+              eventId: string;
+              idempotencyKey: string;
+              projectId?: string | null;
+              mode?: string | null;
+            } | null = null;
+            if (args.enqueue) {
+              jobMeta = await gateway.enqueueConsolidation({
+                subjectId,
+                workspaceId,
+                projectId: resolvedProjectId,
+                proactive: true,
+                reason: args.reason ? String(args.reason) : null,
+              });
+            }
+            const rows = await gateway.listMemories({
+              subjectId,
+              workspaceId,
+              projectId: resolvedProjectId,
+              limit: scanLimit,
+            });
+            const plan = await planProactiveConsolidation(
+              rows.map((row) => ({
+                id: row.id,
+                title: row.title,
+                content: row.content,
+                status: row.status,
+                recordedAt: row.recordedAt,
+                embedding: Array.isArray(row.embedding) ? row.embedding : null,
+                projectId: row.projectId,
+              })),
+              {
+                scanLimit,
+                maxMerges:
+                  typeof args.max_merges === 'number' ? args.max_merges : undefined,
+                maxConflicts:
+                  typeof args.max_conflicts === 'number'
+                    ? args.max_conflicts
+                    : undefined,
+                maxTimeMs:
+                  typeof args.max_time_ms === 'number' ? args.max_time_ms : undefined,
+              },
+            );
+            const applied = [];
+            const failed = [];
+            if (apply) {
+              for (const pair of plan.mergeCandidates) {
+                const reason = buildProactiveConsolidationReason({
+                  runId,
+                  pairReason: pair.reason,
+                });
+                try {
+                  await gateway.supersedeMemory({
+                    subjectId,
+                    duplicateId: pair.duplicateId,
+                    keeperId: pair.keeperId,
+                    reason,
+                  });
+                  applied.push(pair);
+                } catch (err) {
+                  failed.push({
+                    pair,
+                    error: err instanceof Error ? err.message : String(err),
+                  });
+                }
+              }
+            }
+            const status =
+              failed.length > 0 && applied.length === 0 ? 'failed' : 'succeeded';
+            if (jobMeta) {
+              await gateway.completeConsolidation({
+                subjectId,
+                jobId: jobMeta.jobId,
+                status,
+                error:
+                  status === 'failed'
+                    ? failed
+                        .map((entry) => entry.error)
+                        .join('; ')
+                        .slice(0, 500)
+                    : null,
+              });
+            }
+            const audit = await gateway.appendAuditEvent({
+              subjectId,
+              workspaceId,
+              action: apply
+                ? 'consolidation.proactive.completed'
+                : 'consolidation.proactive.planned',
+              objectType: 'consolidation_run',
+              objectId: runId,
+              reason: 'project-scoped proactive consolidation',
+              afterState: {
+                runId,
+                projectId: resolvedProjectId,
+                rulesVersion: PROACTIVE_CONSOLIDATION_RULES_VERSION,
+                apply,
+                jobId: jobMeta?.jobId ?? null,
+                eventId: jobMeta?.eventId ?? null,
+                scanned: plan.scanned,
+                inputMemoryIds: plan.inputMemoryIds,
+                mergeCandidates: plan.mergeCandidates,
+                mergeCandidatesTotal: plan.mergeCandidatesTotal,
+                candidateConflicts: plan.candidateConflicts,
+                candidateConflictsTotal: plan.candidateConflictsTotal,
+                appliedPairs: applied,
+                failedPairs: failed,
+                stopReason: plan.stopReason,
+                exhausted: plan.exhausted,
+                verifiedWrites: 0,
+              },
+            });
+            return {
+              runId,
+              projectId: resolvedProjectId,
+              rulesVersion: PROACTIVE_CONSOLIDATION_RULES_VERSION,
+              scanned: plan.scanned,
+              planned: plan.mergeCandidates.length,
+              pairs: plan.mergeCandidates,
+              mergeCandidatesTotal: plan.mergeCandidatesTotal,
+              candidateConflicts: plan.candidateConflicts,
+              candidateConflictsTotal: plan.candidateConflictsTotal,
+              applied,
+              failed,
+              stopReason: plan.stopReason,
+              exhausted: plan.exhausted,
+              verifiedWrites: 0,
+              auditEventId: audit.id,
+              backend: 'supabase',
+              job: jobMeta,
+            };
+          }
           if (!gateway) {
             const candidates = [...store.memories.values()]
               .filter((m) => m.status === 'candidate')
