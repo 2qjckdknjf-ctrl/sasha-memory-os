@@ -1,0 +1,19 @@
+{
+  "manifestVersion": "m16-s03-v1",
+  "packVersion": "m16-s03-v1",
+  "source": "fixture-local",
+  "defaults": {
+    "ingestMode": "metadata_first",
+    "allowFullIcloudWalk": false,
+    "allowServerSideScrape": false
+  },
+  "liveFilesPickerE2E": {
+    "status": "contract_pass_live_picker_blocked",
+    "claimPassFromMocks": false
+  },
+  "invariants": {
+    "selectedScopeOnly": true,
+    "metadataFirstIndexing": true,
+    "modeAToolCount": 7
+  }
+}
