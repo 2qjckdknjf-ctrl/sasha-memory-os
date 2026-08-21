@@ -15,3 +15,13 @@
 - Local API defaults to `http://localhost:8787` with `backend=supabase`; keep `service_role` and `MEMORY_OS_API_SECRET` server-side / in local `.env` only (never commit).
 - Canonical local project root is `/Users/alex/MAMORYOS/MAMORUOS` (renamed from `Без названия`); prefer the `Users-alex-MAMORYOS-MAMORUOS` Cursor project slug over the older `Users-alex-MAMORYOS` one.
 - Default SQL hybrid embeddings use `vector(32)` / dims 32; optional HQ path is 1536 via `MEMORY_OS_OPENAI_EMBED_DIMS` (do not assume dims>32 is the active default).
+- Canonical execution order after M14 is Memory OS decision `SASHA MEMORY OS — CANONICAL COMPLETION PLAN TO 100% — 2026-08-21`; machine-readable repo snapshot is `docs/engineering/CURRENT_STATE.json`.
+
+## Cursor Cloud specific instructions
+
+- Toolchain: Node 22 is preinstalled. The repo pins `pnpm@9.15.9` via `packageManager`, but the default `pnpm` on PATH may be a mismatched nvm version. Prefer `corepack pnpm@9.15.9 <cmd>` or `npx pnpm@9.15.9 <cmd>`.
+- Standard commands live in `README.md` and root `package.json` scripts (`typecheck`, `test`, `dev:api`, `dev:web`). `pnpm lint` is a placeholder no-op.
+- The API can boot without secrets in seeded in-memory `backend=memory-store` mode when Supabase env + `MEMORY_OS_API_SECRET` are not all set (`apps/api/src/server.ts`). Verify via `GET /health`.
+- With `MEMORY_OS_ENV` unset/`local` (default), owner/cron ops routes do not require the API secret (`apps/api/src/httpAuth.ts`).
+- Dev servers: `dev:api` on `:8787`; `dev:web` on `:5173` proxies `/v1` and `/health` to `:8787`. Start the API first.
+- `pnpm test` passes without secrets; live Supabase suites auto-skip when env is absent. Live connector/OAuth/re-embed/consolidation need the dedicated Supabase project secrets.
