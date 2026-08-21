@@ -1,0 +1,16 @@
+{
+  "manifestVersion": "m15-s03-v1",
+  "packVersion": "m15-s03-v1",
+  "source": "fixture-local",
+  "unclassifiedRoute": "UNCLASSIFIED",
+  "confidenceThreshold": 0.8,
+  "goldenPrecisionTarget": 0.95,
+  "invariants": {
+    "neverUseDefaultProjectFallback": true,
+    "neverUseAistroykaFallback": true,
+    "lowConfidenceRoutesToUnclassified": true,
+    "conflictingSignalsRouteToUnclassified": true,
+    "modeAToolCount": 7,
+    "ignoreDefaultProjectIdEnv": true
+  }
+}
