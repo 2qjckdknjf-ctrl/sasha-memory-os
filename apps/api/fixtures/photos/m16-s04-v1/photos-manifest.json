@@ -1,0 +1,18 @@
+{
+  "manifestVersion": "m16-s04-v1",
+  "packVersion": "m16-s04-v1",
+  "source": "fixture-local",
+  "defaults": {
+    "mode": "metadata_only",
+    "allowSilentBulkSemanticAnalysis": false,
+    "limitedLibrarySelectedAssetsOnly": true
+  },
+  "livePhotoKitE2E": {
+    "status": "contract_pass_live_photokit_blocked",
+    "claimPassFromMocks": false
+  },
+  "invariants": {
+    "noSilentBulkSemanticAnalysis": true,
+    "modeAToolCount": 7
+  }
+}

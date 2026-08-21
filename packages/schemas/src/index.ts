@@ -13,6 +13,7 @@ export * from './m15LiveE2EGate.js';
 export * from './appleCapabilityFeasibility.js';
 export * from './appleCompanionSecurity.js';
 export * from './icloudDriveFiles.js';
+export * from './photosIngest.js';
 export * from './appleCompanion.js';
 export * from './memory.js';
 export * from './jobs.js';
