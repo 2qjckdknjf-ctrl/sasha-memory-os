@@ -1,0 +1,147 @@
+[
+  {
+    "id": "explicit-uuid",
+    "signals": [{ "kind": "explicit_project_id", "projectId": "44444444-4444-4444-8444-444444444401", "weight": 1, "evidence": "explicit" }],
+    "expectedOutcome": "routed",
+    "expectedProjectId": "44444444-4444-4444-8444-444444444401"
+  },
+  {
+    "id": "collection-binding",
+    "signals": [{ "kind": "collection_binding", "projectId": "44444444-4444-4444-8444-444444444401", "weight": 0.9, "evidence": "repo bound" }],
+    "expectedOutcome": "routed",
+    "expectedProjectId": "44444444-4444-4444-8444-444444444401"
+  },
+  {
+    "id": "conflict-a-b",
+    "signals": [
+      { "kind": "collection_binding", "projectId": "44444444-4444-4444-8444-444444444401", "weight": 0.9, "evidence": "repo a" },
+      { "kind": "entity_alias", "projectId": "55555555-5555-4555-8555-555555555501", "weight": 0.85, "evidence": "alias b" }
+    ],
+    "expectedOutcome": "unclassified",
+    "expectedProjectId": "UNCLASSIFIED"
+  },
+  {
+    "id": "missing-signals",
+    "signals": [],
+    "expectedOutcome": "unclassified",
+    "expectedProjectId": "UNCLASSIFIED"
+  },
+  {
+    "id": "low-confidence",
+    "signals": [{ "kind": "recent_context", "projectId": "44444444-4444-4444-8444-444444444401", "weight": 0.2, "evidence": "weak" }],
+    "expectedOutcome": "unclassified",
+    "expectedProjectId": "UNCLASSIFIED"
+  },
+  {
+    "id": "reject-aistroyka-slug",
+    "signals": [{ "kind": "explicit_project_id", "projectId": "aistroyka", "weight": 1, "evidence": "slug" }],
+    "expectedOutcome": "unclassified",
+    "expectedProjectId": "UNCLASSIFIED"
+  },
+  {
+    "id": "aligned-signals",
+    "signals": [
+      { "kind": "source_mapping", "projectId": "44444444-4444-4444-8444-444444444401", "weight": 0.5, "evidence": "provider map" },
+      { "kind": "collection_binding", "projectId": "44444444-4444-4444-8444-444444444401", "weight": 0.9, "evidence": "binding" }
+    ],
+    "expectedOutcome": "routed",
+    "expectedProjectId": "44444444-4444-4444-8444-444444444401"
+  },
+  {
+    "id": "empty-binding",
+    "signals": [{ "kind": "collection_binding", "projectId": null, "weight": 0, "evidence": "unbound" }],
+    "expectedOutcome": "unclassified",
+    "expectedProjectId": "UNCLASSIFIED"
+  },
+  {
+    "id": "near-tie-conflict",
+    "signals": [
+      { "kind": "recent_context", "projectId": "44444444-4444-4444-8444-444444444401", "weight": 0.7, "evidence": "recent a" },
+      { "kind": "entity_alias", "projectId": "55555555-5555-4555-8555-555555555501", "weight": 0.65, "evidence": "alias b" }
+    ],
+    "expectedOutcome": "unclassified",
+    "expectedProjectId": "UNCLASSIFIED"
+  },
+  {
+    "id": "strong-winner-over-weak",
+    "signals": [
+      { "kind": "explicit_project_id", "projectId": "44444444-4444-4444-8444-444444444401", "weight": 1, "evidence": "explicit" },
+      { "kind": "recent_context", "projectId": "55555555-5555-4555-8555-555555555501", "weight": 0.2, "evidence": "weak b" }
+    ],
+    "expectedOutcome": "routed",
+    "expectedProjectId": "44444444-4444-4444-8444-444444444401"
+  },
+  {
+    "id": "two-aligned-aliases",
+    "signals": [
+      { "kind": "entity_alias", "projectId": "44444444-4444-4444-8444-444444444401", "weight": 0.55, "evidence": "alias1" },
+      { "kind": "entity_alias", "projectId": "44444444-4444-4444-8444-444444444401", "weight": 0.55, "evidence": "alias2" }
+    ],
+    "expectedOutcome": "routed",
+    "expectedProjectId": "44444444-4444-4444-8444-444444444401"
+  },
+  {
+    "id": "source-only-below-threshold",
+    "signals": [{ "kind": "source_mapping", "projectId": "44444444-4444-4444-8444-444444444401", "weight": 0.5, "evidence": "map only" }],
+    "expectedOutcome": "unclassified",
+    "expectedProjectId": "UNCLASSIFIED"
+  },
+  {
+    "id": "gmail-label-binding",
+    "signals": [{ "kind": "collection_binding", "projectId": "44444444-4444-4444-8444-444444444401", "weight": 0.9, "evidence": "label:work" }],
+    "expectedOutcome": "routed",
+    "expectedProjectId": "44444444-4444-4444-8444-444444444401"
+  },
+  {
+    "id": "calendar-unbound",
+    "signals": [{ "kind": "collection_binding", "projectId": null, "weight": 0, "evidence": "calendar unbound" }],
+    "expectedOutcome": "unclassified",
+    "expectedProjectId": "UNCLASSIFIED"
+  },
+  {
+    "id": "drive-folder-binding",
+    "signals": [{ "kind": "collection_binding", "projectId": "44444444-4444-4444-8444-444444444401", "weight": 0.9, "evidence": "folder:docs" }],
+    "expectedOutcome": "routed",
+    "expectedProjectId": "44444444-4444-4444-8444-444444444401"
+  },
+  {
+    "id": "github-repo-binding",
+    "signals": [{ "kind": "collection_binding", "projectId": "44444444-4444-4444-8444-444444444401", "weight": 0.9, "evidence": "repo:org/app" }],
+    "expectedOutcome": "routed",
+    "expectedProjectId": "44444444-4444-4444-8444-444444444401"
+  },
+  {
+    "id": "triple-conflict",
+    "signals": [
+      { "kind": "collection_binding", "projectId": "44444444-4444-4444-8444-444444444401", "weight": 0.6, "evidence": "a" },
+      { "kind": "entity_alias", "projectId": "55555555-5555-4555-8555-555555555501", "weight": 0.6, "evidence": "b" },
+      { "kind": "recent_context", "projectId": "66666666-6666-4666-8666-666666666601", "weight": 0.6, "evidence": "c" }
+    ],
+    "expectedOutcome": "unclassified",
+    "expectedProjectId": "UNCLASSIFIED"
+  },
+  {
+    "id": "whitespace-project-ignored",
+    "signals": [{ "kind": "explicit_project_id", "projectId": "   ", "weight": 1, "evidence": "blank" }],
+    "expectedOutcome": "unclassified",
+    "expectedProjectId": "UNCLASSIFIED"
+  },
+  {
+    "id": "mixed-null-and-valid",
+    "signals": [
+      { "kind": "collection_binding", "projectId": null, "weight": 0, "evidence": "null" },
+      { "kind": "explicit_project_id", "projectId": "44444444-4444-4444-8444-444444444401", "weight": 1, "evidence": "explicit" }
+    ],
+    "expectedOutcome": "routed",
+    "expectedProjectId": "44444444-4444-4444-8444-444444444401"
+  },
+  {
+    "id": "equal-weights-conflict",
+    "signals": [
+      { "kind": "source_mapping", "projectId": "44444444-4444-4444-8444-444444444401", "weight": 0.9, "evidence": "a" },
+      { "kind": "source_mapping", "projectId": "55555555-5555-4555-8555-555555555501", "weight": 0.9, "evidence": "b" }
+    ],
+    "expectedOutcome": "unclassified",
+    "expectedProjectId": "UNCLASSIFIED"
+  }
+]

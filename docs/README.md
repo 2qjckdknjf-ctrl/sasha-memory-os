@@ -27,6 +27,7 @@
 | [engineering/M14_1_BASELINE.md](engineering/M14_1_BASELINE.md) | M14.1 Phase 0 baseline reconciliation |
 | [engineering/M15_SLICE_01.md](engineering/M15_SLICE_01.md) | M15 Slice 01: unified source-event ingestion contract |
 | [engineering/M15_SLICE_02.md](engineering/M15_SLICE_02.md) | M15 Slice 02: continuous connector orchestration pack |
+| [engineering/M15_SLICE_03.md](engineering/M15_SLICE_03.md) | M15 Slice 03: automatic project / entity routing |
 | [engineering/M14_DOC_CATALOG.md](engineering/M14_DOC_CATALOG.md) | Versioned GA doc catalog for current official surfaces |
 | [engineering/ONBOARDING.md](engineering/ONBOARDING.md) | First-hour onboarding guide on current MCP + Control Center surfaces |
 | [engineering/M14_SLICE_05.md](engineering/M14_SLICE_05.md) | M14 Slice 05: incident runbook pack |

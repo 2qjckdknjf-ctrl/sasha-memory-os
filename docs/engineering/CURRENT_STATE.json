@@ -1,14 +1,14 @@
 {
   "manifestVersion": "m14.1-v1",
   "schemaVersion": "1.0",
-  "generatedAt": "2026-08-21T20:50:00.000Z",
+  "generatedAt": "2026-08-21T20:55:00.000Z",
   "repository": "2qjckdknjf-ctrl/sasha-memory-os",
   "canonicalProjectId": "44444444-4444-4444-8444-444444444401",
   "canonicalWorkspaceId": "11111111-1111-4111-8111-111111111111",
-  "reconciledAgainstMainSha": "1d777b3d80c30c00f01768df565f96078c9ea1d1",
-  "currentMilestone": "M15.2-connector-orchestration",
-  "completedThrough": "M15.2",
-  "nextSlice": "M15.3-project-entity-routing",
+  "reconciledAgainstMainSha": "4bd2c567570d240c9b55e340c77775fb19987da5",
+  "currentMilestone": "M15.3-project-entity-routing",
+  "completedThrough": "M15.3",
+  "nextSlice": "M15.4-canonicalization-dedupe-supersession",
   "canonicalPlanMemoryTitle": "SASHA MEMORY OS — CANONICAL COMPLETION PLAN TO 100% — 2026-08-21",
   "supabase": {
     "projectName": "sasha-memory-os",
@@ -28,7 +28,8 @@
     "m14FirstHourOnboarding": "m14-s09-v1",
     "m14SupportOps": "m14-s10-v1",
     "m15SourceEventContract": "m15-s01-v1",
-    "m15ConnectorOrchestration": "m15-s02-v1"
+    "m15ConnectorOrchestration": "m15-s02-v1",
+    "m15ProjectRouting": "m15-s03-v1"
   },
   "deployments": {
     "flyApi": {
@@ -68,7 +69,9 @@
   "projectRouting": {
     "allowMemoryOsDefaultProjectIdFallback": false,
     "allowAistroykaFallback": false,
-    "writesRequireExplicitProjectId": true
+    "writesRequireExplicitProjectId": true,
+    "unclassifiedRoute": "UNCLASSIFIED",
+    "goldenPrecisionTarget": 0.95
   },
   "tests": {
     "rootVitestInclude": "tests/**/*.test.ts",
@@ -87,17 +90,17 @@
     {
       "id": "m15-2-live-connector-orchestration-e2e",
       "severity": "M15",
-      "summary": "M15.2 fixture/unit orchestration PASS; live GitHub/Drive/Gmail/Calendar continuous orchestration E2E blocked on live credentials and is NOT marked PASS from mocks."
+      "summary": "M15.2 fixture/unit orchestration PASS; live GitHub/Drive/Gmail/Calendar continuous orchestration E2E blocked on live credentials."
     },
     {
       "id": "m15-remote-migration-apply",
       "severity": "ops",
-      "summary": "Migration 20260821100000_m15_slice_01_source_event_contract.sql is checked in; remote Supabase apply is an explicit deploy step, not implied by merge."
+      "summary": "Migration 20260821100000_m15_slice_01_source_event_contract.sql is checked in; remote Supabase apply is an explicit deploy step."
     },
     {
-      "id": "autonomous-routing-freshness",
+      "id": "m15-3-live-routing-corrections-ui",
       "severity": "M15",
-      "summary": "Project/entity routing and freshness/reconciliation still incomplete (M15.3+)."
+      "summary": "Router + golden fixture landed; Control Center UNCLASSIFIED inbox corrections UI is deferred to M19 governance surfaces."
     },
     {
       "id": "fly-hosted-api-deferred",
@@ -106,9 +109,9 @@
     }
   ],
   "readmeMustContain": [
-    "M15.2-connector-orchestration",
+    "M15.3-project-entity-routing",
     "docs/engineering/CURRENT_STATE.json",
-    "M15.3-project-entity-routing"
+    "M15.4-canonicalization-dedupe-supersession"
   ],
   "readmeMustNotClaimAsCurrentTip": [
     "**M7 started:**"
