@@ -48,6 +48,11 @@ export interface SourceEvent {
   sensitivity: MemoryRecord['sensitivity'];
   payload: Record<string, unknown>;
   createdBySubject: string | null;
+  externalId?: string | null;
+  externalVersion?: string | null;
+  changeState?: 'upsert' | 'delete' | 'revoke';
+  ingestionAdapter?: 'webhook' | 'polling' | 'agent' | 'manual';
+  envelopeSchemaVersion?: string;
 }
 
 /** In-memory Memory Core for local demo slice until Postgres is wired. */

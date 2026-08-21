@@ -11,6 +11,7 @@ import {
   OFFICIAL_M14_SLO_PACK_VERSION,
   OFFICIAL_M14_SUPPORT_OPS_PACK_VERSION,
 } from '@memory-os/observability';
+import { OFFICIAL_M15_SOURCE_EVENT_CONTRACT_PACK_VERSION } from '@memory-os/schemas';
 
 const WORKSPACE_ROOT = resolve(import.meta.dirname, '../../..');
 export const CURRENT_STATE_PATH = resolve(
@@ -49,6 +50,7 @@ export type CurrentStateManifest = {
     m14GaDocCatalog: string;
     m14FirstHourOnboarding: string;
     m14SupportOps: string;
+    m15SourceEventContract: string;
   };
   deployments: {
     flyApi: {
@@ -209,24 +211,24 @@ export function validateCurrentStateDrift(
     });
   }
 
-  if (manifest.currentMilestone !== 'M14.1-baseline-reconciliation') {
+  if (manifest.currentMilestone !== 'M15.1-source-event-contract') {
     findings.push({
       code: 'current-milestone',
-      message: `expected currentMilestone M14.1-baseline-reconciliation, got ${manifest.currentMilestone}`,
+      message: `expected currentMilestone M15.1-source-event-contract, got ${manifest.currentMilestone}`,
     });
   }
 
-  if (manifest.completedThrough !== 'M14') {
+  if (manifest.completedThrough !== 'M15.1') {
     findings.push({
       code: 'completed-through',
-      message: `expected completedThrough M14 after official M14 packs, got ${manifest.completedThrough}`,
+      message: `expected completedThrough M15.1 after source-event contract, got ${manifest.completedThrough}`,
     });
   }
 
-  if (manifest.nextSlice !== 'M15.1-source-event-contract') {
+  if (manifest.nextSlice !== 'M15.2-connector-orchestration') {
     findings.push({
       code: 'next-slice',
-      message: `expected nextSlice M15.1-source-event-contract, got ${manifest.nextSlice}`,
+      message: `expected nextSlice M15.2-connector-orchestration, got ${manifest.nextSlice}`,
     });
   }
 
@@ -241,6 +243,7 @@ export function validateCurrentStateDrift(
       m14GaDocCatalog: OFFICIAL_M14_GA_DOC_CATALOG_PACK_VERSION,
       m14FirstHourOnboarding: OFFICIAL_M14_FIRST_HOUR_ONBOARDING_PACK_VERSION,
       m14SupportOps: OFFICIAL_M14_SUPPORT_OPS_PACK_VERSION,
+      m15SourceEventContract: OFFICIAL_M15_SOURCE_EVENT_CONTRACT_PACK_VERSION,
     };
 
   for (const [key, expected] of Object.entries(expectedPacks) as Array<

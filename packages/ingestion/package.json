@@ -13,6 +13,7 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@memory-os/schemas": "workspace:*",
     "mammoth": "^1.11.0",
     "pdf-parse": "^1.1.1"
   },

@@ -5,3 +5,4 @@ export * from './fetchLink.js';
 export * from './ocr.js';
 export * from './audio.js';
 export * from './extract.js';
+export * from './adapters/sourceEventAdapters.js';

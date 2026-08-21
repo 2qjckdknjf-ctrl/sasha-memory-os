@@ -58,7 +58,7 @@ import {
   githubAppConnectionMetadata,
   githubAppInstallationId,
   githubAppReconcileRequestSchema,
-  ingestionEnvelopeSchema,
+  parseSourceEventEnvelope,
   normalizeConnectionMetadata,
   oauthCompleteSchema,
   oauthStartSchema,
@@ -3265,8 +3265,12 @@ export function createApp(options?: {
   });
 
   app.post('/v1/ingestion/events', async (c) => {
-    const body = ingestionEnvelopeSchema.parse(await c.req.json());
+    const raw = await c.req.json();
+    const body = parseSourceEventEnvelope(raw);
     const authz = c.get('authz');
+    if (!body.scope.project_id) {
+      return c.json({ error: 'project_id is required for this write' }, 400);
+    }
     if (
       !authorize(authz, {
         resourceType: 'source_event',
@@ -3284,9 +3288,28 @@ export function createApp(options?: {
     ) {
       return c.json({ error: 'forbidden' }, 403);
     }
+
+    const gateway = c.get('gateway');
+    if (gateway) {
+      const result = await gateway.ingestSourceEvent({
+        subjectId: authz.subjectId,
+        envelope: body as unknown as Record<string, unknown>,
+      });
+      return c.json(
+        {
+          id: result.eventId,
+          idempotent: Boolean(result.idempotent),
+          changeState: result.changeState ?? body.change_state,
+          ingestionAdapter: result.ingestionAdapter ?? body.ingestion_adapter,
+          backend: 'supabase',
+        },
+        result.idempotent ? 200 : 201,
+      );
+    }
+
     const event = c.get('store').ingestEvent({
       workspaceId: body.workspace_id,
-      projectId: body.scope.project_id ?? null,
+      projectId: body.scope.project_id,
       provider: body.source.provider,
       eventType: body.event_type,
       idempotencyKey: body.idempotency_key,
@@ -3294,8 +3317,22 @@ export function createApp(options?: {
       sensitivity: body.scope.sensitivity,
       payload: body as unknown as Record<string, unknown>,
       createdBySubject: authz.subjectId,
+      externalId: body.source.external_id ?? null,
+      externalVersion: body.source.external_version ?? null,
+      changeState: body.change_state,
+      ingestionAdapter: body.ingestion_adapter,
+      envelopeSchemaVersion: body.schema_version,
     });
-    return c.json({ id: event.id, idempotent: true }, 201);
+    return c.json(
+      {
+        id: event.id,
+        idempotent: true,
+        changeState: event.changeState ?? body.change_state,
+        ingestionAdapter: event.ingestionAdapter ?? body.ingestion_adapter,
+        backend: 'memory-store',
+      },
+      201,
+    );
   });
 
   app.post('/v1/ingestion/apple-items', async (c) => {

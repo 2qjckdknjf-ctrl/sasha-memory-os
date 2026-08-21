@@ -7,7 +7,7 @@ import { OFFICIAL_M14_SUPPORT_OPS_PACK_VERSION } from '@memory-os/observability'
 const root = resolve(import.meta.dirname, '../..');
 
 describe('M14.1 baseline reconciliation pack', () => {
-  it('publishes machine-readable CURRENT_STATE aligned with official packs', () => {
+  it('keeps CURRENT_STATE + fail-closed routing after M14.1 landed', () => {
     const manifestPath = resolve(root, 'docs/engineering/CURRENT_STATE.json');
     expect(existsSync(manifestPath)).toBe(true);
 
@@ -26,9 +26,11 @@ describe('M14.1 baseline reconciliation pack', () => {
     };
 
     expect(manifest.manifestVersion).toBe('m14.1-v1');
-    expect(manifest.currentMilestone).toBe('M14.1-baseline-reconciliation');
-    expect(manifest.completedThrough).toBe('M14');
-    expect(manifest.nextSlice).toBe('M15.1-source-event-contract');
+    // M14.1 is complete; tip advances through later slices without dropping the
+    // CURRENT_STATE contract introduced by M14.1.
+    expect(manifest.completedThrough).toMatch(/^M15|^M1[6-9]|^M20|^M14\.1/);
+    expect(manifest.currentMilestone.length).toBeGreaterThan(0);
+    expect(manifest.nextSlice.length).toBeGreaterThan(0);
     expect(manifest.officialPacks.m14SupportOps).toBe(
       OFFICIAL_M14_SUPPORT_OPS_PACK_VERSION,
     );
@@ -39,11 +41,7 @@ describe('M14.1 baseline reconciliation pack', () => {
     expect(manifest.chatgptModeA).toMatchObject({ status: 'PASS', toolCount: 7 });
     expect(CHATGPT_PILOT_TOOLS).toHaveLength(7);
     expect(manifest.readmeMustContain).toEqual(
-      expect.arrayContaining([
-        'M14.1-baseline-reconciliation',
-        'docs/engineering/CURRENT_STATE.json',
-        'M15.1-source-event-contract',
-      ]),
+      expect.arrayContaining(['docs/engineering/CURRENT_STATE.json']),
     );
   });
 
@@ -62,7 +60,7 @@ describe('M14.1 baseline reconciliation pack', () => {
     expect(sliceDoc).toMatch(/CURRENT_STATE\.json/);
     expect(docsReadme).toContain('engineering/CURRENT_STATE.json');
     expect(docsReadme).toContain('engineering/M14_1_BASELINE.md');
-    expect(readme).toContain('M14.1-baseline-reconciliation');
+    expect(readme).toMatch(/M14\.1/);
     expect(readme).toContain('docs/engineering/CURRENT_STATE.json');
     expect(readme).not.toContain('**M7 started:**');
   });

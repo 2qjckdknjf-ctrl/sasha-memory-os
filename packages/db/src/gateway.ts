@@ -1473,6 +1473,29 @@ export class SupabaseMemoryGateway {
     return data;
   }
 
+  async ingestSourceEvent(input: {
+    subjectId: string;
+    envelope: Record<string, unknown>;
+  }) {
+    const { data, error } = await this.client.rpc('api_ingest_source_event', {
+      p_secret: this.apiSecret,
+      p_subject_id: input.subjectId,
+      p_envelope: input.envelope,
+    });
+    if (error) throw error;
+    throwReturnedRpcError(data);
+    return data as {
+      eventId: string;
+      idempotent: boolean;
+      changeState?: string;
+      ingestionAdapter?: string;
+      envelopeSchemaVersion?: string;
+      externalId?: string | null;
+      externalVersion?: string | null;
+      [key: string]: unknown;
+    };
+  }
+
   async captureText(input: {
     subjectId: string;
     workspaceId: string;
