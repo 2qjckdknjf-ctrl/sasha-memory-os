@@ -1,14 +1,14 @@
 {
   "manifestVersion": "m14.1-v1",
   "schemaVersion": "1.0",
-  "generatedAt": "2026-08-21T20:45:00.000Z",
+  "generatedAt": "2026-08-21T20:50:00.000Z",
   "repository": "2qjckdknjf-ctrl/sasha-memory-os",
   "canonicalProjectId": "44444444-4444-4444-8444-444444444401",
   "canonicalWorkspaceId": "11111111-1111-4111-8111-111111111111",
-  "reconciledAgainstMainSha": "9c5bef7b89b6a5cf3cf7cb344e931e7f3d6f125e",
-  "currentMilestone": "M15.1-source-event-contract",
-  "completedThrough": "M15.1",
-  "nextSlice": "M15.2-connector-orchestration",
+  "reconciledAgainstMainSha": "1d777b3d80c30c00f01768df565f96078c9ea1d1",
+  "currentMilestone": "M15.2-connector-orchestration",
+  "completedThrough": "M15.2",
+  "nextSlice": "M15.3-project-entity-routing",
   "canonicalPlanMemoryTitle": "SASHA MEMORY OS — CANONICAL COMPLETION PLAN TO 100% — 2026-08-21",
   "supabase": {
     "projectName": "sasha-memory-os",
@@ -27,7 +27,8 @@
     "m14GaDocCatalog": "m14-s08-v1",
     "m14FirstHourOnboarding": "m14-s09-v1",
     "m14SupportOps": "m14-s10-v1",
-    "m15SourceEventContract": "m15-s01-v1"
+    "m15SourceEventContract": "m15-s01-v1",
+    "m15ConnectorOrchestration": "m15-s02-v1"
   },
   "deployments": {
     "flyApi": {
@@ -84,14 +85,19 @@
   },
   "knownBlockers": [
     {
-      "id": "autonomous-ingestion-freshness",
+      "id": "m15-2-live-connector-orchestration-e2e",
       "severity": "M15",
-      "summary": "M15.1 contract landed; connector orchestration/recovery, routing, freshness still incomplete (M15.2+)."
+      "summary": "M15.2 fixture/unit orchestration PASS; live GitHub/Drive/Gmail/Calendar continuous orchestration E2E blocked on live credentials and is NOT marked PASS from mocks."
     },
     {
       "id": "m15-remote-migration-apply",
       "severity": "ops",
       "summary": "Migration 20260821100000_m15_slice_01_source_event_contract.sql is checked in; remote Supabase apply is an explicit deploy step, not implied by merge."
+    },
+    {
+      "id": "autonomous-routing-freshness",
+      "severity": "M15",
+      "summary": "Project/entity routing and freshness/reconciliation still incomplete (M15.3+)."
     },
     {
       "id": "fly-hosted-api-deferred",
@@ -100,9 +106,9 @@
     }
   ],
   "readmeMustContain": [
-    "M15.1-source-event-contract",
+    "M15.2-connector-orchestration",
     "docs/engineering/CURRENT_STATE.json",
-    "M15.2-connector-orchestration"
+    "M15.3-project-entity-routing"
   ],
   "readmeMustNotClaimAsCurrentTip": [
     "**M7 started:**"

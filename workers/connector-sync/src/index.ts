@@ -30,6 +30,11 @@ import {
 } from '@memory-os/schemas';
 
 export const packageName = 'worker-connector-sync' as const;
+export {
+  planConnectorOrchestrationTick,
+  type ConnectorOrchestrationTickResult,
+  type OrchestrationRepairHookResult,
+} from './orchestration.js';
 
 const WORKSPACE_ID =
   process.env.MEMORY_OS_WORKSPACE_ID ??

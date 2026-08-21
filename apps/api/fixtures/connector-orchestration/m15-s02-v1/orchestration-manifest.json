@@ -1,0 +1,31 @@
+{
+  "manifestVersion": "m15-s02-v1",
+  "packVersion": "m15-s02-v1",
+  "source": "fixture-local",
+  "roadmapSections": ["15.2", "continuous-connector-orchestration"],
+  "recoveryOrder": [
+    "dead_letter_stale",
+    "enqueue_due",
+    "claim_and_execute",
+    "retry_or_dead_letter",
+    "bounded_repair_hooks"
+  ],
+  "recoveryScenarios": [
+    "connector_restart",
+    "duplicate_event",
+    "missed_webhook",
+    "token_expiry"
+  ],
+  "liveE2E": {
+    "status": "blocked_missing_live_credentials",
+    "claimPassFromMocks": false
+  },
+  "invariants": {
+    "reuseExistingDlqReplayResync": true,
+    "noSilentDataLossOnRecovery": true,
+    "writesRequireExplicitProjectId": true,
+    "ignoreDefaultProjectIdEnv": true,
+    "modeAToolCount": 7,
+    "allowAistroykaFallback": false
+  }
+}

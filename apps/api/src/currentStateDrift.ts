@@ -11,7 +11,7 @@ import {
   OFFICIAL_M14_SLO_PACK_VERSION,
   OFFICIAL_M14_SUPPORT_OPS_PACK_VERSION,
 } from '@memory-os/observability';
-import { OFFICIAL_M15_SOURCE_EVENT_CONTRACT_PACK_VERSION } from '@memory-os/schemas';
+import { OFFICIAL_M15_SOURCE_EVENT_CONTRACT_PACK_VERSION, OFFICIAL_M15_CONNECTOR_ORCHESTRATION_PACK_VERSION } from '@memory-os/schemas';
 
 const WORKSPACE_ROOT = resolve(import.meta.dirname, '../../..');
 export const CURRENT_STATE_PATH = resolve(
@@ -51,6 +51,7 @@ export type CurrentStateManifest = {
     m14FirstHourOnboarding: string;
     m14SupportOps: string;
     m15SourceEventContract: string;
+    m15ConnectorOrchestration: string;
   };
   deployments: {
     flyApi: {
@@ -211,24 +212,24 @@ export function validateCurrentStateDrift(
     });
   }
 
-  if (manifest.currentMilestone !== 'M15.1-source-event-contract') {
+  if (manifest.currentMilestone !== 'M15.2-connector-orchestration') {
     findings.push({
       code: 'current-milestone',
-      message: `expected currentMilestone M15.1-source-event-contract, got ${manifest.currentMilestone}`,
+      message: `expected currentMilestone M15.2-connector-orchestration, got ${manifest.currentMilestone}`,
     });
   }
 
-  if (manifest.completedThrough !== 'M15.1') {
+  if (manifest.completedThrough !== 'M15.2') {
     findings.push({
       code: 'completed-through',
-      message: `expected completedThrough M15.1 after source-event contract, got ${manifest.completedThrough}`,
+      message: `expected completedThrough M15.2 after orchestration pack, got ${manifest.completedThrough}`,
     });
   }
 
-  if (manifest.nextSlice !== 'M15.2-connector-orchestration') {
+  if (manifest.nextSlice !== 'M15.3-project-entity-routing') {
     findings.push({
       code: 'next-slice',
-      message: `expected nextSlice M15.2-connector-orchestration, got ${manifest.nextSlice}`,
+      message: `expected nextSlice M15.3-project-entity-routing, got ${manifest.nextSlice}`,
     });
   }
 
@@ -244,6 +245,7 @@ export function validateCurrentStateDrift(
       m14FirstHourOnboarding: OFFICIAL_M14_FIRST_HOUR_ONBOARDING_PACK_VERSION,
       m14SupportOps: OFFICIAL_M14_SUPPORT_OPS_PACK_VERSION,
       m15SourceEventContract: OFFICIAL_M15_SOURCE_EVENT_CONTRACT_PACK_VERSION,
+      m15ConnectorOrchestration: OFFICIAL_M15_CONNECTOR_ORCHESTRATION_PACK_VERSION,
     };
 
   for (const [key, expected] of Object.entries(expectedPacks) as Array<

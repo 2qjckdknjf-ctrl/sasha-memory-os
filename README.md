@@ -22,14 +22,14 @@
 
 Machine-readable snapshot: [docs/engineering/CURRENT_STATE.json](docs/engineering/CURRENT_STATE.json) (`m14.1-v1`).
 
-- **Current milestone:** `M15.1-source-event-contract` (unified immutable source-event ingest contract)
-- **Completed through:** M14 official GA packs + M14.1 baseline reconciliation + M15.1 source-event contract
-- **Next slice:** `M15.2-connector-orchestration`
+- **Current milestone:** `M15.2-connector-orchestration` (scheduler ownership + recovery contract; live E2E blocked)
+- **Completed through:** M14 packs + M14.1 + M15.1 source-event contract + M15.2 orchestration pack (`m15-s02-v1`)
+- **Next slice:** `M15.3-project-entity-routing`
 - **M6 ChatGPT Mode A PASS (2026-08-15):** final `Sasha Memory OS` custom MCP app connected through Supabase OAuth 2.1; exact seven-tool scan, normal-chat read, `memory.store_decision`, and read-after-write all passed. The stale `Sasha Mamory OS` registration was removed; exactly one personal Sasha registration remains.
 - Core path live: WP-01…08 RPCs, vault OAuth, hybrid RRF retrieval, embeddings, consolidation/outbox/jobs, MCP, Control Center
 - M10–M13 foundations merged (Drive/Gmail/Calendar policies, ROMA project-health, bounded agentic retrieval / consolidation / ranking)
 - Writes require explicit `project_id`; `MEMORY_OS_DEFAULT_PROJECT_ID` is ignored as a write/admin/export fallback
-- Known gap (tracked for M15.2+): connector orchestration/recovery and freshness still incomplete after the M15.1 contract land
+- Known blockers: live connector orchestration E2E (not PASS from mocks); remote apply of M15.1 migration; project routing/freshness (M15.3+)
 
 ## Репозиторий
 
@@ -98,7 +98,8 @@ Canonical order (do not skip): see [M14_1_BASELINE.md](docs/engineering/M14_1_BA
 
 1. ~~M14.1 baseline reconciliation~~ — CURRENT_STATE + README/main drift checks
 2. ~~M15.1 source-event contract~~ — immutable normalized `source_events`, idempotency, adapters
-3. **M15.2 connector orchestration** — webhook/poll recovery, retries, dead-letter quarantine
-4. M15.3–M15.8 autonomous runtime (routing, dedupe, freshness, revoke, capture policy, SLOs)
-5. M16–M20 per canonical plan (Apple bridge → knowledge graph → agent contracts → Control Center → GA gates)
-6. Fly full HTTP API — **deferred** (scaffold kept; Edge MCP remains the durable ChatGPT path)
+3. ~~M15.2 connector orchestration~~ — pack + recovery tick (fixture PASS; live E2E BLOCKED)
+4. **M15.3 project/entity routing** — fail-closed UNCLASSIFIED inbox, no default project
+5. M15.4–M15.8 autonomous runtime (dedupe, freshness, revoke, capture policy, SLOs)
+6. M16–M20 per canonical plan (Apple bridge → knowledge graph → agent contracts → Control Center → GA gates)
+7. Fly full HTTP API — **deferred** (scaffold kept; Edge MCP remains the durable ChatGPT path)
