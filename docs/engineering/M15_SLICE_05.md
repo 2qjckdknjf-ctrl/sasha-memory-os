@@ -35,4 +35,4 @@ Roadmap sections: `15.5`, `freshness-reconciliation`
 
 ## Next
 
-`M15.6-deletion-revoke-lifecycle`
+`M15.7-autonomous-capture-policy`

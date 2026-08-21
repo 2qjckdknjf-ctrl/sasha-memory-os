@@ -22,14 +22,14 @@
 
 Machine-readable snapshot: [docs/engineering/CURRENT_STATE.json](docs/engineering/CURRENT_STATE.json) (`m14.1-v1`).
 
-- **Current milestone:** `M15.5-freshness-reconciliation` (watermarks + stale alerts; live E2E blocked)
-- **Completed through:** M14 packs + M14.1 + M15.1–M15.5
-- **Next slice:** `M15.6-deletion-revoke-lifecycle`
+- **Current milestone:** `M15.6-deletion-revoke-lifecycle` (tombstone/revoke convergence; live provider E2E blocked)
+- **Completed through:** M14 packs + M14.1 + M15.1–M15.6
+- **Next slice:** `M15.7-autonomous-capture-policy`
 - **M6 ChatGPT Mode A PASS (2026-08-15):** final `Sasha Memory OS` custom MCP app connected through Supabase OAuth 2.1; exact seven-tool scan, normal-chat read, `memory.store_decision`, and read-after-write all passed. The stale `Sasha Mamory OS` registration was removed; exactly one personal Sasha registration remains.
 - Core path live: WP-01…08 RPCs, vault OAuth, hybrid RRF retrieval, embeddings, consolidation/outbox/jobs, MCP, Control Center
 - M10–M13 foundations merged (Drive/Gmail/Calendar policies, ROMA project-health, bounded agentic retrieval / consolidation / ranking)
-- Writes require explicit `project_id`; ambiguous routing → `UNCLASSIFIED`; freshness alerts for stale source/snapshot/worker
-- Known blockers: live connector/freshness E2E; remote M15.1 migration apply
+- Writes require explicit `project_id`; ambiguous routing → `UNCLASSIFIED`; delete/revoke converge via shared tombstone/stop-sync paths
+- Known blockers: live connector/freshness/provider-revoke E2E; remote M15.1 migration apply
 
 ## Репозиторий
 
@@ -102,5 +102,6 @@ Canonical order (do not skip): see [M14_1_BASELINE.md](docs/engineering/M14_1_BA
 4. ~~M15.3 project/entity routing~~ — fail-closed UNCLASSIFIED inbox, golden precision >=95%
 5. ~~M15.4 canonicalization / dedupe / supersession~~ — authority matrix + source dedupe
 6. ~~M15.5 freshness / reconciliation~~ — watermarks + stale alerts (live E2E BLOCKED)
-7. **M15.6 deletion / revoke lifecycle**
-8. M15.7–M15.8 then M16–M20; Fly API deferred
+7. ~~M15.6 deletion / revoke lifecycle~~ — tombstone/stop-sync convergence (fixture PASS; live BLOCKED)
+8. **M15.7 autonomous capture policy**
+9. M15.8 then M16–M20; Fly API deferred
