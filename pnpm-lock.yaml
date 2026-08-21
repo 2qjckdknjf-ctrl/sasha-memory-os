@@ -254,6 +254,9 @@ importers:
 
   packages/ingestion:
     dependencies:
+      '@memory-os/schemas':
+        specifier: workspace:*
+        version: link:../schemas
       mammoth:
         specifier: ^1.11.0
         version: 1.12.1

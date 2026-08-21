@@ -1,0 +1,46 @@
+{
+  "manifestVersion": "m15-s01-v1",
+  "packVersion": "m15-s01-v1",
+  "source": "fixture-local",
+  "roadmapSections": ["15.1", "universal-ingestion"],
+  "envelopeSchemaVersions": ["1.0", "1.1"],
+  "adapters": ["webhook", "polling", "agent", "manual"],
+  "changeStates": ["upsert", "delete", "revoke"],
+  "blockedFallbackProjectIds": ["44444444-4444-4444-8444-444444444401"],
+  "sampleEnvelopes": [
+    {
+      "id": "manual-upsert",
+      "adapter": "manual",
+      "change_state": "upsert",
+      "requires_explicit_project_id": true
+    },
+    {
+      "id": "webhook-replay",
+      "adapter": "webhook",
+      "change_state": "upsert",
+      "requires_explicit_project_id": true
+    },
+    {
+      "id": "polling-delete",
+      "adapter": "polling",
+      "change_state": "delete",
+      "requires_explicit_project_id": true
+    },
+    {
+      "id": "agent-decision",
+      "adapter": "agent",
+      "change_state": "upsert",
+      "requires_explicit_project_id": true
+    }
+  ],
+  "invariants": {
+    "appendOnlySourceEvents": true,
+    "duplicateDeliverySingleLogicalEvent": true,
+    "replaySafeIdempotency": true,
+    "writesRequireExplicitProjectId": true,
+    "ignoreDefaultProjectIdEnv": true,
+    "modeAToolCount": 7,
+    "allowAistroykaFallback": false,
+    "allowVerifiedWritesFromIngestAlone": false
+  }
+}
