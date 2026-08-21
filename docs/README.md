@@ -30,6 +30,7 @@
 | [engineering/M15_SLICE_03.md](engineering/M15_SLICE_03.md) | M15 Slice 03: automatic project / entity routing |
 | [engineering/M15_SLICE_04.md](engineering/M15_SLICE_04.md) | M15 Slice 04: canonicalization / dedupe / supersession |
 | [engineering/M15_SLICE_05.md](engineering/M15_SLICE_05.md) | M15 Slice 05: freshness / reconciliation |
+| [engineering/M15_SLICE_06.md](engineering/M15_SLICE_06.md) | M15 Slice 06: deletion / revoke lifecycle |
 | [engineering/M14_DOC_CATALOG.md](engineering/M14_DOC_CATALOG.md) | Versioned GA doc catalog for current official surfaces |
 | [engineering/ONBOARDING.md](engineering/ONBOARDING.md) | First-hour onboarding guide on current MCP + Control Center surfaces |
 | [engineering/M14_SLICE_05.md](engineering/M14_SLICE_05.md) | M14 Slice 05: incident runbook pack |

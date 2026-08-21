@@ -1,0 +1,24 @@
+{
+  "manifestVersion": "m15-s06-v1",
+  "packVersion": "m15-s06-v1",
+  "source": "fixture-local",
+  "actions": [
+    "upsert_canonical",
+    "tombstone_object",
+    "stop_sync_immediately",
+    "expire_derived_memories",
+    "preserve_audit_metadata",
+    "reconnect_without_duplication"
+  ],
+  "liveE2E": {
+    "status": "fixture_convergence_pass_live_blocked",
+    "claimPassFromMocks": false
+  },
+  "invariants": {
+    "tombstoneOnSourceDelete": true,
+    "stopSyncOnConnectionRevoke": true,
+    "reconnectWithoutUncontrolledDuplication": true,
+    "modeAToolCount": 7,
+    "ignoreDefaultProjectIdEnv": true
+  }
+}
