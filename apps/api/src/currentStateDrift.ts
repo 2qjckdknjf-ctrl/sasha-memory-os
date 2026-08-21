@@ -11,7 +11,7 @@ import {
   OFFICIAL_M14_SLO_PACK_VERSION,
   OFFICIAL_M14_SUPPORT_OPS_PACK_VERSION,
 } from '@memory-os/observability';
-import { OFFICIAL_M15_SOURCE_EVENT_CONTRACT_PACK_VERSION, OFFICIAL_M15_CONNECTOR_ORCHESTRATION_PACK_VERSION, OFFICIAL_M15_PROJECT_ROUTING_PACK_VERSION, OFFICIAL_M15_CANONICALIZATION_PACK_VERSION, OFFICIAL_M15_FRESHNESS_PACK_VERSION, OFFICIAL_M15_DELETION_REVOKE_PACK_VERSION, OFFICIAL_M15_CAPTURE_POLICY_PACK_VERSION, OFFICIAL_M15_OBSERVABILITY_PACK_VERSION, OFFICIAL_M15_LIVE_E2E_GATE_PACK_VERSION, OFFICIAL_M16_APPLE_FEASIBILITY_PACK_VERSION, OFFICIAL_M16_APPLE_SECURITY_PACK_VERSION } from '@memory-os/schemas';
+import { OFFICIAL_M15_SOURCE_EVENT_CONTRACT_PACK_VERSION, OFFICIAL_M15_CONNECTOR_ORCHESTRATION_PACK_VERSION, OFFICIAL_M15_PROJECT_ROUTING_PACK_VERSION, OFFICIAL_M15_CANONICALIZATION_PACK_VERSION, OFFICIAL_M15_FRESHNESS_PACK_VERSION, OFFICIAL_M15_DELETION_REVOKE_PACK_VERSION, OFFICIAL_M15_CAPTURE_POLICY_PACK_VERSION, OFFICIAL_M15_OBSERVABILITY_PACK_VERSION, OFFICIAL_M15_LIVE_E2E_GATE_PACK_VERSION, OFFICIAL_M16_APPLE_FEASIBILITY_PACK_VERSION, OFFICIAL_M16_APPLE_SECURITY_PACK_VERSION, OFFICIAL_M16_ICLOUD_DRIVE_FILES_PACK_VERSION } from '@memory-os/schemas';
 
 const WORKSPACE_ROOT = resolve(import.meta.dirname, '../../..');
 export const CURRENT_STATE_PATH = resolve(
@@ -61,6 +61,7 @@ export type CurrentStateManifest = {
     m15LiveE2EGate: string;
     m16AppleFeasibility: string;
     m16AppleSecurity: string;
+    m16IcloudDriveFiles: string;
   };
   deployments: {
     flyApi: {
@@ -221,24 +222,24 @@ export function validateCurrentStateDrift(
     });
   }
 
-  if (manifest.currentMilestone !== 'M16.2-apple-companion-security-foundation') {
+  if (manifest.currentMilestone !== 'M16.3-icloud-drive-files') {
     findings.push({
       code: 'current-milestone',
-      message: `expected currentMilestone M16.2-apple-companion-security-foundation, got ${manifest.currentMilestone}`,
+      message: `expected currentMilestone M16.3-icloud-drive-files, got ${manifest.currentMilestone}`,
     });
   }
 
-  if (manifest.completedThrough !== 'M16.2') {
+  if (manifest.completedThrough !== 'M16.3') {
     findings.push({
       code: 'completed-through',
-      message: `expected completedThrough M16.2 after Apple security pack, got ${manifest.completedThrough}`,
+      message: `expected completedThrough M16.3 after iCloud Drive files pack, got ${manifest.completedThrough}`,
     });
   }
 
-  if (manifest.nextSlice !== 'M16.3-icloud-drive-files') {
+  if (manifest.nextSlice !== 'M16.4-photos') {
     findings.push({
       code: 'next-slice',
-      message: `expected nextSlice M16.3-icloud-drive-files, got ${manifest.nextSlice}`,
+      message: `expected nextSlice M16.4-photos, got ${manifest.nextSlice}`,
     });
   }
 
@@ -264,6 +265,7 @@ export function validateCurrentStateDrift(
       m15LiveE2EGate: OFFICIAL_M15_LIVE_E2E_GATE_PACK_VERSION,
       m16AppleFeasibility: OFFICIAL_M16_APPLE_FEASIBILITY_PACK_VERSION,
       m16AppleSecurity: OFFICIAL_M16_APPLE_SECURITY_PACK_VERSION,
+      m16IcloudDriveFiles: OFFICIAL_M16_ICLOUD_DRIVE_FILES_PACK_VERSION,
     };
 
   for (const [key, expected] of Object.entries(expectedPacks) as Array<

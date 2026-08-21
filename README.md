@@ -22,14 +22,14 @@
 
 Machine-readable snapshot: [docs/engineering/CURRENT_STATE.json](docs/engineering/CURRENT_STATE.json) (`m14.1-v1`).
 
-- **Current milestone:** `M16.2-apple-companion-security-foundation` (Keychain refs, device binding, encrypted transport; signing E2E blocked)
-- **Completed through:** M14 packs + M14.1 + M15 packs + M16.1–M16.2
-- **Next slice:** `M16.3-icloud-drive-files`
+- **Current milestone:** `M16.3-icloud-drive-files` (selected-scope metadata-first Files; live picker E2E blocked)
+- **Completed through:** M14 packs + M14.1 + M15 packs + M16.1–M16.3
+- **Next slice:** `M16.4-photos`
 - **M6 ChatGPT Mode A PASS (2026-08-15):** final `Sasha Memory OS` custom MCP app connected through Supabase OAuth 2.1; exact seven-tool scan, normal-chat read, `memory.store_decision`, and read-after-write all passed. The stale `Sasha Mamory OS` registration was removed; exactly one personal Sasha registration remains.
 - Core path live: WP-01…08 RPCs, vault OAuth, hybrid RRF retrieval, embeddings, consolidation/outbox/jobs, MCP, Control Center
 - M10–M13 foundations merged (Drive/Gmail/Calendar policies, ROMA project-health, bounded agentic retrieval / consolidation / ranking)
-- Apple: companion-required + security foundation contracts; live signed device E2E still blocked
-- Known blockers: M15 live connector E2E; Apple signing/Keychain live E2E; remote M15.1 migration apply; Fly deferred
+- Apple: companion-required + security + selected Files contracts; live signed/picker E2E still blocked
+- Known blockers: M15 live connector E2E; Apple signing/picker live E2E; remote M15.1 migration apply; Fly deferred
 
 ## Репозиторий
 
@@ -108,5 +108,6 @@ Canonical order (do not skip): see [M14_1_BASELINE.md](docs/engineering/M14_1_BA
 10. ~~M15 live E2E closure~~ — exit gate **BLOCKED** (documented limitations → M16; not PASS from mocks)
 11. ~~M16.1 Apple capability feasibility matrix~~ — companion-required; no server iCloud scrape
 12. ~~M16.2 Apple companion security foundation~~ — Keychain/device binding/encrypted transport (signing BLOCKED)
-13. **M16.3 iCloud Drive / Files**
-14. M16.4–M20; Fly API deferred
+13. ~~M16.3 iCloud Drive / Files~~ — selected-scope metadata-first (live picker BLOCKED)
+14. **M16.4 Photos**
+15. M16.5–M20; Fly API deferred
