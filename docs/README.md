@@ -37,6 +37,7 @@
 | [engineering/M16_SLICE_01.md](engineering/M16_SLICE_01.md) | M16 Slice 01: Apple capability feasibility matrix |
 | [engineering/M16_SLICE_02.md](engineering/M16_SLICE_02.md) | M16 Slice 02: Apple companion security foundation |
 | [engineering/M16_SLICE_03.md](engineering/M16_SLICE_03.md) | M16 Slice 03: iCloud Drive / Files |
+| [engineering/M16_SLICE_04.md](engineering/M16_SLICE_04.md) | M16 Slice 04: Photos |
 | [engineering/M14_DOC_CATALOG.md](engineering/M14_DOC_CATALOG.md) | Versioned GA doc catalog for current official surfaces |
 | [engineering/ONBOARDING.md](engineering/ONBOARDING.md) | First-hour onboarding guide on current MCP + Control Center surfaces |
 | [engineering/M14_SLICE_05.md](engineering/M14_SLICE_05.md) | M14 Slice 05: incident runbook pack |
