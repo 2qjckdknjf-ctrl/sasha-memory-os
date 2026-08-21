@@ -35,6 +35,7 @@
 | [engineering/M15_SLICE_08.md](engineering/M15_SLICE_08.md) | M15 Slice 08: observability / SLOs |
 | [engineering/M15_LIVE_E2E_CLOSURE.md](engineering/M15_LIVE_E2E_CLOSURE.md) | M15 live E2E exit gate (BLOCKED → M16.1) |
 | [engineering/M16_SLICE_01.md](engineering/M16_SLICE_01.md) | M16 Slice 01: Apple capability feasibility matrix |
+| [engineering/M16_SLICE_02.md](engineering/M16_SLICE_02.md) | M16 Slice 02: Apple companion security foundation |
 | [engineering/M14_DOC_CATALOG.md](engineering/M14_DOC_CATALOG.md) | Versioned GA doc catalog for current official surfaces |
 | [engineering/ONBOARDING.md](engineering/ONBOARDING.md) | First-hour onboarding guide on current MCP + Control Center surfaces |
 | [engineering/M14_SLICE_05.md](engineering/M14_SLICE_05.md) | M14 Slice 05: incident runbook pack |

@@ -11,6 +11,7 @@ export * from './capturePolicy.js';
 export * from './m15Observability.js';
 export * from './m15LiveE2EGate.js';
 export * from './appleCapabilityFeasibility.js';
+export * from './appleCompanionSecurity.js';
 export * from './appleCompanion.js';
 export * from './memory.js';
 export * from './jobs.js';
