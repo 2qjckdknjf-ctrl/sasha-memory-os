@@ -38,4 +38,4 @@ Roadmap sections: `15.4`, `canonicalization-dedupe-supersession`
 
 ## Next
 
-`M15.5-freshness-reconciliation`
+`M15.6-deletion-revoke-lifecycle`
