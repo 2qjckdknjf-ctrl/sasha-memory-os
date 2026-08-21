@@ -74,7 +74,7 @@ export type CapturePolicyOverride = {
   autoPromoteFloor?: number;
 };
 
-export function requireExplicitProjectId(projectId: string | null | undefined): string {
+function requireExplicitProjectId(projectId: string | null | undefined): string {
   const trimmed = projectId?.trim();
   if (!trimmed) {
     throw new Error('project_id is required (fail closed; no default project fallback)');
