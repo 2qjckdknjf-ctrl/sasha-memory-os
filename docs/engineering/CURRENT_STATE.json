@@ -1,14 +1,14 @@
 {
   "manifestVersion": "m14.1-v1",
   "schemaVersion": "1.0",
-  "generatedAt": "2026-08-21T21:10:00.000Z",
+  "generatedAt": "2026-08-21T21:15:00.000Z",
   "repository": "2qjckdknjf-ctrl/sasha-memory-os",
   "canonicalProjectId": "44444444-4444-4444-8444-444444444401",
   "canonicalWorkspaceId": "11111111-1111-4111-8111-111111111111",
-  "reconciledAgainstMainSha": "7898a692b6e0f7133c7d6550490bcd727ef3636a",
-  "currentMilestone": "M15.6-deletion-revoke-lifecycle",
-  "completedThrough": "M15.6",
-  "nextSlice": "M15.7-autonomous-capture-policy",
+  "reconciledAgainstMainSha": "fe32adc8badaebe6b2e0c71c561cb1b5c5ce99d2",
+  "currentMilestone": "M15.7-autonomous-capture-policy",
+  "completedThrough": "M15.7",
+  "nextSlice": "M15.8-observability-slos",
   "canonicalPlanMemoryTitle": "SASHA MEMORY OS — CANONICAL COMPLETION PLAN TO 100% — 2026-08-21",
   "supabase": {
     "projectName": "sasha-memory-os",
@@ -32,7 +32,8 @@
     "m15ProjectRouting": "m15-s03-v1",
     "m15Canonicalization": "m15-s04-v1",
     "m15Freshness": "m15-s05-v1",
-    "m15DeletionRevoke": "m15-s06-v1"
+    "m15DeletionRevoke": "m15-s06-v1",
+    "m15CapturePolicy": "m15-s07-v1"
   },
   "deployments": {
     "flyApi": {
@@ -103,7 +104,12 @@
     {
       "id": "m15-6-live-provider-revoke-e2e",
       "severity": "M15",
-      "summary": "Fixture deletion/revoke convergence PASS; live provider revoke E2E blocked on credentials and is not PASS from mocks."
+      "summary": "Fixture deletion/revoke convergence PASS; live provider revoke E2E blocked."
+    },
+    {
+      "id": "m15-7-live-autonomous-capture-e2e",
+      "severity": "M15",
+      "summary": "Capture policy fixture PASS; live autonomous chat capture E2E blocked / out of scope for this pack."
     },
     {
       "id": "m15-remote-migration-apply",
@@ -117,9 +123,9 @@
     }
   ],
   "readmeMustContain": [
-    "M15.6-deletion-revoke-lifecycle",
+    "M15.7-autonomous-capture-policy",
     "docs/engineering/CURRENT_STATE.json",
-    "M15.7-autonomous-capture-policy"
+    "M15.8-observability-slos"
   ],
   "readmeMustNotClaimAsCurrentTip": [
     "**M7 started:**"

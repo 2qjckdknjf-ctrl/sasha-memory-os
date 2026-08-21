@@ -1,0 +1,31 @@
+{
+  "manifestVersion": "m15-s07-v1",
+  "packVersion": "m15-s07-v1",
+  "source": "fixture-local",
+  "autoPromoteClasses": [
+    "meaningful_decision",
+    "project_milestone",
+    "approved_spec",
+    "blocker",
+    "task_or_goal",
+    "source_change",
+    "important_fact"
+  ],
+  "rejectClasses": [
+    "transient_chatter",
+    "secret_or_credential",
+    "unnecessary_private"
+  ],
+  "uncertainDisposition": "preview_required",
+  "highConfidenceAutoPromoteFloor": 0.85,
+  "liveE2E": {
+    "status": "policy_fixture_pass_live_blocked",
+    "claimPassFromMocks": false
+  },
+  "invariants": {
+    "neverAutoPromoteSecrets": true,
+    "uncertainRequiresPreviewApply": true,
+    "modeAToolCount": 7,
+    "ignoreDefaultProjectIdEnv": true
+  }
+}
