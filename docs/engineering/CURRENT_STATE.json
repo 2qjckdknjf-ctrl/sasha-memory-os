@@ -1,0 +1,103 @@
+{
+  "manifestVersion": "m14.1-v1",
+  "schemaVersion": "1.0",
+  "generatedAt": "2026-08-21T20:30:00.000Z",
+  "repository": "2qjckdknjf-ctrl/sasha-memory-os",
+  "canonicalProjectId": "44444444-4444-4444-8444-444444444401",
+  "canonicalWorkspaceId": "11111111-1111-4111-8111-111111111111",
+  "reconciledAgainstMainSha": "2970f2e6fc509ca9b4a7c06c80778e56e69de43d",
+  "currentMilestone": "M14.1-baseline-reconciliation",
+  "completedThrough": "M14",
+  "nextSlice": "M15.1-source-event-contract",
+  "canonicalPlanMemoryTitle": "SASHA MEMORY OS — CANONICAL COMPLETION PLAN TO 100% — 2026-08-21",
+  "supabase": {
+    "projectName": "sasha-memory-os",
+    "projectRef": "vpxblcxsvlylqyldiuwr",
+    "region": "eu-central-1",
+    "latestMigration": "20260820065500_m14_slice_06_privacy_request_sla_guards.sql",
+    "migrationCount": 62
+  },
+  "officialPacks": {
+    "m14Slo": "m14-s01-v1",
+    "m14SecurityReview": "m14-s03-v1",
+    "m14DrRestore": "m14-s04-v1",
+    "m14IncidentRunbooks": "m14-s05-v1",
+    "m14PrivacySla": "m14-s06-v1",
+    "m14DependencyUpgrade": "m14-s07-v1",
+    "m14GaDocCatalog": "m14-s08-v1",
+    "m14FirstHourOnboarding": "m14-s09-v1",
+    "m14SupportOps": "m14-s10-v1"
+  },
+  "deployments": {
+    "flyApi": {
+      "status": "deferred",
+      "appName": "sasha-memory-os-api",
+      "configPath": "fly.toml",
+      "note": "Scaffold kept; public Fly API not required while Edge MCP is primary ChatGPT path."
+    },
+    "edgeFunctions": ["memory-mcp", "worker-ticks"],
+    "githubActions": [
+      "ci.yml",
+      "node-workers.yml",
+      "oauth-consent-pages.yml",
+      "worker-ticks.yml"
+    ]
+  },
+  "workers": [
+    "connector-sync",
+    "consolidation",
+    "ingestion",
+    "roma-project-health"
+  ],
+  "connectors": [
+    "apple-bridge",
+    "github",
+    "gmail",
+    "google-calendar",
+    "google-drive",
+    "sample"
+  ],
+  "chatgptModeA": {
+    "status": "PASS",
+    "passedAt": "2026-08-15",
+    "toolCount": 7,
+    "transport": "supabase-edge-memory-mcp"
+  },
+  "projectRouting": {
+    "allowMemoryOsDefaultProjectIdFallback": false,
+    "allowAistroykaFallback": false,
+    "writesRequireExplicitProjectId": true
+  },
+  "tests": {
+    "rootVitestInclude": "tests/**/*.test.ts",
+    "goldenRetrievalHarness": "tests/eval/golden_retrieval.test.ts",
+    "m14PackTestsGlob": "tests/security/m14_slice_*_pack.test.ts"
+  },
+  "openPrPolicy": {
+    "staleDraftPr16": {
+      "number": 16,
+      "disposition": "close-as-superseded",
+      "rationale": "Draft Cloud AGENTS.md notes from 2026-08-19; useful Cloud toolchain notes folded into M14.1 AGENTS.md. Not active roadmap work."
+    }
+  },
+  "knownBlockers": [
+    {
+      "id": "autonomous-ingestion-freshness",
+      "severity": "M15",
+      "summary": "Canonical project state can lag repository/source reality; automatic ingestion/reconciliation/freshness not complete."
+    },
+    {
+      "id": "fly-hosted-api-deferred",
+      "severity": "ops",
+      "summary": "Fly.io hosted API remains deferred; Edge MCP + local/docker API cover current paths."
+    }
+  ],
+  "readmeMustContain": [
+    "M14.1-baseline-reconciliation",
+    "docs/engineering/CURRENT_STATE.json",
+    "M15.1-source-event-contract"
+  ],
+  "readmeMustNotClaimAsCurrentTip": [
+    "**M7 started:**"
+  ]
+}

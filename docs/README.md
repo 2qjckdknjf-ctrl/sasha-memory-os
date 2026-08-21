@@ -23,6 +23,8 @@
 | [engineering/ENVIRONMENT_MATRIX.md](engineering/ENVIRONMENT_MATRIX.md) | local / dev / staging / prod |
 | [engineering/SECRETS_POLICY.md](engineering/SECRETS_POLICY.md) | Хранение и запреты для secrets |
 | [engineering/RLS_MATRIX.md](engineering/RLS_MATRIX.md) | RLS / ACL matrix и negative cases |
+| [engineering/CURRENT_STATE.json](engineering/CURRENT_STATE.json) | Machine-readable current milestone / deploy / blocker snapshot (`m14.1-v1`) |
+| [engineering/M14_1_BASELINE.md](engineering/M14_1_BASELINE.md) | M14.1 Phase 0 baseline reconciliation |
 | [engineering/M14_DOC_CATALOG.md](engineering/M14_DOC_CATALOG.md) | Versioned GA doc catalog for current official surfaces |
 | [engineering/ONBOARDING.md](engineering/ONBOARDING.md) | First-hour onboarding guide on current MCP + Control Center surfaces |
 | [engineering/M14_SLICE_05.md](engineering/M14_SLICE_05.md) | M14 Slice 05: incident runbook pack |

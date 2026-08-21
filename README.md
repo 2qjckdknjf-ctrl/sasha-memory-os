@@ -13,21 +13,23 @@
 - [RLS matrix](docs/engineering/RLS_MATRIX.md)
 - [Demo slice](docs/engineering/DEMO_SLICE.md)
 - [M6 ChatGPT production closeout](docs/engineering/M6_CHATGPT_PRODUCTION.md)
+- [CURRENT_STATE manifest](docs/engineering/CURRENT_STATE.json)
+- [M14.1 baseline reconciliation](docs/engineering/M14_1_BASELINE.md)
 
 ## Статус
 
 **Dedicated Supabase live** — project `sasha-memory-os` (`vpxblcxsvlylqyldiuwr`, `eu-central-1`). Details: [docs/engineering/SUPABASE.md](docs/engineering/SUPABASE.md).
 
-- WP-01…08 alpha + live Supabase RPCs
-- OAuth HTTP exchange → shared encrypted vault (`MEMORY_OS_VAULT_BACKEND=supabase` default with Supabase URL)
-- Vault-backed connector pulls, hybrid search (API/MCP), embeddings on capture/sync
-- Re-embed: `POST /v1/memories/:id/embed` + batch `POST /v1/memories/embed-missing` + MCP `memory.embed` / `memory.embed_missing` + Web
-- Consolidation worker + outbox enqueue (`api_enqueue_consolidation`) + `POST /v1/consolidation/run` + MCP `consolidation.run`
-- Connector-sync / consolidation CLI ticks; optional `MEMORY_OS_WORKER_INTERVAL_MS` loop
-- Golden retrieval harness: 200 hybrid ACL cases
-- Web timeline / review / OAuth / consolidation controls: `apps/web`
-- **M7 started:** hardening Control Center web UX after merged Slices 01–03 (review queue, conflicts, inspector tails)
+Machine-readable snapshot: [docs/engineering/CURRENT_STATE.json](docs/engineering/CURRENT_STATE.json) (`m14.1-v1`).
+
+- **Current milestone:** `M14.1-baseline-reconciliation` (Phase 0 of the 2026-08-21 canonical completion plan)
+- **Completed through:** M14 official GA packs (SLO, load/soak, security, DR, runbooks, privacy SLA, dependency policy, docs/onboarding/support-ops)
+- **Next slice:** `M15.1-source-event-contract`
 - **M6 ChatGPT Mode A PASS (2026-08-15):** final `Sasha Memory OS` custom MCP app connected through Supabase OAuth 2.1; exact seven-tool scan, normal-chat read, `memory.store_decision`, and read-after-write all passed. The stale `Sasha Mamory OS` registration was removed; exactly one personal Sasha registration remains.
+- Core path live: WP-01…08 RPCs, vault OAuth, hybrid RRF retrieval, embeddings, consolidation/outbox/jobs, MCP, Control Center
+- M10–M13 foundations merged (Drive/Gmail/Calendar policies, ROMA project-health, bounded agentic retrieval / consolidation / ranking)
+- Writes require explicit `project_id`; `MEMORY_OS_DEFAULT_PROJECT_ID` is ignored as a write/admin/export fallback
+- Known gap (tracked for M15): canonical project state can still lag source/repo reality until autonomous ingestion/reconciliation ships
 
 ## Репозиторий
 
@@ -92,18 +94,10 @@ Outside `local`/`test`, owner ops require `x-memory-os-api-secret` (or `MEMORY_O
 
 ## Следующий шаг
 
-1. ~~Alpha close + hosted ticks~~ — Edge `worker-ticks` v2 + GH `Worker ticks`
-2. ~~KMS / HQ vector columns~~ — `supabase_vault` + `embedding_vector_hq(1536)`
-3. ~~Full connector pull path~~ — GH `Worker node ticks` (vault sync + consolidation)
-4. ~~RG0 artifact set~~ — checklist, risk, eval, backlog M1–M3, retention, DPIA, ChatGPT MCP ([RG0_CHECKLIST.md](docs/m0/RG0_CHECKLIST.md))
-5. ~~HTTP MCP host path~~ — `POST /mcp` (+ standalone `:8790`); alpha ops mode **B** until A confirmed
-6. ~~M1/M2/M3 alpha close-ups~~ — promote, observability, export, temporal, poison, Whisper STT, job UI
-7. ~~M4 extraction preview/apply~~ — `/v1/extraction/preview|apply` + MCP/Web
-8. ~~RG0 owner accept~~ — [OWNER_ACCEPT_2026-08-12.md](docs/m0/OWNER_ACCEPT_2026-08-12.md); MCP **B now**, **A preferred**
-9. Fly full HTTP API — **deferred** (scaffold kept)
-10. ~~M4 review UX~~ — selective extract apply, bulk review, MCP `extraction.run`
-11. ~~M5 retrieval polish~~ — RRF hybrid, authority, context packer, temporal search (alpha)
-12. ~~M6 backend/hosting~~ — durable Supabase Edge MCP + authenticated live Supabase search/write/get/read-after-write PASS (2026-08-15)
-13. ~~Apply remote `search_rrf_temporal`~~ — applied 2026-08-12
-14. ~~Web search pack-context UX~~ — agent citation block in control center
-15. ~~M6 ChatGPT app acceptance and duplicate cleanup~~ — `Sasha Memory OS`, Supabase OAuth 2.1, exact seven-tool discovery, normal-chat read, write, and read-after-write: **Mode A PASS** (2026-08-15). Stale registration removed; PR #2 merged.
+Canonical order (do not skip): see [M14_1_BASELINE.md](docs/engineering/M14_1_BASELINE.md) and Memory OS title `SASHA MEMORY OS — CANONICAL COMPLETION PLAN TO 100% — 2026-08-21`.
+
+1. ~~M14.1 baseline reconciliation~~ — CURRENT_STATE + README/main drift checks
+2. **M15.1 source-event contract** — immutable normalized `source_events`, idempotency, replay safety
+3. M15.2–M15.8 autonomous runtime (orchestration, routing, dedupe, freshness, revoke, capture policy, SLOs)
+4. M16–M20 per canonical plan (Apple bridge → knowledge graph → agent contracts → Control Center → GA gates)
+5. Fly full HTTP API — **deferred** (scaffold kept; Edge MCP remains the durable ChatGPT path)
