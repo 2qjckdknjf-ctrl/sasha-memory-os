@@ -38,4 +38,4 @@ Roadmap sections: `15.6`, `deletion-revoke-lifecycle`
 
 ## Next
 
-`M15.7-autonomous-capture-policy`
+`M15.8-observability-slos`
