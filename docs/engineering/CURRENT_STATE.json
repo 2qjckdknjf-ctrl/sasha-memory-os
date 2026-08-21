@@ -1,14 +1,14 @@
 {
   "manifestVersion": "m14.1-v1",
   "schemaVersion": "1.0",
-  "generatedAt": "2026-08-21T21:30:00.000Z",
+  "generatedAt": "2026-08-21T21:45:00.000Z",
   "repository": "2qjckdknjf-ctrl/sasha-memory-os",
   "canonicalProjectId": "44444444-4444-4444-8444-444444444401",
   "canonicalWorkspaceId": "11111111-1111-4111-8111-111111111111",
-  "reconciledAgainstMainSha": "7b731ff2b1ae81a5271d48ea3fb5e7bc54bb4962",
-  "currentMilestone": "M16.1-apple-capability-feasibility-matrix",
-  "completedThrough": "M16.1",
-  "nextSlice": "M16.2-apple-companion-security-foundation",
+  "reconciledAgainstMainSha": "88f4ef529dc13b088068540efe9dcb240d5e650e",
+  "currentMilestone": "M16.2-apple-companion-security-foundation",
+  "completedThrough": "M16.2",
+  "nextSlice": "M16.3-icloud-drive-files",
   "canonicalPlanMemoryTitle": "SASHA MEMORY OS — CANONICAL COMPLETION PLAN TO 100% — 2026-08-21",
   "supabase": {
     "projectName": "sasha-memory-os",
@@ -36,7 +36,8 @@
     "m15CapturePolicy": "m15-s07-v1",
     "m15Observability": "m15-s08-v1",
     "m15LiveE2EGate": "m15-live-e2e-v1",
-    "m16AppleFeasibility": "m16-s01-v1"
+    "m16AppleFeasibility": "m16-s01-v1",
+    "m16AppleSecurity": "m16-s02-v1"
   },
   "deployments": {
     "flyApi": {
@@ -83,13 +84,13 @@
   "m15LiveE2E": {
     "overallStatus": "BLOCKED",
     "claimPassFromMocks": false,
-    "routedNextMilestone": "M16.1-apple-capability-feasibility-matrix",
-    "note": "Documented limitations; M16.1 matrix landed as next platform-specific milestone."
+    "routedNextMilestone": "M16.1-apple-capability-feasibility-matrix"
   },
   "appleBridge": {
     "feasibilityPack": "m16-s01-v1",
+    "securityPack": "m16-s02-v1",
     "decision": "companion_required_no_server_icloud_scrape",
-    "liveDeviceE2E": "matrix_only_live_device_blocked"
+    "liveDeviceE2E": "contract_pass_signing_blocked"
   },
   "tests": {
     "rootVitestInclude": "tests/**/*.test.ts",
@@ -112,9 +113,9 @@
       "summary": "M15 live E2E still BLOCKED; documented and routed into M16."
     },
     {
-      "id": "m16-live-device-e2e",
+      "id": "m16-signed-companion-e2e",
       "severity": "M16",
-      "summary": "Apple feasibility matrix PASS; live PhotoKit/Files/EventKit device E2E blocked until companion signing/runtime slices."
+      "summary": "Apple security contracts PASS; TestFlight/signing and live Keychain device E2E blocked."
     },
     {
       "id": "m15-remote-migration-apply",
@@ -128,9 +129,9 @@
     }
   ],
   "readmeMustContain": [
-    "M16.1-apple-capability-feasibility-matrix",
+    "M16.2-apple-companion-security-foundation",
     "docs/engineering/CURRENT_STATE.json",
-    "M16.2-apple-companion-security-foundation"
+    "M16.3-icloud-drive-files"
   ],
   "readmeMustNotClaimAsCurrentTip": [
     "**M7 started:**"

@@ -1,0 +1,23 @@
+{
+  "manifestVersion": "m16-s02-v1",
+  "packVersion": "m16-s02-v1",
+  "source": "fixture-local",
+  "requirements": [
+    "native_signed_companion",
+    "local_secure_storage_keychain",
+    "device_identity_binding",
+    "explicit_source_selection",
+    "encrypted_transport_to_memory_api",
+    "least_privilege",
+    "offline_queue_replay_idempotency"
+  ],
+  "liveSignedCompanionE2E": {
+    "status": "contract_pass_signing_blocked",
+    "claimPassFromMocks": false
+  },
+  "invariants": {
+    "neverEmbedRawTokensInQueueJson": true,
+    "offlineReplayReusesIdempotencyKey": true,
+    "modeAToolCount": 7
+  }
+}
