@@ -1,0 +1,26 @@
+{
+  "manifestVersion": "m15-s08-v1",
+  "packVersion": "m15-s08-v1",
+  "source": "fixture-local",
+  "metrics": [
+    "ingestion_lag_ms",
+    "sync_success_ratio",
+    "routing_confidence",
+    "unclassified_rate",
+    "duplicate_rate",
+    "consolidation_latency_ms",
+    "search_latency_ms",
+    "stale_project_count",
+    "dead_letter_count"
+  ],
+  "alertOwnershipRunbookPack": "m14-s05-v1",
+  "liveE2E": {
+    "status": "metric_catalog_pass_live_dashboard_blocked",
+    "claimPassFromMocks": false
+  },
+  "invariants": {
+    "noSensitiveBodiesInLogs": true,
+    "modeAToolCount": 7,
+    "ignoreDefaultProjectIdEnv": true
+  }
+}

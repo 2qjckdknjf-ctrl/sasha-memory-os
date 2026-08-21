@@ -11,7 +11,7 @@ import {
   OFFICIAL_M14_SLO_PACK_VERSION,
   OFFICIAL_M14_SUPPORT_OPS_PACK_VERSION,
 } from '@memory-os/observability';
-import { OFFICIAL_M15_SOURCE_EVENT_CONTRACT_PACK_VERSION, OFFICIAL_M15_CONNECTOR_ORCHESTRATION_PACK_VERSION, OFFICIAL_M15_PROJECT_ROUTING_PACK_VERSION, OFFICIAL_M15_CANONICALIZATION_PACK_VERSION, OFFICIAL_M15_FRESHNESS_PACK_VERSION, OFFICIAL_M15_DELETION_REVOKE_PACK_VERSION, OFFICIAL_M15_CAPTURE_POLICY_PACK_VERSION } from '@memory-os/schemas';
+import { OFFICIAL_M15_SOURCE_EVENT_CONTRACT_PACK_VERSION, OFFICIAL_M15_CONNECTOR_ORCHESTRATION_PACK_VERSION, OFFICIAL_M15_PROJECT_ROUTING_PACK_VERSION, OFFICIAL_M15_CANONICALIZATION_PACK_VERSION, OFFICIAL_M15_FRESHNESS_PACK_VERSION, OFFICIAL_M15_DELETION_REVOKE_PACK_VERSION, OFFICIAL_M15_CAPTURE_POLICY_PACK_VERSION, OFFICIAL_M15_OBSERVABILITY_PACK_VERSION } from '@memory-os/schemas';
 
 const WORKSPACE_ROOT = resolve(import.meta.dirname, '../../..');
 export const CURRENT_STATE_PATH = resolve(
@@ -57,6 +57,7 @@ export type CurrentStateManifest = {
     m15Freshness: string;
     m15DeletionRevoke: string;
     m15CapturePolicy: string;
+    m15Observability: string;
   };
   deployments: {
     flyApi: {
@@ -217,24 +218,24 @@ export function validateCurrentStateDrift(
     });
   }
 
-  if (manifest.currentMilestone !== 'M15.7-autonomous-capture-policy') {
+  if (manifest.currentMilestone !== 'M15.8-observability-slos') {
     findings.push({
       code: 'current-milestone',
-      message: `expected currentMilestone M15.7-autonomous-capture-policy, got ${manifest.currentMilestone}`,
+      message: `expected currentMilestone M15.8-observability-slos, got ${manifest.currentMilestone}`,
     });
   }
 
-  if (manifest.completedThrough !== 'M15.7') {
+  if (manifest.completedThrough !== 'M15.8') {
     findings.push({
       code: 'completed-through',
-      message: `expected completedThrough M15.7 after capture policy pack, got ${manifest.completedThrough}`,
+      message: `expected completedThrough M15.8 after observability pack, got ${manifest.completedThrough}`,
     });
   }
 
-  if (manifest.nextSlice !== 'M15.8-observability-slos') {
+  if (manifest.nextSlice !== 'M15-live-e2e-closure') {
     findings.push({
       code: 'next-slice',
-      message: `expected nextSlice M15.8-observability-slos, got ${manifest.nextSlice}`,
+      message: `expected nextSlice M15-live-e2e-closure, got ${manifest.nextSlice}`,
     });
   }
 
@@ -256,6 +257,7 @@ export function validateCurrentStateDrift(
       m15Freshness: OFFICIAL_M15_FRESHNESS_PACK_VERSION,
       m15DeletionRevoke: OFFICIAL_M15_DELETION_REVOKE_PACK_VERSION,
       m15CapturePolicy: OFFICIAL_M15_CAPTURE_POLICY_PACK_VERSION,
+      m15Observability: OFFICIAL_M15_OBSERVABILITY_PACK_VERSION,
     };
 
   for (const [key, expected] of Object.entries(expectedPacks) as Array<
