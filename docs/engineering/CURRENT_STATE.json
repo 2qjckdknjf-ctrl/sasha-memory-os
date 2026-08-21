@@ -1,14 +1,14 @@
 {
   "manifestVersion": "m14.1-v1",
   "schemaVersion": "1.0",
-  "generatedAt": "2026-08-21T21:25:00.000Z",
+  "generatedAt": "2026-08-21T21:30:00.000Z",
   "repository": "2qjckdknjf-ctrl/sasha-memory-os",
   "canonicalProjectId": "44444444-4444-4444-8444-444444444401",
   "canonicalWorkspaceId": "11111111-1111-4111-8111-111111111111",
-  "reconciledAgainstMainSha": "db2741f80010b7cbf4f70717c123ce62ad11b35b",
-  "currentMilestone": "M15-live-e2e-closure",
-  "completedThrough": "M15-live-e2e-closure",
-  "nextSlice": "M16.1-apple-capability-feasibility-matrix",
+  "reconciledAgainstMainSha": "7b731ff2b1ae81a5271d48ea3fb5e7bc54bb4962",
+  "currentMilestone": "M16.1-apple-capability-feasibility-matrix",
+  "completedThrough": "M16.1",
+  "nextSlice": "M16.2-apple-companion-security-foundation",
   "canonicalPlanMemoryTitle": "SASHA MEMORY OS — CANONICAL COMPLETION PLAN TO 100% — 2026-08-21",
   "supabase": {
     "projectName": "sasha-memory-os",
@@ -35,7 +35,8 @@
     "m15DeletionRevoke": "m15-s06-v1",
     "m15CapturePolicy": "m15-s07-v1",
     "m15Observability": "m15-s08-v1",
-    "m15LiveE2EGate": "m15-live-e2e-v1"
+    "m15LiveE2EGate": "m15-live-e2e-v1",
+    "m16AppleFeasibility": "m16-s01-v1"
   },
   "deployments": {
     "flyApi": {
@@ -83,13 +84,19 @@
     "overallStatus": "BLOCKED",
     "claimPassFromMocks": false,
     "routedNextMilestone": "M16.1-apple-capability-feasibility-matrix",
-    "note": "Canonical exit gate: document credential/API limitations and route to M16 rather than claiming mock PASS."
+    "note": "Documented limitations; M16.1 matrix landed as next platform-specific milestone."
+  },
+  "appleBridge": {
+    "feasibilityPack": "m16-s01-v1",
+    "decision": "companion_required_no_server_icloud_scrape",
+    "liveDeviceE2E": "matrix_only_live_device_blocked"
   },
   "tests": {
     "rootVitestInclude": "tests/**/*.test.ts",
     "goldenRetrievalHarness": "tests/eval/golden_retrieval.test.ts",
     "m14PackTestsGlob": "tests/security/m14_slice_*_pack.test.ts",
-    "m15PackTestsGlob": "tests/security/m15_*pack.test.ts"
+    "m15PackTestsGlob": "tests/security/m15_*pack.test.ts",
+    "m16PackTestsGlob": "tests/security/m16_slice_*_pack.test.ts"
   },
   "openPrPolicy": {
     "staleDraftPr16": {
@@ -102,7 +109,12 @@
     {
       "id": "m15-live-e2e-credentials",
       "severity": "M15",
-      "summary": "M15 live E2E exit gate BLOCKED on credentials/dashboard/migration apply; documented and routed to M16.1 (not PASS from mocks)."
+      "summary": "M15 live E2E still BLOCKED; documented and routed into M16."
+    },
+    {
+      "id": "m16-live-device-e2e",
+      "severity": "M16",
+      "summary": "Apple feasibility matrix PASS; live PhotoKit/Files/EventKit device E2E blocked until companion signing/runtime slices."
     },
     {
       "id": "m15-remote-migration-apply",
@@ -116,9 +128,9 @@
     }
   ],
   "readmeMustContain": [
-    "M15-live-e2e-closure",
+    "M16.1-apple-capability-feasibility-matrix",
     "docs/engineering/CURRENT_STATE.json",
-    "M16.1-apple-capability-feasibility-matrix"
+    "M16.2-apple-companion-security-foundation"
   ],
   "readmeMustNotClaimAsCurrentTip": [
     "**M7 started:**"
