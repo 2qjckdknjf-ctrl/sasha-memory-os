@@ -1,0 +1,24 @@
+{
+  "manifestVersion": "m15-s04-v1",
+  "packVersion": "m15-s04-v1",
+  "source": "fixture-local",
+  "canonicalDuplicateRateMax": 0.01,
+  "authorityFactClasses": [
+    "repository_state",
+    "calendar_event",
+    "email_message",
+    "drive_file",
+    "user_decision",
+    "inferred_summary",
+    "agent_milestone",
+    "project_blocker"
+  ],
+  "invariants": {
+    "sourceLevelDedupeBeforeSemantic": true,
+    "preserveSupersededByChain": true,
+    "preserveProvenanceToSourceEvents": true,
+    "neverUseDefaultProjectFallback": true,
+    "modeAToolCount": 7,
+    "allowAistroykaFallback": false
+  }
+}

@@ -11,7 +11,7 @@ import {
   OFFICIAL_M14_SLO_PACK_VERSION,
   OFFICIAL_M14_SUPPORT_OPS_PACK_VERSION,
 } from '@memory-os/observability';
-import { OFFICIAL_M15_SOURCE_EVENT_CONTRACT_PACK_VERSION, OFFICIAL_M15_CONNECTOR_ORCHESTRATION_PACK_VERSION, OFFICIAL_M15_PROJECT_ROUTING_PACK_VERSION } from '@memory-os/schemas';
+import { OFFICIAL_M15_SOURCE_EVENT_CONTRACT_PACK_VERSION, OFFICIAL_M15_CONNECTOR_ORCHESTRATION_PACK_VERSION, OFFICIAL_M15_PROJECT_ROUTING_PACK_VERSION, OFFICIAL_M15_CANONICALIZATION_PACK_VERSION } from '@memory-os/schemas';
 
 const WORKSPACE_ROOT = resolve(import.meta.dirname, '../../..');
 export const CURRENT_STATE_PATH = resolve(
@@ -53,6 +53,7 @@ export type CurrentStateManifest = {
     m15SourceEventContract: string;
     m15ConnectorOrchestration: string;
     m15ProjectRouting: string;
+    m15Canonicalization: string;
   };
   deployments: {
     flyApi: {
@@ -213,24 +214,24 @@ export function validateCurrentStateDrift(
     });
   }
 
-  if (manifest.currentMilestone !== 'M15.3-project-entity-routing') {
+  if (manifest.currentMilestone !== 'M15.4-canonicalization-dedupe-supersession') {
     findings.push({
       code: 'current-milestone',
-      message: `expected currentMilestone M15.3-project-entity-routing, got ${manifest.currentMilestone}`,
+      message: `expected currentMilestone M15.4-canonicalization-dedupe-supersession, got ${manifest.currentMilestone}`,
     });
   }
 
-  if (manifest.completedThrough !== 'M15.3') {
+  if (manifest.completedThrough !== 'M15.4') {
     findings.push({
       code: 'completed-through',
-      message: `expected completedThrough M15.3 after project routing pack, got ${manifest.completedThrough}`,
+      message: `expected completedThrough M15.4 after canonicalization pack, got ${manifest.completedThrough}`,
     });
   }
 
-  if (manifest.nextSlice !== 'M15.4-canonicalization-dedupe-supersession') {
+  if (manifest.nextSlice !== 'M15.5-freshness-reconciliation') {
     findings.push({
       code: 'next-slice',
-      message: `expected nextSlice M15.4-canonicalization-dedupe-supersession, got ${manifest.nextSlice}`,
+      message: `expected nextSlice M15.5-freshness-reconciliation, got ${manifest.nextSlice}`,
     });
   }
 
@@ -248,6 +249,7 @@ export function validateCurrentStateDrift(
       m15SourceEventContract: OFFICIAL_M15_SOURCE_EVENT_CONTRACT_PACK_VERSION,
       m15ConnectorOrchestration: OFFICIAL_M15_CONNECTOR_ORCHESTRATION_PACK_VERSION,
       m15ProjectRouting: OFFICIAL_M15_PROJECT_ROUTING_PACK_VERSION,
+      m15Canonicalization: OFFICIAL_M15_CANONICALIZATION_PACK_VERSION,
     };
 
   for (const [key, expected] of Object.entries(expectedPacks) as Array<
