@@ -37,4 +37,4 @@ Roadmap sections: `15.7`, `autonomous-capture-policy`
 
 ## Next
 
-`M15.8-observability-slos`
+`M15-live-e2e-closure`
