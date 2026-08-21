@@ -1,0 +1,13 @@
+{
+  "manifestVersion": "m15-live-e2e-v1",
+  "packVersion": "m15-live-e2e-v1",
+  "overallStatus": "BLOCKED",
+  "claimPassFromMocks": false,
+  "routedNextMilestone": "M16.1-apple-capability-feasibility-matrix",
+  "blockedCheckCount": 9,
+  "invariants": {
+    "neverClaimLiveE2EPassFromMocks": true,
+    "documentBlockersExplicitly": true,
+    "modeAToolCount": 7
+  }
+}

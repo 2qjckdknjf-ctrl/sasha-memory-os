@@ -38,4 +38,4 @@ Roadmap sections: `15.8`, `observability-slos`
 
 ## Next
 
-`M15-live-e2e-closure` (or M16 if live E2E remains blocked and plan advances)
+`M16.1-apple-capability-feasibility-matrix`
