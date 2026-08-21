@@ -11,7 +11,7 @@ import {
   OFFICIAL_M14_SLO_PACK_VERSION,
   OFFICIAL_M14_SUPPORT_OPS_PACK_VERSION,
 } from '@memory-os/observability';
-import { OFFICIAL_M15_SOURCE_EVENT_CONTRACT_PACK_VERSION, OFFICIAL_M15_CONNECTOR_ORCHESTRATION_PACK_VERSION, OFFICIAL_M15_PROJECT_ROUTING_PACK_VERSION, OFFICIAL_M15_CANONICALIZATION_PACK_VERSION, OFFICIAL_M15_FRESHNESS_PACK_VERSION, OFFICIAL_M15_DELETION_REVOKE_PACK_VERSION, OFFICIAL_M15_CAPTURE_POLICY_PACK_VERSION, OFFICIAL_M15_OBSERVABILITY_PACK_VERSION, OFFICIAL_M15_LIVE_E2E_GATE_PACK_VERSION } from '@memory-os/schemas';
+import { OFFICIAL_M15_SOURCE_EVENT_CONTRACT_PACK_VERSION, OFFICIAL_M15_CONNECTOR_ORCHESTRATION_PACK_VERSION, OFFICIAL_M15_PROJECT_ROUTING_PACK_VERSION, OFFICIAL_M15_CANONICALIZATION_PACK_VERSION, OFFICIAL_M15_FRESHNESS_PACK_VERSION, OFFICIAL_M15_DELETION_REVOKE_PACK_VERSION, OFFICIAL_M15_CAPTURE_POLICY_PACK_VERSION, OFFICIAL_M15_OBSERVABILITY_PACK_VERSION, OFFICIAL_M15_LIVE_E2E_GATE_PACK_VERSION, OFFICIAL_M16_APPLE_FEASIBILITY_PACK_VERSION } from '@memory-os/schemas';
 
 const WORKSPACE_ROOT = resolve(import.meta.dirname, '../../..');
 export const CURRENT_STATE_PATH = resolve(
@@ -59,6 +59,7 @@ export type CurrentStateManifest = {
     m15CapturePolicy: string;
     m15Observability: string;
     m15LiveE2EGate: string;
+    m16AppleFeasibility: string;
   };
   deployments: {
     flyApi: {
@@ -219,24 +220,24 @@ export function validateCurrentStateDrift(
     });
   }
 
-  if (manifest.currentMilestone !== 'M15-live-e2e-closure') {
+  if (manifest.currentMilestone !== 'M16.1-apple-capability-feasibility-matrix') {
     findings.push({
       code: 'current-milestone',
-      message: `expected currentMilestone M15-live-e2e-closure, got ${manifest.currentMilestone}`,
+      message: `expected currentMilestone M16.1-apple-capability-feasibility-matrix, got ${manifest.currentMilestone}`,
     });
   }
 
-  if (manifest.completedThrough !== 'M15-live-e2e-closure') {
+  if (manifest.completedThrough !== 'M16.1') {
     findings.push({
       code: 'completed-through',
-      message: `expected completedThrough M15-live-e2e-closure after live E2E gate pack, got ${manifest.completedThrough}`,
+      message: `expected completedThrough M16.1 after Apple feasibility pack, got ${manifest.completedThrough}`,
     });
   }
 
-  if (manifest.nextSlice !== 'M16.1-apple-capability-feasibility-matrix') {
+  if (manifest.nextSlice !== 'M16.2-apple-companion-security-foundation') {
     findings.push({
       code: 'next-slice',
-      message: `expected nextSlice M16.1-apple-capability-feasibility-matrix, got ${manifest.nextSlice}`,
+      message: `expected nextSlice M16.2-apple-companion-security-foundation, got ${manifest.nextSlice}`,
     });
   }
 
@@ -260,6 +261,7 @@ export function validateCurrentStateDrift(
       m15CapturePolicy: OFFICIAL_M15_CAPTURE_POLICY_PACK_VERSION,
       m15Observability: OFFICIAL_M15_OBSERVABILITY_PACK_VERSION,
       m15LiveE2EGate: OFFICIAL_M15_LIVE_E2E_GATE_PACK_VERSION,
+      m16AppleFeasibility: OFFICIAL_M16_APPLE_FEASIBILITY_PACK_VERSION,
     };
 
   for (const [key, expected] of Object.entries(expectedPacks) as Array<

@@ -1,0 +1,23 @@
+{
+  "manifestVersion": "m16-s01-v1",
+  "packVersion": "m16-s01-v1",
+  "source": "fixture-local",
+  "decision": "companion_required_no_server_icloud_scrape",
+  "capabilities": [
+    "icloud_drive_files",
+    "photos",
+    "notes",
+    "reminders",
+    "contacts",
+    "device_metadata"
+  ],
+  "liveDeviceE2E": {
+    "status": "matrix_only_live_device_blocked",
+    "claimPassFromMocks": false
+  },
+  "invariants": {
+    "neverServerSideIcloudScrape": true,
+    "selectedScopeOnly": true,
+    "modeAToolCount": 7
+  }
+}

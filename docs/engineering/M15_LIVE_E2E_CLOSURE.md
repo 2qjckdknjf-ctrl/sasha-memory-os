@@ -31,4 +31,4 @@ Official pack version: `m15-live-e2e-v1`
 
 ## Next
 
-`M16.1-apple-capability-feasibility-matrix`
+`M16.2-apple-companion-security-foundation`
