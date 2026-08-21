@@ -1,14 +1,14 @@
 {
   "manifestVersion": "m14.1-v1",
   "schemaVersion": "1.0",
-  "generatedAt": "2026-08-21T20:55:00.000Z",
+  "generatedAt": "2026-08-21T21:00:00.000Z",
   "repository": "2qjckdknjf-ctrl/sasha-memory-os",
   "canonicalProjectId": "44444444-4444-4444-8444-444444444401",
   "canonicalWorkspaceId": "11111111-1111-4111-8111-111111111111",
-  "reconciledAgainstMainSha": "4bd2c567570d240c9b55e340c77775fb19987da5",
-  "currentMilestone": "M15.3-project-entity-routing",
-  "completedThrough": "M15.3",
-  "nextSlice": "M15.4-canonicalization-dedupe-supersession",
+  "reconciledAgainstMainSha": "42341761a00c0b02ac6c14398210df215bd5b847",
+  "currentMilestone": "M15.4-canonicalization-dedupe-supersession",
+  "completedThrough": "M15.4",
+  "nextSlice": "M15.5-freshness-reconciliation",
   "canonicalPlanMemoryTitle": "SASHA MEMORY OS — CANONICAL COMPLETION PLAN TO 100% — 2026-08-21",
   "supabase": {
     "projectName": "sasha-memory-os",
@@ -29,7 +29,8 @@
     "m14SupportOps": "m14-s10-v1",
     "m15SourceEventContract": "m15-s01-v1",
     "m15ConnectorOrchestration": "m15-s02-v1",
-    "m15ProjectRouting": "m15-s03-v1"
+    "m15ProjectRouting": "m15-s03-v1",
+    "m15Canonicalization": "m15-s04-v1"
   },
   "deployments": {
     "flyApi": {
@@ -90,28 +91,28 @@
     {
       "id": "m15-2-live-connector-orchestration-e2e",
       "severity": "M15",
-      "summary": "M15.2 fixture/unit orchestration PASS; live GitHub/Drive/Gmail/Calendar continuous orchestration E2E blocked on live credentials."
+      "summary": "Live GitHub/Drive/Gmail/Calendar continuous orchestration E2E blocked on live credentials."
     },
     {
       "id": "m15-remote-migration-apply",
       "severity": "ops",
-      "summary": "Migration 20260821100000_m15_slice_01_source_event_contract.sql is checked in; remote Supabase apply is an explicit deploy step."
+      "summary": "Migration 20260821100000_m15_slice_01_source_event_contract.sql checked in; remote apply still explicit."
     },
     {
-      "id": "m15-3-live-routing-corrections-ui",
+      "id": "m15-4-live-duplicate-corpus-eval",
       "severity": "M15",
-      "summary": "Router + golden fixture landed; Control Center UNCLASSIFIED inbox corrections UI is deferred to M19 governance surfaces."
+      "summary": "Authority/dedupe contract + unit proofs landed; large live duplicate corpus eval remains for M15 exit gate."
     },
     {
       "id": "fly-hosted-api-deferred",
       "severity": "ops",
-      "summary": "Fly.io hosted API remains deferred; Edge MCP + local/docker API cover current paths."
+      "summary": "Fly.io hosted API remains deferred."
     }
   ],
   "readmeMustContain": [
-    "M15.3-project-entity-routing",
+    "M15.4-canonicalization-dedupe-supersession",
     "docs/engineering/CURRENT_STATE.json",
-    "M15.4-canonicalization-dedupe-supersession"
+    "M15.5-freshness-reconciliation"
   ],
   "readmeMustNotClaimAsCurrentTip": [
     "**M7 started:**"

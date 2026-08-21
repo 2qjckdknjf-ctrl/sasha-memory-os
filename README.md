@@ -22,14 +22,14 @@
 
 Machine-readable snapshot: [docs/engineering/CURRENT_STATE.json](docs/engineering/CURRENT_STATE.json) (`m14.1-v1`).
 
-- **Current milestone:** `M15.3-project-entity-routing` (fail-closed UNCLASSIFIED router + golden set)
-- **Completed through:** M14 packs + M14.1 + M15.1–M15.3 (`m15-s01`…`m15-s03`)
-- **Next slice:** `M15.4-canonicalization-dedupe-supersession`
+- **Current milestone:** `M15.4-canonicalization-dedupe-supersession` (authority matrix + source dedupe)
+- **Completed through:** M14 packs + M14.1 + M15.1–M15.4
+- **Next slice:** `M15.5-freshness-reconciliation`
 - **M6 ChatGPT Mode A PASS (2026-08-15):** final `Sasha Memory OS` custom MCP app connected through Supabase OAuth 2.1; exact seven-tool scan, normal-chat read, `memory.store_decision`, and read-after-write all passed. The stale `Sasha Mamory OS` registration was removed; exactly one personal Sasha registration remains.
 - Core path live: WP-01…08 RPCs, vault OAuth, hybrid RRF retrieval, embeddings, consolidation/outbox/jobs, MCP, Control Center
 - M10–M13 foundations merged (Drive/Gmail/Calendar policies, ROMA project-health, bounded agentic retrieval / consolidation / ranking)
-- Writes require explicit `project_id`; `MEMORY_OS_DEFAULT_PROJECT_ID` is ignored as a write/admin/export fallback; ambiguous routing → `UNCLASSIFIED`
-- Known blockers: live connector orchestration E2E; remote apply of M15.1 migration; UNCLASSIFIED inbox UI (M19)
+- Writes require explicit `project_id`; ambiguous routing → `UNCLASSIFIED`; canonical duplicates follow authority matrix
+- Known blockers: live connector E2E; remote M15.1 migration apply; live duplicate corpus eval
 
 ## Репозиторий
 
@@ -100,7 +100,7 @@ Canonical order (do not skip): see [M14_1_BASELINE.md](docs/engineering/M14_1_BA
 2. ~~M15.1 source-event contract~~ — immutable normalized `source_events`, idempotency, adapters
 3. ~~M15.2 connector orchestration~~ — pack + recovery tick (fixture PASS; live E2E BLOCKED)
 4. ~~M15.3 project/entity routing~~ — fail-closed UNCLASSIFIED inbox, golden precision >=95%
-5. **M15.4 canonicalization / dedupe / supersession**
-6. M15.5–M15.8 autonomous runtime (freshness, revoke, capture policy, SLOs)
-7. M16–M20 per canonical plan (Apple bridge → knowledge graph → agent contracts → Control Center → GA gates)
+5. ~~M15.4 canonicalization / dedupe / supersession~~ — authority matrix + source dedupe
+6. **M15.5 freshness / reconciliation**
+7. M15.6–M15.8 (revoke, capture policy, SLOs) then M16–M20
 8. Fly full HTTP API — **deferred** (scaffold kept; Edge MCP remains the durable ChatGPT path)
