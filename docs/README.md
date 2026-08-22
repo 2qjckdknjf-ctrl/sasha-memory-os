@@ -39,6 +39,7 @@
 | [engineering/M16_SLICE_03.md](engineering/M16_SLICE_03.md) | M16 Slice 03: iCloud Drive / Files |
 | [engineering/M16_SLICE_04.md](engineering/M16_SLICE_04.md) | M16 Slice 04: Photos |
 | [engineering/M16_SLICE_05.md](engineering/M16_SLICE_05.md) | M16 Slice 05: Notes / Reminders / Contacts |
+| [engineering/M17_SLICE_01.md](engineering/M17_SLICE_01.md) | M17 Slice 01: entity graph foundation |
 | [engineering/M14_DOC_CATALOG.md](engineering/M14_DOC_CATALOG.md) | Versioned GA doc catalog for current official surfaces |
 | [engineering/ONBOARDING.md](engineering/ONBOARDING.md) | First-hour onboarding guide on current MCP + Control Center surfaces |
 | [engineering/M14_SLICE_05.md](engineering/M14_SLICE_05.md) | M14 Slice 05: incident runbook pack |
