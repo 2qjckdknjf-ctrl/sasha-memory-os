@@ -5,10 +5,10 @@
   "repository": "2qjckdknjf-ctrl/sasha-memory-os",
   "canonicalProjectId": "44444444-4444-4444-8444-444444444401",
   "canonicalWorkspaceId": "11111111-1111-4111-8111-111111111111",
-  "reconciledAgainstMainSha": "0c9ce8992df66bfd5bb79adf9d70eb94363be55e",
-  "currentMilestone": "M17.1-entity-graph-foundation",
-  "completedThrough": "M17.1",
-  "nextSlice": "M17.2-entity-resolution",
+  "reconciledAgainstMainSha": "d8e27f29340274968390f8d37fd286955f284dfc",
+  "currentMilestone": "M17.2-entity-resolution",
+  "completedThrough": "M17.2",
+  "nextSlice": "M17.3-graph-retrieval",
   "canonicalPlanMemoryTitle": "SASHA MEMORY OS — CANONICAL COMPLETION PLAN TO 100% — 2026-08-21",
   "supabase": {
     "projectName": "sasha-memory-os",
@@ -41,7 +41,8 @@
     "m16IcloudDriveFiles": "m16-s03-v1",
     "m16Photos": "m16-s04-v1",
     "m16NotesRemindersContacts": "m16-s05-v1",
-    "m17EntityGraph": "m17-s01-v1"
+    "m17EntityGraph": "m17-s01-v1",
+    "m17EntityResolution": "m17-s02-v1"
   },
   "deployments": {
     "flyApi": {
@@ -120,7 +121,7 @@
     {
       "id": "m16-live-device-e2e",
       "severity": "M16",
-      "summary": "M17 entity graph foundation contracts PASS; live golden resolution suite and graph UI blocked."
+      "summary": "M17 entity graph + cross-source resolution contracts PASS; live golden resolution E2E and graph UI blocked."
     },
     {
       "id": "m15-remote-migration-apply",
@@ -134,9 +135,9 @@
     }
   ],
   "readmeMustContain": [
-    "M17.1-entity-graph-foundation",
+    "M17.2-entity-resolution",
     "docs/engineering/CURRENT_STATE.json",
-    "M17.2-entity-resolution"
+    "M17.3-graph-retrieval"
   ],
   "readmeMustNotClaimAsCurrentTip": [
     "**M7 started:**"

@@ -1,0 +1,385 @@
+[
+  {
+    "id": "github-repo-stable-ref",
+    "entityClass": "repository",
+    "signals": [
+      {
+        "kind": "stable_source_ref",
+        "source": "github",
+        "entityClass": "repository",
+        "candidateStableId": "entity:repository:github:2qjckdknjf-ctrl/sasha-memory-os",
+        "weight": 1,
+        "evidence": "webhook delivery"
+      }
+    ],
+    "expectedOutcome": "resolved",
+    "expectedStableId": "entity:repository:github:2qjckdknjf-ctrl/sasha-memory-os"
+  },
+  {
+    "id": "github-repo-aligned-signals",
+    "entityClass": "repository",
+    "signals": [
+      {
+        "kind": "repository_full_name",
+        "source": "github",
+        "entityClass": "repository",
+        "candidateStableId": "entity:repository:github:2qjckdknjf-ctrl/sasha-memory-os",
+        "weight": 0.9,
+        "evidence": "full name"
+      },
+      {
+        "kind": "stable_source_ref",
+        "source": "github",
+        "entityClass": "repository",
+        "candidateStableId": "entity:repository:github:2qjckdknjf-ctrl/sasha-memory-os",
+        "weight": 0.85,
+        "evidence": "installation id"
+      }
+    ],
+    "expectedOutcome": "resolved",
+    "expectedStableId": "entity:repository:github:2qjckdknjf-ctrl/sasha-memory-os"
+  },
+  {
+    "id": "drive-file-id",
+    "entityClass": "file",
+    "signals": [
+      {
+        "kind": "drive_file_id",
+        "source": "drive",
+        "entityClass": "file",
+        "candidateStableId": "entity:file:drive:1AbCdEf",
+        "weight": 0.95,
+        "evidence": "drive revision"
+      }
+    ],
+    "expectedOutcome": "resolved",
+    "expectedStableId": "entity:file:drive:1AbCdEf"
+  },
+  {
+    "id": "gmail-thread",
+    "entityClass": "email",
+    "signals": [
+      {
+        "kind": "gmail_thread_id",
+        "source": "gmail",
+        "entityClass": "email",
+        "candidateStableId": "entity:email:gmail:thread-42",
+        "weight": 0.9,
+        "evidence": "thread header"
+      }
+    ],
+    "expectedOutcome": "resolved",
+    "expectedStableId": "entity:email:gmail:thread-42"
+  },
+  {
+    "id": "calendar-event",
+    "entityClass": "calendar_event",
+    "signals": [
+      {
+        "kind": "calendar_event_id",
+        "source": "calendar",
+        "entityClass": "calendar_event",
+        "candidateStableId": "entity:calendar_event:calendar:evt-9",
+        "weight": 0.92,
+        "evidence": "ics uid"
+      }
+    ],
+    "expectedOutcome": "resolved",
+    "expectedStableId": "entity:calendar_event:calendar:evt-9"
+  },
+  {
+    "id": "chatgpt-conversation",
+    "entityClass": "conversation",
+    "signals": [
+      {
+        "kind": "stable_source_ref",
+        "source": "chatgpt",
+        "entityClass": "conversation",
+        "candidateStableId": "entity:conversation:chatgpt:conv-100",
+        "weight": 1,
+        "evidence": "connector export"
+      }
+    ],
+    "expectedOutcome": "resolved",
+    "expectedStableId": "entity:conversation:chatgpt:conv-100"
+  },
+  {
+    "id": "apple-contact",
+    "entityClass": "person",
+    "signals": [
+      {
+        "kind": "apple_contact_ref",
+        "source": "apple",
+        "entityClass": "person",
+        "candidateStableId": "entity:person:apple:contact-7",
+        "projectId": "44444444-4444-4444-8444-444444444401",
+        "weight": 0.9,
+        "evidence": "selected contact"
+      }
+    ],
+    "expectedOutcome": "resolved",
+    "expectedStableId": "entity:person:apple:contact-7"
+  },
+  {
+    "id": "github-person-login",
+    "entityClass": "person",
+    "signals": [
+      {
+        "kind": "github_login",
+        "source": "github",
+        "entityClass": "person",
+        "candidateStableId": "entity:person:github:2qjckdknjf-ctrl",
+        "projectId": "44444444-4444-4444-8444-444444444401",
+        "weight": 0.95,
+        "evidence": "commit author"
+      }
+    ],
+    "expectedOutcome": "resolved",
+    "expectedStableId": "entity:person:github:2qjckdknjf-ctrl"
+  },
+  {
+    "id": "gmail-person-email",
+    "entityClass": "person",
+    "signals": [
+      {
+        "kind": "email_address",
+        "source": "gmail",
+        "entityClass": "person",
+        "candidateStableId": "entity:person:gmail:sasha@example.com",
+        "projectId": "44444444-4444-4444-8444-444444444401",
+        "weight": 0.88,
+        "evidence": "from header"
+      }
+    ],
+    "expectedOutcome": "resolved",
+    "expectedStableId": "entity:person:gmail:sasha@example.com"
+  },
+  {
+    "id": "project-memory-os",
+    "entityClass": "project",
+    "signals": [
+      {
+        "kind": "stable_source_ref",
+        "source": "chatgpt",
+        "entityClass": "project",
+        "candidateStableId": "entity:project:memory_os:44444444-4444-4444-8444-444444444401",
+        "projectId": "44444444-4444-4444-8444-444444444401",
+        "weight": 1,
+        "evidence": "canonical project id"
+      }
+    ],
+    "expectedOutcome": "resolved",
+    "expectedStableId": "entity:project:memory_os:44444444-4444-4444-8444-444444444401"
+  },
+  {
+    "id": "decision-milestone",
+    "entityClass": "decision",
+    "signals": [
+      {
+        "kind": "stable_source_ref",
+        "source": "chatgpt",
+        "entityClass": "decision",
+        "candidateStableId": "entity:decision:memory_os:m16-5-milestone",
+        "weight": 0.9,
+        "evidence": "verified decision"
+      }
+    ],
+    "expectedOutcome": "resolved",
+    "expectedStableId": "entity:decision:memory_os:m16-5-milestone"
+  },
+  {
+    "id": "task-reminder",
+    "entityClass": "task",
+    "signals": [
+      {
+        "kind": "stable_source_ref",
+        "source": "apple",
+        "entityClass": "task",
+        "candidateStableId": "entity:task:reminders:list-1:item-9",
+        "weight": 0.85,
+        "evidence": "eventkit export"
+      }
+    ],
+    "expectedOutcome": "resolved",
+    "expectedStableId": "entity:task:reminders:list-1:item-9"
+  },
+  {
+    "id": "missing-signals",
+    "entityClass": "repository",
+    "signals": [],
+    "expectedOutcome": "unresolved",
+    "expectedReason": "missing_signals"
+  },
+  {
+    "id": "low-confidence",
+    "entityClass": "repository",
+    "signals": [
+      {
+        "kind": "alias_normalized",
+        "source": "github",
+        "entityClass": "repository",
+        "candidateStableId": "entity:repository:github:org/repo",
+        "weight": 0.3,
+        "evidence": "weak alias"
+      }
+    ],
+    "expectedOutcome": "unresolved",
+    "expectedReason": "low_confidence"
+  },
+  {
+    "id": "near-tie-conflict",
+    "entityClass": "repository",
+    "signals": [
+      {
+        "kind": "stable_source_ref",
+        "source": "github",
+        "entityClass": "repository",
+        "candidateStableId": "entity:repository:github:org/repo-a",
+        "weight": 0.9,
+        "evidence": "repo a"
+      },
+      {
+        "kind": "stable_source_ref",
+        "source": "github",
+        "entityClass": "repository",
+        "candidateStableId": "entity:repository:github:org/repo-b",
+        "weight": 0.85,
+        "evidence": "repo b"
+      }
+    ],
+    "expectedOutcome": "ambiguous",
+    "expectedReason": "conflicting_candidates"
+  },
+  {
+    "id": "cross-project-person",
+    "entityClass": "person",
+    "signals": [
+      {
+        "kind": "github_login",
+        "source": "github",
+        "entityClass": "person",
+        "candidateStableId": "entity:person:github:alex-a",
+        "projectId": "11111111-1111-4111-8111-111111111111",
+        "weight": 0.95,
+        "evidence": "project a"
+      },
+      {
+        "kind": "email_address",
+        "source": "gmail",
+        "entityClass": "person",
+        "candidateStableId": "entity:person:gmail:alex-b",
+        "projectId": "22222222-2222-4222-8222-222222222222",
+        "weight": 0.95,
+        "evidence": "project b"
+      }
+    ],
+    "expectedOutcome": "ambiguous",
+    "expectedReason": "cross_project_scope"
+  },
+  {
+    "id": "zero-weight-filtered",
+    "entityClass": "file",
+    "signals": [
+      {
+        "kind": "drive_file_id",
+        "source": "drive",
+        "entityClass": "file",
+        "candidateStableId": "entity:file:drive:dead",
+        "weight": 0,
+        "evidence": "ignored"
+      }
+    ],
+    "expectedOutcome": "unresolved",
+    "expectedReason": "missing_signals"
+  },
+  {
+    "id": "class-mismatch-filtered",
+    "entityClass": "repository",
+    "signals": [
+      {
+        "kind": "stable_source_ref",
+        "source": "github",
+        "entityClass": "person",
+        "candidateStableId": "entity:person:github:alex",
+        "weight": 1,
+        "evidence": "wrong class"
+      }
+    ],
+    "expectedOutcome": "unresolved",
+    "expectedReason": "missing_signals"
+  },
+  {
+    "id": "clear-winner-despite-runner-up",
+    "entityClass": "document",
+    "signals": [
+      {
+        "kind": "stable_source_ref",
+        "source": "drive",
+        "entityClass": "document",
+        "candidateStableId": "entity:document:drive:doc-primary",
+        "weight": 1,
+        "evidence": "primary"
+      },
+      {
+        "kind": "alias_exact",
+        "source": "drive",
+        "entityClass": "document",
+        "candidateStableId": "entity:document:drive:doc-secondary",
+        "weight": 0.5,
+        "evidence": "secondary"
+      }
+    ],
+    "expectedOutcome": "resolved",
+    "expectedStableId": "entity:document:drive:doc-primary"
+  },
+  {
+    "id": "goal-scoped-project",
+    "entityClass": "goal",
+    "signals": [
+      {
+        "kind": "stable_source_ref",
+        "source": "chatgpt",
+        "entityClass": "goal",
+        "candidateStableId": "entity:goal:memory_os:ship-m17",
+        "projectId": "44444444-4444-4444-8444-444444444401",
+        "weight": 0.9,
+        "evidence": "milestone goal"
+      }
+    ],
+    "expectedOutcome": "resolved",
+    "expectedStableId": "entity:goal:memory_os:ship-m17"
+  },
+  {
+    "id": "risk-scoped-foreign-only",
+    "entityClass": "risk",
+    "signals": [
+      {
+        "kind": "stable_source_ref",
+        "source": "github",
+        "entityClass": "risk",
+        "candidateStableId": "entity:risk:github:secret-leak",
+        "projectId": "55555555-5555-4555-8555-555555555501",
+        "weight": 0.95,
+        "evidence": "foreign project only"
+      }
+    ],
+    "expectedOutcome": "ambiguous",
+    "expectedReason": "cross_project_scope"
+  },
+  {
+    "id": "photo-asset-apple",
+    "entityClass": "photo_asset",
+    "signals": [
+      {
+        "kind": "stable_source_ref",
+        "source": "apple",
+        "entityClass": "photo_asset",
+        "candidateStableId": "entity:photo_asset:apple:local-55",
+        "weight": 0.88,
+        "evidence": "photokit selected asset"
+      }
+    ],
+    "expectedOutcome": "resolved",
+    "expectedStableId": "entity:photo_asset:apple:local-55"
+  }
+]

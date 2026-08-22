@@ -16,6 +16,7 @@ export * from './icloudDriveFiles.js';
 export * from './photosIngest.js';
 export * from './appleNotesRemindersContacts.js';
 export * from './entityGraph.js';
+export * from './entityResolution.js';
 export * from './appleCompanion.js';
 export * from './memory.js';
 export * from './jobs.js';
