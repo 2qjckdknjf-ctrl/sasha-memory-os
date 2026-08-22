@@ -39,6 +39,17 @@ describe('M16.5 Notes / Reminders / Contacts pack', () => {
         userInitiated: true,
       }).mapping,
     ).toBe('reject');
+    const rejectedDeletedNote = decideNotesIngest({
+      projectId,
+      accessPath: 'eventkit_selected_lists' as never,
+      userInitiated: true,
+      deleted: true,
+    });
+    expect(rejectedDeletedNote).toMatchObject({
+      mapping: 'reject',
+      inScope: false,
+    });
+    expect(rejectedDeletedNote.tombstone).toBeUndefined();
 
     expect(
       decideRemindersIngest({

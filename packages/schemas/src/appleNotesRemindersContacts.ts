@@ -98,17 +98,6 @@ export function decideNotesIngest(input: {
 }): PersonalSourceIngestDecision {
   requireExplicitProjectId(input.projectId);
 
-  if (input.deleted) {
-    return {
-      source: 'notes',
-      mapping: 'note',
-      inScope: true,
-      metadataOnly: true,
-      tombstone: true,
-      reason: 'note removal emits idempotent tombstone',
-    };
-  }
-
   if (
     input.accessPath !== 'share_extension' &&
     input.accessPath !== 'manual_export'
@@ -119,6 +108,17 @@ export function decideNotesIngest(input: {
       inScope: false,
       metadataOnly: true,
       reason: 'notes require share extension or manual export; no CloudKit dump',
+    };
+  }
+
+  if (input.deleted) {
+    return {
+      source: 'notes',
+      mapping: 'note',
+      inScope: true,
+      metadataOnly: true,
+      tombstone: true,
+      reason: 'note removal emits idempotent tombstone',
     };
   }
 
