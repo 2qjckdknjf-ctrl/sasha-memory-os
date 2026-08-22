@@ -1,0 +1,21 @@
+{
+  "manifestVersion": "m16-s05-v1",
+  "packVersion": "m16-s05-v1",
+  "source": "fixture-local",
+  "sources": ["notes", "reminders", "contacts"],
+  "accessPaths": {
+    "notes": ["share_extension", "manual_export"],
+    "reminders": ["eventkit_selected_lists"],
+    "contacts": ["contacts_selected"]
+  },
+  "liveDeviceE2E": {
+    "status": "contract_pass_live_device_blocked",
+    "claimPassFromMocks": false
+  },
+  "invariants": {
+    "selectedSourceIngestOnly": true,
+    "notesNoCloudKitDump": true,
+    "contactsMetadataMinimalOptIn": true,
+    "modeAToolCount": 7
+  }
+}

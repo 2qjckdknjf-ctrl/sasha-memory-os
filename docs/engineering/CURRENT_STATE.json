@@ -5,10 +5,10 @@
   "repository": "2qjckdknjf-ctrl/sasha-memory-os",
   "canonicalProjectId": "44444444-4444-4444-8444-444444444401",
   "canonicalWorkspaceId": "11111111-1111-4111-8111-111111111111",
-  "reconciledAgainstMainSha": "41eee05c56f847d8b7f8d12d89763b1cbd700e90",
-  "currentMilestone": "M16.4-photos",
-  "completedThrough": "M16.4",
-  "nextSlice": "M16.5-notes-reminders-contacts",
+  "reconciledAgainstMainSha": "e9e697e36aa1341ea6c6c731ccd054f6ef5ea65a",
+  "currentMilestone": "M16.5-notes-reminders-contacts",
+  "completedThrough": "M16.5",
+  "nextSlice": "M17-entity-graph",
   "canonicalPlanMemoryTitle": "SASHA MEMORY OS — CANONICAL COMPLETION PLAN TO 100% — 2026-08-21",
   "supabase": {
     "projectName": "sasha-memory-os",
@@ -39,7 +39,8 @@
     "m16AppleFeasibility": "m16-s01-v1",
     "m16AppleSecurity": "m16-s02-v1",
     "m16IcloudDriveFiles": "m16-s03-v1",
-    "m16Photos": "m16-s04-v1"
+    "m16Photos": "m16-s04-v1",
+    "m16NotesRemindersContacts": "m16-s05-v1"
   },
   "deployments": {
     "flyApi": {
@@ -118,7 +119,7 @@
     {
       "id": "m16-live-device-e2e",
       "severity": "M16",
-      "summary": "Apple contracts through Photos PASS; live PhotoKit/Files/signing E2E blocked."
+      "summary": "Apple contracts through Notes/Reminders/Contacts PASS; live EventKit/Contacts/Files/PhotoKit/signing E2E blocked."
     },
     {
       "id": "m15-remote-migration-apply",
@@ -132,9 +133,9 @@
     }
   ],
   "readmeMustContain": [
-    "M16.4-photos",
+    "M16.5-notes-reminders-contacts",
     "docs/engineering/CURRENT_STATE.json",
-    "M16.5-notes-reminders-contacts"
+    "M17-entity-graph"
   ],
   "readmeMustNotClaimAsCurrentTip": [
     "**M7 started:**"

@@ -22,13 +22,13 @@
 
 Machine-readable snapshot: [docs/engineering/CURRENT_STATE.json](docs/engineering/CURRENT_STATE.json) (`m14.1-v1`).
 
-- **Current milestone:** `M16.4-photos` (metadata-only default; no silent bulk analysis; live PhotoKit blocked)
-- **Completed through:** M14 packs + M14.1 + M15 packs + M16.1–M16.4
-- **Next slice:** `M16.5-notes-reminders-contacts`
+- **Current milestone:** `M16.5-notes-reminders-contacts` (selected-source Notes/Reminders/Contacts; live EventKit/Contacts blocked)
+- **Completed through:** M14 packs + M14.1 + M15 packs + M16.1–M16.5
+- **Next slice:** `M17-entity-graph`
 - **M6 ChatGPT Mode A PASS (2026-08-15):** final `Sasha Memory OS` custom MCP app connected through Supabase OAuth 2.1; exact seven-tool scan, normal-chat read, `memory.store_decision`, and read-after-write all passed. The stale `Sasha Mamory OS` registration was removed; exactly one personal Sasha registration remains.
 - Core path live: WP-01…08 RPCs, vault OAuth, hybrid RRF retrieval, embeddings, consolidation/outbox/jobs, MCP, Control Center
 - M10–M13 foundations merged (Drive/Gmail/Calendar policies, ROMA project-health, bounded agentic retrieval / consolidation / ranking)
-- Apple: companion-required through Photos contracts; live device E2E still blocked
+- Apple: companion-required through Notes/Reminders/Contacts contracts; live device E2E still blocked
 - Known blockers: M15 live connector E2E; Apple live device E2E; remote M15.1 migration apply; Fly deferred
 
 ## Репозиторий
@@ -110,5 +110,6 @@ Canonical order (do not skip): see [M14_1_BASELINE.md](docs/engineering/M14_1_BA
 12. ~~M16.2 Apple companion security foundation~~ — Keychain/device binding/encrypted transport (signing BLOCKED)
 13. ~~M16.3 iCloud Drive / Files~~ — selected-scope metadata-first (live picker BLOCKED)
 14. ~~M16.4 Photos~~ — metadata-only default; no silent bulk analysis (PhotoKit BLOCKED)
-15. **M16.5 Notes / Reminders / Contacts**
-16. M17–M20; Fly API deferred
+15. ~~M16.5 Notes / Reminders / Contacts~~ — selected-source typed mappings (EventKit/Contacts BLOCKED)
+16. **M17 entity graph**
+17. M18–M20; Fly API deferred
