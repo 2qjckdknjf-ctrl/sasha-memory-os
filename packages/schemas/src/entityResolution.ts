@@ -105,7 +105,7 @@ function requireExplicitProjectId(projectId: string | null | undefined): string 
 function isUsableSignal(signal: EntityResolutionSignal): boolean {
   if (signal.weight <= 0) return false;
   if (signal.kind === 'alias_exact' || signal.kind === 'alias_normalized') {
-    return Boolean(signal.alias?.trim());
+    return Boolean(signal.candidateStableId?.trim() || signal.alias?.trim());
   }
   return Boolean(signal.candidateStableId?.trim());
 }
@@ -145,7 +145,9 @@ export function resolveEntityCandidate(input: {
         .map((signal) => signal.projectId?.trim())
         .filter((value): value is string => Boolean(value)),
     );
-    if (projectIds.size > 1 && !projectIds.has(projectId)) {
+    const hasCurrentProject = projectIds.has(projectId);
+    const hasForeignProject = [...projectIds].some((id) => id !== projectId);
+    if (hasCurrentProject && hasForeignProject) {
       return {
         outcome: 'ambiguous',
         confidence: 0,
@@ -154,8 +156,7 @@ export function resolveEntityCandidate(input: {
         reason: 'cross_project_scope',
       };
     }
-    const foreignOnly = [...projectIds].some((id) => id !== projectId);
-    if (foreignOnly && projectIds.size >= 1 && !projectIds.has(projectId)) {
+    if (hasForeignProject && !hasCurrentProject) {
       return {
         outcome: 'ambiguous',
         confidence: 0,
@@ -212,13 +213,19 @@ export function resolveEntityCandidate(input: {
     };
   }
 
-  const stableId = topId.startsWith('alias:')
-    ? topId
-    : topId;
+  if (topId.startsWith('alias:')) {
+    return {
+      outcome: 'unresolved',
+      confidence: Math.min(1, top.weight),
+      explanation: 'Top candidate lacks a durable entity stable id.',
+      signals: input.signals,
+      reason: 'invalid_candidate',
+    };
+  }
 
   return {
     outcome: 'resolved',
-    stableId,
+    stableId: topId,
     entityClass: input.entityClass,
     confidence: Math.min(1, top.weight),
     explanation: `Resolved entity candidate (${top.evidence.join('; ')})`,

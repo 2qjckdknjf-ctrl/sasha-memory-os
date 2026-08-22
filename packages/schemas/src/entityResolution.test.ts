@@ -83,4 +83,67 @@ describe('M17.2 entity resolution pack', () => {
       }).reason,
     ).toBe('missing_signals');
   });
+
+  it('fails closed on mixed project scopes and alias-only candidates', () => {
+    expect(
+      resolveEntityCandidate({
+        projectId,
+        entityClass: 'person',
+        signals: [
+          {
+            kind: 'github_login',
+            source: 'github',
+            entityClass: 'person',
+            candidateStableId: 'entity:person:github:alex-current',
+            projectId,
+            weight: 0.9,
+            evidence: 'current project login',
+          },
+          {
+            kind: 'email_address',
+            source: 'gmail',
+            entityClass: 'person',
+            candidateStableId: 'entity:person:gmail:alex-foreign',
+            projectId: '11111111-1111-4111-8111-111111111111',
+            weight: 0.95,
+            evidence: 'foreign project email',
+          },
+        ],
+      }).reason,
+    ).toBe('cross_project_scope');
+
+    expect(
+      resolveEntityCandidate({
+        projectId,
+        entityClass: 'repository',
+        signals: [
+          {
+            kind: 'alias_normalized',
+            source: 'github',
+            entityClass: 'repository',
+            candidateStableId: repoId,
+            weight: 0.3,
+            evidence: 'weak alias',
+          },
+        ],
+      }).reason,
+    ).toBe('low_confidence');
+
+    expect(
+      resolveEntityCandidate({
+        projectId,
+        entityClass: 'repository',
+        signals: [
+          {
+            kind: 'alias_exact',
+            source: 'github',
+            entityClass: 'repository',
+            alias: 'Sasha Memory OS',
+            weight: 0.9,
+            evidence: 'alias only',
+          },
+        ],
+      }).reason,
+    ).toBe('invalid_candidate');
+  });
 });
