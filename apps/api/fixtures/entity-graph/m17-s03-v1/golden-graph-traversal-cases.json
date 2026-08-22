@@ -96,7 +96,7 @@
     ],
     "maxNodes": 2,
     "expectedVisitedCount": 2,
-    "expectedEdgeCount": 2,
+    "expectedEdgeCount": 1,
     "expectedStopReason": "max_nodes"
   },
   {

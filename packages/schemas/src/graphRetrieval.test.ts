@@ -91,4 +91,67 @@ describe('M17.3 graph-aware retrieval pack', () => {
     expect(fused[0]?.fusedScore).toBeGreaterThan(0.8);
     expect(fused[0]?.evidenceRefs).toContain('edge:works_on');
   });
+
+  it('stops the current hop layer as soon as max nodes is reached', () => {
+    const traversal = traverseGraphBounded({
+      projectId,
+      seedStableId: 'entity:project:memory_os:4444',
+      edges: [
+        {
+          fromStableId: 'entity:project:memory_os:4444',
+          toStableId: 'entity:repository:github:org/a',
+          edgeType: 'owns',
+          evidenceConfidence: 0.95,
+          sourceRef: 'seed-a',
+        },
+        {
+          fromStableId: 'entity:project:memory_os:4444',
+          toStableId: 'entity:repository:github:org/b',
+          edgeType: 'owns',
+          evidenceConfidence: 0.95,
+          sourceRef: 'seed-b',
+        },
+        {
+          fromStableId: 'entity:project:memory_os:4444',
+          toStableId: 'entity:repository:github:org/c',
+          edgeType: 'owns',
+          evidenceConfidence: 0.95,
+          sourceRef: 'seed-c',
+        },
+        {
+          fromStableId: 'entity:repository:github:org/a',
+          toStableId: 'entity:decision:memory_os:m17-2',
+          edgeType: 'decided_in',
+          evidenceConfidence: 0.95,
+          sourceRef: 'hop-a',
+        },
+        {
+          fromStableId: 'entity:repository:github:org/b',
+          toStableId: 'entity:decision:memory_os:m17-3',
+          edgeType: 'decided_in',
+          evidenceConfidence: 0.95,
+          sourceRef: 'hop-b',
+        },
+        {
+          fromStableId: 'entity:repository:github:org/c',
+          toStableId: 'entity:decision:memory_os:m17-4',
+          edgeType: 'decided_in',
+          evidenceConfidence: 0.95,
+          sourceRef: 'hop-c',
+        },
+      ],
+      maxHops: 2,
+      maxNodes: 5,
+      maxEdges: 10,
+    });
+
+    expect(traversal.stoppedReason).toBe('max_nodes');
+    expect(traversal.visitedNodes).toHaveLength(5);
+    expect(traversal.traversedEdges.map((edge) => edge.sourceRef)).toEqual([
+      'seed-a',
+      'seed-b',
+      'seed-c',
+      'hop-a',
+    ]);
+  });
 });

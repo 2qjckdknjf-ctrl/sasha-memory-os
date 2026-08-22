@@ -152,11 +152,12 @@ export function traverseGraphBounded(input: {
 
   while (frontier.length > 0 && hops < maxHops) {
     const nextFrontier: string[] = [];
+    let stopTraversal = false;
     for (const node of frontier) {
       for (const edge of adjacency.get(node) ?? []) {
         if (traversed.length >= maxEdges) {
           stoppedReason = 'max_edges';
-          frontier = [];
+          stopTraversal = true;
           break;
         }
 
@@ -166,22 +167,27 @@ export function traverseGraphBounded(input: {
         const neighbor =
           edge.fromStableId === node ? edge.toStableId : edge.fromStableId;
 
+        if (!visited.has(neighbor) && visited.size >= maxNodes) {
+          stoppedReason = 'max_nodes';
+          stopTraversal = true;
+          break;
+        }
+
         traversedKeys.add(key);
         traversed.push(edge);
 
         if (!visited.has(neighbor)) {
-          if (visited.size >= maxNodes) {
-            stoppedReason = 'max_nodes';
-            frontier = [];
-            break;
-          }
           visited.add(neighbor);
           nextFrontier.push(neighbor);
         }
       }
+
+      if (stopTraversal) {
+        break;
+      }
     }
 
-    if (stoppedReason === 'max_nodes' || stoppedReason === 'max_edges') {
+    if (stopTraversal) {
       break;
     }
 
