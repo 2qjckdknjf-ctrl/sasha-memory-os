@@ -22,14 +22,14 @@
 
 Machine-readable snapshot: [docs/engineering/CURRENT_STATE.json](docs/engineering/CURRENT_STATE.json) (`m14.1-v1`).
 
-- **Current milestone:** `M17.2-entity-resolution` (cross-source signals; golden >=95%; live E2E blocked)
-- **Completed through:** M14 packs + M14.1 + M15 packs + M16 + M17.1–M17.2
-- **Next slice:** `M17.3-graph-retrieval`
+- **Current milestone:** `M17.3-graph-retrieval` (bounded traversal + hybrid fusion; live graph E2E blocked)
+- **Completed through:** M14 packs + M14.1 + M15 packs + M16 + M17.1–M17.3
+- **Next slice:** `M17.4-entity-migration-backfill`
 - **M6 ChatGPT Mode A PASS (2026-08-15):** final `Sasha Memory OS` custom MCP app connected through Supabase OAuth 2.1; exact seven-tool scan, normal-chat read, `memory.store_decision`, and read-after-write all passed. The stale `Sasha Mamory OS` registration was removed; exactly one personal Sasha registration remains.
 - Core path live: WP-01…08 RPCs, vault OAuth, hybrid RRF retrieval, embeddings, consolidation/outbox/jobs, MCP, Control Center
 - M10–M13 foundations merged (Drive/Gmail/Calendar policies, ROMA project-health, bounded agentic retrieval / consolidation / ranking)
 - Apple: companion-required personal-source contracts complete; live device E2E still blocked
-- Entity graph: foundation + cross-source resolution; live golden resolution E2E blocked
+- Entity graph: foundation + resolution + bounded graph-aware retrieval; live graph DB E2E blocked
 - Known blockers: M15 live connector E2E; Apple live device E2E; remote M15.1 migration apply; Fly deferred
 
 ## Репозиторий
@@ -114,5 +114,6 @@ Canonical order (do not skip): see [M14_1_BASELINE.md](docs/engineering/M14_1_BA
 15. ~~M16.5 Notes / Reminders / Contacts~~ — selected-source typed mappings (EventKit/Contacts BLOCKED)
 16. ~~M17.1 Entity graph foundation~~ — classes/edges/merge policy (live graph BLOCKED)
 17. ~~M17.2 Entity resolution~~ — cross-source signals; golden >=95% (live E2E BLOCKED)
-18. **M17.3 Graph-aware retrieval**
-19. M17.4+ / M18–M20; Fly API deferred
+18. ~~M17.3 Graph-aware retrieval~~ — bounded traversal + hybrid fusion (live graph DB BLOCKED)
+19. **M17.4 Entity migration backfill**
+20. M17.5+ / M18–M20; Fly API deferred

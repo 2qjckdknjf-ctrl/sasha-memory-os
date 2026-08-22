@@ -1,0 +1,121 @@
+[
+  {
+    "id": "single-hop-neighbor",
+    "seedStableId": "entity:project:memory_os:4444",
+    "edges": [
+      {
+        "fromStableId": "entity:project:memory_os:4444",
+        "toStableId": "entity:repository:github:org/repo",
+        "edgeType": "owns",
+        "evidenceConfidence": 0.95,
+        "sourceRef": "github:install"
+      }
+    ],
+    "expectedVisited": [
+      "entity:project:memory_os:4444",
+      "entity:repository:github:org/repo"
+    ],
+    "expectedEdgeCount": 1,
+    "expectedStopReason": "complete"
+  },
+  {
+    "id": "low-evidence-filtered",
+    "seedStableId": "entity:project:memory_os:4444",
+    "edges": [
+      {
+        "fromStableId": "entity:project:memory_os:4444",
+        "toStableId": "entity:task:reminders:1",
+        "edgeType": "relates_to",
+        "evidenceConfidence": 0.2,
+        "sourceRef": "weak"
+      }
+    ],
+    "expectedVisited": ["entity:project:memory_os:4444"],
+    "expectedEdgeCount": 0,
+    "expectedStopReason": "low_evidence"
+  },
+  {
+    "id": "max-hops-limit",
+    "seedStableId": "entity:person:github:alex",
+    "edges": [
+      {
+        "fromStableId": "entity:person:github:alex",
+        "toStableId": "entity:project:memory_os:4444",
+        "edgeType": "works_on",
+        "evidenceConfidence": 0.9,
+        "sourceRef": "commit"
+      },
+      {
+        "fromStableId": "entity:project:memory_os:4444",
+        "toStableId": "entity:repository:github:org/repo",
+        "edgeType": "owns",
+        "evidenceConfidence": 0.9,
+        "sourceRef": "binding"
+      },
+      {
+        "fromStableId": "entity:repository:github:org/repo",
+        "toStableId": "entity:decision:memory_os:m17-1",
+        "edgeType": "decided_in",
+        "evidenceConfidence": 0.9,
+        "sourceRef": "milestone"
+      }
+    ],
+    "maxHops": 1,
+    "expectedVisited": [
+      "entity:person:github:alex",
+      "entity:project:memory_os:4444"
+    ],
+    "expectedEdgeCount": 1,
+    "expectedStopReason": "max_hops"
+  },
+  {
+    "id": "max-nodes-limit",
+    "seedStableId": "entity:project:memory_os:4444",
+    "edges": [
+      {
+        "fromStableId": "entity:project:memory_os:4444",
+        "toStableId": "entity:repository:github:org/a",
+        "edgeType": "owns",
+        "evidenceConfidence": 0.9,
+        "sourceRef": "a"
+      },
+      {
+        "fromStableId": "entity:project:memory_os:4444",
+        "toStableId": "entity:repository:github:org/b",
+        "edgeType": "owns",
+        "evidenceConfidence": 0.9,
+        "sourceRef": "b"
+      },
+      {
+        "fromStableId": "entity:project:memory_os:4444",
+        "toStableId": "entity:repository:github:org/c",
+        "edgeType": "owns",
+        "evidenceConfidence": 0.9,
+        "sourceRef": "c"
+      }
+    ],
+    "maxNodes": 2,
+    "expectedVisitedCount": 2,
+    "expectedEdgeCount": 2,
+    "expectedStopReason": "max_nodes"
+  },
+  {
+    "id": "undirected-traversal",
+    "seedStableId": "entity:file:drive:doc-1",
+    "edges": [
+      {
+        "fromStableId": "entity:document:drive:doc-1",
+        "toStableId": "entity:file:drive:doc-1",
+        "edgeType": "stored_in",
+        "evidenceConfidence": 0.88,
+        "sourceRef": "drive revision"
+      }
+    ],
+    "expectedVisited": [
+      "entity:file:drive:doc-1",
+      "entity:document:drive:doc-1"
+    ],
+    "expectedEdgeCount": 1,
+    "expectedStopReason": "complete"
+  }
+]
