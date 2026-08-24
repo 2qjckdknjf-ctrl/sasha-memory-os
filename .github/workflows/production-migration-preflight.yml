@@ -2,6 +2,10 @@ name: Production migration preflight (read-only)
 
 on:
   workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - scripts/production-migration-preflight-run.txt
 
 permissions:
   contents: read
@@ -11,11 +15,14 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-        with:
-          ref: d7ee0ba957e0e00709aea142afdc3a76f62fee66
 
-      - name: Verify HEAD
-        run: test "$(git rev-parse HEAD)" = "d7ee0ba957e0e00709aea142afdc3a76f62fee66"
+      - name: Verify migration baseline checksums
+        run: |
+          M15=$(sha256sum supabase/migrations/20260821100000_m15_slice_01_source_event_contract.sql | awk '{print $1}')
+          P0=$(sha256sum supabase/migrations/20260824100000_p0_project_identity_scope.sql | awk '{print $1}')
+          test "$M15" = "aa7ac5d042e132caa6bb551b32eb145c7247b237010351a98ae544684ae9dc65"
+          test "$P0" = "175aa5a81a2f480132d8773880bed954ba5b786d277fcf64f110dca3947b57d9"
+          echo "migration_checksums=ok head=$(git rev-parse HEAD)"
 
       - name: Install Supabase CLI
         run: |
@@ -25,18 +32,21 @@ jobs:
           sudo mv /tmp/supabase /usr/local/bin/supabase
 
       - name: Credential gate
+        id: creds
         env:
           TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
           DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
         run: |
-          if [[ -z "$TOKEN" ]]; then
+          if [[ -n "$TOKEN" ]]; then
+            echo "supabase_token=present" >> "$GITHUB_OUTPUT"
+          else
+            echo "supabase_token=missing" >> "$GITHUB_OUTPUT"
             echo "BLOCKED_CREDENTIALS — add SUPABASE_ACCESS_TOKEN repo secret"
-            exit 3
           fi
-          echo "SUPABASE_ACCESS_TOKEN=present"
-          if [[ -n "$DB_PASSWORD" ]]; then echo "SUPABASE_DB_PASSWORD=present"; else echo "SUPABASE_DB_PASSWORD=missing"; fi
+          if [[ -n "$DB_PASSWORD" ]]; then echo "db_password=present" >> "$GITHUB_OUTPUT"; else echo "db_password=missing" >> "$GITHUB_OUTPUT"; fi
 
       - name: Link and migration list (read-only)
+        if: steps.creds.outputs.supabase_token == 'present'
         env:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
           SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
@@ -47,10 +57,8 @@ jobs:
             ${SUPABASE_DB_PASSWORD:+-p "$SUPABASE_DB_PASSWORD"} --yes
           supabase migration list --linked --project-ref vpxblcxsvlylqyldiuwr
           supabase backups list --project-ref vpxblcxsvlylqyldiuwr
-          sha256sum \
-            supabase/migrations/20260821100000_m15_slice_01_source_event_contract.sql \
-            supabase/migrations/20260824100000_p0_project_identity_scope.sql
           supabase db push --dry-run --linked --project-ref vpxblcxsvlylqyldiuwr
+          supabase db query --linked -f scripts/production-migration-pre-apply-inventory.sql
 
       - name: Live API preflight (sanitized)
         env:

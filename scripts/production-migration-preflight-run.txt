@@ -1,0 +1,4 @@
+trigger=production-migration-preflight-readonly
+requested_at=2026-08-24T18:22:00Z
+baseline_merge=d7ee0ba957e0e00709aea142afdc3a76f62fee66
+project_ref=vpxblcxsvlylqyldiuwr
