@@ -8,8 +8,11 @@ SELECT 'acl_null_project' AS k, count(*)::text AS v FROM acl_entries WHERE proje
 SELECT 'source_events' AS k, count(*)::text AS v FROM source_events;
 SELECT 'memory_records' AS k, count(*)::text AS v FROM memory_records;
 SELECT project_id::text AS section, count(*)::text AS v FROM memory_records GROUP BY project_id ORDER BY project_id;
-SELECT 'm15_backfill_candidates' AS k, count(*)::text AS v FROM source_events
-  WHERE external_id IS NULL OR external_version IS NULL;
+SELECT 'm15_external_id_column' AS k,
+  CASE WHEN EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema = 'public' AND table_name = 'source_events' AND column_name = 'external_id'
+  ) THEN 'present' ELSE 'missing_pending_m15' END AS v;
 SELECT EXISTS (
   SELECT 1 FROM information_schema.tables
   WHERE table_schema = 'public' AND table_name = 'project_routing_corrections'
