@@ -21,8 +21,8 @@ fi
 echo "== supabase start (db + api only)"
 supabase start -x gotrue,realtime,storage,imgproxy,edge-runtime,logflare,vector,studio
 
-echo "== supabase db reset (migrations; seed skipped — bootstrap migration covers identity)"
-supabase db reset --no-seed
+echo "== supabase db reset (migrations + idempotent seed)"
+supabase db reset
 
 DB_URL="$(supabase status -o json | node -e 'const j=JSON.parse(require("fs").readFileSync(0,"utf8")); process.stdout.write(j.DB_URL||"")')"
 if [[ -z "$DB_URL" ]]; then

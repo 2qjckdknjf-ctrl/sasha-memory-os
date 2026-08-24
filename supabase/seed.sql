@@ -8,7 +8,8 @@ VALUES (
   'Sasha Home Workspace',
   'eu',
   '{"pilot": true}'::jsonb
-);
+)
+ON CONFLICT (id) DO NOTHING;
 
 INSERT INTO users (id, auth_user_id, email, display_name)
 VALUES (
@@ -16,7 +17,8 @@ VALUES (
   '22222222-2222-4222-8222-222222222201',
   'sasha@example.com',
   'Sasha'
-);
+)
+ON CONFLICT (id) DO NOTHING;
 
 INSERT INTO subjects (id, workspace_id, kind, user_id, external_key, display_name, metadata)
 VALUES
@@ -65,7 +67,8 @@ VALUES
         "memory.set_status"
       ]
     }'::jsonb
-  );
+  )
+ON CONFLICT (id) DO NOTHING;
 
 INSERT INTO workspace_memberships (workspace_id, user_id, subject_id, role)
 VALUES (
@@ -73,7 +76,8 @@ VALUES (
   '22222222-2222-4222-8222-222222222222',
   '33333333-3333-4333-8333-333333333301',
   'owner'
-);
+)
+ON CONFLICT (workspace_id, user_id) DO NOTHING;
 
 INSERT INTO agents (workspace_id, subject_id, client_key, version, capabilities, trust_level)
 VALUES
@@ -100,7 +104,8 @@ VALUES
     '1',
     '["memory.read.project","memory.write.findings","qa.read","handoff.write"]'::jsonb,
     'standard'
-  );
+  )
+ON CONFLICT (subject_id) DO NOTHING;
 
 INSERT INTO projects (id, workspace_id, slug, name, status, aliases)
 VALUES (
@@ -110,7 +115,8 @@ VALUES (
   'AISTROYKA',
   'active',
   ARRAY['aistroyka', 'ais']
-);
+)
+ON CONFLICT (id) DO NOTHING;
 
 INSERT INTO projects (id, workspace_id, slug, name, status, aliases)
 VALUES (
@@ -120,7 +126,8 @@ VALUES (
   'Sasha Memory OS',
   'active',
   ARRAY['sasha-memory-os', 'memory-os', 'memory_os', 'mamoruos']
-);
+)
+ON CONFLICT (id) DO NOTHING;
 
 INSERT INTO projects (id, workspace_id, slug, name, status, aliases)
 VALUES (
@@ -130,7 +137,8 @@ VALUES (
   'HiAir',
   'active',
   ARRAY['hiair', 'hi-air']
-);
+)
+ON CONFLICT (id) DO NOTHING;
 
 -- ChatGPT: Sasha Memory OS shared memory (explicit project scope)
 INSERT INTO acl_entries (workspace_id, subject_id, effect, resource_type, project_id, actions, sensitivity_max)
