@@ -3,7 +3,8 @@
 # Operator machine: requires supabase login OR SUPABASE_ACCESS_TOKEN
 set -euo pipefail
 
-REQUIRED_SHA="d7ee0ba957e0e00709aea142afdc3a76f62fee66"
+M15_CHECKSUM="aa7ac5d042e132caa6bb551b32eb145c7247b237010351a98ae544684ae9dc65"
+P0_CHECKSUM="175aa5a81a2f480132d8773880bed954ba5b786d277fcf64f110dca3947b57d9"
 PROJECT_REF="vpxblcxsvlylqyldiuwr"
 EVIDENCE_DIR="${MEMORY_OS_PREFLIGHT_EVIDENCE:-$HOME/.memory-os-production-preflight-evidence}"
 
@@ -15,11 +16,13 @@ chmod 700 "$EVIDENCE_DIR"
 log() { echo "[preflight] $*" | tee -a "$EVIDENCE_DIR/phase-a.log"; }
 
 HEAD="$(git rev-parse HEAD)"
-if [[ "$HEAD" != "$REQUIRED_SHA" ]]; then
-  log "BLOCKED_REPOSITORY_STATE head=$HEAD required=$REQUIRED_SHA"
+M15_ACTUAL="$(sha256sum supabase/migrations/20260821100000_m15_slice_01_source_event_contract.sql | awk '{print $1}')"
+P0_ACTUAL="$(sha256sum supabase/migrations/20260824100000_p0_project_identity_scope.sql | awk '{print $1}')"
+if [[ "$M15_ACTUAL" != "$M15_CHECKSUM" || "$P0_ACTUAL" != "$P0_CHECKSUM" ]]; then
+  log "BLOCKED_MIGRATION_CHECKSUM_MISMATCH head=$HEAD m15=$M15_ACTUAL p0=$P0_ACTUAL"
   exit 2
 fi
-log "Repository OK head=$HEAD"
+log "Repository OK head=$HEAD migration_checksums=ok"
 
 for v in SUPABASE_ACCESS_TOKEN MEMORY_OS_SUPABASE_SERVICE_ROLE_KEY MEMORY_OS_SUPABASE_URL \
          MEMORY_OS_API_SECRET MEMORY_OS_PROJECT_REF SUPABASE_DB_PASSWORD; do
@@ -44,24 +47,20 @@ sha256sum \
   supabase/migrations/20260824100000_p0_project_identity_scope.sql \
   | tee "$EVIDENCE_DIR/pending-checksums.sha256"
 
-INVENTORY_SQL="$EVIDENCE_DIR/pre-apply-inventory.sql"
-cat > "$INVENTORY_SQL" <<'SQL'
-SELECT 'workspaces' AS k, count(*)::text AS v FROM workspaces;
-SELECT 'projects' AS section, id::text, slug, name, status FROM projects ORDER BY slug;
-SELECT 'subjects' AS k, count(*)::text AS v FROM subjects;
-SELECT 'acl_null_project' AS k, count(*)::text AS v FROM acl_entries WHERE project_id IS NULL;
-SELECT 'source_events' AS k, count(*)::text AS v FROM source_events;
-SELECT 'memory_records' AS k, count(*)::text AS v FROM memory_records;
-SELECT 'mem_by_project' AS section, project_id::text, count(*)::text FROM memory_records GROUP BY project_id;
-SELECT 'm15_backfill_candidates' AS k, count(*)::text AS v FROM source_events
-  WHERE external_id IS NULL OR external_version IS NULL;
-SQL
+if supabase db push --dry-run --linked --project-ref "$PROJECT_REF" 2>&1 | tee "$EVIDENCE_DIR/dry-run.log"; then
+  log "dry_run=ok"
+else
+  log "dry_run=BLOCKED_MIGRATION_HISTORY_DRIFT"
+  log "Apply via scripts/apply-remote-migration.sh (Management API), not db push"
+fi
 
+INVENTORY_SQL="$ROOT/scripts/production-migration-pre-apply-inventory.sql"
 if supabase db query --help >/dev/null 2>&1; then
-  supabase db query --linked --file "$INVENTORY_SQL" 2>&1 | tee "$EVIDENCE_DIR/inventory.txt"
+  supabase db query --linked -f "$INVENTORY_SQL" 2>&1 | tee "$EVIDENCE_DIR/inventory.txt" || true
 else
   log "supabase db query unavailable — run inventory manually via psql"
 fi
 
 log "Evidence: $EVIDENCE_DIR"
 log "Verify migration-list: pending ONLY M15 + P0"
+log "Preflight verdict: READY_FOR_OWNER_APPLY_APPROVAL (apply via Management API)"
