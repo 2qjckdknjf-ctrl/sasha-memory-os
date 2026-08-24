@@ -1,0 +1,67 @@
+name: Production migration preflight (read-only)
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  preflight:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: d7ee0ba957e0e00709aea142afdc3a76f62fee66
+
+      - name: Verify HEAD
+        run: test "$(git rev-parse HEAD)" = "d7ee0ba957e0e00709aea142afdc3a76f62fee66"
+
+      - name: Install Supabase CLI
+        run: |
+          curl -fsSL -o /tmp/supabase.tar.gz \
+            "https://github.com/supabase/cli/releases/download/v2.115.0/supabase_linux_amd64.tar.gz"
+          tar xzf /tmp/supabase.tar.gz -C /tmp
+          sudo mv /tmp/supabase /usr/local/bin/supabase
+
+      - name: Credential gate
+        env:
+          TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+        run: |
+          if [[ -z "$TOKEN" ]]; then
+            echo "BLOCKED_CREDENTIALS — add SUPABASE_ACCESS_TOKEN repo secret"
+            exit 3
+          fi
+          echo "SUPABASE_ACCESS_TOKEN=present"
+          if [[ -n "$DB_PASSWORD" ]]; then echo "SUPABASE_DB_PASSWORD=present"; else echo "SUPABASE_DB_PASSWORD=missing"; fi
+
+      - name: Link and migration list (read-only)
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+        run: |
+          set +x
+          export SUPABASE_ACCESS_TOKEN
+          supabase link --project-ref vpxblcxsvlylqyldiuwr \
+            ${SUPABASE_DB_PASSWORD:+-p "$SUPABASE_DB_PASSWORD"} --yes
+          supabase migration list --linked --project-ref vpxblcxsvlylqyldiuwr
+          supabase backups list --project-ref vpxblcxsvlylqyldiuwr
+          sha256sum \
+            supabase/migrations/20260821100000_m15_slice_01_source_event_contract.sql \
+            supabase/migrations/20260824100000_p0_project_identity_scope.sql
+          supabase db push --dry-run --linked --project-ref vpxblcxsvlylqyldiuwr
+
+      - name: Live API preflight (sanitized)
+        env:
+          LIVE_SECRET: ${{ secrets.MEMORY_OS_API_SECRET }}
+          LIVE_SUPABASE_URL: ${{ secrets.MEMORY_OS_SUPABASE_URL }}
+        run: |
+          if [[ -z "$LIVE_SUPABASE_URL" || -z "$LIVE_SECRET" ]]; then
+            echo "live_preflight=skipped_missing_api_secrets"
+            exit 0
+          fi
+          export MEMORY_OS_API_BASE_URL="${LIVE_SUPABASE_URL%/}/functions/v1/memory-mcp"
+          export MEMORY_OS_API_SECRET="$LIVE_SECRET"
+          chmod +x scripts/ci-live-migration-preflight.sh
+          ./scripts/ci-live-migration-preflight.sh
