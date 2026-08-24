@@ -85,6 +85,7 @@ jobs:
 
       - name: Pre-apply inventory SQL (read-only)
         if: steps.creds.outputs.supabase_token == 'present'
+        continue-on-error: true
         env:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
         run: |

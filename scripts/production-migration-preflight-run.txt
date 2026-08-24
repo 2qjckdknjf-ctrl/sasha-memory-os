@@ -1,5 +1,5 @@
 trigger=production-migration-preflight-readonly
 requested_at=2026-08-24T18:30:00Z
-run=3-inventory-after-drift-fix
+run=4-inventory-sql-fix
 baseline_merge=d7ee0ba957e0e00709aea142afdc3a76f62fee66
 project_ref=vpxblcxsvlylqyldiuwr
