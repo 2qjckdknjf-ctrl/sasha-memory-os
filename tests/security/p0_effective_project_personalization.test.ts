@@ -60,6 +60,7 @@ describe('P0 effective-project personalization', () => {
     expect(policySql).toContain('cursor_actor_pref_beats_project_default');
     expect(policySql).toContain('cursor set via effective project');
     expect(policySql).toContain('cursor_set_via_stored_aistroyka_forbidden');
+    expect(policySql).toContain('project_context_includes_effective_routed_memory');
     expect(policySql).toContain('uncorrected_memory_keeps_m13_behavior');
   });
 });

@@ -119,6 +119,16 @@ BEGIN
   IF (v_set->>'storedProjectId')::uuid <> v_aistroyka THEN
     RAISE EXCEPTION 'setter response must return storedProjectId';
   END IF;
+
+  IF NOT EXISTS (
+    SELECT 1
+    FROM jsonb_array_elements(
+      app.api_project_context(v_secret, v_cursor, v_memory_os)->'decisions'
+    ) AS d(value)
+    WHERE (value->>'id')::uuid = v_memory_id
+  ) THEN
+    RAISE EXCEPTION 'project_context_includes_effective_routed_memory';
+  END IF;
 END $$;
 
 -- Uncorrected memory keeps M13 behavior (stored project personalization applies).

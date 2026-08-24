@@ -466,4 +466,14 @@ describe('P0 project identity migration guards', () => {
     );
     expect(p0Sql).toContain(`'storedProjectId', v_memory.project_id`);
   });
+
+  it('includes routing-corrected memories in api_project_context by effective project', () => {
+    expect(p0Sql).toContain('CREATE OR REPLACE FUNCTION app.api_project_context');
+    expect(p0Sql).toContain(
+      'WHERE app.effective_memory_project_id(m.id) = p_project_id',
+    );
+    expect(p0Sql).toContain(
+      `'effectiveProjectId', app.effective_memory_project_id(m.id)`,
+    );
+  });
 });
