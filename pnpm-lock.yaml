@@ -95,6 +95,16 @@ importers:
         specifier: ^4.23.12
         version: 4.23.12
 
+  apps/local-agent:
+    dependencies:
+      '@memory-os/schemas':
+        specifier: workspace:*
+        version: link:../../packages/schemas
+    devDependencies:
+      tsx:
+        specifier: ^4.23.12
+        version: 4.23.12
+
   apps/mcp-gateway:
     dependencies:
       '@memory-os/connector-github':

@@ -1,0 +1,21 @@
+{
+  "name": "@memory-os/local-agent",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "bin": {
+    "memory-os-local-agent": "./dist/cli.js"
+  },
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run",
+    "build": "tsc -p tsconfig.json",
+    "start": "tsx src/cli.ts"
+  },
+  "dependencies": {
+    "@memory-os/schemas": "workspace:*"
+  },
+  "devDependencies": {
+    "tsx": "^4.23.12"
+  }
+}

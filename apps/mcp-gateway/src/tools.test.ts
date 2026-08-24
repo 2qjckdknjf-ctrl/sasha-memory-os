@@ -11,6 +11,7 @@ import {
 import { createMcpHandlers } from './tools.js';
 
 const projectId = '44444444-4444-4444-8444-444444444401';
+const memoryOsProjectId = '44444444-4444-4444-8444-444444444402';
 const workspaceId = '11111111-1111-4111-8111-111111111111';
 const owner = '33333333-3333-4333-8333-333333333301';
 const chatgpt = '33333333-3333-4333-8333-333333333302';
@@ -277,7 +278,7 @@ describe('mcp gateway alpha', () => {
     const result = (await mcp.call('memory.search', {
       query: 'Slice 01',
       project_id: projectId,
-      actor_subject_id: cursor,
+      actor_subject_id: chatgpt,
       pack_context: true,
       max_context_chars: 1500,
     })) as {
@@ -308,16 +309,16 @@ describe('mcp gateway alpha', () => {
 
     await mcp.call('memory.search', {
       query: 'family travel top-secret-token',
-      project_id: projectId,
+      project_id: memoryOsProjectId,
       actor_subject_id: cursor,
     });
     await mcp.call('context.project', {
-      project_id: projectId,
+      project_id: memoryOsProjectId,
       actor_subject_id: cursor,
     });
     await mcp.call('capture.text', {
       workspace_id: workspaceId,
-      project_id: projectId,
+      project_id: memoryOsProjectId,
       title: 'Private MCP payload',
       text: 'private payload body must stay out of telemetry',
       actor_subject_id: cursor,
@@ -560,7 +561,7 @@ describe('mcp gateway alpha', () => {
       ownerContext.facts.some((memory) => memory.title === 'Personal Calendar standup note'),
     ).toBe(true);
 
-    for (const subjectId of [cursor, roma]) {
+    for (const subjectId of [roma]) {
       const context = (await ownerMcp.call('context.project', {
         workspace_id: workspaceId,
         project_id: projectId,
@@ -570,6 +571,14 @@ describe('mcp gateway alpha', () => {
         context.facts.some((memory) => memory.title === 'Personal Calendar standup note'),
       ).toBe(false);
     }
+
+    await expect(
+      ownerMcp.call('context.project', {
+        workspace_id: workspaceId,
+        project_id: projectId,
+        actor_subject_id: cursor,
+      }),
+    ).rejects.toThrow(/forbidden/i);
 
     const chatgptContext = (await chatgptMcp.call('context.project', {
       project_id: projectId,
@@ -1354,7 +1363,7 @@ describe('mcp gateway alpha', () => {
   it('returns project context with seeded decision', async () => {
     const mcp = createMcpHandlers();
     const result = (await mcp.call('context.project', {
-      project_id: projectId,
+      project_id: memoryOsProjectId,
       actor_subject_id: cursor,
     })) as { decisions: unknown[]; state: { version: number } | null };
     expect(result.decisions.length).toBe(1);
@@ -1383,7 +1392,7 @@ describe('mcp gateway alpha', () => {
     const mcp = createMcpHandlers();
     const handoff = await mcp.call('handoff.create', {
       workspace_id: workspaceId,
-      project_id: projectId,
+      project_id: memoryOsProjectId,
       from_subject_id: cursor,
       idempotency_key: 'mcp-handoff-1',
       payload: {
@@ -1395,6 +1404,6 @@ describe('mcp gateway alpha', () => {
         recommended_next: ['ship WP-02'],
       },
     });
-    expect((handoff as { projectId: string }).projectId).toBe(projectId);
+    expect((handoff as { projectId: string }).projectId).toBe(memoryOsProjectId);
   });
 });

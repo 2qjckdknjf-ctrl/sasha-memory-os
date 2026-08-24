@@ -112,7 +112,27 @@ VALUES (
   ARRAY['aistroyka', 'ais']
 );
 
--- ChatGPT: project memory read/write
+INSERT INTO projects (id, workspace_id, slug, name, status, aliases)
+VALUES (
+  '44444444-4444-4444-8444-444444444402',
+  '11111111-1111-4111-8111-111111111111',
+  'sasha-memory-os',
+  'Sasha Memory OS',
+  'active',
+  ARRAY['sasha-memory-os', 'memory-os', 'memory_os', 'mamoruos']
+);
+
+INSERT INTO projects (id, workspace_id, slug, name, status, aliases)
+VALUES (
+  '44444444-4444-4444-8444-444444444403',
+  '11111111-1111-4111-8111-111111111111',
+  'hiair',
+  'HiAir',
+  'active',
+  ARRAY['hiair', 'hi-air']
+);
+
+-- ChatGPT: Sasha Memory OS shared memory (explicit project scope)
 INSERT INTO acl_entries (workspace_id, subject_id, effect, resource_type, project_id, actions, sensitivity_max)
 VALUES
   (
@@ -120,7 +140,7 @@ VALUES
     '33333333-3333-4333-8333-333333333302',
     'allow',
     'memory',
-    '44444444-4444-4444-8444-444444444401',
+    '44444444-4444-4444-8444-444444444402',
     ARRAY['read', 'write'],
     'internal'
   ),
@@ -129,7 +149,7 @@ VALUES
     '33333333-3333-4333-8333-333333333302',
     'allow',
     'project',
-    '44444444-4444-4444-8444-444444444401',
+    '44444444-4444-4444-8444-444444444402',
     ARRAY['read'],
     'internal'
   ),
@@ -138,18 +158,18 @@ VALUES
     '33333333-3333-4333-8333-333333333302',
     'allow',
     'project_state',
-    '44444444-4444-4444-8444-444444444401',
+    '44444444-4444-4444-8444-444444444402',
     ARRAY['read'],
     'internal'
   ),
-  -- Cursor: engineering project only; personal denied
+  -- Cursor: Sasha Memory OS engineering scope only
   (
     '11111111-1111-4111-8111-111111111111',
     '33333333-3333-4333-8333-333333333303',
     'allow',
     'memory',
-    '44444444-4444-4444-8444-444444444401',
-    ARRAY['read'],
+    '44444444-4444-4444-8444-444444444402',
+    ARRAY['read', 'write'],
     'internal'
   ),
   (
@@ -157,7 +177,7 @@ VALUES
     '33333333-3333-4333-8333-333333333303',
     'allow',
     'project',
-    '44444444-4444-4444-8444-444444444401',
+    '44444444-4444-4444-8444-444444444402',
     ARRAY['read'],
     'internal'
   ),
@@ -166,7 +186,7 @@ VALUES
     '33333333-3333-4333-8333-333333333303',
     'allow',
     'project_state',
-    '44444444-4444-4444-8444-444444444401',
+    '44444444-4444-4444-8444-444444444402',
     ARRAY['read', 'write'],
     'internal'
   ),
@@ -175,7 +195,7 @@ VALUES
     '33333333-3333-4333-8333-333333333303',
     'allow',
     'handoff',
-    '44444444-4444-4444-8444-444444444401',
+    '44444444-4444-4444-8444-444444444402',
     ARRAY['read', 'write'],
     'internal'
   ),
@@ -184,6 +204,16 @@ VALUES
     '33333333-3333-4333-8333-333333333303',
     'allow',
     'session',
+    '44444444-4444-4444-8444-444444444402',
+    ARRAY['read', 'write'],
+    'internal'
+  ),
+  -- ChatGPT: legacy AISTROYKA read+write when explicitly routed by slug/UUID
+  (
+    '11111111-1111-4111-8111-111111111111',
+    '33333333-3333-4333-8333-333333333302',
+    'allow',
+    'memory',
     '44444444-4444-4444-8444-444444444401',
     ARRAY['read', 'write'],
     'internal'
@@ -295,6 +325,26 @@ INSERT INTO project_state_versions (
   }'::jsonb,
   'Slice 01 ready after audit PR #215',
   '33333333-3333-4333-8333-333333333302'
+);
+
+INSERT INTO project_state_versions (
+  id, workspace_id, project_id, version, state, summary, created_by_subject
+) VALUES (
+  '77777777-7777-4777-8777-777777777702',
+  '11111111-1111-4111-8111-111111111111',
+  '44444444-4444-4444-8444-444444444402',
+  1,
+  '{
+    "stage": "shared-memory-remediation",
+    "completed": ["m6-chatgpt-mode-a"],
+    "in_progress": ["shared-memory-e2e"],
+    "blocked": ["m15-live-e2e"],
+    "next": ["p0-project-identity", "shared-memory-e2e-v1"],
+    "risks": [],
+    "active_decisions": []
+  }'::jsonb,
+  'Sasha Memory OS canonical project state',
+  '33333333-3333-4333-8333-333333333301'
 );
 
 -- Demo API clients (identity stubs)
