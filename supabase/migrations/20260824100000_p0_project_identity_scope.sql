@@ -284,6 +284,7 @@ CROSS JOIN (
     ('chatgpt', 'memory', ARRAY['read', 'write']::text[], 'internal'),
     ('chatgpt', 'project', ARRAY['read']::text[], 'internal'),
     ('chatgpt', 'project_state', ARRAY['read']::text[], 'internal'),
+    ('chatgpt', 'handoff', ARRAY['read', 'write']::text[], 'internal'),
     ('cursor', 'memory', ARRAY['read', 'write']::text[], 'internal'),
     ('cursor', 'project', ARRAY['read']::text[], 'internal'),
     ('cursor', 'project_state', ARRAY['read', 'write']::text[], 'internal'),

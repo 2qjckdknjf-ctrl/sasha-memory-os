@@ -27,7 +27,7 @@ jobs:
         run: |
           pnpm --filter @memory-os/local-agent run build
           test -f apps/local-agent/dist/cli.js
-          node apps/local-agent/dist/cli.js --help >/dev/null 2>&1 || true
+          node apps/local-agent/dist/cli.js status >/dev/null
 
       - name: Typecheck
         run: pnpm typecheck

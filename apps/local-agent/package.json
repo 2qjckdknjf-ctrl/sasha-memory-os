@@ -13,9 +13,6 @@
     "prepare": "pnpm run build",
     "start": "tsx src/cli.ts"
   },
-  "dependencies": {
-    "@memory-os/schemas": "workspace:*"
-  },
   "devDependencies": {
     "tsx": "^4.23.12"
   }

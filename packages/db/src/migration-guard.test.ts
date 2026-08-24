@@ -423,6 +423,9 @@ describe('P0 project identity migration guards', () => {
     expect(p0Sql).toMatch(
       /'chatgpt', 'project_state', ARRAY\['read'\]::text\[\]/,
     );
+    expect(p0Sql).toMatch(
+      /'chatgpt', 'handoff', ARRAY\['read', 'write'\]::text\[\]/,
+    );
   });
 
   it('merges M13 personalization with effective project routing in search', () => {

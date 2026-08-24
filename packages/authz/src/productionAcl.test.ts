@@ -106,6 +106,36 @@ describe('P0 production ACL', () => {
     ).toBe(false);
   });
 
+  it('allows ChatGPT handoff write on Memory OS only', () => {
+    expect(
+      can(
+        CHATGPT_SUBJECT_ID,
+        production,
+        'handoff',
+        'write',
+        SASHA_MEMORY_OS_PROJECT_ID,
+      ),
+    ).toBe(true);
+    expect(
+      can(
+        CHATGPT_SUBJECT_ID,
+        remediated,
+        'handoff',
+        'write',
+        SASHA_MEMORY_OS_PROJECT_ID,
+      ),
+    ).toBe(true);
+    expect(
+      can(
+        CHATGPT_SUBJECT_ID,
+        remediated,
+        'handoff',
+        'write',
+        AISTROYKA_PROJECT_ID,
+      ),
+    ).toBe(false);
+  });
+
   it('keeps ChatGPT project_state read-only on Memory OS', () => {
     expect(
       can(

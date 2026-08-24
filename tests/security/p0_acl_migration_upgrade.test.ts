@@ -152,6 +152,20 @@ describe('P0 ACL migration upgrade regression', () => {
         projectId: AISTROYKA_PROJECT_ID,
         expected: true,
       },
+      {
+        subjectId: CHATGPT_SUBJECT_ID,
+        resourceType: 'handoff',
+        action: 'write',
+        projectId: SASHA_MEMORY_OS_PROJECT_ID,
+        expected: true,
+      },
+      {
+        subjectId: CHATGPT_SUBJECT_ID,
+        resourceType: 'handoff',
+        action: 'write',
+        projectId: AISTROYKA_PROJECT_ID,
+        expected: false,
+      },
     ];
 
     for (const row of matrix) {

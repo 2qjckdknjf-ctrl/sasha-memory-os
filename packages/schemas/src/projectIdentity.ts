@@ -43,6 +43,7 @@ export const PROJECT_ID_BY_SLUG: Readonly<Record<string, string>> = {
   'sasha-memory-os': SASHA_MEMORY_OS_PROJECT_ID,
   'memory-os': SASHA_MEMORY_OS_PROJECT_ID,
   memory_os: SASHA_MEMORY_OS_PROJECT_ID,
+  mamoruos: SASHA_MEMORY_OS_PROJECT_ID,
   hiair: HIAIR_PROJECT_ID,
 };
 

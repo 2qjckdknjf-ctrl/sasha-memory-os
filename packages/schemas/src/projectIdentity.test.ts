@@ -25,6 +25,7 @@ describe('P0 project identity pack', () => {
   it('resolves slugs without cross-project collision', () => {
     expect(PROJECT_ID_BY_SLUG.aistroyka).toBe(AISTROYKA_PROJECT_ID);
     expect(PROJECT_ID_BY_SLUG['sasha-memory-os']).toBe(SASHA_MEMORY_OS_PROJECT_ID);
+    expect(PROJECT_ID_BY_SLUG.mamoruos).toBe(SASHA_MEMORY_OS_PROJECT_ID);
     expect(PROJECT_ID_BY_SLUG.hiair).toBe(HIAIR_PROJECT_ID);
   });
 

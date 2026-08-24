@@ -41,6 +41,14 @@ export function buildProductionAgentAclEntries(): AclEntry[] {
     {
       subjectId: CHATGPT_SUBJECT_ID,
       effect: 'allow',
+      resourceType: 'handoff',
+      projectId: memoryOs,
+      actions: ['read', 'write'],
+      sensitivityMax: 'internal',
+    },
+    {
+      subjectId: CHATGPT_SUBJECT_ID,
+      effect: 'allow',
       resourceType: 'memory',
       projectId: aistroyka,
       actions: ['read', 'write'],

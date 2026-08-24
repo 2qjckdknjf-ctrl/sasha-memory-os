@@ -12,7 +12,7 @@ import {
   CANONICAL_WORKSPACE_ID,
   CURSOR_SUBJECT_ID,
   SASHA_MEMORY_OS_PROJECT_ID,
-} from '@memory-os/schemas';
+} from './constants.js';
 
 export type QueueItem = {
   idempotencyKey: string;

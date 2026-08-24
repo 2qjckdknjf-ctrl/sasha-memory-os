@@ -170,6 +170,15 @@ VALUES
     ARRAY['read'],
     'internal'
   ),
+  (
+    '11111111-1111-4111-8111-111111111111',
+    '33333333-3333-4333-8333-333333333302',
+    'allow',
+    'handoff',
+    '44444444-4444-4444-8444-444444444402',
+    ARRAY['read', 'write'],
+    'internal'
+  ),
   -- Cursor: Sasha Memory OS engineering scope only
   (
     '11111111-1111-4111-8111-111111111111',
