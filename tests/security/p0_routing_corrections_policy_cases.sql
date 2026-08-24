@@ -35,10 +35,6 @@ END $$;
 RESET ROLE;
 
 -- Non-owner agents cannot apply corrections even with API secret.
-SELECT set_config('app.api_secret', (
-  SELECT value FROM app.runtime_config WHERE key = 'api_secret'
-), true);
-
 DO $$
 DECLARE
   v_memory_id uuid := 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaa01';
@@ -48,8 +44,9 @@ DECLARE
   v_owner uuid := '33333333-3333-4333-8333-333333333301';
   v_chatgpt uuid := '33333333-3333-4333-8333-333333333302';
   v_cursor uuid := '33333333-3333-4333-8333-333333333303';
-  v_secret text := current_setting('app.api_secret', true);
+  v_secret text;
 BEGIN
+  SELECT value INTO v_secret FROM app.runtime_config WHERE key = 'api_secret';
   INSERT INTO memory_records (
     id, workspace_id, project_id, memory_type, title, content, status,
     sensitivity, importance, confidence, schema_version, recorded_at, observed_at

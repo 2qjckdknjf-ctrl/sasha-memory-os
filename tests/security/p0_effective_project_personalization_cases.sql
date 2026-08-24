@@ -1,10 +1,6 @@
 -- Effective-project personalization regression (ephemeral Supabase).
 \set ON_ERROR_STOP on
 
-SELECT set_config('app.api_secret', (
-  SELECT value FROM app.runtime_config WHERE key = 'api_secret'
-), true);
-
 DO $$
 DECLARE
   v_memory_id uuid := 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbb01';
@@ -13,12 +9,14 @@ DECLARE
   v_workspace uuid := '11111111-1111-4111-8111-111111111111';
   v_owner uuid := '33333333-3333-4333-8333-333333333301';
   v_cursor uuid := '33333333-3333-4333-8333-333333333303';
-  v_secret text := current_setting('app.api_secret', true);
+  v_secret text;
   v_hits jsonb;
   v_hit jsonb;
   v_score numeric;
   v_set jsonb;
 BEGIN
+  SELECT value INTO v_secret FROM app.runtime_config WHERE key = 'api_secret';
+
   INSERT INTO memory_records (
     id, workspace_id, project_id, memory_type, title, content, status,
     sensitivity, importance, confidence, schema_version, recorded_at, observed_at
@@ -153,10 +151,12 @@ DECLARE
   v_workspace uuid := '11111111-1111-4111-8111-111111111111';
   v_owner uuid := '33333333-3333-4333-8333-333333333301';
   v_chatgpt uuid := '33333333-3333-4333-8333-333333333302';
-  v_secret text := current_setting('app.api_secret', true);
+  v_secret text;
   v_hits jsonb;
   v_hit jsonb;
 BEGIN
+  SELECT value INTO v_secret FROM app.runtime_config WHERE key = 'api_secret';
+
   INSERT INTO memory_records (
     id, workspace_id, project_id, memory_type, title, content, status,
     sensitivity, importance, confidence, schema_version, recorded_at, observed_at
