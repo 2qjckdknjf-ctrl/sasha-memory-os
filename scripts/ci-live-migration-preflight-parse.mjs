@@ -58,6 +58,12 @@ function parseJsonBody(raw) {
   }
 }
 
+/** @param {unknown} value */
+function hasMcpResultError(value) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+  return value.isError === true;
+}
+
 /** @param {string} filePath @param {number} curlExitCode */
 export function evaluatePreflightResponse(filePath, curlExitCode = 0) {
   if (curlExitCode !== 0) {
@@ -93,6 +99,10 @@ export function evaluatePreflightResponse(filePath, curlExitCode = 0) {
   }
 
   if (!('result' in body)) {
+    return { status: 'PREFLIGHT_INVALID_RESPONSE', exitCode: 1, jsonRpcErrorCode: null };
+  }
+
+  if (hasMcpResultError(body.result)) {
     return { status: 'PREFLIGHT_INVALID_RESPONSE', exitCode: 1, jsonRpcErrorCode: null };
   }
 

@@ -67,8 +67,17 @@ describe("P0 live migration preflight redaction", () => {
     expect(exitCode).toBe(0);
     expect(stdout.trim()).toContain("live_migration_preflight=BLOCKED_REMOTE_MIGRATION");
     expect(stdout).toContain("jsonrpc_error_code=-32001");
-    expect(stdout).not.toContain("Project not found");
+    expect(stdout).not.toContain("forbidden");
     expect(stdout).not.toContain("44444444");
+  });
+
+  it("3b. treats MCP result.isError auth failure as PREFLIGHT_INVALID_RESPONSE", () => {
+    const raw = readFileSync(join(FIXTURES, "mcp-auth-is-error.json"), "utf8");
+    const { stdout, exitCode } = runParser("mcp-auth-is-error.json");
+    expect(exitCode).toBe(1);
+    expect(stdout.trim()).toBe("live_migration_preflight=PREFLIGHT_INVALID_RESPONSE");
+    expect(stdout).not.toContain("Sign in to Sasha Memory OS");
+    assertNoSensitivePayload(stdout, raw);
   });
 
   it("4. never prints memory title/content/citations/provenance", () => {
@@ -144,6 +153,14 @@ describe("P0 live migration preflight redaction", () => {
     );
     expect(liveBlock).not.toMatch(/preflight\.sh[^\n]*\|\s*tee/);
     expect(liveBlock).not.toContain("upload-artifact");
+  });
+
+  it("11b. ephemeral smoke script does not echo supabase status JSON", () => {
+    const script = readFileSync(
+      join(REPO_ROOT, "scripts", "ci-ephemeral-shared-memory-smoke.sh"),
+      "utf8",
+    );
+    expect(script).not.toMatch(/echo\s+"\$STATUS_JSON"/);
   });
 
   it("12. temp response files use restrictive permissions and are removed", () => {

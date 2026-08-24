@@ -51,7 +51,6 @@ if [[ -z "$MEMORY_OS_SUPABASE_ANON_KEY" ]]; then
 fi
 if [[ -z "$MEMORY_OS_SUPABASE_URL" ]]; then
   echo "ephemeral_smoke=missing_supabase_api_env"
-  echo "$STATUS_JSON"
   exit 1
 fi
 export MEMORY_OS_API_SECRET="${API_SECRET}"
