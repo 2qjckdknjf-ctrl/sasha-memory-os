@@ -24,6 +24,9 @@ supabase start -x gotrue,realtime,storage,imgproxy,edge-runtime,logflare,vector,
 echo "== supabase db reset (migrations + idempotent seed)"
 supabase db reset
 
+echo "== ensure local API is running after reset"
+supabase start -x gotrue,realtime,storage,imgproxy,edge-runtime,logflare,vector,studio >/dev/null
+
 DB_URL="$(supabase status -o json | node -e 'const j=JSON.parse(require("fs").readFileSync(0,"utf8")); process.stdout.write(j.DB_URL||"")')"
 if [[ -z "$DB_URL" ]]; then
   echo "ephemeral_smoke=missing_db_url"
