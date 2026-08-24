@@ -333,7 +333,8 @@ INSERT INTO project_state_versions (
   }'::jsonb,
   'Slice 01 ready after audit PR #215',
   '33333333-3333-4333-8333-333333333302'
-);
+)
+ON CONFLICT (id) DO NOTHING;
 
 INSERT INTO project_state_versions (
   id, workspace_id, project_id, version, state, summary, created_by_subject
@@ -353,7 +354,8 @@ INSERT INTO project_state_versions (
   }'::jsonb,
   'Sasha Memory OS canonical project state',
   '33333333-3333-4333-8333-333333333301'
-);
+)
+ON CONFLICT (id) DO NOTHING;
 
 -- Demo API clients (identity stubs)
 INSERT INTO api_clients (workspace_id, subject_id, client_id, audience)
