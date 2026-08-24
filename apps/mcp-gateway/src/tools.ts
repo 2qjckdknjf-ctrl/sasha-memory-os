@@ -66,6 +66,7 @@ import {
 } from '@memory-os/schemas';
 import {
   authorize,
+  buildProductionAgentAclEntries,
   resolveLocalSubject,
   type AuthzContext,
 } from '@memory-os/authz';
@@ -93,8 +94,6 @@ const defaultSdkConnectorRegistry = createConnectorRegistry([
 ]);
 
 const OWNER_SUBJECT_ID = '33333333-3333-4333-8333-333333333301';
-const CHATGPT_SUBJECT_ID = '33333333-3333-4333-8333-333333333302';
-const CURSOR_SUBJECT_ID = '33333333-3333-4333-8333-333333333303';
 const ROMA_SUBJECT_ID = '33333333-3333-4333-8333-333333333304';
 const PROACTIVE_CONSOLIDATION_PROJECT_ERROR =
   'project_id is required for proactive consolidation; never default to AISTROYKA';
@@ -165,62 +164,7 @@ function localAuthzForSubject(
     workspaceId,
     isOwner,
     entries: [
-      {
-        subjectId: CHATGPT_SUBJECT_ID,
-        effect: 'allow',
-        resourceType: 'memory',
-        projectId: DEFAULT_PROJECT_ID,
-        actions: ['read', 'write'],
-        sensitivityMax: 'internal',
-      },
-      {
-        subjectId: CHATGPT_SUBJECT_ID,
-        effect: 'allow',
-        resourceType: 'project_state',
-        projectId: DEFAULT_PROJECT_ID,
-        actions: ['read', 'write'],
-        sensitivityMax: 'internal',
-      },
-      {
-        subjectId: CURSOR_SUBJECT_ID,
-        effect: 'allow',
-        resourceType: 'memory',
-        projectId: DEFAULT_PROJECT_ID,
-        actions: ['read', 'write'],
-        sensitivityMax: 'internal',
-      },
-      {
-        subjectId: CURSOR_SUBJECT_ID,
-        effect: 'allow',
-        resourceType: 'project_state',
-        projectId: DEFAULT_PROJECT_ID,
-        actions: ['read', 'write'],
-        sensitivityMax: 'internal',
-      },
-      {
-        subjectId: CURSOR_SUBJECT_ID,
-        effect: 'allow',
-        resourceType: 'handoff',
-        projectId: DEFAULT_PROJECT_ID,
-        actions: ['read', 'write'],
-        sensitivityMax: 'internal',
-      },
-      {
-        subjectId: CHATGPT_SUBJECT_ID,
-        effect: 'allow',
-        resourceType: 'memory',
-        projectId: AISTROYKA_PROJECT_ID,
-        actions: ['read', 'write'],
-        sensitivityMax: 'internal',
-      },
-      {
-        subjectId: CHATGPT_SUBJECT_ID,
-        effect: 'allow',
-        resourceType: 'project_state',
-        projectId: AISTROYKA_PROJECT_ID,
-        actions: ['read'],
-        sensitivityMax: 'internal',
-      },
+      ...buildProductionAgentAclEntries(),
       {
         subjectId: ROMA_SUBJECT_ID,
         effect: 'allow',

@@ -29,8 +29,8 @@ Deny entries always win. Workspace `owner` membership grants broad access unless
 | Subject | Key | Expected |
 |---|---|---|
 | Owner Sasha | `3333…301` | Full workspace access |
-| ChatGPT | `3333…302` | AISTROYKA memory/project read+write (≤ internal) |
-| Cursor | `3333…303` | AISTROYKA project/state/handoff; personal memory deny |
+| ChatGPT | `3333…302` | Memory OS memory read+write; project_state **read only**; AISTROYKA when explicitly routed |
+| Cursor | `3333…303` | Memory OS memory/project_state/handoff/session only; **no** AISTROYKA/HiAir; personal memory deny |
 
 ## Required negative cases
 

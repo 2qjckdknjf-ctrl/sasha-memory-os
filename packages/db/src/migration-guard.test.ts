@@ -68,6 +68,12 @@ const privacySlaGuardsMigrationPath = fileURLToPath(
     import.meta.url,
   ),
 );
+const p0ProjectIdentityMigrationPath = fileURLToPath(
+  new URL(
+    '../../../supabase/migrations/20260824100000_p0_project_identity_scope.sql',
+    import.meta.url,
+  ),
+);
 
 describe('m8 slice 03 migration guards', () => {
   const sql = readFileSync(migrationPath, 'utf8');
@@ -395,5 +401,35 @@ describe('m8 slice 03 migration guards', () => {
     expect(privacySlaGuardsSql).toContain(`'targetMemoryId', p_target_memory_id`);
     expect(privacySlaGuardsSql).not.toContain(`'44444444-4444-4444-8444-444444444401'`);
     expect(privacySlaGuardsSql).not.toContain(`reason,\n    btrim(p_reason)`);
+  });
+});
+
+describe('P0 project identity migration guards', () => {
+  const p0Sql = readFileSync(p0ProjectIdentityMigrationPath, 'utf8');
+
+  it('removes legacy Cursor AISTROYKA ACL on upgrade', () => {
+    expect(p0Sql).toContain(`DELETE FROM acl_entries a`);
+    expect(p0Sql).toContain(`AND s.external_key = 'cursor'`);
+    expect(p0Sql).toContain(
+      `AND a.project_id = '44444444-4444-4444-8444-444444444401'`,
+    );
+  });
+
+  it('removes workspace-wide agent bypass and scopes Memory OS ACL inserts', () => {
+    expect(p0Sql).toContain(`AND a.project_id IS NULL`);
+    expect(p0Sql).toContain(
+      `'44444444-4444-4444-8444-444444444402'`,
+    );
+    expect(p0Sql).toMatch(
+      /'chatgpt', 'project_state', ARRAY\['read'\]::text\[\]/,
+    );
+  });
+
+  it('merges M13 personalization with effective project routing in search', () => {
+    expect(p0Sql).toContain(`FROM memory_personalizations mp`);
+    expect(p0Sql).toContain(`WHEN pref.pinned THEN 1.75`);
+    expect(p0Sql).toContain(`app.effective_memory_project_id(m.id)`);
+    expect(p0Sql).toContain(`effective_project.effective_project_id`);
+    expect(p0Sql).toContain(`'personalization'`);
   });
 });

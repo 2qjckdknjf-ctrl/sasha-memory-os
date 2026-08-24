@@ -247,6 +247,26 @@ WHERE NOT EXISTS (
 -- ACL: ChatGPT + Cursor scoped to Sasha Memory OS project only
 -- ---------------------------------------------------------------------------
 
+-- Revoke legacy Cursor AISTROYKA project grants on upgraded databases.
+DELETE FROM acl_entries a
+USING subjects s
+WHERE a.workspace_id = '11111111-1111-4111-8111-111111111111'
+  AND a.subject_id = s.id
+  AND s.external_key = 'cursor'
+  AND a.effect = 'allow'
+  AND a.project_id = '44444444-4444-4444-8444-444444444401'
+  AND a.resource_type IN ('memory', 'project', 'project_state', 'handoff', 'session');
+
+-- Remove workspace-wide agent grants that bypass explicit project scope.
+DELETE FROM acl_entries a
+USING subjects s
+WHERE a.workspace_id = '11111111-1111-4111-8111-111111111111'
+  AND a.subject_id = s.id
+  AND s.external_key IN ('chatgpt', 'cursor')
+  AND a.effect = 'allow'
+  AND a.project_id IS NULL
+  AND a.resource_type IN ('memory', 'handoff');
+
 INSERT INTO acl_entries (
   workspace_id, subject_id, effect, resource_type, project_id, actions, sensitivity_max
 )
@@ -338,16 +358,26 @@ BEGIN
     FROM (
       SELECT jsonb_build_object(
         'memory', to_jsonb(m) || jsonb_build_object(
-          'effective_project_id', app.effective_memory_project_id(m.id)
+          'effective_project_id', effective_project.effective_project_id
         ),
         'score',
-          (m.importance * m.confidence)
+          (
+            LEAST(
+              1.0,
+              GREATEST(0.0, m.importance + coalesce(pref.importance_delta, 0.0))
+            )
+            * m.confidence
+          )
           * CASE m.status
               WHEN 'verified' THEN 1.15
               WHEN 'active' THEN 1.08
               WHEN 'candidate' THEN 1.0
               WHEN 'disputed' THEN 0.7
               ELSE 0.5
+            END
+          * CASE
+              WHEN pref.pinned THEN 1.75
+              ELSE 1.0
             END
           * CASE
               WHEN NOT v_has_query THEN 1.0
@@ -369,12 +399,50 @@ BEGIN
             WHEN v_query_vec IS NOT NULL AND m.embedding_vector IS NOT NULL
               THEN 'hybrid:sql+vector'
             ELSE 'structured+text'
+          END,
+        'personalization',
+          CASE
+            WHEN pref.scope IS NULL THEN NULL
+            ELSE jsonb_build_object(
+              'memoryId', m.id,
+              'projectId', m.project_id,
+              'scope', pref.scope,
+              'actorSubjectId', pref.actor_subject_id,
+              'pinned', pref.pinned,
+              'importanceDelta', coalesce(pref.importance_delta, 0.0),
+              'rankingVersion', pref.ranking_version,
+              'version', pref.version
+            )
           END
       ) AS hit
       FROM memory_records m
+      CROSS JOIN LATERAL (
+        SELECT app.effective_memory_project_id(m.id) AS effective_project_id
+      ) effective_project
+      LEFT JOIN LATERAL (
+        SELECT
+          mp.scope,
+          mp.actor_subject_id,
+          mp.pinned,
+          mp.importance_delta,
+          mp.ranking_version,
+          mp.version
+        FROM memory_personalizations mp
+        WHERE mp.workspace_id = m.workspace_id
+          AND mp.project_id = m.project_id
+          AND mp.memory_id = m.id
+          AND (
+            (mp.scope = 'actor' AND mp.actor_subject_id = p_subject_id)
+            OR mp.scope = 'project_default'
+          )
+        ORDER BY
+          CASE WHEN mp.scope = 'actor' THEN 0 ELSE 1 END,
+          mp.version DESC
+        LIMIT 1
+      ) pref ON true
       WHERE (
           p_project_id IS NULL
-          OR app.effective_memory_project_id(m.id) = p_project_id
+          OR effective_project.effective_project_id = p_project_id
         )
         AND (
           p_include_history
@@ -386,7 +454,7 @@ BEGIN
           m.workspace_id,
           'memory',
           'read',
-          app.effective_memory_project_id(m.id),
+          effective_project.effective_project_id,
           m.sensitivity
         )
         AND (

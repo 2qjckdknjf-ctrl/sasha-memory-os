@@ -238,6 +238,9 @@ importers:
       '@memory-os/domain':
         specifier: workspace:*
         version: link:../domain
+      '@memory-os/schemas':
+        specifier: workspace:*
+        version: link:../schemas
 
   packages/connector-sdk:
     dependencies:

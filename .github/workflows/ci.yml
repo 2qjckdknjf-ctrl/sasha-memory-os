@@ -23,6 +23,11 @@ jobs:
       - name: Install
         run: pnpm install --frozen-lockfile
 
+      - name: Verify local-agent bin lifecycle
+        run: |
+          test -f apps/local-agent/dist/cli.js
+          node apps/local-agent/dist/cli.js --help >/dev/null 2>&1 || true
+
       - name: Typecheck
         run: pnpm typecheck
 
@@ -71,16 +76,77 @@ jobs:
           MEMORY_OS_API_SECRET: ci-m6-test-secret
         run: ./scripts/smoke-mcp-chatgpt.sh
 
-      - name: Live Supabase Edge M6 smoke
+      - name: Container logs
+        if: always()
+        run: docker logs memory-os-m6 || true
+
+      - name: Stop ChatGPT-profile API container
+        if: always()
+        run: docker rm -f memory-os-m6 || true
+
+  ephemeral-contract:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9.15.9
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - uses: supabase/setup-cli@v1
+        with:
+          version: latest
+
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      - name: Ephemeral Supabase shared-memory contract smoke
+        run: chmod +x scripts/ci-ephemeral-shared-memory-smoke.sh && ./scripts/ci-ephemeral-shared-memory-smoke.sh
+
+  live-edge-smoke:
+    runs-on: ubuntu-latest
+    needs: smoke
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Live migration preflight
+        id: preflight
         env:
           LIVE_SECRET: ${{ secrets.MEMORY_OS_API_SECRET }}
           LIVE_SUPABASE_URL: ${{ secrets.MEMORY_OS_SUPABASE_URL }}
         run: |
           if [[ -z "$LIVE_SUPABASE_URL" || -z "$LIVE_SECRET" ]]; then
-            echo "m6_edge_smoke=skipped_missing_repo_secrets"
+            echo "status=skipped_missing_repo_secrets" >> "$GITHUB_OUTPUT"
             exit 0
           fi
+          export MEMORY_OS_API_BASE_URL="${LIVE_SUPABASE_URL%/}/functions/v1/memory-mcp"
+          export MEMORY_OS_API_SECRET="$LIVE_SECRET"
+          chmod +x scripts/ci-live-migration-preflight.sh
+          set +e
+          ./scripts/ci-live-migration-preflight.sh | tee /tmp/live-preflight.log
+          preflight_rc=$?
+          set -e
+          if grep -q 'BLOCKED_REMOTE_MIGRATION' /tmp/live-preflight.log; then
+            echo "status=BLOCKED_REMOTE_MIGRATION" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          if [[ "$preflight_rc" -ne 0 ]]; then
+            echo "status=preflight_failed" >> "$GITHUB_OUTPUT"
+            exit "$preflight_rc"
+          fi
+          echo "status=ready" >> "$GITHUB_OUTPUT"
 
+      - name: Live Supabase Edge M6 smoke
+        if: steps.preflight.outputs.status == 'ready'
+        env:
+          LIVE_SECRET: ${{ secrets.MEMORY_OS_API_SECRET }}
+          LIVE_SUPABASE_URL: ${{ secrets.MEMORY_OS_SUPABASE_URL }}
+        run: |
           base="${LIVE_SUPABASE_URL%/}/functions/v1/memory-mcp"
           echo "m6_edge_endpoint_configured=true"
 
@@ -102,6 +168,12 @@ jobs:
           ./scripts/smoke-mcp-chatgpt.sh
 
           echo "m6_edge_smoke=pass"
+
+      - name: Report blocked remote migration
+        if: steps.preflight.outputs.status == 'BLOCKED_REMOTE_MIGRATION'
+        run: |
+          echo "m6_edge_smoke=BLOCKED_REMOTE_MIGRATION"
+          echo "Production Memory OS project …4402 not present; apply P0 migration before live acceptance."
 
       - name: Discover legacy live M6 route
         continue-on-error: true
@@ -125,11 +197,3 @@ jobs:
             -o /tmp/m6-legacy-health.json -w '%{http_code}' \
             "${header[@]}" "$base/mcp/health" || true)
           echo "m6_legacy_mcp_health_http=$code"
-
-      - name: Container logs
-        if: always()
-        run: docker logs memory-os-m6 || true
-
-      - name: Stop ChatGPT-profile API container
-        if: always()
-        run: docker rm -f memory-os-m6 || true

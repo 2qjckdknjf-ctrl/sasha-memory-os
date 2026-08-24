@@ -2,6 +2,7 @@ import { sensitivityRank, type Sensitivity } from '@memory-os/domain';
 
 export const packageName = 'authz' as const;
 export * from './subjects.js';
+export * from './productionAcl.js';
 
 export type AclEffect = 'allow' | 'deny';
 

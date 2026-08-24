@@ -10,6 +10,7 @@
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run",
     "build": "tsc -p tsconfig.json",
+    "prepare": "pnpm run build",
     "start": "tsx src/cli.ts"
   },
   "dependencies": {
