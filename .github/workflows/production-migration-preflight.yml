@@ -21,7 +21,7 @@ jobs:
           M15=$(sha256sum supabase/migrations/20260821100000_m15_slice_01_source_event_contract.sql | awk '{print $1}')
           P0=$(sha256sum supabase/migrations/20260824100000_p0_project_identity_scope.sql | awk '{print $1}')
           test "$M15" = "aa7ac5d042e132caa6bb551b32eb145c7247b237010351a98ae544684ae9dc65"
-          test "$P0" = "175aa5a81a2f480132d8773880bed954ba5b786d277fcf64f110dca3947b57d9"
+          test "$P0" = "05e9c6d5cd5115acc829b66830024afbec40d9e0e469cc3f67a730855c996935"
           echo "migration_checksums=ok head=$(git rev-parse HEAD)"
 
       - name: Install Supabase CLI
