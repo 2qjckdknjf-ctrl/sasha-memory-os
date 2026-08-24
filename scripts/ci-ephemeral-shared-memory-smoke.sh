@@ -39,8 +39,12 @@ psql "$DB_URL" -v ON_ERROR_STOP=1 -c \
 
 STATUS_JSON="$(supabase status -o json)"
 export MEMORY_OS_SUPABASE_URL="$(node -e 'const j=JSON.parse(process.argv[1]); process.stdout.write(j.API_URL||"")' "$STATUS_JSON")"
-export MEMORY_OS_SUPABASE_ANON_KEY="$(node -e 'const j=JSON.parse(process.argv[1]); process.stdout.write(j.ANON_KEY||"")' "$STATUS_JSON")"
-if [[ -z "$MEMORY_OS_SUPABASE_URL" || -z "$MEMORY_OS_SUPABASE_ANON_KEY" ]]; then
+export MEMORY_OS_SUPABASE_ANON_KEY="$(node -e 'const j=JSON.parse(process.argv[1]); process.stdout.write(j.ANON_KEY||j.PUBLISHABLE_KEY||"")' "$STATUS_JSON")"
+if [[ -z "$MEMORY_OS_SUPABASE_ANON_KEY" ]]; then
+  # Default local Supabase demo anon key when status omits it (gotrue excluded).
+  export MEMORY_OS_SUPABASE_ANON_KEY="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS1kZW1vIiwicm9sZSI6ImFub24iLCJleHAiOjE5ODM4MTI5OTZ9.CRXP1A7WOeoJeXxjNni43kdQwgnWNReilDMblYTn_I0"
+fi
+if [[ -z "$MEMORY_OS_SUPABASE_URL" ]]; then
   echo "ephemeral_smoke=missing_supabase_api_env"
   echo "$STATUS_JSON"
   exit 1
