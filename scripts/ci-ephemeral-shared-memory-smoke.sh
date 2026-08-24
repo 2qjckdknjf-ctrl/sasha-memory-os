@@ -34,9 +34,14 @@ echo "== align runtime api_secret for CI smoke"
 psql "$DB_URL" -v ON_ERROR_STOP=1 -c \
   "INSERT INTO app.runtime_config (key, value) VALUES ('api_secret', '${API_SECRET}') ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value;"
 
-eval "$(supabase status -o env)"
-export MEMORY_OS_SUPABASE_URL="${SUPABASE_URL}"
-export MEMORY_OS_SUPABASE_ANON_KEY="${SUPABASE_ANON_KEY}"
+STATUS_JSON="$(supabase status -o json)"
+export MEMORY_OS_SUPABASE_URL="$(node -e 'const j=JSON.parse(process.argv[1]); process.stdout.write(j.API_URL||"")' "$STATUS_JSON")"
+export MEMORY_OS_SUPABASE_ANON_KEY="$(node -e 'const j=JSON.parse(process.argv[1]); process.stdout.write(j.ANON_KEY||"")' "$STATUS_JSON")"
+if [[ -z "$MEMORY_OS_SUPABASE_URL" || -z "$MEMORY_OS_SUPABASE_ANON_KEY" ]]; then
+  echo "ephemeral_smoke=missing_supabase_api_env"
+  echo "$STATUS_JSON"
+  exit 1
+fi
 export MEMORY_OS_API_SECRET="${API_SECRET}"
 export MEMORY_OS_ENV=local
 export MEMORY_OS_MCP_PROFILE=chatgpt
