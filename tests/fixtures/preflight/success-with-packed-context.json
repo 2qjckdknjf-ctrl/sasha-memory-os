@@ -1,0 +1,12 @@
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "result": {
+    "content": [
+      {
+        "type": "text",
+        "text": "[{\"memory\":{\"title\":\"Large packed context\",\"content\":\"SECRET_MEMORY_CONTENT_SHOULD_NOT_LEAK citation provenance memoryId 55555555-5555-4555-8555-555555555501\"},\"score\":0.95,\"personalization\":{\"projectId\":\"44444444-4444-4444-8444-444444444402\"}}]"
+      }
+    ]
+  }
+}

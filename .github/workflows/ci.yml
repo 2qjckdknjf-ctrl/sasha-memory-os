@@ -129,10 +129,10 @@ jobs:
           export MEMORY_OS_API_SECRET="$LIVE_SECRET"
           chmod +x scripts/ci-live-migration-preflight.sh
           set +e
-          ./scripts/ci-live-migration-preflight.sh | tee /tmp/live-preflight.log
+          ./scripts/ci-live-migration-preflight.sh > /tmp/live-preflight.log
           preflight_rc=$?
           set -e
-          if grep -q 'BLOCKED_REMOTE_MIGRATION' /tmp/live-preflight.log; then
+          if grep -q 'live_migration_preflight=BLOCKED_REMOTE_MIGRATION' /tmp/live-preflight.log; then
             echo "status=BLOCKED_REMOTE_MIGRATION" >> "$GITHUB_OUTPUT"
             exit 0
           fi
@@ -140,7 +140,12 @@ jobs:
             echo "status=preflight_failed" >> "$GITHUB_OUTPUT"
             exit "$preflight_rc"
           fi
-          echo "status=ready" >> "$GITHUB_OUTPUT"
+          if grep -q 'live_migration_preflight=READY_FOR_LIVE_SMOKE' /tmp/live-preflight.log; then
+            echo "status=ready" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "status=preflight_failed" >> "$GITHUB_OUTPUT"
+          exit 1
 
       - name: Live Supabase Edge M6 smoke
         if: steps.preflight.outputs.status == 'ready'

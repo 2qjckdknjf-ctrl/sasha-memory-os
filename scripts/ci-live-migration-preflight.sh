@@ -1,12 +1,13 @@
 #!/usr/bin/env bash
 # Production live smoke preflight: require P0 migration (Memory OS project …4402).
 # Read-only probe only — must not mutate production memory.
-# Emits BLOCKED_REMOTE_MIGRATION (exit 0) when remote schema is not ready — not a false PASS.
+# Emits allowlisted status tokens only; never logs raw production responses.
 set -euo pipefail
 
 PROJECT_ID="${MEMORY_OS_PROJECT_ID:-44444444-4444-4444-8444-444444444402}"
 API_BASE="${MEMORY_OS_API_BASE_URL:-}"
 SECRET="${MEMORY_OS_API_SECRET:-}"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 if [[ -z "$API_BASE" || -z "$SECRET" ]]; then
   echo "live_migration_preflight=skipped_missing_credentials"
@@ -14,40 +15,32 @@ if [[ -z "$API_BASE" || -z "$SECRET" ]]; then
 fi
 
 base="${API_BASE%/}"
+RESPONSE_FILE="$(mktemp)"
+chmod 600 "$RESPONSE_FILE"
+cleanup() {
+  rm -f "$RESPONSE_FILE"
+}
+trap cleanup EXIT
 
 payload=$(cat <<EOF
 {"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"memory.search","arguments":{"query":"migration preflight probe","project_id":"${PROJECT_ID}","limit":1}}}
 EOF
 )
 
-response=$(curl -sS --connect-timeout 10 --max-time 30 \
-  -H "content-type: application/json" \
-  -H "accept: application/json, text/event-stream" \
-  -H "x-memory-os-api-secret: ${SECRET}" \
-  --data-binary "$payload" \
-  "${base}/mcp" || true)
+curl_rc=0
+{
+  set +x
+  curl -sS --connect-timeout 10 --max-time 30 \
+    -o "$RESPONSE_FILE" \
+    -H "content-type: application/json" \
+    -H "accept: application/json, text/event-stream" \
+    -H "x-memory-os-api-secret: ${SECRET}" \
+    --data-binary "$payload" \
+    "${base}/mcp"
+} || curl_rc=$?
 
-if [[ -z "${response//[[:space:]]/}" ]]; then
-  echo "live_migration_preflight=unexpected_error"
-  echo "reason=empty_or_missing_response"
-  echo "probe=memory.search(read-only)"
-  exit 1
-fi
-
-if echo "$response" | grep -q 'project not found'; then
-  echo "live_migration_preflight=BLOCKED_REMOTE_MIGRATION"
-  echo "remote_project_id=${PROJECT_ID}"
-  echo "probe=memory.search(read-only)"
-  echo "reason=Memory OS project UUID missing on production; apply P0 migration before live smoke."
-  exit 0
-fi
-
-if echo "$response" | grep -q '"error"'; then
-  echo "live_migration_preflight=unexpected_error"
-  echo "$response"
-  exit 1
-fi
-
-echo "live_migration_preflight=ready"
 echo "probe=memory.search(read-only)"
-exit 0
+echo "remote_project_id=${PROJECT_ID}"
+
+node "${SCRIPT_DIR}/ci-live-migration-preflight-parse.mjs" "$RESPONSE_FILE" "$curl_rc"
+exit $?
