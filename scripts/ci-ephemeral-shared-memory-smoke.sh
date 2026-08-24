@@ -21,8 +21,18 @@ fi
 echo "== supabase start (db + api only)"
 supabase start -x gotrue,realtime,storage,imgproxy,edge-runtime,logflare,vector,studio
 
-echo "== supabase db reset (migrations + seed)"
-supabase db reset
+echo "== supabase db reset (migrations; seed skipped — bootstrap migration covers identity)"
+supabase db reset --no-seed
+
+DB_URL="$(supabase status -o json | node -e 'const j=JSON.parse(require("fs").readFileSync(0,"utf8")); process.stdout.write(j.DB_URL||"")')"
+if [[ -z "$DB_URL" ]]; then
+  echo "ephemeral_smoke=missing_db_url"
+  exit 1
+fi
+
+echo "== align runtime api_secret for CI smoke"
+psql "$DB_URL" -v ON_ERROR_STOP=1 -c \
+  "INSERT INTO app.runtime_config (key, value) VALUES ('api_secret', '${API_SECRET}') ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value;"
 
 eval "$(supabase status -o env)"
 export MEMORY_OS_SUPABASE_URL="${SUPABASE_URL}"

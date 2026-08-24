@@ -21,7 +21,7 @@
     "projectRef": "vpxblcxsvlylqyldiuwr",
     "region": "eu-central-1",
     "latestMigration": "20260824100000_p0_project_identity_scope.sql",
-    "migrationCount": 64
+    "migrationCount": 65
   },
   "officialPacks": {
     "m14Slo": "m14-s01-v1",
