@@ -1,0 +1,47 @@
+{
+  "version": "p0-project-identity-v1",
+  "generatedAt": "2026-08-24T09:10:00.000Z",
+  "dryRun": true,
+  "projects": {
+    "aistroyka": "44444444-4444-4444-8444-444444444401",
+    "sashaMemoryOs": "44444444-4444-4444-8444-444444444402",
+    "hiair": "44444444-4444-4444-8444-444444444403"
+  },
+  "classificationRules": [
+    {
+      "pattern": "(?i)sasha memory os|memory-os|mamoruos|canonical completion plan",
+      "classification": "MOVE_TO_MEMORY_OS",
+      "targetProjectId": "44444444-4444-4444-8444-444444444402"
+    },
+    {
+      "pattern": "(?i)aistroyka|product design audit|slice 01 kickoff",
+      "classification": "KEEP_AISTROYKA",
+      "targetProjectId": "44444444-4444-4444-8444-444444444401"
+    },
+    {
+      "pattern": "(?i)hiair|hi-air|flight",
+      "classification": "MOVE_TO_HIAIR",
+      "targetProjectId": "44444444-4444-4444-8444-444444444403"
+    },
+    {
+      "pattern": "(?i)milestone.*m1[567]|shared-e2e|graph.?rag",
+      "classification": "MOVE_TO_MEMORY_OS",
+      "targetProjectId": "44444444-4444-4444-8444-444444444402"
+    }
+  ],
+  "seedRecords": [
+    {
+      "memoryId": "66666666-6666-4666-8666-666666666601",
+      "title": "Порядок начала Slice 01",
+      "storedProjectId": "44444444-4444-4444-8444-444444444401",
+      "classification": "KEEP_AISTROYKA",
+      "reason": "AISTROYKA demo decision from seed"
+    }
+  ],
+  "invariants": [
+    "Never mutate source_events",
+    "Routing corrections are additive via project_routing_corrections",
+    "Repeated apply is idempotent on memory_id",
+    "Ambiguous records route to UNCLASSIFIED not default project"
+  ]
+}

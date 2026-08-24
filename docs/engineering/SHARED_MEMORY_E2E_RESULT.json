@@ -1,0 +1,18 @@
+{
+  "packVersion": "shared-memory-e2e-v1",
+  "generatedAt": "2026-08-24T09:25:00.000Z",
+  "overallStatus": "BLOCKED",
+  "claimPassFromMocks": false,
+  "preflight": {
+    "projectId": "44444444-4444-4444-8444-444444444402",
+    "workspaceId": "11111111-1111-4111-8111-111111111111"
+  },
+  "chatgptToCursor": "BLOCKED",
+  "cursorToChatgpt": "REQUIRES_REAL_CHATGPT_SESSION",
+  "remainingExternalStep": "REQUIRES_REAL_CHATGPT_SESSION",
+  "blockers": [
+    "no_live_chatgpt_oauth_session_in_ci",
+    "no_live_cursor_mcp_session_in_ci",
+    "remote_migration_apply_pending"
+  ]
+}

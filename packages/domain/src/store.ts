@@ -901,12 +901,14 @@ export class MemoryStore {
 export function createSeededStore(): MemoryStore {
   const store = new MemoryStore();
   const workspaceId = '11111111-1111-4111-8111-111111111111';
-  const projectId = '44444444-4444-4444-8444-444444444401';
+  const aistroykaProjectId = '44444444-4444-4444-8444-444444444401';
+  const memoryOsProjectId = '44444444-4444-4444-8444-444444444402';
   const chatgpt = '33333333-3333-4333-8333-333333333302';
+  const cursor = '33333333-3333-4333-8333-333333333303';
 
   const decision = store.createDecision({
     workspaceId,
-    projectId,
+    projectId: aistroykaProjectId,
     title: 'Порядок начала Slice 01',
     content: 'Slice 01 начинается после Product Design Audit PR #215.',
     actorSubjectId: chatgpt,
@@ -917,7 +919,7 @@ export function createSeededStore(): MemoryStore {
 
   store.upsertProjectState({
     workspaceId,
-    projectId,
+    projectId: aistroykaProjectId,
     expectedVersion: 0,
     actorSubjectId: chatgpt,
     summary: 'Slice 01 ready after audit PR #215',
@@ -929,6 +931,34 @@ export function createSeededStore(): MemoryStore {
       next: ['implement slice 01'],
       risks: [],
       active_decisions: [decision.id],
+    },
+  });
+
+  const osDecision = store.createDecision({
+    workspaceId,
+    projectId: memoryOsProjectId,
+    title: 'Shared memory remediation kickoff',
+    content: 'P0 project identity split: Memory OS UUID 444...402.',
+    actorSubjectId: cursor,
+    idempotencyKey: 'manual/cursor/decision-memory-os-01',
+    importance: 0.9,
+    confidence: 0.99,
+  });
+
+  store.upsertProjectState({
+    workspaceId,
+    projectId: memoryOsProjectId,
+    expectedVersion: 0,
+    actorSubjectId: cursor,
+    summary: 'Sasha Memory OS engineering state',
+    state: {
+      stage: 'shared-memory-remediation',
+      completed: ['m6-chatgpt-mode-a'],
+      in_progress: ['shared-memory-e2e'],
+      blocked: ['m15-live-e2e'],
+      next: ['p0-project-identity'],
+      risks: [],
+      active_decisions: [osDecision.id],
     },
   });
 

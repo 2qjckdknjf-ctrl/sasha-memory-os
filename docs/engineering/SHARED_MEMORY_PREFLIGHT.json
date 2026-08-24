@@ -1,0 +1,53 @@
+{
+  "manifestVersion": "shared-memory-preflight-v1",
+  "generatedAt": "2026-08-24T09:10:00.000Z",
+  "repository": "2qjckdknjf-ctrl/sasha-memory-os",
+  "mainSha": "80ff315f44af43a1fb26e8ae01e31f6f72796190",
+  "mainShaAfterRemediation": null,
+  "schema": {
+    "migrationCountBefore": 63,
+    "latestMigrationBefore": "20260821100000_m15_slice_01_source_event_contract.sql",
+    "p0Migration": "20260824100000_p0_project_identity_scope.sql"
+  },
+  "projects": {
+    "aistroyka": "44444444-4444-4444-8444-444444444401",
+    "sashaMemoryOs": "44444444-4444-4444-8444-444444444402",
+    "hiair": "44444444-4444-4444-8444-444444444403"
+  },
+  "workspace": "11111111-1111-4111-8111-111111111111",
+  "actors": {
+    "owner": "33333333-3333-4333-8333-333333333301",
+    "chatgpt": "33333333-3333-4333-8333-333333333302",
+    "cursor": "33333333-3333-4333-8333-333333333303",
+    "roma": "33333333-3333-4333-8333-333333333304"
+  },
+  "deployments": {
+    "supabaseProjectRef": "vpxblcxsvlylqyldiuwr",
+    "edgeFunctions": ["memory-mcp", "worker-ticks"],
+    "githubActions": ["ci.yml", "node-workers.yml", "oauth-consent-pages.yml", "worker-ticks.yml"]
+  },
+  "ci": {
+    "openPrs": 0,
+    "latestMergedPr": 76,
+    "workflowFilesPresent": true,
+    "liveCredentialsAvailable": false
+  },
+  "blockersBeforeRemediation": [
+    "canonicalProjectId pointed at AISTROYKA UUID",
+    "no bidirectional ChatGPT↔Cursor live E2E",
+    "M15 live E2E BLOCKED",
+    "M15.1 remote migration apply pending",
+    "Cursor milestones not proven via real MCP session",
+    "local desktop agent live E2E blocked"
+  ],
+  "acceptanceGates": {
+    "chatgptWriteCursorRead": "BLOCKED",
+    "cursorWriteChatgptRead": "BLOCKED",
+    "projectIsolation": "IN_PROGRESS",
+    "actorBinding": "IN_PROGRESS",
+    "idempotency": "NOT_STARTED",
+    "localDesktopAgent": "BLOCKED",
+    "remoteMigrationApply": "BLOCKED",
+    "ciVerifiableRuns": "PARTIAL"
+  }
+}

@@ -1,0 +1,12 @@
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "result": {
+    "content": [
+      {
+        "type": "text",
+        "text": "[{\"memory\":{\"title\":\"Preflight probe with error token in title\",\"content\":\"This memory mentions error handling but is valid\"},\"score\":0.9}]"
+      }
+    ]
+  }
+}

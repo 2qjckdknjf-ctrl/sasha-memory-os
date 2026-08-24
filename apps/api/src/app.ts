@@ -3,9 +3,20 @@ import { cors } from 'hono/cors';
 import {
   authorize,
   resolveLocalSubject,
+  buildProductionAgentAclEntries,
   type AclEntry,
   type AuthzContext,
 } from '@memory-os/authz';
+import {
+  AISTROYKA_PROJECT_ID,
+  CANONICAL_WORKSPACE_ID,
+  CHATGPT_SUBJECT_ID,
+  CURSOR_SUBJECT_ID,
+  OWNER_SUBJECT_ID,
+  PROJECT_ID_BY_SLUG,
+  ROMA_SUBJECT_ID,
+  SASHA_MEMORY_OS_PROJECT_ID,
+} from '@memory-os/schemas';
 import {
   createSeededStore,
   type MemoryRecord,
@@ -150,12 +161,13 @@ export type ApiVariables = {
   };
 };
 
-const seedWorkspace = '11111111-1111-4111-8111-111111111111';
-const seedProject = '44444444-4444-4444-8444-444444444401';
-const owner = '33333333-3333-4333-8333-333333333301';
-const chatgpt = '33333333-3333-4333-8333-333333333302';
-const cursor = '33333333-3333-4333-8333-333333333303';
-const roma = '33333333-3333-4333-8333-333333333304';
+const seedWorkspace = CANONICAL_WORKSPACE_ID;
+const aistroykaProject = AISTROYKA_PROJECT_ID;
+const memoryOsProject = SASHA_MEMORY_OS_PROJECT_ID;
+const owner = OWNER_SUBJECT_ID;
+const chatgpt = CHATGPT_SUBJECT_ID;
+const cursor = CURSOR_SUBJECT_ID;
+const roma = ROMA_SUBJECT_ID;
 const PROACTIVE_CONSOLIDATION_PROJECT_ERROR =
   'project_id is required for proactive consolidation; never default to AISTROYKA';
 
@@ -216,51 +228,12 @@ function seedAuthz(subjectId: string): AuthzContext {
     workspaceId: seedWorkspace,
     isOwner,
     entries: [
-      {
-        subjectId: chatgpt,
-        effect: 'allow',
-        resourceType: 'memory',
-        projectId: seedProject,
-        actions: ['read', 'write'],
-        sensitivityMax: 'internal',
-      },
-      {
-        subjectId: chatgpt,
-        effect: 'allow',
-        resourceType: 'project_state',
-        projectId: seedProject,
-        actions: ['read', 'write'],
-        sensitivityMax: 'internal',
-      },
-      {
-        subjectId: cursor,
-        effect: 'allow',
-        resourceType: 'memory',
-        projectId: seedProject,
-        actions: ['read', 'write'],
-        sensitivityMax: 'internal',
-      },
-      {
-        subjectId: cursor,
-        effect: 'allow',
-        resourceType: 'project_state',
-        projectId: seedProject,
-        actions: ['read', 'write'],
-        sensitivityMax: 'internal',
-      },
-      {
-        subjectId: cursor,
-        effect: 'allow',
-        resourceType: 'handoff',
-        projectId: seedProject,
-        actions: ['read', 'write'],
-        sensitivityMax: 'internal',
-      },
+      ...buildProductionAgentAclEntries(),
       {
         subjectId: roma,
         effect: 'allow',
         resourceType: 'memory',
-        projectId: seedProject,
+        projectId: aistroykaProject,
         actions: ['read', 'write'],
         sensitivityMax: 'internal',
       },
@@ -268,7 +241,7 @@ function seedAuthz(subjectId: string): AuthzContext {
         subjectId: roma,
         effect: 'allow',
         resourceType: 'project',
-        projectId: seedProject,
+        projectId: aistroykaProject,
         actions: ['read'],
         sensitivityMax: 'internal',
       },
@@ -276,7 +249,7 @@ function seedAuthz(subjectId: string): AuthzContext {
         subjectId: roma,
         effect: 'allow',
         resourceType: 'project_state',
-        projectId: seedProject,
+        projectId: aistroykaProject,
         actions: ['read'],
         sensitivityMax: 'internal',
       },
@@ -284,39 +257,7 @@ function seedAuthz(subjectId: string): AuthzContext {
         subjectId: roma,
         effect: 'allow',
         resourceType: 'handoff',
-        projectId: seedProject,
-        actions: ['read', 'write'],
-        sensitivityMax: 'internal',
-      },
-      {
-        subjectId: chatgpt,
-        effect: 'allow',
-        resourceType: 'memory',
-        projectId: null,
-        actions: ['read', 'write'],
-        sensitivityMax: 'internal',
-      },
-      {
-        subjectId: chatgpt,
-        effect: 'allow',
-        resourceType: 'handoff',
-        projectId: null,
-        actions: ['read', 'write'],
-        sensitivityMax: 'internal',
-      },
-      {
-        subjectId: cursor,
-        effect: 'allow',
-        resourceType: 'memory',
-        projectId: null,
-        actions: ['read', 'write'],
-        sensitivityMax: 'internal',
-      },
-      {
-        subjectId: cursor,
-        effect: 'allow',
-        resourceType: 'handoff',
-        projectId: null,
+        projectId: aistroykaProject,
         actions: ['read', 'write'],
         sensitivityMax: 'internal',
       },
@@ -660,9 +601,10 @@ async function resolveProjectIdForWrite(input: {
     return { projectId: trimmed, error: null };
   }
   if (!input.gateway) {
+    const slugHit = PROJECT_ID_BY_SLUG[trimmed.toLowerCase()];
     return {
-      projectId: trimmed.toLowerCase() === 'aistroyka' ? seedProject : null,
-      error: trimmed.toLowerCase() === 'aistroyka' ? null : 'not_found',
+      projectId: slugHit ?? null,
+      error: slugHit ? null : 'not_found',
     };
   }
   const resolved = await input.gateway.resolveProjectRef({
@@ -1901,7 +1843,7 @@ export function createApp(options?: {
     c.set('store', store);
     c.set('gateway', gateway);
 
-    let subjectId = owner;
+    let subjectId: string = owner;
     let actorMeta: ApiVariables['actor'] = {
       id: owner,
       externalKey: 'owner',
@@ -5288,7 +5230,14 @@ export function createApp(options?: {
       return c.json({
         projects: [
           {
-            id: seedProject,
+            id: memoryOsProject,
+            slug: 'sasha-memory-os',
+            name: 'Sasha Memory OS',
+            status: 'active',
+            url: 'https://github.com/2qjckdknjf-ctrl/sasha-memory-os',
+          },
+          {
+            id: aistroykaProject,
             slug: 'aistroyka',
             name: 'AISTROYKA',
             status: 'active',

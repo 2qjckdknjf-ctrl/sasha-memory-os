@@ -1,0 +1,50 @@
+name: Shared Memory E2E
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '0 6 * * 1'
+
+jobs:
+  fixture-gate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9.15.9
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      - name: P0 project identity pack
+        run: vitest run tests/security/p0_project_identity_pack.test.ts
+
+      - name: Project identity schema tests
+        run: pnpm --filter @memory-os/schemas test -- projectIdentity
+
+  live-e2e:
+    runs-on: ubuntu-latest
+    needs: fixture-gate
+    if: github.event_name == 'workflow_dispatch'
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Live shared-memory E2E
+        env:
+          LIVE_SECRET: ${{ secrets.MEMORY_OS_API_SECRET }}
+          LIVE_SUPABASE_URL: ${{ secrets.MEMORY_OS_SUPABASE_URL }}
+          MEMORY_OS_PROJECT_ID: ${{ secrets.MEMORY_OS_PROJECT_ID }}
+        run: |
+          if [[ -z "$LIVE_SECRET" || -z "$LIVE_SUPABASE_URL" ]]; then
+            echo "shared_memory_e2e=BLOCKED_missing_repo_secrets"
+            exit 0
+          fi
+          echo "shared_memory_e2e=REQUIRES_REAL_CHATGPT_SESSION"
+          echo "Run scripts/acceptance-shared-memory-e2e.sh locally with OAuth-bound ChatGPT + Cursor MCP sessions."

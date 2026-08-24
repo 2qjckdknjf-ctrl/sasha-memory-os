@@ -3,14 +3,18 @@
  * See docs/m0/CHATGPT_MCP_PLAN.md.
  */
 
+import {
+  CANONICAL_WORKSPACE_ID,
+  CHATGPT_SUBJECT_ID,
+  AISTROYKA_PROJECT_ID,
+  SASHA_MEMORY_OS_PROJECT_ID,
+} from '@memory-os/schemas';
+
 export type McpProfileName = 'full' | 'chatgpt';
 
-export const CHATGPT_SUBJECT_ID =
-  '33333333-3333-4333-8333-333333333302';
-export const DEFAULT_WORKSPACE_ID =
-  '11111111-1111-4111-8111-111111111111';
-export const DEFAULT_PROJECT_ID =
-  '44444444-4444-4444-8444-444444444401';
+export { CHATGPT_SUBJECT_ID, SASHA_MEMORY_OS_PROJECT_ID as DEFAULT_PROJECT_ID };
+export { AISTROYKA_PROJECT_ID };
+export const DEFAULT_WORKSPACE_ID = CANONICAL_WORKSPACE_ID;
 
 /** ChatGPT pilot tool set (read + write when workspace allows). */
 export const CHATGPT_PILOT_TOOLS = [

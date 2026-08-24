@@ -12,7 +12,7 @@ const SUBJECT = Deno.env.get("MEMORY_OS_CHATGPT_SUBJECT_ID") ??
 const WORKSPACE = Deno.env.get("MEMORY_OS_DEFAULT_WORKSPACE_ID") ??
   "11111111-1111-4111-8111-111111111111";
 const RLS_PROBE_PROJECT_ID =
-  "44444444-4444-4444-8444-444444444401";
+  "44444444-4444-4444-8444-444444444402";
 const SUPABASE_URL = (Deno.env.get("SUPABASE_URL") ??
   "https://vpxblcxsvlylqyldiuwr.supabase.co").replace(/\/$/, "");
 const FUNCTION_BASE = `${SUPABASE_URL}/functions/v1/memory-mcp`;

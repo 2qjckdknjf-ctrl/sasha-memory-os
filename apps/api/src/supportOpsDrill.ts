@@ -2,7 +2,7 @@ import { existsSync, readFileSync, statSync } from 'node:fs';
 import { resolve } from 'node:path';
 import {
   CHATGPT_PILOT_TOOLS,
-  DEFAULT_PROJECT_ID,
+  AISTROYKA_PROJECT_ID,
   DEFAULT_WORKSPACE_ID,
 } from '@memory-os/mcp-gateway';
 import {
@@ -254,9 +254,9 @@ export function evaluateSupportOpsDrillReport(
       `ChatGPT Mode A tool count changed (${report.modeAToolCount} !== ${OFFICIAL_M14_SUPPORT_OPS_PACK.invariants.modeAToolCount})`,
     );
   }
-  if (!report.blockedFallbackProjectIds.includes(DEFAULT_PROJECT_ID)) {
+  if (!report.blockedFallbackProjectIds.includes(AISTROYKA_PROJECT_ID)) {
     errors.push(
-      `support / ops manifest must block AISTROYKA fallback ${DEFAULT_PROJECT_ID}`,
+      `support / ops manifest must block AISTROYKA fallback ${AISTROYKA_PROJECT_ID}`,
     );
   }
   if (!report.opsPage.docExists) {
@@ -380,9 +380,9 @@ export function resolveSupportOpsDrillConfig(
       'explicit project_id is required for the bounded support / ops drill; no default project fallback',
     );
   }
-  if (projectId === DEFAULT_PROJECT_ID) {
+  if (projectId === AISTROYKA_PROJECT_ID) {
     throw new Error(
-      `AISTROYKA fallback project_id ${DEFAULT_PROJECT_ID} is not allowed for the bounded support / ops drill`,
+      `AISTROYKA fallback project_id ${AISTROYKA_PROJECT_ID} is not allowed for the bounded support / ops drill`,
     );
   }
   return {
@@ -432,9 +432,9 @@ export async function runSupportOpsDrill(
       `support / ops roadmap sections mismatch (${manifest.roadmapSections.join(', ')} !== ${OFFICIAL_M14_SUPPORT_OPS_PACK.roadmapSections.join(', ')})`,
     );
   }
-  if (!manifest.blockedFallbackProjectIds.includes(DEFAULT_PROJECT_ID)) {
+  if (!manifest.blockedFallbackProjectIds.includes(AISTROYKA_PROJECT_ID)) {
     manifestErrors.push(
-      `support / ops manifest must block AISTROYKA fallback ${DEFAULT_PROJECT_ID}`,
+      `support / ops manifest must block AISTROYKA fallback ${AISTROYKA_PROJECT_ID}`,
     );
   }
 

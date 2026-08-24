@@ -4,6 +4,7 @@ export * from './ingestion.js';
 export * from './sourceEvent.js';
 export * from './connectorOrchestration.js';
 export * from './projectRouting.js';
+export * from './projectIdentity.js';
 export * from './canonicalization.js';
 export * from './freshness.js';
 export * from './deletionRevokeLifecycle.js';

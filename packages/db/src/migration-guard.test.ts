@@ -68,6 +68,12 @@ const privacySlaGuardsMigrationPath = fileURLToPath(
     import.meta.url,
   ),
 );
+const p0ProjectIdentityMigrationPath = fileURLToPath(
+  new URL(
+    '../../../supabase/migrations/20260824100000_p0_project_identity_scope.sql',
+    import.meta.url,
+  ),
+);
 
 describe('m8 slice 03 migration guards', () => {
   const sql = readFileSync(migrationPath, 'utf8');
@@ -395,5 +401,90 @@ describe('m8 slice 03 migration guards', () => {
     expect(privacySlaGuardsSql).toContain(`'targetMemoryId', p_target_memory_id`);
     expect(privacySlaGuardsSql).not.toContain(`'44444444-4444-4444-8444-444444444401'`);
     expect(privacySlaGuardsSql).not.toContain(`reason,\n    btrim(p_reason)`);
+  });
+});
+
+describe('P0 project identity migration guards', () => {
+  const p0Sql = readFileSync(p0ProjectIdentityMigrationPath, 'utf8');
+
+  it('removes legacy Cursor AISTROYKA ACL on upgrade', () => {
+    expect(p0Sql).toContain(`DELETE FROM acl_entries a`);
+    expect(p0Sql).toContain(`AND s.external_key = 'cursor'`);
+    expect(p0Sql).toContain(
+      `AND a.project_id = '44444444-4444-4444-8444-444444444401'`,
+    );
+  });
+
+  it('removes workspace-wide agent bypass and scopes Memory OS ACL inserts', () => {
+    expect(p0Sql).toContain(`AND a.project_id IS NULL`);
+    expect(p0Sql).toContain(
+      `'44444444-4444-4444-8444-444444444402'`,
+    );
+    expect(p0Sql).toMatch(
+      /'chatgpt', 'project_state', ARRAY\['read'\]::text\[\]/,
+    );
+    expect(p0Sql).toMatch(
+      /'chatgpt', 'handoff', ARRAY\['read', 'write'\]::text\[\]/,
+    );
+  });
+
+  it('merges M13 personalization with effective project routing in search', () => {
+    expect(p0Sql).toContain(`FROM memory_personalizations mp`);
+    expect(p0Sql).toContain(`WHEN pref.pinned THEN 1.75`);
+    expect(p0Sql).toContain(`app.effective_memory_project_id(m.id)`);
+    expect(p0Sql).toContain(`effective_project.effective_project_id`);
+    expect(p0Sql).toContain(`'personalization'`);
+  });
+
+  it('aligns api_get_memory ACL with effective project routing', () => {
+    expect(p0Sql).toContain('CREATE OR REPLACE FUNCTION app.api_get_memory');
+    expect(p0Sql).toContain(
+      'v_effective_project_id := app.effective_memory_project_id(v_row.id)',
+    );
+    expect(p0Sql).toContain(`'effectiveProjectId', v_effective_project_id`);
+    expect(p0Sql).toMatch(
+      /app\.has_acl\(\s*v_row\.workspace_id,\s*'memory',\s*'read',\s*v_effective_project_id,/,
+    );
+  });
+
+  it('hardens project_routing_corrections with forced RLS and revoked client grants', () => {
+    expect(p0Sql).toContain(
+      'ALTER TABLE project_routing_corrections FORCE ROW LEVEL SECURITY',
+    );
+    expect(p0Sql).toContain(
+      'REVOKE ALL ON TABLE project_routing_corrections FROM PUBLIC, anon, authenticated',
+    );
+  });
+
+  it('scopes personalization setter and RLS to effective project', () => {
+    expect(p0Sql).toContain('DROP POLICY IF EXISTS memory_personalizations_select');
+    expect(p0Sql).toContain(
+      'AND app.effective_memory_project_id(mr.id) = memory_personalizations.project_id',
+    );
+    expect(p0Sql).toContain(
+      'IF p_project_id IS DISTINCT FROM v_effective_project_id THEN',
+    );
+    expect(p0Sql).toContain(`'storedProjectId', v_memory.project_id`);
+  });
+
+  it('includes routing-corrected memories in api_project_context by effective project', () => {
+    expect(p0Sql).toContain('CREATE OR REPLACE FUNCTION app.api_project_context');
+    expect(p0Sql).toContain(
+      'WHERE app.effective_memory_project_id(m.id) = p_project_id',
+    );
+    expect(p0Sql).toContain(
+      `'effectiveProjectId', app.effective_memory_project_id(m.id)`,
+    );
+  });
+
+  it('aligns api_list_memories filter and payload with effective project', () => {
+    expect(p0Sql).toContain('CREATE OR REPLACE FUNCTION app.api_list_memories');
+    expect(p0Sql).toContain(
+      'OR effective_project.effective_project_id = p_project_id',
+    );
+    expect(p0Sql).toContain(`'storedProjectId', m.project_id`);
+    expect(p0Sql).toContain(
+      `'project_id', effective_project.effective_project_id`,
+    );
   });
 });

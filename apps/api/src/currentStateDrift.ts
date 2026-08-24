@@ -227,24 +227,31 @@ export function validateCurrentStateDrift(
     });
   }
 
-  if (manifest.currentMilestone !== 'M17.3-graph-retrieval') {
+  if (manifest.currentMilestone !== 'P0-shared-memory-remediation') {
     findings.push({
       code: 'current-milestone',
-      message: `expected currentMilestone M17.3-graph-retrieval, got ${manifest.currentMilestone}`,
+      message: `expected currentMilestone P0-shared-memory-remediation, got ${manifest.currentMilestone}`,
     });
   }
 
   if (manifest.completedThrough !== 'M17.3') {
     findings.push({
       code: 'completed-through',
-      message: `expected completedThrough M17.3 after graph-aware retrieval pack, got ${manifest.completedThrough}`,
+      message: `expected contractPacks completedThrough M17.3, got ${manifest.completedThrough}`,
     });
   }
 
-  if (manifest.nextSlice !== 'M17.4-entity-migration-backfill') {
+  if (manifest.nextSlice !== 'SHARED_MEMORY_E2E_REMEDIATION') {
     findings.push({
       code: 'next-slice',
-      message: `expected nextSlice M17.4-entity-migration-backfill, got ${manifest.nextSlice}`,
+      message: `expected nextSlice SHARED_MEMORY_E2E_REMEDIATION, got ${manifest.nextSlice}`,
+    });
+  }
+
+  if (manifest.canonicalProjectId !== '44444444-4444-4444-8444-444444444402') {
+    findings.push({
+      code: 'canonical-project-id',
+      message: 'canonicalProjectId must be Sasha Memory OS project UUID 444...402',
     });
   }
 

@@ -2,7 +2,7 @@ import { existsSync, readFileSync, statSync } from 'node:fs';
 import { resolve } from 'node:path';
 import {
   CHATGPT_PILOT_TOOLS,
-  DEFAULT_PROJECT_ID,
+  AISTROYKA_PROJECT_ID,
   DEFAULT_WORKSPACE_ID,
 } from '@memory-os/mcp-gateway';
 import {
@@ -402,9 +402,9 @@ export function evaluateDependencyUpgradeReport(
       `ChatGPT Mode A tool count changed (${report.modeAToolCount} !== ${OFFICIAL_M14_DEPENDENCY_UPGRADE_POLICY_PACK.invariants.modeAToolCount})`,
     );
   }
-  if (!report.blockedFallbackProjectIds.includes(DEFAULT_PROJECT_ID)) {
+  if (!report.blockedFallbackProjectIds.includes(AISTROYKA_PROJECT_ID)) {
     errors.push(
-      `dependency upgrade policy must block AISTROYKA fallback ${DEFAULT_PROJECT_ID}`,
+      `dependency upgrade policy must block AISTROYKA fallback ${AISTROYKA_PROJECT_ID}`,
     );
   }
   if (!report.intake.docExists) {
@@ -577,9 +577,9 @@ export function resolveDependencyUpgradeDrillConfig(
       'explicit project_id is required for the bounded dependency upgrade drill; no default project fallback',
     );
   }
-  if (projectId === DEFAULT_PROJECT_ID) {
+  if (projectId === AISTROYKA_PROJECT_ID) {
     throw new Error(
-      `AISTROYKA fallback project_id ${DEFAULT_PROJECT_ID} is not allowed for the bounded dependency upgrade drill`,
+      `AISTROYKA fallback project_id ${AISTROYKA_PROJECT_ID} is not allowed for the bounded dependency upgrade drill`,
     );
   }
   return {
@@ -628,9 +628,9 @@ export async function runDependencyUpgradeDrill(
       `dependency upgrade roadmap sections mismatch (${manifest.roadmapSections.join(', ')} !== ${OFFICIAL_M14_DEPENDENCY_UPGRADE_POLICY_PACK.roadmapSections.join(', ')})`,
     );
   }
-  if (!manifest.blockedFallbackProjectIds.includes(DEFAULT_PROJECT_ID)) {
+  if (!manifest.blockedFallbackProjectIds.includes(AISTROYKA_PROJECT_ID)) {
     manifestErrors.push(
-      `dependency upgrade manifest must block AISTROYKA fallback ${DEFAULT_PROJECT_ID}`,
+      `dependency upgrade manifest must block AISTROYKA fallback ${AISTROYKA_PROJECT_ID}`,
     );
   }
   const expectedControlIds = OFFICIAL_M14_DEPENDENCY_UPGRADE_POLICY_PACK.controls.map(

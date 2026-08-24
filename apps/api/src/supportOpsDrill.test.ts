@@ -10,7 +10,7 @@ import { resolve } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   CHATGPT_PILOT_TOOLS,
-  DEFAULT_PROJECT_ID,
+  AISTROYKA_PROJECT_ID,
 } from '@memory-os/mcp-gateway';
 import { OFFICIAL_M14_SUPPORT_OPS_PACK } from '@memory-os/observability';
 import {
@@ -160,19 +160,19 @@ describe('support / ops drill harness', () => {
     ).toThrow(/explicit project_id is required/i);
   });
 
-  it('ignores MEMORY_OS_DEFAULT_PROJECT_ID fallback env for the drill fixture', () => {
+  it('ignores MEMORY_OS_AISTROYKA_PROJECT_ID fallback env for the drill fixture', () => {
     expect(() =>
       resolveSupportOpsDrillConfigFromEnv({
         MEMORY_OS_SUPPORT_OPS_FIXTURE_DIR: FIXTURE_DIR,
         MEMORY_OS_WORKSPACE_ID: workspaceId,
-        MEMORY_OS_DEFAULT_PROJECT_ID: explicitProjectId,
+        MEMORY_OS_AISTROYKA_PROJECT_ID: explicitProjectId,
       }),
     ).toThrow(/explicit project_id is required/i);
     expect(
       supportOpsDrillConfigInputFromEnv({
         MEMORY_OS_SUPPORT_OPS_FIXTURE_DIR: FIXTURE_DIR,
         MEMORY_OS_WORKSPACE_ID: workspaceId,
-        MEMORY_OS_DEFAULT_PROJECT_ID: explicitProjectId,
+        MEMORY_OS_AISTROYKA_PROJECT_ID: explicitProjectId,
       }),
     ).toMatchObject({
       fixtureDir: FIXTURE_DIR,
@@ -185,7 +185,7 @@ describe('support / ops drill harness', () => {
     expect(() =>
       resolveSupportOpsDrillConfig({
         fixtureDir: FIXTURE_DIR,
-        projectId: DEFAULT_PROJECT_ID,
+        projectId: AISTROYKA_PROJECT_ID,
         workspaceId,
       }),
     ).toThrow(/AISTROYKA fallback project_id/i);
@@ -221,7 +221,7 @@ describe('support / ops drill harness', () => {
       ok: true,
       errors: [],
     });
-    expect(report.blockedFallbackProjectIds).toContain(DEFAULT_PROJECT_ID);
+    expect(report.blockedFallbackProjectIds).toContain(AISTROYKA_PROJECT_ID);
     expect(report.modeAToolCount).toBe(
       OFFICIAL_M14_SUPPORT_OPS_PACK.invariants.modeAToolCount,
     );
@@ -308,7 +308,7 @@ describe('support / ops drill harness', () => {
     expect(report.assertions.ok).toBe(false);
     expect(report.assertions.errors).toEqual(
       expect.arrayContaining([
-        `support / ops manifest must block AISTROYKA fallback ${DEFAULT_PROJECT_ID}`,
+        `support / ops manifest must block AISTROYKA fallback ${AISTROYKA_PROJECT_ID}`,
       ]),
     );
   });

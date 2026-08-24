@@ -1,0 +1,18 @@
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "result": {
+    "content": [
+      {
+        "type": "text",
+        "text": "Sign in to Sasha Memory OS to use this tool."
+      }
+    ],
+    "isError": true,
+    "_meta": {
+      "mcp/www_authenticate": [
+        "Bearer error=\"insufficient_scope\", error_description=\"Authentication required\""
+      ]
+    }
+  }
+}

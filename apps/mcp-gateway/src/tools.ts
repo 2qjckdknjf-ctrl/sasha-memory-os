@@ -61,10 +61,12 @@ import {
   setConnectionStatusSchema,
   setMemoryStatusSchema,
   upsertConnectionSchema,
+  AISTROYKA_PROJECT_ID,
   type ApplyExtractionInput,
 } from '@memory-os/schemas';
 import {
   authorize,
+  buildProductionAgentAclEntries,
   resolveLocalSubject,
   type AuthzContext,
 } from '@memory-os/authz';
@@ -92,8 +94,6 @@ const defaultSdkConnectorRegistry = createConnectorRegistry([
 ]);
 
 const OWNER_SUBJECT_ID = '33333333-3333-4333-8333-333333333301';
-const CHATGPT_SUBJECT_ID = '33333333-3333-4333-8333-333333333302';
-const CURSOR_SUBJECT_ID = '33333333-3333-4333-8333-333333333303';
 const ROMA_SUBJECT_ID = '33333333-3333-4333-8333-333333333304';
 const PROACTIVE_CONSOLIDATION_PROJECT_ERROR =
   'project_id is required for proactive consolidation; never default to AISTROYKA';
@@ -154,7 +154,7 @@ function recordToolSlo(
 
 function localAuthzForSubject(
   subjectId: string,
-  workspaceId = DEFAULT_WORKSPACE_ID,
+  workspaceId: string = DEFAULT_WORKSPACE_ID,
 ): AuthzContext {
   const resolved = resolveLocalSubject({ subjectId, workspaceId });
   const effectiveSubjectId = resolved?.id ?? subjectId;
@@ -164,51 +164,12 @@ function localAuthzForSubject(
     workspaceId,
     isOwner,
     entries: [
-      {
-        subjectId: CHATGPT_SUBJECT_ID,
-        effect: 'allow',
-        resourceType: 'memory',
-        projectId: DEFAULT_PROJECT_ID,
-        actions: ['read', 'write'],
-        sensitivityMax: 'internal',
-      },
-      {
-        subjectId: CHATGPT_SUBJECT_ID,
-        effect: 'allow',
-        resourceType: 'project_state',
-        projectId: DEFAULT_PROJECT_ID,
-        actions: ['read', 'write'],
-        sensitivityMax: 'internal',
-      },
-      {
-        subjectId: CURSOR_SUBJECT_ID,
-        effect: 'allow',
-        resourceType: 'memory',
-        projectId: DEFAULT_PROJECT_ID,
-        actions: ['read', 'write'],
-        sensitivityMax: 'internal',
-      },
-      {
-        subjectId: CURSOR_SUBJECT_ID,
-        effect: 'allow',
-        resourceType: 'project_state',
-        projectId: DEFAULT_PROJECT_ID,
-        actions: ['read', 'write'],
-        sensitivityMax: 'internal',
-      },
-      {
-        subjectId: CURSOR_SUBJECT_ID,
-        effect: 'allow',
-        resourceType: 'handoff',
-        projectId: DEFAULT_PROJECT_ID,
-        actions: ['read', 'write'],
-        sensitivityMax: 'internal',
-      },
+      ...buildProductionAgentAclEntries(),
       {
         subjectId: ROMA_SUBJECT_ID,
         effect: 'allow',
         resourceType: 'memory',
-        projectId: DEFAULT_PROJECT_ID,
+        projectId: AISTROYKA_PROJECT_ID,
         actions: ['read', 'write'],
         sensitivityMax: 'internal',
       },
@@ -216,7 +177,7 @@ function localAuthzForSubject(
         subjectId: ROMA_SUBJECT_ID,
         effect: 'allow',
         resourceType: 'project',
-        projectId: DEFAULT_PROJECT_ID,
+        projectId: AISTROYKA_PROJECT_ID,
         actions: ['read'],
         sensitivityMax: 'internal',
       },
@@ -224,7 +185,7 @@ function localAuthzForSubject(
         subjectId: ROMA_SUBJECT_ID,
         effect: 'allow',
         resourceType: 'project_state',
-        projectId: DEFAULT_PROJECT_ID,
+        projectId: AISTROYKA_PROJECT_ID,
         actions: ['read'],
         sensitivityMax: 'internal',
       },
@@ -232,39 +193,7 @@ function localAuthzForSubject(
         subjectId: ROMA_SUBJECT_ID,
         effect: 'allow',
         resourceType: 'handoff',
-        projectId: DEFAULT_PROJECT_ID,
-        actions: ['read', 'write'],
-        sensitivityMax: 'internal',
-      },
-      {
-        subjectId: CHATGPT_SUBJECT_ID,
-        effect: 'allow',
-        resourceType: 'memory',
-        projectId: null,
-        actions: ['read', 'write'],
-        sensitivityMax: 'internal',
-      },
-      {
-        subjectId: CHATGPT_SUBJECT_ID,
-        effect: 'allow',
-        resourceType: 'handoff',
-        projectId: null,
-        actions: ['read', 'write'],
-        sensitivityMax: 'internal',
-      },
-      {
-        subjectId: CURSOR_SUBJECT_ID,
-        effect: 'allow',
-        resourceType: 'memory',
-        projectId: null,
-        actions: ['read', 'write'],
-        sensitivityMax: 'internal',
-      },
-      {
-        subjectId: CURSOR_SUBJECT_ID,
-        effect: 'allow',
-        resourceType: 'handoff',
-        projectId: null,
+        projectId: AISTROYKA_PROJECT_ID,
         actions: ['read', 'write'],
         sensitivityMax: 'internal',
       },
@@ -344,6 +273,13 @@ const MIN_INFERRED_PROJECT_TOKEN_LENGTH = 5;
 const LOCAL_PROJECT_CATALOG: LocalProjectCandidate[] = [
   {
     id: DEFAULT_PROJECT_ID,
+    slug: 'sasha-memory-os',
+    name: 'Sasha Memory OS',
+    url: 'https://github.com/2qjckdknjf-ctrl/sasha-memory-os',
+    aliases: ['sasha-memory-os', 'memory-os', 'memory_os', 'mamoruos'],
+  },
+  {
+    id: AISTROYKA_PROJECT_ID,
     slug: 'aistroyka',
     name: 'AISTROYKA',
     url: 'https://github.com/aistroyka/core',

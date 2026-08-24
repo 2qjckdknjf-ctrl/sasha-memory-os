@@ -12,6 +12,7 @@ import {
 import { createApp } from './app.js';
 
 const projectId = '44444444-4444-4444-8444-444444444401';
+const memoryOsProjectId = '44444444-4444-4444-8444-444444444402';
 const otherProjectId = '44444444-4444-4444-8444-444444444420';
 const workspaceId = '11111111-1111-4111-8111-111111111111';
 const owner = '33333333-3333-4333-8333-333333333301';
@@ -1627,7 +1628,7 @@ describe('memory api demo slice', () => {
 
   it('serves project context to cursor', async () => {
     const app = createApp({});
-    const res = await app.request(`/v1/projects/${projectId}/context`, {
+    const res = await app.request(`/v1/projects/${memoryOsProjectId}/context`, {
       headers: { 'x-subject-id': cursor },
     });
     expect(res.status).toBe(200);
@@ -1716,7 +1717,6 @@ describe('memory api demo slice', () => {
 
     for (const actor of [
       { subjectId: chatgpt, actorKey: 'chatgpt' },
-      { subjectId: cursor, actorKey: 'cursor' },
       { subjectId: roma, actorKey: 'roma' },
     ] as const) {
       const deniedSearch = await app.request('/v1/search', {
@@ -1754,6 +1754,14 @@ describe('memory api demo slice', () => {
         ),
       ).toBe(false);
     }
+
+    const deniedCursorContext = await app.request(`/v1/projects/${projectId}/context`, {
+      headers: {
+        'x-subject-id': cursor,
+        'x-actor-key': 'cursor',
+      },
+    });
+    expect(deniedCursorContext.status).toBe(403);
   });
 
   it('lists projects offline', async () => {
@@ -1764,6 +1772,11 @@ describe('memory api demo slice', () => {
     expect(res.status).toBe(200);
     const body = await res.json();
     expect(body.projects).toEqual([
+      expect.objectContaining({
+        id: memoryOsProjectId,
+        slug: 'sasha-memory-os',
+        name: 'Sasha Memory OS',
+      }),
       expect.objectContaining({
         id: projectId,
         slug: 'aistroyka',
@@ -1782,7 +1795,7 @@ describe('memory api demo slice', () => {
       },
       body: JSON.stringify({
         workspace_id: workspaceId,
-        project_id: projectId,
+        project_id: memoryOsProjectId,
         from_subject_id: cursor,
         to_subject_id: chatgpt,
         idempotency_key: 'handoff-1',
@@ -1837,7 +1850,7 @@ describe('memory api demo slice', () => {
       },
       body: JSON.stringify({
         workspace_id: workspaceId,
-        project_id: projectId,
+        project_id: memoryOsProjectId,
         from_subject_id: cursor,
         to_subject_id: chatgpt,
         idempotency_key: 'handoff-history-1',
@@ -1852,7 +1865,7 @@ describe('memory api demo slice', () => {
       }),
     });
     const listed = await app.request(
-      `/v1/handoffs?workspace_id=${workspaceId}&project_id=${projectId}&limit=10`,
+      `/v1/handoffs?workspace_id=${workspaceId}&project_id=${memoryOsProjectId}&limit=10`,
       {
         headers: { 'x-subject-id': cursor },
       },
@@ -2468,7 +2481,7 @@ describe('memory api demo slice', () => {
       method: 'POST',
       headers: {
         'content-type': 'application/json',
-        'x-actor-key': 'cursor',
+        'x-actor-key': 'chatgpt',
       },
       body: JSON.stringify({
         query: 'Slice 01',
@@ -2492,7 +2505,7 @@ describe('memory api demo slice', () => {
       method: 'POST',
       headers: {
         'content-type': 'application/json',
-        'x-actor-key': 'cursor',
+        'x-actor-key': 'chatgpt',
       },
       body: JSON.stringify({
         query: 'Slice 01',
@@ -2517,12 +2530,12 @@ describe('memory api demo slice', () => {
       },
       body: JSON.stringify({
         query: 'family travel top-secret-token',
-        project_id: projectId,
+        project_id: memoryOsProjectId,
       }),
     });
     expect(search.status).toBe(200);
 
-    const stateRead = await app.request(`/v1/projects/${projectId}/state`, {
+    const stateRead = await app.request(`/v1/projects/${memoryOsProjectId}/state`, {
       headers: { 'x-subject-id': owner },
     });
     expect(stateRead.status).toBe(200);
@@ -2535,7 +2548,7 @@ describe('memory api demo slice', () => {
       },
       body: JSON.stringify({
         workspace_id: workspaceId,
-        project_id: projectId,
+        project_id: memoryOsProjectId,
         title: 'Private MCP payload mirror',
         text: 'private payload body must stay out of telemetry',
         actor_subject_id: cursor,
@@ -2588,11 +2601,11 @@ describe('memory api demo slice', () => {
       method: 'POST',
       headers: {
         'content-type': 'application/json',
-        'x-actor-key': 'cursor',
+        'x-actor-key': 'chatgpt',
       },
       body: JSON.stringify({
-        query: 'Slice 01',
-        project_id: projectId,
+        query: 'Shared memory remediation',
+        project_id: memoryOsProjectId,
         retrieval_mode: 'agentic',
         pack_context: true,
         agentic: {
@@ -2611,7 +2624,7 @@ describe('memory api demo slice', () => {
     expect(body.agentic.rankingWeightsVersion).toBe(SEARCH_RANKING_WEIGHTS_VERSION);
     expect(body.agentic.toolAllowlist).toEqual(['memory.search']);
     expect(body.agentic.writeActionsAttempted).toBe(0);
-    expect(body.agentic.trace.projectId).toBe(projectId);
+    expect(body.agentic.trace.projectId).toBe(memoryOsProjectId);
     expect(body.agentic.trace.steps.length).toBeGreaterThan(0);
     expect(
       body.agentic.trace.steps.some(
@@ -2623,7 +2636,7 @@ describe('memory api demo slice', () => {
     expect(store.auditLog[0]?.action).toBe('retrieval.agentic_search.completed');
     expect(store.auditLog[0]?.afterState).toMatchObject({
       mode: 'agentic',
-      projectId,
+      projectId: memoryOsProjectId,
       toolAllowlist: ['memory.search'],
       writeActionsAttempted: 0,
     });
@@ -2899,7 +2912,7 @@ describe('memory api demo slice', () => {
     const store = new MemoryStore();
     const actorScoped = store.createDecision({
       workspaceId,
-      projectId,
+      projectId: memoryOsProjectId,
       title: 'Cursor actor priority',
       content: 'shared ranking phrase',
       actorSubjectId: owner,
@@ -2908,7 +2921,7 @@ describe('memory api demo slice', () => {
     });
     const projectDefault = store.createDecision({
       workspaceId,
-      projectId,
+      projectId: memoryOsProjectId,
       title: 'Project default priority',
       content: 'shared ranking phrase',
       actorSubjectId: owner,
@@ -2934,7 +2947,7 @@ describe('memory api demo slice', () => {
         'x-actor-key': 'owner',
       },
       body: JSON.stringify({
-        project_id: projectId,
+        project_id: memoryOsProjectId,
         scope: 'project_default',
         actor_subject_id: owner,
         reason: 'Default project ranking',
@@ -2952,7 +2965,7 @@ describe('memory api demo slice', () => {
         'x-actor-key': 'cursor',
       },
       body: JSON.stringify({
-        project_id: projectId,
+        project_id: memoryOsProjectId,
         scope: 'actor',
         actor_subject_id: cursor,
         reason: 'Cursor-specific ranking',
@@ -2971,7 +2984,7 @@ describe('memory api demo slice', () => {
       },
       body: JSON.stringify({
         query: 'shared ranking phrase',
-        project_id: projectId,
+        project_id: memoryOsProjectId,
       }),
     });
     expect(ownerSearch.status).toBe(200);
@@ -2987,7 +3000,7 @@ describe('memory api demo slice', () => {
       },
       body: JSON.stringify({
         query: 'shared ranking phrase',
-        project_id: projectId,
+        project_id: memoryOsProjectId,
       }),
     });
     expect(cursorSearch.status).toBe(200);
@@ -3025,7 +3038,7 @@ describe('memory api demo slice', () => {
       },
       body: JSON.stringify({
         workspace_id: workspaceId,
-        project_id: projectId,
+        project_id: memoryOsProjectId,
         title: 'Visible pinned memory',
         text: 'acl personalization query',
         actor_subject_id: owner,
@@ -3045,7 +3058,7 @@ describe('memory api demo slice', () => {
       },
       body: JSON.stringify({
         workspace_id: workspaceId,
-        project_id: projectId,
+        project_id: memoryOsProjectId,
         title: 'Restricted pinned memory',
         text: 'acl personalization query',
         actor_subject_id: owner,
@@ -3065,7 +3078,7 @@ describe('memory api demo slice', () => {
           'x-actor-key': 'owner',
         },
         body: JSON.stringify({
-          project_id: projectId,
+          project_id: memoryOsProjectId,
           scope: 'project_default',
           actor_subject_id: owner,
           reason: 'Project default pin',
@@ -3084,7 +3097,7 @@ describe('memory api demo slice', () => {
       },
       body: JSON.stringify({
         query: 'acl personalization query',
-        project_id: projectId,
+        project_id: memoryOsProjectId,
       }),
     });
     expect(search.status).toBe(200);
@@ -3664,7 +3677,7 @@ describe('memory api demo slice', () => {
       },
       body: JSON.stringify({
         workspace_id: workspaceId,
-        project_id: projectId,
+        project_id: memoryOsProjectId,
         from_subject_id: cursor,
         to_subject_id: chatgpt,
         idempotency_key: 'audit-handoff-1',
@@ -3708,7 +3721,7 @@ describe('memory api demo slice', () => {
     );
 
     const audit = await app.request(
-      `/v1/audit?workspace_id=${workspaceId}&project_id=${projectId}&limit=20`,
+      `/v1/audit?workspace_id=${workspaceId}&limit=20`,
       {
         headers: {
           'x-subject-id': ownerId,

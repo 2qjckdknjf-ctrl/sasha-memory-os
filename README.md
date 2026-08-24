@@ -22,10 +22,11 @@
 
 Machine-readable snapshot: [docs/engineering/CURRENT_STATE.json](docs/engineering/CURRENT_STATE.json) (`m14.1-v1`).
 
-- **Current milestone:** `M17.3-graph-retrieval` (bounded traversal + hybrid fusion; live graph E2E blocked)
-- **Completed through:** M14 packs + M14.1 + M15 packs + M16 + M17.1–M17.3
-- **Next slice:** `M17.4-entity-migration-backfill`
-- **M6 ChatGPT Mode A PASS (2026-08-15):** final `Sasha Memory OS` custom MCP app connected through Supabase OAuth 2.1; exact seven-tool scan, normal-chat read, `memory.store_decision`, and read-after-write all passed. The stale `Sasha Mamory OS` registration was removed; exactly one personal Sasha registration remains.
+- **Live operational milestone:** `SHARED_MEMORY_E2E_REMEDIATION` (bidirectional ChatGPT↔Cursor gate **BLOCKED**)
+- **Contract packs completed through:** M17.3 (graph-aware retrieval contracts)
+- **Canonical Memory OS project UUID:** `44444444-4444-4444-8444-444444444402`
+- **M6 ChatGPT Mode A PASS (2026-08-15):** ChatGPT-only; does not close shared-memory E2E
+- **Frozen until shared-memory PASS:** M17.4 entity backfill slice and GraphRAG backfill
 - Core path live: WP-01…08 RPCs, vault OAuth, hybrid RRF retrieval, embeddings, consolidation/outbox/jobs, MCP, Control Center
 - M10–M13 foundations merged (Drive/Gmail/Calendar policies, ROMA project-health, bounded agentic retrieval / consolidation / ranking)
 - Apple: companion-required personal-source contracts complete; live device E2E still blocked
