@@ -33,6 +33,9 @@ describe('P0 search personalization regression', () => {
   it('combines effective project routing with personalization and ACL', () => {
     expect(p0Sql).toContain('app.effective_memory_project_id(m.id) AS effective_project_id');
     expect(p0Sql).toContain(
+      'AND mp.project_id = effective_project.effective_project_id',
+    );
+    expect(p0Sql).toContain(
       'OR effective_project.effective_project_id = p_project_id',
     );
     expect(p0Sql).toContain(
@@ -46,6 +49,9 @@ describe('P0 search personalization regression', () => {
           effective_project.effective_project_id,
           m.sensitivity
         )`,
+    );
+    expect(p0Sql).not.toMatch(
+      /FROM memory_personalizations mp[\s\S]{0,220}AND mp\.project_id = m\.project_id/,
     );
   });
 

@@ -72,6 +72,12 @@ CREATE INDEX IF NOT EXISTS idx_project_routing_corrections_workspace
 CREATE INDEX IF NOT EXISTS idx_project_routing_corrections_corrected
   ON project_routing_corrections (corrected_project_id);
 
+ALTER TABLE project_routing_corrections ENABLE ROW LEVEL SECURITY;
+ALTER TABLE project_routing_corrections FORCE ROW LEVEL SECURITY;
+
+-- Defense in depth: no direct REST/Data API access; mutations via owner RPC only.
+REVOKE ALL ON TABLE project_routing_corrections FROM PUBLIC, anon, authenticated;
+
 CREATE OR REPLACE FUNCTION app.effective_memory_project_id(p_memory_id uuid)
 RETURNS uuid
 LANGUAGE sql
@@ -406,7 +412,8 @@ BEGIN
             WHEN pref.scope IS NULL THEN NULL
             ELSE jsonb_build_object(
               'memoryId', m.id,
-              'projectId', m.project_id,
+              'projectId', effective_project.effective_project_id,
+              'storedProjectId', m.project_id,
               'scope', pref.scope,
               'actorSubjectId', pref.actor_subject_id,
               'pinned', pref.pinned,
@@ -430,7 +437,7 @@ BEGIN
           mp.version
         FROM memory_personalizations mp
         WHERE mp.workspace_id = m.workspace_id
-          AND mp.project_id = m.project_id
+          AND mp.project_id = effective_project.effective_project_id
           AND mp.memory_id = m.id
           AND (
             (mp.scope = 'actor' AND mp.actor_subject_id = p_subject_id)
@@ -649,8 +656,339 @@ BEGIN
 END;
 $$;
 
+-- Personalization: scope reads/writes to effective project after routing correction.
+DROP POLICY IF EXISTS memory_personalizations_select ON memory_personalizations;
+CREATE POLICY memory_personalizations_select
+  ON memory_personalizations
+  FOR SELECT
+  USING (
+    app.is_workspace_member(workspace_id)
+    AND EXISTS (
+      SELECT 1
+      FROM memory_records mr
+      WHERE mr.id = memory_personalizations.memory_id
+        AND mr.workspace_id = memory_personalizations.workspace_id
+        AND app.effective_memory_project_id(mr.id) = memory_personalizations.project_id
+        AND app.has_acl(
+          mr.workspace_id,
+          'memory',
+          'read',
+          app.effective_memory_project_id(mr.id),
+          mr.sensitivity
+        )
+    )
+    AND (
+      scope = 'project_default'
+      OR actor_subject_id = app.current_subject_id()
+    )
+  );
+
+CREATE OR REPLACE FUNCTION app.api_set_memory_personalization(
+  p_secret text,
+  p_subject_id uuid,
+  p_project_id uuid,
+  p_memory_id uuid,
+  p_scope text DEFAULT 'actor',
+  p_reason text DEFAULT NULL,
+  p_pinned boolean DEFAULT NULL,
+  p_importance_delta double precision DEFAULT NULL
+)
+RETURNS jsonb
+LANGUAGE plpgsql
+VOLATILE
+SECURITY DEFINER
+SET search_path = public, app, extensions
+AS $$
+DECLARE
+  v_memory memory_records%ROWTYPE;
+  v_effective_project_id uuid;
+  v_existing memory_personalizations%ROWTYPE;
+  v_next memory_personalizations%ROWTYPE;
+  v_scope text := coalesce(nullif(btrim(p_scope), ''), 'actor');
+  v_reason text := nullif(btrim(coalesce(p_reason, '')), '');
+  v_scope_key text;
+  v_actor_subject_id uuid;
+  v_should_clear boolean;
+BEGIN
+  PERFORM app.assert_api_secret(p_secret);
+  PERFORM app.with_subject(p_subject_id);
+
+  IF p_project_id IS NULL THEN
+    RAISE EXCEPTION 'project_id required';
+  END IF;
+  IF p_memory_id IS NULL THEN
+    RAISE EXCEPTION 'memory_id required';
+  END IF;
+  IF v_reason IS NULL THEN
+    RAISE EXCEPTION 'reason required';
+  END IF;
+  IF v_scope NOT IN ('actor', 'project_default') THEN
+    RAISE EXCEPTION 'invalid scope: %', v_scope;
+  END IF;
+  IF p_importance_delta IS NOT NULL
+     AND (p_importance_delta < -0.5 OR p_importance_delta > 0.5) THEN
+    RAISE EXCEPTION 'importance_delta must be between -0.5 and 0.5';
+  END IF;
+
+  SELECT * INTO v_memory
+  FROM memory_records
+  WHERE id = p_memory_id
+  FOR UPDATE;
+
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'memory not found' USING ERRCODE = 'P0002';
+  END IF;
+
+  v_effective_project_id := app.effective_memory_project_id(v_memory.id);
+
+  IF p_project_id IS DISTINCT FROM v_effective_project_id THEN
+    RAISE EXCEPTION 'project mismatch';
+  END IF;
+  IF NOT app.is_workspace_member(v_memory.workspace_id) THEN
+    RAISE EXCEPTION 'forbidden' USING ERRCODE = '42501';
+  END IF;
+  IF NOT app.has_acl(
+    v_memory.workspace_id,
+    'memory',
+    'read',
+    v_effective_project_id,
+    v_memory.sensitivity
+  ) THEN
+    RAISE EXCEPTION 'forbidden' USING ERRCODE = '42501';
+  END IF;
+  IF v_scope = 'project_default'
+     AND NOT EXISTS (
+       SELECT 1
+       FROM workspace_memberships wm
+       WHERE wm.workspace_id = v_memory.workspace_id
+         AND wm.subject_id = p_subject_id
+         AND wm.role = 'owner'
+     ) THEN
+    RAISE EXCEPTION 'owner subject required for project-default personalization';
+  END IF;
+
+  v_actor_subject_id := CASE WHEN v_scope = 'actor' THEN p_subject_id ELSE NULL END;
+  v_scope_key := CASE
+    WHEN v_scope = 'actor' THEN p_subject_id::text
+    ELSE 'project_default'
+  END;
+  v_should_clear := coalesce(p_pinned, false) = false AND p_importance_delta IS NULL;
+
+  SELECT * INTO v_existing
+  FROM memory_personalizations
+  WHERE workspace_id = v_memory.workspace_id
+    AND project_id = v_effective_project_id
+    AND memory_id = p_memory_id
+    AND scope_key = v_scope_key
+  FOR UPDATE;
+
+  IF v_should_clear THEN
+    DELETE FROM memory_personalizations
+    WHERE workspace_id = v_memory.workspace_id
+      AND project_id = v_effective_project_id
+      AND memory_id = p_memory_id
+      AND scope_key = v_scope_key;
+
+    INSERT INTO audit_log (
+      workspace_id,
+      actor_subject_id,
+      action,
+      object_type,
+      object_id,
+      reason,
+      before_state,
+      after_state
+    )
+    VALUES (
+      v_memory.workspace_id,
+      p_subject_id,
+      'memory.personalization.cleared',
+      'memory_personalization',
+      coalesce(v_existing.id, v_memory.id),
+      v_reason,
+      CASE
+        WHEN v_existing.id IS NULL THEN NULL
+        ELSE jsonb_build_object(
+          'projectId', v_existing.project_id,
+          'storedProjectId', v_memory.project_id,
+          'effectiveProjectId', v_effective_project_id,
+          'memoryId', v_existing.memory_id,
+          'scope', v_existing.scope,
+          'actorSubjectId', v_existing.actor_subject_id,
+          'pinned', v_existing.pinned,
+          'importanceDelta', v_existing.importance_delta,
+          'rankingVersion', v_existing.ranking_version,
+          'version', v_existing.version
+        )
+      END,
+      jsonb_build_object(
+        'projectId', v_effective_project_id,
+        'storedProjectId', v_memory.project_id,
+        'effectiveProjectId', v_effective_project_id,
+        'memoryId', p_memory_id,
+        'scope', v_scope,
+        'actorSubjectId', v_actor_subject_id,
+        'cleared', true,
+        'rankingVersion', 'm13-s05-v1'
+      )
+    );
+
+    RETURN jsonb_build_object(
+      'memoryId', p_memory_id,
+      'projectId', v_effective_project_id,
+      'storedProjectId', v_memory.project_id,
+      'effectiveProjectId', v_effective_project_id,
+      'scope', v_scope,
+      'actorSubjectId', v_actor_subject_id,
+      'pinned', false,
+      'importanceDelta', NULL,
+      'rankingVersion', 'm13-s05-v1',
+      'version', NULL,
+      'cleared', true
+    );
+  END IF;
+
+  INSERT INTO memory_personalizations (
+    workspace_id,
+    project_id,
+    memory_id,
+    scope,
+    scope_key,
+    actor_subject_id,
+    pinned,
+    importance_delta,
+    ranking_version,
+    version,
+    updated_by_subject
+  )
+  VALUES (
+    v_memory.workspace_id,
+    v_effective_project_id,
+    p_memory_id,
+    v_scope,
+    v_scope_key,
+    v_actor_subject_id,
+    coalesce(p_pinned, false),
+    p_importance_delta,
+    'm13-s05-v1',
+    1,
+    p_subject_id
+  )
+  ON CONFLICT (workspace_id, project_id, memory_id, scope_key) DO UPDATE
+  SET
+    pinned = EXCLUDED.pinned,
+    importance_delta = EXCLUDED.importance_delta,
+    ranking_version = EXCLUDED.ranking_version,
+    version = memory_personalizations.version + 1,
+    updated_at = now(),
+    updated_by_subject = EXCLUDED.updated_by_subject
+  RETURNING * INTO v_next;
+
+  INSERT INTO audit_log (
+    workspace_id,
+    actor_subject_id,
+    action,
+    object_type,
+    object_id,
+    reason,
+    before_state,
+    after_state
+  )
+  VALUES (
+    v_memory.workspace_id,
+    p_subject_id,
+    'memory.personalization.set',
+    'memory_personalization',
+    v_next.id,
+    v_reason,
+    CASE
+      WHEN v_existing.id IS NULL THEN NULL
+      ELSE jsonb_build_object(
+        'projectId', v_existing.project_id,
+        'storedProjectId', v_memory.project_id,
+        'effectiveProjectId', v_effective_project_id,
+        'memoryId', v_existing.memory_id,
+        'scope', v_existing.scope,
+        'actorSubjectId', v_existing.actor_subject_id,
+        'pinned', v_existing.pinned,
+        'importanceDelta', v_existing.importance_delta,
+        'rankingVersion', v_existing.ranking_version,
+        'version', v_existing.version
+      )
+    END,
+    jsonb_build_object(
+      'projectId', v_next.project_id,
+      'storedProjectId', v_memory.project_id,
+      'effectiveProjectId', v_effective_project_id,
+      'memoryId', v_next.memory_id,
+      'scope', v_next.scope,
+      'actorSubjectId', v_next.actor_subject_id,
+      'pinned', v_next.pinned,
+      'importanceDelta', v_next.importance_delta,
+      'rankingVersion', v_next.ranking_version,
+      'version', v_next.version
+    )
+  );
+
+  RETURN jsonb_build_object(
+    'memoryId', v_next.memory_id,
+    'projectId', v_next.project_id,
+    'storedProjectId', v_memory.project_id,
+    'effectiveProjectId', v_effective_project_id,
+    'scope', v_next.scope,
+    'actorSubjectId', v_next.actor_subject_id,
+    'pinned', v_next.pinned,
+    'importanceDelta', v_next.importance_delta,
+    'rankingVersion', v_next.ranking_version,
+    'version', v_next.version,
+    'cleared', false
+  );
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION public.api_set_memory_personalization(
+  p_secret text,
+  p_subject_id uuid,
+  p_project_id uuid,
+  p_memory_id uuid,
+  p_scope text DEFAULT 'actor',
+  p_reason text DEFAULT NULL,
+  p_pinned boolean DEFAULT NULL,
+  p_importance_delta double precision DEFAULT NULL
+)
+RETURNS jsonb
+LANGUAGE sql
+SECURITY DEFINER
+SET search_path = public, app
+AS $$
+  SELECT app.api_set_memory_personalization(
+    p_secret,
+    p_subject_id,
+    p_project_id,
+    p_memory_id,
+    p_scope,
+    p_reason,
+    p_pinned,
+    p_importance_delta
+  );
+$$;
+
+GRANT EXECUTE ON FUNCTION app.api_set_memory_personalization(
+  text, uuid, uuid, uuid, text, text, boolean, double precision
+) TO anon, authenticated, service_role;
+GRANT EXECUTE ON FUNCTION public.api_set_memory_personalization(
+  text, uuid, uuid, uuid, text, text, boolean, double precision
+) TO anon, authenticated, service_role;
+
 GRANT EXECUTE ON FUNCTION app.effective_memory_project_id(uuid)
   TO anon, authenticated, service_role;
+
+REVOKE ALL ON FUNCTION app.api_apply_project_routing_correction(
+  text, uuid, uuid, uuid, text, text, jsonb
+) FROM PUBLIC;
+REVOKE ALL ON FUNCTION public.api_apply_project_routing_correction(
+  text, uuid, uuid, uuid, text, text, jsonb
+) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION app.api_apply_project_routing_correction(
   text, uuid, uuid, uuid, text, text, jsonb
 ) TO anon, authenticated, service_role;

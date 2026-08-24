@@ -446,4 +446,24 @@ describe('P0 project identity migration guards', () => {
       /app\.has_acl\(\s*v_row\.workspace_id,\s*'memory',\s*'read',\s*v_effective_project_id,/,
     );
   });
+
+  it('hardens project_routing_corrections with forced RLS and revoked client grants', () => {
+    expect(p0Sql).toContain(
+      'ALTER TABLE project_routing_corrections FORCE ROW LEVEL SECURITY',
+    );
+    expect(p0Sql).toContain(
+      'REVOKE ALL ON TABLE project_routing_corrections FROM PUBLIC, anon, authenticated',
+    );
+  });
+
+  it('scopes personalization setter and RLS to effective project', () => {
+    expect(p0Sql).toContain('DROP POLICY IF EXISTS memory_personalizations_select');
+    expect(p0Sql).toContain(
+      'AND app.effective_memory_project_id(mr.id) = memory_personalizations.project_id',
+    );
+    expect(p0Sql).toContain(
+      'IF p_project_id IS DISTINCT FROM v_effective_project_id THEN',
+    );
+    expect(p0Sql).toContain(`'storedProjectId', v_memory.project_id`);
+  });
 });
