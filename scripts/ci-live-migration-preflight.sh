@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 # Production live smoke preflight: require P0 migration (Memory OS project …4402).
+# Read-only probe only — must not mutate production memory.
 # Emits BLOCKED_REMOTE_MIGRATION (exit 0) when remote schema is not ready — not a false PASS.
 set -euo pipefail
 
@@ -13,10 +14,9 @@ if [[ -z "$API_BASE" || -z "$SECRET" ]]; then
 fi
 
 base="${API_BASE%/}"
-probe_key="live-migration-preflight-$(date +%s)-${RANDOM}"
 
 payload=$(cat <<EOF
-{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"memory.store_decision","arguments":{"project_id":"${PROJECT_ID}","title":"Migration preflight ${probe_key}","content":"preflight probe","idempotency_key":"${probe_key}"}}}
+{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"memory.search","arguments":{"query":"migration preflight probe","project_id":"${PROJECT_ID}","limit":1}}}
 EOF
 )
 
@@ -30,6 +30,7 @@ response=$(curl -sS --connect-timeout 10 --max-time 30 \
 if echo "$response" | grep -q 'project not found'; then
   echo "live_migration_preflight=BLOCKED_REMOTE_MIGRATION"
   echo "remote_project_id=${PROJECT_ID}"
+  echo "probe=memory.search(read-only)"
   echo "reason=Memory OS project UUID missing on production; apply P0 migration before live smoke."
   exit 0
 fi
@@ -41,4 +42,5 @@ if echo "$response" | grep -q '"error"'; then
 fi
 
 echo "live_migration_preflight=ready"
+echo "probe=memory.search(read-only)"
 exit 0
