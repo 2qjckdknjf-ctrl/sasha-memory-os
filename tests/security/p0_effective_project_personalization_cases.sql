@@ -129,6 +129,20 @@ BEGIN
   ) THEN
     RAISE EXCEPTION 'project_context_includes_effective_routed_memory';
   END IF;
+
+  IF NOT EXISTS (
+    SELECT 1
+    FROM jsonb_array_elements(
+      app.api_list_memories(
+        v_secret, v_cursor, v_workspace, v_memory_os, NULL, 50, NULL, NULL
+      )
+    ) AS row(value)
+    WHERE (value->>'id')::uuid = v_memory_id
+      AND (value->>'effectiveProjectId')::uuid = v_memory_os
+      AND (value->>'storedProjectId')::uuid = v_aistroyka
+  ) THEN
+    RAISE EXCEPTION 'list_memories_includes_effective_routed_memory';
+  END IF;
 END $$;
 
 -- Uncorrected memory keeps M13 behavior (stored project personalization applies).

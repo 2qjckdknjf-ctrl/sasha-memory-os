@@ -476,4 +476,15 @@ describe('P0 project identity migration guards', () => {
       `'effectiveProjectId', app.effective_memory_project_id(m.id)`,
     );
   });
+
+  it('aligns api_list_memories filter and payload with effective project', () => {
+    expect(p0Sql).toContain('CREATE OR REPLACE FUNCTION app.api_list_memories');
+    expect(p0Sql).toContain(
+      'OR effective_project.effective_project_id = p_project_id',
+    );
+    expect(p0Sql).toContain(`'storedProjectId', m.project_id`);
+    expect(p0Sql).toContain(
+      `'project_id', effective_project.effective_project_id`,
+    );
+  });
 });

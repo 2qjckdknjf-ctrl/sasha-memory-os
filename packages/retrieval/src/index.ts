@@ -740,8 +740,16 @@ function hitProjectIdOf(hit: HybridHitLike): string | null {
   const memory = hit.memory as HybridHitLike['memory'] & {
     projectId?: string | null;
     project_id?: string | null;
+    effectiveProjectId?: string | null;
+    effective_project_id?: string | null;
   };
-  return memory.projectId ?? memory.project_id ?? null;
+  return (
+    memory.effectiveProjectId ??
+    memory.effective_project_id ??
+    memory.projectId ??
+    memory.project_id ??
+    null
+  );
 }
 
 function hitStatusOf(hit: HybridHitLike): string | null {
