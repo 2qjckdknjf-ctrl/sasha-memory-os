@@ -3,7 +3,7 @@
 
 DO $$
 DECLARE
-  v_memory_id uuid := 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbb01';
+  v_memory_id uuid := 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbb01';
   v_aistroyka uuid := '44444444-4444-4444-8444-444444444401';
   v_memory_os uuid := '44444444-4444-4444-8444-444444444402';
   v_workspace uuid := '11111111-1111-4111-8111-111111111111';
