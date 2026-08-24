@@ -27,6 +27,13 @@ response=$(curl -sS --connect-timeout 10 --max-time 30 \
   --data-binary "$payload" \
   "${base}/mcp" || true)
 
+if [[ -z "${response//[[:space:]]/}" ]]; then
+  echo "live_migration_preflight=unexpected_error"
+  echo "reason=empty_or_missing_response"
+  echo "probe=memory.search(read-only)"
+  exit 1
+fi
+
 if echo "$response" | grep -q 'project not found'; then
   echo "live_migration_preflight=BLOCKED_REMOTE_MIGRATION"
   echo "remote_project_id=${PROJECT_ID}"

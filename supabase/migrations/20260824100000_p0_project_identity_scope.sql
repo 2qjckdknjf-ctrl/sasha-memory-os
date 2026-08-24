@@ -505,6 +505,149 @@ GRANT EXECUTE ON FUNCTION public.api_search_memories(
   text, uuid, text, uuid, boolean, jsonb, timestamptz, timestamptz
 ) TO anon, authenticated, service_role;
 
+-- Align memory.get ACL with search effective-project routing.
+CREATE OR REPLACE FUNCTION app.api_get_memory(
+  p_secret text,
+  p_subject_id uuid,
+  p_memory_id uuid
+)
+RETURNS jsonb
+LANGUAGE plpgsql
+STABLE
+SECURITY DEFINER
+SET search_path = public, app, extensions
+AS $$
+DECLARE
+  v_row memory_records%ROWTYPE;
+  v_effective_project_id uuid;
+  v_source jsonb := NULL;
+  v_evidence jsonb := '[]'::jsonb;
+  v_provenance jsonb := NULL;
+BEGIN
+  PERFORM app.assert_api_secret(p_secret);
+  PERFORM app.with_subject(p_subject_id);
+
+  SELECT * INTO v_row
+  FROM memory_records
+  WHERE id = p_memory_id;
+
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'memory not found' USING ERRCODE = 'P0002';
+  END IF;
+
+  IF NOT app.is_workspace_member(v_row.workspace_id) THEN
+    RAISE EXCEPTION 'forbidden' USING ERRCODE = '42501';
+  END IF;
+
+  v_effective_project_id := app.effective_memory_project_id(v_row.id);
+
+  IF NOT app.has_acl(
+    v_row.workspace_id,
+    'memory',
+    'read',
+    v_effective_project_id,
+    v_row.sensitivity
+  ) THEN
+    RAISE EXCEPTION 'forbidden' USING ERRCODE = '42501';
+  END IF;
+
+  SELECT jsonb_strip_nulls(jsonb_build_object(
+    'sourceEventId', se.id,
+    'provider', se.provider,
+    'eventType', se.event_type,
+    'observedAt', se.observed_at,
+    'recordedAt', se.recorded_at,
+    'payload', CASE
+      WHEN se.payload ? 'content' THEN se.payload - 'content'
+      ELSE se.payload
+    END
+  )) INTO v_source
+  FROM source_events se
+  WHERE se.id = v_row.source_event_id;
+
+  SELECT COALESCE(
+    jsonb_agg(
+      jsonb_strip_nulls(jsonb_build_object(
+        'sourceEventId', me.source_event_id,
+        'evidenceSpan', me.evidence_span,
+        'artifact', CASE
+          WHEN a.id IS NULL THEN NULL
+          ELSE jsonb_build_object(
+            'id', a.id,
+            'mimeType', a.mime_type,
+            'storageMode', a.storage_mode,
+            'storageKey', a.storage_key,
+            'checksumSha256', a.checksum_sha256,
+            'byteSize', a.byte_size,
+            'metadata', CASE
+              WHEN a.metadata ? 'text' THEN a.metadata - 'text'
+              ELSE a.metadata
+            END
+          )
+        END
+      ))
+      ORDER BY me.source_event_id
+    ),
+    '[]'::jsonb
+  ) INTO v_evidence
+  FROM memory_evidence me
+  LEFT JOIN artifacts a
+    ON a.source_event_id = me.source_event_id
+   AND a.workspace_id = me.workspace_id
+  WHERE me.memory_id = v_row.id;
+
+  SELECT jsonb_strip_nulls(jsonb_build_object(
+    'origin', CASE
+      WHEN v_row.source_event_id IS NULL THEN 'manual'
+      ELSE 'source_event'
+    END,
+    'sourceEventId', v_row.source_event_id,
+    'createdBySubject', v_row.created_by_subject,
+    'revisionCount', (
+      SELECT count(*)::integer
+      FROM memory_revisions mr
+      WHERE mr.memory_id = v_row.id
+    ),
+    'decisionRationale', (
+      SELECT d.rationale
+      FROM decisions d
+      WHERE d.memory_id = v_row.id
+      LIMIT 1
+    ),
+    'statusReason', v_row.metadata->>'status_reason'
+  )) INTO v_provenance;
+
+  RETURN jsonb_build_object(
+    'id', v_row.id,
+    'title', v_row.title,
+    'content', v_row.content,
+    'status', v_row.status,
+    'sensitivity', v_row.sensitivity,
+    'memoryType', v_row.memory_type,
+    'projectId', v_row.project_id,
+    'effectiveProjectId', v_effective_project_id,
+    'workspaceId', v_row.workspace_id,
+    'recordedAt', v_row.recorded_at,
+    'observedAt', v_row.observed_at,
+    'validFrom', v_row.valid_from,
+    'validTo', v_row.valid_to,
+    'sourceEventId', v_row.source_event_id,
+    'createdBySubject', v_row.created_by_subject,
+    'supersededBy', v_row.superseded_by,
+    'importance', v_row.importance,
+    'confidence', v_row.confidence,
+    'schemaVersion', v_row.schema_version,
+    'metadata', v_row.metadata,
+    'embedding', v_row.embedding,
+    'embeddingEngine', v_row.embedding_engine,
+    'embeddingDims', v_row.embedding_dims,
+    'source', v_source,
+    'evidence', v_evidence,
+    'provenance', v_provenance
+  );
+END;
+$$;
+
 GRANT EXECUTE ON FUNCTION app.effective_memory_project_id(uuid)
   TO anon, authenticated, service_role;
 GRANT EXECUTE ON FUNCTION app.api_apply_project_routing_correction(

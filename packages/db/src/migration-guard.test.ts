@@ -432,4 +432,15 @@ describe('P0 project identity migration guards', () => {
     expect(p0Sql).toContain(`effective_project.effective_project_id`);
     expect(p0Sql).toContain(`'personalization'`);
   });
+
+  it('aligns api_get_memory ACL with effective project routing', () => {
+    expect(p0Sql).toContain('CREATE OR REPLACE FUNCTION app.api_get_memory');
+    expect(p0Sql).toContain(
+      'v_effective_project_id := app.effective_memory_project_id(v_row.id)',
+    );
+    expect(p0Sql).toContain(`'effectiveProjectId', v_effective_project_id`);
+    expect(p0Sql).toMatch(
+      /app\.has_acl\(\s*v_row\.workspace_id,\s*'memory',\s*'read',\s*v_effective_project_id,/,
+    );
+  });
 });

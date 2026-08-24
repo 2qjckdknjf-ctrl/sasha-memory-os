@@ -18,4 +18,13 @@ describe('P0 live migration preflight pack', () => {
     expect(script).toContain('live_migration_preflight=BLOCKED_REMOTE_MIGRATION');
     expect(script).toContain('project not found');
   });
+
+  it('fails closed on empty curl response instead of emitting ready', () => {
+    expect(script).toContain('empty_or_missing_response');
+    expect(script).toMatch(/\[\[ -z "\$\{response/);
+    const readyIndex = script.indexOf('live_migration_preflight=ready');
+    const emptyCheckIndex = script.indexOf('empty_or_missing_response');
+    expect(emptyCheckIndex).toBeGreaterThan(-1);
+    expect(readyIndex).toBeGreaterThan(emptyCheckIndex);
+  });
 });

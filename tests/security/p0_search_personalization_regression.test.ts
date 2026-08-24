@@ -55,4 +55,12 @@ describe('P0 search personalization regression', () => {
     expect(p0Sql).toContain(`WHEN 'verified' THEN 1.15`);
     expect(p0Sql).toContain(`hybrid:sql+vector-hq`);
   });
+
+  it('aligns memory.get ACL with search effective-project routing', () => {
+    expect(p0Sql).toContain('CREATE OR REPLACE FUNCTION app.api_get_memory');
+    expect(p0Sql).toContain(
+      'v_effective_project_id := app.effective_memory_project_id(v_row.id)',
+    );
+    expect(p0Sql).toContain(`'effectiveProjectId', v_effective_project_id`);
+  });
 });
