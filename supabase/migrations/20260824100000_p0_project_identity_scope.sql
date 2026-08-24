@@ -13,8 +13,7 @@ VALUES (
   'active',
   ARRAY['sasha-memory-os', 'memory-os', 'memory_os', 'mamoruos']
 )
-ON CONFLICT (id) DO UPDATE SET
-  slug = EXCLUDED.slug,
+ON CONFLICT (workspace_id, slug) DO UPDATE SET
   name = EXCLUDED.name,
   aliases = EXCLUDED.aliases,
   status = EXCLUDED.status;
@@ -28,8 +27,7 @@ VALUES (
   'active',
   ARRAY['hiair', 'hi-air']
 )
-ON CONFLICT (id) DO UPDATE SET
-  slug = EXCLUDED.slug,
+ON CONFLICT (workspace_id, slug) DO UPDATE SET
   name = EXCLUDED.name,
   aliases = EXCLUDED.aliases,
   status = EXCLUDED.status;
