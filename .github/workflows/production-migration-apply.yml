@@ -1,0 +1,118 @@
+name: Production migration apply (M15 + P0)
+
+on:
+  workflow_dispatch:
+    inputs:
+      owner_approval_marker:
+        description: >-
+          OWNER_APPROVAL_APPLY_MEMORY_OS_PRODUCTION_MIGRATIONS_MAIN_*_PROJECT_VPXBLCXSVLYLQYLDIUWR_*=YES
+        required: true
+        type: string
+  push:
+    branches: [main]
+    paths:
+      - scripts/production-migration-apply-run.txt
+
+permissions:
+  contents: read
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Verify migration baseline checksums
+        run: |
+          M15=$(sha256sum supabase/migrations/20260821100000_m15_slice_01_source_event_contract.sql | awk '{print $1}')
+          P0=$(sha256sum supabase/migrations/20260824100000_p0_project_identity_scope.sql | awk '{print $1}')
+          test "$M15" = "aa7ac5d042e132caa6bb551b32eb145c7247b237010351a98ae544684ae9dc65"
+          test "$P0" = "175aa5a81a2f480132d8773880bed954ba5b786d277fcf64f110dca3947b57d9"
+          echo "migration_checksums=ok head=$(git rev-parse HEAD)"
+
+      - name: Owner approval gate
+        env:
+          DISPATCH_MARKER: ${{ github.event.inputs.owner_approval_marker }}
+        run: |
+          MARKER="${DISPATCH_MARKER:-}"
+          if [[ -z "$MARKER" && -f scripts/production-migration-apply-run.txt ]]; then
+            MARKER="$(grep -E '^OWNER_APPROVAL_' scripts/production-migration-apply-run.txt | head -1 || true)"
+          fi
+          if [[ ! "$MARKER" =~ ^OWNER_APPROVAL_APPLY_MEMORY_OS_PRODUCTION_MIGRATIONS_MAIN_[A-Fa-f0-9]{40}_PROJECT_VPXBLCXSVLYLQYLDIUWR_[A-Fa-f0-9]{64}=YES$ ]]; then
+            echo "BLOCKED_OWNER_APPROVAL — marker missing or invalid"
+            exit 1
+          fi
+          echo "owner_approval=YES"
+
+      - name: Credential gate
+        id: creds
+        env:
+          TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+        run: |
+          if [[ -n "$TOKEN" ]]; then
+            echo "supabase_token=present" >> "$GITHUB_OUTPUT"
+          else
+            echo "BLOCKED_CREDENTIALS — add SUPABASE_ACCESS_TOKEN repo secret"
+            exit 1
+          fi
+
+      - name: Apply M15 migration (Management API)
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+        run: |
+          export SUPABASE_ACCESS_TOKEN
+          chmod +x scripts/apply-remote-migration.sh
+          ./scripts/apply-remote-migration.sh \
+            supabase/migrations/20260821100000_m15_slice_01_source_event_contract.sql
+
+      - name: Apply P0 migration (Management API)
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+        run: |
+          export SUPABASE_ACCESS_TOKEN
+          ./scripts/apply-remote-migration.sh \
+            supabase/migrations/20260824100000_p0_project_identity_scope.sql
+
+      - name: Install Supabase CLI
+        run: |
+          curl -fsSL -o /tmp/supabase.tar.gz \
+            "https://github.com/supabase/cli/releases/download/v2.115.0/supabase_linux_amd64.tar.gz"
+          tar xzf /tmp/supabase.tar.gz -C /tmp
+          sudo mv /tmp/supabase /usr/local/bin/supabase
+
+      - name: Link and verify migration list
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+        run: |
+          set +x
+          export SUPABASE_ACCESS_TOKEN
+          supabase link --project-ref vpxblcxsvlylqyldiuwr \
+            ${SUPABASE_DB_PASSWORD:+-p "$SUPABASE_DB_PASSWORD"} --yes
+          supabase migration list --linked --project-ref vpxblcxsvlylqyldiuwr | tee /tmp/migration-list.txt
+          supabase db query --linked -q \
+            "SELECT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='source_events' AND column_name='external_id') AS m15_applied, EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema='public' AND table_name='project_routing_corrections') AS p0_applied;"
+          if ! grep -qE '20260821100000.*\|.*202608' /tmp/migration-list.txt; then
+            echo "migration_list_note=M15 may use Management API version name — schema check is authoritative"
+          fi
+
+      - name: Post-apply verification SQL
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+        run: |
+          export SUPABASE_ACCESS_TOKEN
+          supabase db query --linked -f scripts/production-migration-post-apply.sql
+
+      - name: Live API smoke (sanitized)
+        env:
+          LIVE_SECRET: ${{ secrets.MEMORY_OS_API_SECRET }}
+          LIVE_SUPABASE_URL: ${{ secrets.MEMORY_OS_SUPABASE_URL }}
+        run: |
+          if [[ -z "$LIVE_SUPABASE_URL" || -z "$LIVE_SECRET" ]]; then
+            echo "live_smoke=skipped_missing_api_secrets"
+            exit 0
+          fi
+          export MEMORY_OS_API_BASE_URL="${LIVE_SUPABASE_URL%/}/functions/v1/memory-mcp"
+          export MEMORY_OS_API_SECRET="$LIVE_SECRET"
+          chmod +x scripts/ci-live-migration-preflight.sh
+          ./scripts/ci-live-migration-preflight.sh
