@@ -1,0 +1,50 @@
+{
+  "schemaVersion": "owner-work-snapshot-v1",
+  "capturedAt": "2026-08-29T20:32:00.000Z",
+  "requestedBy": "owner",
+  "requestText": "Возьми всю мою работу и сохрани в мою память",
+  "sourceAgent": {
+    "bcId": "bc-01a04f38-e366-7a99-91ea-7f638fb10770",
+    "name": "Работа в памяти",
+    "url": "https://cursor.com/agents/bc-01a04f38-e366-7a99-91ea-7f638fb10770",
+    "channel": "mobile"
+  },
+  "workspaceId": "11111111-1111-4111-8111-111111111111",
+  "projectId": "44444444-4444-4444-8444-444444444402",
+  "actorSubjectId": "33333333-3333-4333-8333-333333333301",
+  "canonicalPlanTitle": "SASHA MEMORY OS — CANONICAL COMPLETION PLAN TO 100% — 2026-08-21",
+  "repoTipSha": "e11260b81ea9c21e6d83270c63a07fc884ea1b60",
+  "memories": [
+    {
+      "kind": "capture_text",
+      "title": "SASHA MEMORY OS — OWNER WORK SNAPSHOT — 2026-08-29",
+      "sensitivity": "internal",
+      "idempotencyKey": "owner-work-snapshot-2026-08-29-v1",
+      "text": "Owner remember request (2026-08-29, Cursor mobile agent «Работа в памяти»): persist the current Sasha Memory OS work corpus into the Memory Core.\n\nIdentity\n- Product: Sasha Memory OS — external canonical long-term Memory Core shared by ChatGPT, Cursor, ROMA, and future agents (ACL, temporal model, provenance).\n- Repo: 2qjckdknjf-ctrl/sasha-memory-os\n- Canonical workspace: 11111111-1111-4111-8111-111111111111\n- Canonical Memory OS project UUID: 44444444-4444-4444-8444-444444444402\n- Do not write to AISTROYKA 44444444-4444-4444-8444-444444444401 or HiAir 44444444-4444-4444-8444-444444444403 as a default.\n- Owner subject: 33333333-3333-4333-8333-333333333301\n- ChatGPT subject: 33333333-3333-4333-8333-333333333302\n- Cursor subject: 33333333-3333-4333-8333-333333333303\n- ROMA subject: 33333333-3333-4333-8333-333333333304\n- Dedicated Supabase: sasha-memory-os / vpxblcxsvlylqyldiuwr / eu-central-1\n- Local project root: /Users/alex/MAMORYOS/MAMORUOS\n- Manifest: docs/engineering/CURRENT_STATE.json (m14.1-v1)\n- Main tip at capture: e11260b81ea9c21e6d83270c63a07fc884ea1b60 (PR #86)\n\nCanonical plan\n- Title: SASHA MEMORY OS — CANONICAL COMPLETION PLAN TO 100% — 2026-08-21\n- Contract packs completed through: M17.3 (entity graph + resolution + graph-aware retrieval contracts)\n- Live operational milestone: SHARED_MEMORY_E2E_REMEDIATION\n- Next allowed slice: SHARED_MEMORY_E2E_REMEDIATION\n- Frozen until shared-memory PASS: M17.4-entity-migration-backfill and GraphRAG backfill\n- Writes require explicit project_id. MEMORY_OS_DEFAULT_PROJECT_ID is ignored.\n- Unclassified route: UNCLASSIFIED inbox. Golden routing precision target: 0.95.\n- Default hybrid embeddings: vector(32). Optional HQ 1536 via MEMORY_OS_OPENAI_EMBED_DIMS.\n- ChatGPT Mode A PASS 2026-08-15 (7 tools, supabase-edge-memory-mcp). Mode A PASS is ChatGPT-only and does not close bidirectional shared-memory E2E.\n- Fly API deferred (scaffold only). Primary ChatGPT path is Edge MCP memory-mcp.\n\nLanded work (merged, no open PRs/issues at capture)\n- M15.1–M15.8 + live E2E gate documented BLOCKED: PRs #60–#68\n- M16.1–M16.5 Apple companion-required personal-source contracts: PRs #69–#73\n- M17.1–M17.3 entity graph packs: PRs #74–#76\n- P0 project identity split + shared-memory remediation: PR #77 (desktop agent «Приемка общей памяти chatgpt cursor», branch cursor/p0-shared-memory-remediation-90a0)\n- Production migration preflight + apply path: PRs #78–#86 (read-only preflight, auto-trigger, inventory SQL, phase-a sync, apply workflow, idempotent HiAir/project inserts, verify-step fix)\n\nOwner-facing agents worth remembering\n- Mobile 2026-08-29: «Работа в памяти» — this remember-all-work request\n- Desktop: «Приемка общей памяти chatgpt cursor» — P0 shared-memory acceptance / remediation\n- Bugbot autofix branches: P0 migration issues (#77), traversal budget (#76), entity resolution (#75), notes tombstone gate (#73)\n- Repeated «Security review orchestrator» automations are not owner product work; do not treat them as the work corpus\n\nToolchain facts\n- pnpm@9.15.9 via corepack or npx pnpm@9.15.9\n- Local API :8787 (memory-store boot without secrets); Web :5173 proxies /v1 and /health\n- Owner/cron ops do not require API secret when MEMORY_OS_ENV is unset/local\n- Live connector/OAuth/re-embed/consolidation need the dedicated Supabase secrets"
+    },
+    {
+      "kind": "capture_text",
+      "title": "SASHA MEMORY OS — OPEN BLOCKERS — 2026-08-29",
+      "sensitivity": "internal",
+      "idempotencyKey": "owner-work-blockers-2026-08-29-v1",
+      "text": "Open blockers for Sasha Memory OS as of 2026-08-29 (do not claim PASS from mocks).\n\nP0 — shared-memory-bidirectional-e2e\n- ChatGPT↔Cursor bidirectional live E2E is not proven.\n- Pack: shared-memory-e2e-v1. chatgptToCursor=BLOCKED, cursorToChatgpt=BLOCKED.\n- Current official next slice: SHARED_MEMORY_E2E_REMEDIATION.\n- Desktop acceptance agent: «Приемка общей памяти chatgpt cursor».\n\nM15 — live connector E2E credentials\n- M15 live E2E overallStatus=BLOCKED. Fixture/contract packs exist; live credentials/dashboard still blocked.\n\nops — remote migration apply\n- P0 + M15.1 migrations are checked in (latest listed: 20260824100000_p0_project_identity_scope.sql, 66 migrations in CURRENT_STATE).\n- Production preflight/apply workflows landed in PRs #78–#86. Live apply still depends on operator secrets and must not be assumed complete from repo presence alone.\n\nP0 — local-desktop-agent-live\n- Local desktop agent offline replay live E2E blocked (requires macOS runtime).\n\nApple\n- Decision: companion_required_no_server_icloud_scrape.\n- Live device E2E: contract_pass_live_photokit_blocked. PhotoKit / picker / EventKit / Contacts live paths blocked.\n\nEntity graph\n- Foundation + resolution + bounded graph-aware retrieval contracts complete (M17.1–M17.3).\n- Live graph DB E2E blocked. M17.4 entity backfill frozen until shared-memory PASS.\n\nDeploy\n- Fly public API deferred. Edge functions memory-mcp + worker-ticks are the hosted path.\n\nDo not skip the canonical order. Do not start M17.4 or GraphRAG backfill before shared-memory E2E PASS."
+    },
+    {
+      "kind": "capture_text",
+      "title": "SASHA MEMORY OS — OWNER WORKING PREFERENCES",
+      "sensitivity": "internal",
+      "idempotencyKey": "owner-work-preferences-2026-08-29-v1",
+      "text": "Durable owner working preferences for Sasha Memory OS (Aleksandr / Саша). Encode these as agent behavior, not anecdotes.\n\nExecution\n- When the owner says «продолжай без остановки», continue the critical path without pausing for confirmation. After each step: verify, fix errors, then advance. Do not leave unfinished tails. Do not assign leftover tasks back to the owner; they will review later.\n- Stay on the agreed plan. Do not wander into unrelated work.\n- Prefer concise status updates («меньше слов») during autonomous implementation runs.\n- Reply in Russian when the owner writes in Russian.\n\nMemory and routing\n- Memory OS is the external canonical long-term memory. Prefer writing durable work, decisions, and blockers there instead of only chat residue.\n- Raw chat transcripts are not default memory. Store synthesized work, decisions, tasks, and preferences with provenance.\n- Every write/admin/export needs an explicit project_id. Never silently use MEMORY_OS_DEFAULT_PROJECT_ID.\n- Never reuse AISTROYKA or HiAir Supabase projects. Dedicated project is sasha-memory-os (vpxblcxsvlylqyldiuwr, eu-central-1).\n- Canonical completion order after M14 is the Memory OS decision titled SASHA MEMORY OS — CANONICAL COMPLETION PLAN TO 100% — 2026-08-21.\n\nEngineering\n- On this machine prefer npx pnpm@9.15.9 or corepack pnpm@9.15.9 (local Volta pnpm shim may be broken).\n- Supabase CLI may be the wrong architecture; fall back to remote SQL/API.\n- Keep database server keys and the API secret server-side / local .env only; never commit.\n- Default SQL hybrid embeddings are vector(32). Do not assume 1536 is active.\n- Browser-visible app changes must be verified by real interaction, not a single screenshot.\n- Prefer the Cursor project slug Users-alex-MAMORYOS-MAMORUOS over the older Users-alex-MAMORYOS."
+    },
+    {
+      "kind": "create_decision",
+      "title": "SASHA MEMORY OS — REMEMBER ALL OWNER WORK — 2026-08-29",
+      "sensitivity": "internal",
+      "importance": 0.95,
+      "confidence": 0.95,
+      "idempotencyKey": "owner-remember-all-work-2026-08-29-v1",
+      "rationale": "Owner issued an explicit remember command from Cursor mobile: take all current work and persist it into Memory OS.",
+      "content": "Decision (owner, 2026-08-29): the current Sasha Memory OS work corpus is in-scope for Memory Core persistence.\n\nWhat this means\n- Capture the canonical project state, landed PRs #60–#86, P0 shared-memory remediation, production migration preflight/apply path, open blockers, and owner working preferences into project 44444444-4444-4444-8444-444444444402.\n- Treat this as an explicit remember / decision, not generic chat residue.\n- Do not ingest raw security-review orchestrator transcripts or secrets.\n- Retrieval should find this via titles containing OWNER WORK SNAPSHOT, OPEN BLOCKERS, OWNER WORKING PREFERENCES, and REMEMBER ALL OWNER WORK.\n- Idempotency keys: owner-work-snapshot-2026-08-29-v1, owner-work-blockers-2026-08-29-v1, owner-work-preferences-2026-08-29-v1, owner-remember-all-work-2026-08-29-v1.\n- Source agent: https://cursor.com/agents/bc-01a04f38-e366-7a99-91ea-7f638fb10770\n- Related owner agent: https://cursor.com/agents/bc-c8096002-2db7-4aa2-9eee-6efe365390a0 (Приемка общей памяти chatgpt cursor)\n\nThis decision does not claim shared-memory E2E PASS and does not unfreeze M17.4."
+    }
+  ]
+}

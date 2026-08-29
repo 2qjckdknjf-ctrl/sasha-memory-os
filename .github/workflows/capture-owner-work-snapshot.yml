@@ -1,0 +1,35 @@
+name: Capture owner work snapshot
+
+# Writes the checked-in owner work snapshot into live Memory OS.
+# Secrets: MEMORY_OS_SUPABASE_URL, MEMORY_OS_SUPABASE_ANON_KEY, MEMORY_OS_API_SECRET
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'docs/engineering/owner-work-snapshot/**'
+      - 'scripts/capture-owner-work-snapshot.sh'
+      - '.github/workflows/capture-owner-work-snapshot.yml'
+
+jobs:
+  capture:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Dry-run snapshot contract
+        run: |
+          chmod +x scripts/capture-owner-work-snapshot.sh
+          ./scripts/capture-owner-work-snapshot.sh --dry-run
+
+      - name: Capture into Memory OS
+        env:
+          MEMORY_OS_SUPABASE_URL: ${{ secrets.MEMORY_OS_SUPABASE_URL }}
+          MEMORY_OS_SUPABASE_ANON_KEY: ${{ secrets.MEMORY_OS_SUPABASE_ANON_KEY }}
+          MEMORY_OS_API_SECRET: ${{ secrets.MEMORY_OS_API_SECRET }}
+        run: |
+          set +x
+          if [[ -z "$MEMORY_OS_SUPABASE_URL" || -z "$MEMORY_OS_SUPABASE_ANON_KEY" || -z "$MEMORY_OS_API_SECRET" ]]; then
+            echo "live_capture=skipped_missing_secrets"
+            exit 1
+          fi
+          ./scripts/capture-owner-work-snapshot.sh

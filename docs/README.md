@@ -24,6 +24,7 @@
 | [engineering/SECRETS_POLICY.md](engineering/SECRETS_POLICY.md) | Хранение и запреты для secrets |
 | [engineering/RLS_MATRIX.md](engineering/RLS_MATRIX.md) | RLS / ACL matrix и negative cases |
 | [engineering/CURRENT_STATE.json](engineering/CURRENT_STATE.json) | Machine-readable current milestone / deploy / blocker snapshot (`m14.1-v1`) |
+| [engineering/owner-work-snapshot/2026-08-29.json](engineering/owner-work-snapshot/2026-08-29.json) | Owner work corpus for Memory Core capture (explicit remember, 2026-08-29) |
 | [engineering/M14_1_BASELINE.md](engineering/M14_1_BASELINE.md) | M14.1 Phase 0 baseline reconciliation |
 | [engineering/M15_SLICE_01.md](engineering/M15_SLICE_01.md) | M15 Slice 01: unified source-event ingestion contract |
 | [engineering/M15_SLICE_02.md](engineering/M15_SLICE_02.md) | M15 Slice 02: continuous connector orchestration pack |
