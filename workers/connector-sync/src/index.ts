@@ -16,6 +16,7 @@ import {
   createConnectorRegistry,
   runConnectorDiscover,
   runConnectorSync,
+  resolveConnectorPullMode,
   resolveConnectorSyncOutcome,
   type ConnectorCollection,
   type RegisteredConnector,
@@ -67,6 +68,14 @@ export type SyncPlan = {
   completed: Array<{ jobId: string; status: string; connectionId: string | null }>;
   pendingOutbox: number;
   deadLettered: number;
+  terminalOutboxReconciled: number;
+  connectorReadiness: {
+    total: number;
+    ready: number;
+    reauthRequired: number;
+    changed: number;
+    applied: boolean;
+  } | null;
 };
 
 function collectionDisplayName(collection: ConnectorCollection): string {
@@ -404,11 +413,28 @@ export async function planConnectorSync(options?: {
   const subjectId = options?.subjectId ?? OWNER_ID;
   const workspaceId = options?.workspaceId ?? WORKSPACE_ID;
   const connectorRegistry = options?.connectorRegistry ?? defaultSdkConnectorRegistry;
+  const readiness =
+    typeof gateway.reconcileConnectorReadiness === 'function'
+      ? await gateway.reconcileConnectorReadiness({
+          subjectId,
+          workspaceId,
+          applyMissingTokenStatus:
+            resolveConnectorPullMode(process.env) === 'vault',
+        })
+      : null;
   const stale = await gateway.deadLetterStaleJobs({
     subjectId,
     workspaceId,
     olderThanMinutes: Number(process.env.MEMORY_OS_JOB_STALE_MINUTES ?? 60),
   });
+  const reconciled =
+    typeof gateway.reconcileTerminalOutbox === 'function'
+      ? await gateway.reconcileTerminalOutbox({
+          subjectId,
+          workspaceId,
+          limit: Number(process.env.MEMORY_OS_OUTBOX_RECONCILE_LIMIT ?? 200),
+        })
+      : { reconciled: 0 };
   const pending = await gateway.listOutboxPending({
     subjectId,
     workspaceId,
@@ -536,6 +562,16 @@ export async function planConnectorSync(options?: {
     completed,
     pendingOutbox: pending.count,
     deadLettered: stale.deadLettered,
+    terminalOutboxReconciled: reconciled.reconciled,
+    connectorReadiness: readiness
+      ? {
+          total: readiness.total,
+          ready: readiness.ready,
+          reauthRequired: readiness.reauthRequired,
+          changed: readiness.changed,
+          applied: readiness.applied,
+        }
+      : null,
   };
 }
 

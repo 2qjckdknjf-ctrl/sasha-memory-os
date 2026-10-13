@@ -2053,6 +2053,65 @@ export class SupabaseMemoryGateway {
     };
   }
 
+  async reconcileConnectorReadiness(input: {
+    subjectId: string;
+    workspaceId: string;
+    applyMissingTokenStatus?: boolean;
+  }) {
+    const { data, error } = await this.client.rpc('api_reconcile_connector_readiness', {
+      p_secret: this.apiSecret,
+      p_subject_id: input.subjectId,
+      p_workspace_id: input.workspaceId,
+      p_apply_missing_token_status: input.applyMissingTokenStatus ?? false,
+    });
+    if (error) throw error;
+    return data as {
+      workspaceId: string;
+      total: number;
+      ready: number;
+      reauthRequired: number;
+      changed: number;
+      applied: boolean;
+      connections: Array<{
+        connectionId: string;
+        connectorId: string;
+        displayName: string;
+        status: string;
+        lastSyncAt: string | null;
+        lastError: string | null;
+        hasVaultRef: boolean;
+        tokenMaterialPresent: boolean;
+        readyForSync: boolean;
+        reason: string;
+        collectionCount: number;
+        selectedCollectionCount: number;
+      }>;
+    };
+  }
+
+  async reconcileTerminalOutbox(input: {
+    subjectId: string;
+    workspaceId: string;
+    limit?: number;
+  }) {
+    const { data, error } = await this.client.rpc('api_reconcile_terminal_outbox', {
+      p_secret: this.apiSecret,
+      p_subject_id: input.subjectId,
+      p_workspace_id: input.workspaceId,
+      p_limit: input.limit ?? 200,
+    });
+    if (error) throw error;
+    return data as {
+      workspaceId: string;
+      reconciled: number;
+      succeeded: number;
+      failed: number;
+      deadLetter: number;
+      eventTypes: Record<string, number>;
+      limit: number;
+    };
+  }
+
   async deadLetterStaleJobs(input: {
     subjectId: string;
     workspaceId: string;
