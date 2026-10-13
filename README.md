@@ -125,7 +125,8 @@ Canonical order (do not skip): see [M14_1_BASELINE.md](docs/engineering/M14_1_BA
 20. ~~M15 production runtime remediation~~ — outbox/runtime recovery PASS; real provider OAuth live E2E remains blocked
 21. ~~M17.4 Entity migration backfill~~ — durable additive graph projection; production acceptance PASS
 22. ~~M17.5 graph inspector + live graph E2E~~ — implementation, mandatory ephemeral proof and production acceptance PASS
-23. **M17.6 graph/hybrid fusion + evaluations complete** (`m17-s06-v1`); next: M18.1 Cursor bootstrap contract, then M18–M20 residuals; Fly API deferred
+23. ~~M17.6 graph/hybrid fusion + evaluations~~ — production Edge v9 and live graph/fallback/temporal acceptance PASS
+24. **M18.1 Cursor bootstrap contract complete** (`m18-s01-v1`) — always-on rule, session hook, live bootstrap workflow, and automatic milestone read-after-write; next: M18.2 project context pack
 
 ## AI разборы 2026-10-13
 
