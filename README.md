@@ -22,17 +22,17 @@
 
 Machine-readable snapshot: [docs/engineering/CURRENT_STATE.json](docs/engineering/CURRENT_STATE.json) (`m14.1-v1` schema, reconciled 2026-10-13).
 
-- **Live operational milestone:** `M15_LIVE_RUNTIME_REMEDIATION`
-- **Contract packs completed through:** M17.3 (graph-aware retrieval contracts)
+- **Live operational milestone:** `M20_SECURITY_GOVERNANCE`; M17.4 database projection is the active delivery slice
+- **Contract packs completed through:** M17.4 (durable entity graph migration/backfill)
 - **Canonical Memory OS project UUID:** `44444444-4444-4444-8444-444444444402`
 - **M6 ChatGPT Mode A PASS (2026-08-15):** ChatGPT-only; does not close shared-memory E2E
 - **Bidirectional ChatGPT↔Cursor E2E PASS (2026-10-13):** real-session receipts, explicit project isolation, actor attribution verified
-- **M17.4 is no longer frozen:** it remains pending behind M15 production runtime recovery
+- **M17.4 implementation:** additive graph schema + idempotent effective-project backfill; production apply follows merge and green CI
 - Core path live: WP-01…08 RPCs, vault OAuth, hybrid RRF retrieval, embeddings, consolidation/outbox/jobs, MCP, Control Center
 - M10–M13 foundations merged (Drive/Gmail/Calendar policies, ROMA project-health, bounded agentic retrieval / consolidation / ranking)
 - Apple: companion-required personal-source contracts complete; live device E2E still blocked
-- Entity graph: foundation + resolution + bounded graph-aware retrieval; live graph DB E2E blocked
-- Known blockers: degraded/revoked live connectors, outbox/dead-letter backlog, Apple live device E2E; Fly deferred
+- Entity graph: foundation + resolution + bounded graph-aware retrieval + durable backfill implementation
+- Known blockers: real provider OAuth credentials/consent, Apple live device E2E, worker server key; Fly deferred. Terminal outbox backlog is zero.
 
 ## Репозиторий
 
@@ -121,9 +121,9 @@ Canonical order (do not skip): see [M14_1_BASELINE.md](docs/engineering/M14_1_BA
 17. ~~M17.2 Entity resolution~~ — cross-source signals; golden >=95% (live E2E BLOCKED)
 18. ~~M17.3 Graph-aware retrieval~~ — bounded traversal + hybrid fusion (live graph DB BLOCKED)
 19. ~~P0 bidirectional ChatGPT↔Cursor shared memory~~ — live real-session receipts **PASS** (2026-10-13)
-20. **M15 production runtime recovery** — connectors, outbox, dead letters, freshness and live exit gate
-21. M17.4 Entity migration backfill
-22. M17.5+ / M18–M20; Fly API deferred
+20. ~~M15 production runtime remediation~~ — outbox/runtime recovery PASS; real provider OAuth live E2E remains blocked
+21. ~~M17.4 Entity migration backfill~~ — durable additive graph projection; production acceptance after merge
+22. **M17.5 graph inspector + live graph E2E**, then M18–M20 residuals; Fly API deferred
 
 ## AI разборы 2026-10-13
 

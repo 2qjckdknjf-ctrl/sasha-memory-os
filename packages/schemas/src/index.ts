@@ -19,6 +19,7 @@ export * from './appleNotesRemindersContacts.js';
 export * from './entityGraph.js';
 export * from './entityResolution.js';
 export * from './graphRetrieval.js';
+export * from './entityMigrationBackfill.js';
 export * from './appleCompanion.js';
 export * from './memory.js';
 export * from './jobs.js';

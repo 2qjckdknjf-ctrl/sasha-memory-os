@@ -1,27 +1,27 @@
 {
   "manifestVersion": "m14.1-v1",
   "schemaVersion": "1.2",
-  "generatedAt": "2026-10-13T13:51:22.000Z",
+  "generatedAt": "2026-10-13T14:28:33.000Z",
   "repository": "2qjckdknjf-ctrl/sasha-memory-os",
   "canonicalProjectId": "44444444-4444-4444-8444-444444444402",
   "aistroykaProjectId": "44444444-4444-4444-8444-444444444401",
   "hiairProjectId": "44444444-4444-4444-8444-444444444403",
   "canonicalWorkspaceId": "11111111-1111-4111-8111-111111111111",
-  "reconciledAgainstMainSha": "9c5fb55379f7fc4ea6eb4376800e1564f92e888f",
-  "contractPacksCompletedThrough": "M17.3",
+  "reconciledAgainstMainSha": "96da93da02c0c95c4fd5f91267ead4c6e9392dc1",
+  "contractPacksCompletedThrough": "M17.4",
   "liveOperationalMilestone": "M20_SECURITY_GOVERNANCE",
-  "nextAllowedSlice": "M17.4_ENTITY_MIGRATION_BACKFILL",
-  "currentMilestone": "m20-security-governance",
-  "completedThrough": "M17.3",
-  "nextSlice": "M17.4_ENTITY_MIGRATION_BACKFILL",
+  "nextAllowedSlice": "M17.5_GRAPH_INSPECTOR_LIVE_E2E",
+  "currentMilestone": "m17-entity-migration-backfill",
+  "completedThrough": "M17.4",
+  "nextSlice": "M17.5_GRAPH_INSPECTOR_LIVE_E2E",
   "frozenSlices": [],
   "canonicalPlanMemoryTitle": "SASHA MEMORY OS — CANONICAL COMPLETION PLAN TO 100% — 2026-08-21",
   "supabase": {
     "projectName": "sasha-memory-os",
     "projectRef": "vpxblcxsvlylqyldiuwr",
     "region": "eu-central-1",
-    "latestMigration": "20261013135122_m20_security_search_path_hardening.sql",
-    "migrationCount": 68
+    "latestMigration": "20261013142833_m17_slice_04_entity_graph_backfill.sql",
+    "migrationCount": 69
   },
   "officialPacks": {
     "m14Slo": "m14-s01-v1",
@@ -50,6 +50,7 @@
     "m17EntityGraph": "m17-s01-v1",
     "m17EntityResolution": "m17-s02-v1",
     "m17GraphRetrieval": "m17-s03-v1",
+    "m17EntityMigrationBackfill": "m17-s04-v1",
     "p0ProjectIdentity": "p0-project-identity-v1"
   },
   "deployments": {
@@ -168,8 +169,8 @@
     }
   ],
   "readmeMustContain": [
-    "M15_LIVE_RUNTIME_REMEDIATION",
     "M20_SECURITY_GOVERNANCE",
+    "M17.4",
     "docs/engineering/CURRENT_STATE.json",
     "44444444-4444-4444-8444-444444444402"
   ],
