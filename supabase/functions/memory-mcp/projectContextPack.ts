@@ -275,7 +275,10 @@ export function buildEdgeProjectContextPack(
       sourceId: compact(stateRow.id, 128),
       title: compact(stateRow.summary, 220) || null,
       projectId,
-      recordedAt: textOf(stateRow.updated_at ?? stateRow.created_at) || null,
+      recordedAt: textOf(
+        stateRow.updatedAt ?? stateRow.updated_at ??
+          stateRow.createdAt ?? stateRow.created_at,
+      ) || null,
       sourceEventId: null,
     }
     : null;
@@ -365,6 +368,7 @@ export function buildEdgeProjectContextPack(
   const stateConflicts = [
     ...stateValues(raw.state, "unresolved_conflicts"),
     ...stateValues(raw.state, "conflicts"),
+    ...stateValues(raw.state, "risks"),
   ];
   const stateNext = stateValues(raw.state, "next");
   const handoffItemCount =

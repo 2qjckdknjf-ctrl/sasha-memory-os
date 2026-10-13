@@ -246,6 +246,7 @@ function compactProjectContext(value) {
       projectId: result.projectId ?? projectId,
       packVersion: result.packVersion,
       currentGoal: result.currentGoal ?? null,
+      canonicalDecisions: result.canonicalDecisions ?? [],
       currentMilestone: result.currentMilestone ?? null,
       latestHandoff: result.latestHandoff ?? null,
       activeBlockers: result.activeBlockers ?? [],

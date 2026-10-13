@@ -413,7 +413,12 @@ export function buildProjectContextPack(
         title: normalizedText(stateRow.summary, 220) || null,
         projectId,
         recordedAt:
-          stringOf(stateRow.updated_at ?? stateRow.created_at) || null,
+          stringOf(
+            stateRow.updatedAt ??
+              stateRow.updated_at ??
+              stateRow.createdAt ??
+              stateRow.created_at,
+          ) || null,
         sourceEventId: null,
       }
     : null;
@@ -480,6 +485,7 @@ export function buildProjectContextPack(
   const stateConflicts = [
     ...stateValues(raw.state, 'unresolved_conflicts'),
     ...stateValues(raw.state, 'conflicts'),
+    ...stateValues(raw.state, 'risks'),
   ];
   const allSources = [...decisions, ...tasks, ...facts];
   const newestSource = [...allSources].sort(

@@ -16,7 +16,7 @@ The pack contains:
 - latest agent handoff, including completed work, validation, open items, blockers and recommended next steps;
 - active blockers;
 - recent PR merges and merge SHAs when present in evidence;
-- unresolved conflicts;
+- unresolved conflicts and officially recorded project-state risks;
 - next work;
 - source freshness;
 - claim-level citation identifiers and a citation catalog;

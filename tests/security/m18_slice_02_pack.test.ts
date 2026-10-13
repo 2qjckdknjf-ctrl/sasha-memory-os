@@ -37,6 +37,7 @@ describe('M18.2 project context pack', () => {
     expect(mcp).toContain('buildProjectContextPack');
     expect(edge).toContain('buildEdgeProjectContextPack');
     expect(cursor).toContain("result.packVersion === 'm18-s02-v1'");
+    expect(cursor).toContain('canonicalDecisions: result.canonicalDecisions ?? []');
     expect(current).toMatchObject({
       completedThrough: 'M18.2',
       nextSlice: 'M18.3_ROMA_INTEGRATION',

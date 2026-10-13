@@ -109,7 +109,10 @@ describe('M18.2 project context pack', () => {
           id: 'state-1',
           project_id: projectId,
           summary: 'state '.repeat(2_000),
-          created_at: '2026-10-13T15:59:30.000Z',
+          createdAt: '2026-10-13T15:59:30.000Z',
+          state: {
+            risks: ['contested source remains unresolved'],
+          },
         },
       },
       {
@@ -125,6 +128,12 @@ describe('M18.2 project context pack', () => {
       citations: ['project-state:state-1'],
     });
     expect(pack.citations[0]?.title?.length).toBeLessThanOrEqual(220);
+    expect(pack.unresolvedConflicts).toEqual([
+      {
+        text: 'contested source remains unresolved',
+        citations: ['project-state:state-1'],
+      },
+    ]);
     expect(pack.budget.estimatedTokens).toBeLessThanOrEqual(768);
   });
 
