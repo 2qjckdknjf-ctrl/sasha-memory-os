@@ -456,6 +456,37 @@ describe("Edge project context pack", () => {
     expect(result).toEqual(buildProjectContextPack(raw, options));
   });
 
+  it("matches shared last-blocker priority at the minimum budget", () => {
+    const raw = {
+      projectId,
+      decisions: [],
+      tasks: [],
+      facts: [],
+      state: {
+        id: "tight-state",
+        project_id: projectId,
+        summary: "bounded state",
+        created_at: "2026-10-13T15:59:00Z",
+        state: {
+          in_progress: ["finish active work ".repeat(35)],
+          blocked: ["preserve this blocker ".repeat(25)],
+        },
+      },
+    };
+    const options = {
+      projectId,
+      maxTokens: 768,
+      now: new Date("2026-10-13T16:00:00Z"),
+    };
+    const result = buildEdgeProjectContextPack(raw, options);
+
+    expect(result.budget.estimatedTokens).toBeLessThanOrEqual(768);
+    expect(result.activeBlockers).toHaveLength(1);
+    expect(result.activeBlockers[0]?.text).toContain("preserve this blocker");
+    expect(result.nextWork).toEqual([]);
+    expect(result).toEqual(buildProjectContextPack(raw, options));
+  });
+
   it("matches shared merge-evidence classification", () => {
     const raw = {
       projectId,

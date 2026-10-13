@@ -847,10 +847,8 @@ export function buildEdgeProjectContextPack(
     else if (nextLimit > 1) nextLimit -= 1;
     else if (handoffItemLimit > 1) handoffItemLimit -= 1;
     else if (conflictLimit > 0) conflictLimit -= 1;
-    else if (blockerLimit > 0) blockerLimit = 0;
-    else if (handoffItemLimit > 0) handoffItemLimit = 0;
-    else if (expandedText) expandedText = false;
     else if (nextLimit > 0) nextLimit = 0;
+    else if (expandedText) expandedText = false;
     else if (includeCurrentMilestone) includeCurrentMilestone = false;
     else if (goalChars > 120) goalChars -= 60;
     else if (itemChars > 120) itemChars -= 40;
@@ -858,7 +856,9 @@ export function buildEdgeProjectContextPack(
     else if (citationTitleChars > 0) {
       citationTitleChars = Math.max(0, citationTitleChars - 40);
     } else if (summaryChars > 40) summaryChars -= 20;
+    else if (handoffItemLimit > 0) handoffItemLimit = 0;
     else if (includeLatestHandoff) includeLatestHandoff = false;
+    else if (blockerLimit > 0) blockerLimit = 0;
     else break;
     pack = create();
   }

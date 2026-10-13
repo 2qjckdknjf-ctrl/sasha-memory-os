@@ -434,6 +434,37 @@ describe('M18.2 project context pack', () => {
     expect(pack.currentGoal?.citations).toEqual(['memory:long-task']);
   });
 
+  it('preserves the last blocker before redundant next work at minimum budget', () => {
+    const pack = buildProjectContextPack(
+      {
+        projectId,
+        decisions: [],
+        tasks: [],
+        facts: [],
+        state: {
+          id: 'tight-state',
+          project_id: projectId,
+          summary: 'bounded state',
+          created_at: '2026-10-13T15:59:00.000Z',
+          state: {
+            in_progress: ['finish active work '.repeat(35)],
+            blocked: ['preserve this blocker '.repeat(25)],
+          },
+        },
+      },
+      {
+        projectId,
+        maxTokens: 768,
+        now: new Date('2026-10-13T16:00:00.000Z'),
+      },
+    );
+
+    expect(pack.budget.estimatedTokens).toBeLessThanOrEqual(768);
+    expect(pack.activeBlockers).toHaveLength(1);
+    expect(pack.activeBlockers[0]?.text).toContain('preserve this blocker');
+    expect(pack.nextWork).toEqual([]);
+  });
+
   it('does not classify a linked pull request as merged without merge evidence', () => {
     const pack = buildProjectContextPack(
       {
