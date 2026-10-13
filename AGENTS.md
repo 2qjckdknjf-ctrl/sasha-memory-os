@@ -25,3 +25,17 @@
 - With `MEMORY_OS_ENV` unset/`local` (default), owner/cron ops routes do not require the API secret (`apps/api/src/httpAuth.ts`).
 - Dev servers: `dev:api` on `:8787`; `dev:web` on `:5173` proxies `/v1` and `/health` to `:8787`. Start the API first.
 - `pnpm test` passes without secrets; live Supabase suites auto-skip when env is absent. Live connector/OAuth/re-embed/consolidation need the dedicated Supabase project secrets.
+
+## Mandatory Cursor memory lifecycle (M18.1)
+
+For every substantial task (code, schema, configuration, deployment, or release documentation), execute this sequence in order:
+
+A. Run `node scripts/cursor-mcp-session.mjs bootstrap --project-id 44444444-4444-4444-8444-444444444402`. This performs explicit-project `memory.search` calls for the canonical completion plan and current project context.
+B. Inspect the freshly fetched `origin/main`, current branch, HEAD, recent main commits, and working-tree status returned by bootstrap. Preserve unrelated user changes.
+C. Define one bounded execution slice with acceptance evidence and blockers. Do not mix unrelated capabilities in one PR.
+D. Implement and run proportionate tests, lint, typecheck, security checks, and live acceptance where applicable.
+E. Create a PR, resolve review findings, wait for required CI, and merge before any production migration/deployment or milestone claim.
+F. After merge, write one milestone/decision containing PR URL, merge SHA, verification results, blockers, and next slice using `store-decision` with an explicit project UUID and unique idempotency key.
+G. Treat the command's automatic `memory.get` read-after-write receipt as mandatory. Do not claim completion if it is absent or mismatched.
+
+If live Memory OS access is unavailable, stop the substantial task at that boundary and report the blocker; never substitute in-memory/default-project context or write to AISTROYKA/HiAir. The always-on Cursor rule is `.cursor/rules/memory-os-lifecycle.mdc`; the session hook is `.cursor/hooks.json`.

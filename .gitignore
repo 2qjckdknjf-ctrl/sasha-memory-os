@@ -5,7 +5,14 @@
 *.tsbuildinfo
 *~
 .DS_Store
-.cursor/
+.cursor/*
+!.cursor/hooks.json
+!.cursor/hooks/
+.cursor/hooks/*
+!.cursor/hooks/memory-os-session-start.mjs
+!.cursor/rules/
+.cursor/rules/*
+!.cursor/rules/memory-os-lifecycle.mdc
 .data/
 .env
 .env.*

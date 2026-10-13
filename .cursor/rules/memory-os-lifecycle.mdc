@@ -1,0 +1,22 @@
+---
+description: Mandatory Sasha Memory OS lifecycle for substantial Cursor tasks
+alwaysApply: true
+---
+
+# Sasha Memory OS task lifecycle
+
+For every substantial task that changes code, schema, configuration, deployment state, or release documentation, complete A–G in order:
+
+A. Before editing, run:
+   `node scripts/cursor-mcp-session.mjs bootstrap --project-id 44444444-4444-4444-8444-444444444402`
+   Use only the explicit Sasha Memory OS project. The command searches both the canonical completion plan and current project context.
+B. Use the command's freshly fetched `origin/main`, HEAD, branch, recent-main, and working-tree evidence. Preserve unrelated changes.
+C. State one bounded slice, its acceptance evidence, and current blockers.
+D. Implement and verify it with proportionate tests and live checks.
+E. Create one PR, address review, wait for required CI, and merge it. Apply production changes only after merge and CI acceptance.
+F. After merge, run `store-decision` with the PR URL, merge SHA, verification results, blockers, next slice, explicit project UUID, and a unique idempotency key.
+G. Require `readAfterWrite.verified=true` from that command. It automatically calls `memory.get`; a missing or mismatched receipt means the task is not complete.
+
+Never use a default project fallback. Never write this project's milestone to AISTROYKA (`...401`) or HiAir (`...403`). If live Memory OS is unavailable, report that blocker and do not invent context or claim completion.
+
+The full contract is documented in `docs/engineering/M18_SLICE_01.md` and duplicated in root `AGENTS.md` so local and cloud Cursor agents receive it.
