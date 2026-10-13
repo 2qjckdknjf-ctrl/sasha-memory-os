@@ -53,6 +53,10 @@ runs `tests/security/m17_slice_04_entity_graph_cases.sql`. It verifies:
 - a second backfill creates no extra entities, aliases, edges, or links;
 - forced RLS and client-role revocations remain active.
 
+The follow-up advisor migration adds covering indexes for all graph foreign
+keys and splits `FOR ALL` policies into command-specific mutations, so the new
+tables add neither unindexed-FK nor multiple-permissive-SELECT findings.
+
 Production is applied only after merge and green CI. The production acceptance
 record must include row counts, coverage, idempotency re-run, security advisors,
 and a traceable graph assertion before this slice is declared live.
