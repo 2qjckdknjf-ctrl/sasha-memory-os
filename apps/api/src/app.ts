@@ -67,6 +67,7 @@ import {
   githubAppConnectionMetadata,
   githubAppInstallationId,
   githubAppReconcileRequestSchema,
+  graphRetrieveRequestSchema,
   parseSourceEventEnvelope,
   normalizeConnectionMetadata,
   oauthCompleteSchema,
@@ -4167,6 +4168,145 @@ export function createApp(options?: {
         metadata: m.metadata,
       }));
     return c.json({ memories });
+  });
+
+  app.get('/v1/entities', async (c) => {
+    const authz = c.get('authz');
+    const projectId = c.req.query('project_id')?.trim();
+    if (!projectId) {
+      return c.json({ error: 'project_id is required' }, 400);
+    }
+    const query = c.req.query('query') ?? '';
+    const rawLimit = Number(c.req.query('limit') ?? '20');
+    if (!Number.isInteger(rawLimit) || rawLimit < 1 || rawLimit > 50) {
+      return c.json({ error: 'limit must be between 1 and 50' }, 400);
+    }
+
+    const gw = c.get('gateway');
+    if (!gw) {
+      return c.json(
+        {
+          error: 'not_implemented',
+          note: 'Entity graph requires the Supabase backend.',
+          available: false,
+          backend: 'memory-store',
+        },
+        501,
+      );
+    }
+
+    try {
+      return c.json(
+        await gw.searchEntities({
+          subjectId: authz.subjectId,
+          projectId,
+          query,
+          limit: rawLimit,
+        }),
+      );
+    } catch (err) {
+      if (isForbiddenError(err)) return c.json({ error: 'forbidden' }, 403);
+      if (isNotFoundError(err)) return c.json({ error: 'project_not_found' }, 404);
+      const message = (err as Error).message;
+      if (/required|must be between/i.test(message)) {
+        return c.json({ error: message }, 400);
+      }
+      return c.json({ error: message }, 500);
+    }
+  });
+
+  app.get('/v1/entities/:id', async (c) => {
+    const authz = c.get('authz');
+    const entityId = c.req.param('id');
+    const projectId = c.req.query('project_id')?.trim();
+    if (!projectId) {
+      return c.json({ error: 'project_id is required' }, 400);
+    }
+    const rawMaxEdges = Number(c.req.query('max_edges') ?? '48');
+    if (!Number.isInteger(rawMaxEdges) || rawMaxEdges < 1 || rawMaxEdges > 48) {
+      return c.json({ error: 'max_edges must be between 1 and 48' }, 400);
+    }
+
+    const gw = c.get('gateway');
+    if (!gw) {
+      return c.json(
+        {
+          error: 'not_implemented',
+          note: 'Entity graph requires the Supabase backend.',
+          available: false,
+          backend: 'memory-store',
+        },
+        501,
+      );
+    }
+
+    try {
+      return c.json(
+        await gw.getEntityGraph({
+          subjectId: authz.subjectId,
+          projectId,
+          entityId,
+          maxEdges: rawMaxEdges,
+        }),
+      );
+    } catch (err) {
+      if (isForbiddenError(err)) return c.json({ error: 'forbidden' }, 403);
+      if (isNotFoundError(err)) return c.json({ error: 'entity_not_found' }, 404);
+      const message = (err as Error).message;
+      if (/required|must be between/i.test(message)) {
+        return c.json({ error: message }, 400);
+      }
+      return c.json({ error: message }, 500);
+    }
+  });
+
+  app.post('/v1/graph/retrieve', async (c) => {
+    const parsed = graphRetrieveRequestSchema.safeParse(
+      await c.req.json().catch(() => ({})),
+    );
+    if (!parsed.success) {
+      return c.json(
+        { error: parsed.error.issues[0]?.message ?? 'invalid graph retrieval request' },
+        400,
+      );
+    }
+
+    const gw = c.get('gateway');
+    if (!gw) {
+      return c.json(
+        {
+          error: 'not_implemented',
+          note: 'Graph retrieval requires the Supabase backend.',
+          available: false,
+          backend: 'memory-store',
+        },
+        501,
+      );
+    }
+
+    const authz = c.get('authz');
+    const body = parsed.data;
+    try {
+      return c.json(
+        await gw.graphRetrieve({
+          subjectId: authz.subjectId,
+          projectId: body.project_id,
+          seedEntityIds: body.seed_entity_ids,
+          maxHops: body.max_hops,
+          maxNodes: body.max_nodes,
+          maxEdges: body.max_edges,
+          minConfidence: body.min_confidence,
+        }),
+      );
+    } catch (err) {
+      if (isForbiddenError(err)) return c.json({ error: 'forbidden' }, 403);
+      if (isNotFoundError(err)) return c.json({ error: 'entity_or_project_not_found' }, 404);
+      const message = (err as Error).message;
+      if (/required|must be|at least|at most/i.test(message)) {
+        return c.json({ error: message }, 400);
+      }
+      return c.json({ error: message }, 500);
+    }
   });
 
   /** Owner portable dump (full content). Complements list truncation. */

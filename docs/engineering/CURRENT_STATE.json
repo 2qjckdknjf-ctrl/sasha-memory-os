@@ -1,27 +1,27 @@
 {
   "manifestVersion": "m14.1-v1",
   "schemaVersion": "1.2",
-  "generatedAt": "2026-10-13T14:40:45.000Z",
+  "generatedAt": "2026-10-13T14:51:10.000Z",
   "repository": "2qjckdknjf-ctrl/sasha-memory-os",
   "canonicalProjectId": "44444444-4444-4444-8444-444444444402",
   "aistroykaProjectId": "44444444-4444-4444-8444-444444444401",
   "hiairProjectId": "44444444-4444-4444-8444-444444444403",
   "canonicalWorkspaceId": "11111111-1111-4111-8111-111111111111",
-  "reconciledAgainstMainSha": "0c05d48f5bc843de93443b1581b74203acdced90",
-  "contractPacksCompletedThrough": "M17.4",
+  "reconciledAgainstMainSha": "6cdd6610417d8b6a6302ec9377b5f37bfe3be962",
+  "contractPacksCompletedThrough": "M17.5",
   "liveOperationalMilestone": "M20_SECURITY_GOVERNANCE",
-  "nextAllowedSlice": "M17.5_GRAPH_INSPECTOR_LIVE_E2E",
-  "currentMilestone": "m17-entity-migration-backfill",
-  "completedThrough": "M17.4",
-  "nextSlice": "M17.5_GRAPH_INSPECTOR_LIVE_E2E",
+  "nextAllowedSlice": "M17.6_GRAPH_HYBRID_FUSION_EVALS",
+  "currentMilestone": "m17-live-graph-retrieval-inspector",
+  "completedThrough": "M17.5",
+  "nextSlice": "M17.6_GRAPH_HYBRID_FUSION_EVALS",
   "frozenSlices": [],
   "canonicalPlanMemoryTitle": "SASHA MEMORY OS — CANONICAL COMPLETION PLAN TO 100% — 2026-08-21",
   "supabase": {
     "projectName": "sasha-memory-os",
     "projectRef": "vpxblcxsvlylqyldiuwr",
     "region": "eu-central-1",
-    "latestMigration": "20261013144045_m17_slice_04_entity_graph_advisor_hardening.sql",
-    "migrationCount": 70
+    "latestMigration": "20261013145110_m17_slice_05_live_graph_retrieval_inspector.sql",
+    "migrationCount": 71
   },
   "officialPacks": {
     "m14Slo": "m14-s01-v1",
@@ -51,6 +51,7 @@
     "m17EntityResolution": "m17-s02-v1",
     "m17GraphRetrieval": "m17-s03-v1",
     "m17EntityMigrationBackfill": "m17-s04-v1",
+    "m17LiveGraph": "m17-s05-v1",
     "p0ProjectIdentity": "p0-project-identity-v1"
   },
   "deployments": {

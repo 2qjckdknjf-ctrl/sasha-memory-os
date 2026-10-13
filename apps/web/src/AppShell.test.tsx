@@ -21,6 +21,13 @@ function renderShell(seedShortcutTo: string | null) {
 }
 
 describe('AppShell', () => {
+  it('exposes the knowledge graph as a first-class control-center route', () => {
+    const html = renderShell(null);
+
+    expect(html).toContain('Граф знаний');
+    expect(html).toContain('href="/entities"');
+  });
+
   it('hides the AISTROYKA shortcut when the seed project is absent from the catalog', () => {
     const html = renderShell(null);
 

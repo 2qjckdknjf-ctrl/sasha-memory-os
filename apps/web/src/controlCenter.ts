@@ -63,6 +63,111 @@ export type SearchHit = {
   score?: number;
 };
 
+export type EntityAliasRecord = {
+  id?: string;
+  alias: string;
+  confidence: number;
+  sourceRef: string;
+  sourceEventId?: string | null;
+  memoryId?: string | null;
+};
+
+export type GraphEntitySummary = {
+  id: string;
+  projectId: string;
+  stableId: string;
+  entityClass: string;
+  canonicalName: string;
+  status: string;
+  confidence: number;
+  sourceRef: string;
+  sourceEventId?: string | null;
+  createdFromMemoryId?: string | null;
+  aliases?: EntityAliasRecord[];
+  memoryCount?: number;
+  searchRank?: number;
+  depth?: number;
+  metadata?: Record<string, unknown>;
+};
+
+export type EntityGraphEdgeRecord = {
+  id: string;
+  direction?: 'inbound' | 'outbound';
+  edgeType: string;
+  fromEntityId: string;
+  toEntityId: string;
+  confidence: number;
+  sourceRef: string;
+  sourceEventId?: string | null;
+  memoryId?: string | null;
+  evidence?: Record<string, unknown>;
+  neighbor?: GraphEntitySummary;
+};
+
+export type EntityGraphMemoryRecord = {
+  id: string;
+  title: string;
+  content?: string;
+  contentSnippet?: string;
+  status: string;
+  memoryType: string;
+  role?: string;
+  confidence?: number;
+  sourceRef?: string;
+  sourceEventId?: string | null;
+  recordedAt?: string;
+  graphScore?: number;
+  entityIds?: string[];
+  evidenceRefs?: string[];
+};
+
+export type EntitySearchResponse = {
+  projectId: string;
+  query: string;
+  entities: GraphEntitySummary[];
+  count: number;
+  limit: number;
+  backend: string;
+};
+
+export type EntityGraphResponse = {
+  projectId: string;
+  entity: GraphEntitySummary & {
+    workspaceId: string;
+    validFrom?: string | null;
+    validTo?: string | null;
+    mergedIntoEntityId?: string | null;
+    metadata: Record<string, unknown>;
+  };
+  aliases: EntityAliasRecord[];
+  edges: EntityGraphEdgeRecord[];
+  memories: EntityGraphMemoryRecord[];
+  budget: { maxEdges: number };
+  backend: string;
+};
+
+export type GraphRetrieveResponse = {
+  projectId: string;
+  seedEntityIds: string[];
+  nodes: GraphEntitySummary[];
+  edges: EntityGraphEdgeRecord[];
+  memories: EntityGraphMemoryRecord[];
+  budget: {
+    maxHops: number;
+    maxNodes: number;
+    maxEdges: number;
+    minConfidence: number;
+  };
+  trace: {
+    visitedNodeCount: number;
+    traversedEdgeCount: number;
+    stoppedReason: string;
+    evidenceRequired: boolean;
+    packVersion: string;
+  };
+  backend: string;
+};
+
 export type MemoryStatusAction = 'verified' | 'disputed' | 'retracted';
 
 export type CorrectMemoryPayload = {

@@ -472,3 +472,68 @@ describe('SupabaseMemoryGateway.captureConnectorRecord', () => {
     ).rejects.toThrow(/budget not configured/i);
   });
 });
+
+describe('SupabaseMemoryGateway live graph RPCs', () => {
+  it('searches entities inside one explicit project', async () => {
+    const rpc = vi.fn(async () => ({
+      data: { projectId: 'project-1', entities: [], count: 0, limit: 20 },
+      error: null,
+    }));
+    const gateway = new SupabaseMemoryGateway({ rpc } as any, 'test-secret');
+
+    await gateway.searchEntities({
+      subjectId: 'subject-1',
+      projectId: 'project-1',
+      query: 'Slice 01',
+    });
+
+    expect(rpc).toHaveBeenCalledWith('api_search_entities', {
+      p_secret: 'test-secret',
+      p_subject_id: 'subject-1',
+      p_project_id: 'project-1',
+      p_query: 'Slice 01',
+      p_limit: 20,
+    });
+  });
+
+  it('requires an explicit project when inspecting one entity', async () => {
+    const rpc = vi.fn(async () => ({ data: { entity: { id: 'entity-1' } }, error: null }));
+    const gateway = new SupabaseMemoryGateway({ rpc } as any, 'test-secret');
+
+    await gateway.getEntityGraph({
+      subjectId: 'subject-1',
+      projectId: 'project-1',
+      entityId: 'entity-1',
+    });
+
+    expect(rpc).toHaveBeenCalledWith('api_get_entity_graph', {
+      p_secret: 'test-secret',
+      p_subject_id: 'subject-1',
+      p_project_id: 'project-1',
+      p_entity_id: 'entity-1',
+      p_max_edges: 48,
+    });
+  });
+
+  it('passes the canonical bounded graph retrieval budget', async () => {
+    const rpc = vi.fn(async () => ({ data: { nodes: [], edges: [] }, error: null }));
+    const gateway = new SupabaseMemoryGateway({ rpc } as any, 'test-secret');
+
+    await gateway.graphRetrieve({
+      subjectId: 'subject-1',
+      projectId: 'project-1',
+      seedEntityIds: ['entity-1'],
+    });
+
+    expect(rpc).toHaveBeenCalledWith('api_graph_retrieve', {
+      p_secret: 'test-secret',
+      p_subject_id: 'subject-1',
+      p_project_id: 'project-1',
+      p_seed_entity_ids: ['entity-1'],
+      p_max_hops: 2,
+      p_max_nodes: 24,
+      p_max_edges: 48,
+      p_min_confidence: 0.7,
+    });
+  });
+});

@@ -98,6 +98,12 @@ const m17EntityGraphHardeningMigrationPath = fileURLToPath(
     import.meta.url,
   ),
 );
+const m17LiveGraphMigrationPath = fileURLToPath(
+  new URL(
+    '../../../supabase/migrations/20261013145110_m17_slice_05_live_graph_retrieval_inspector.sql',
+    import.meta.url,
+  ),
+);
 
 describe('m8 slice 03 migration guards', () => {
   const sql = readFileSync(migrationPath, 'utf8');
@@ -618,5 +624,31 @@ describe('M17.4 entity graph migration guards', () => {
     expect(hardeningSql).toContain(
       'REVOKE ALL ON TABLE public.entities FROM PUBLIC, anon, authenticated',
     );
+  });
+});
+
+describe('M17.5 live graph migration guards', () => {
+  const sql = readFileSync(m17LiveGraphMigrationPath, 'utf8');
+
+  it('adds project-scoped search, inspector and graph retrieval RPCs', () => {
+    expect(sql).toContain('CREATE OR REPLACE FUNCTION app.api_search_entities');
+    expect(sql).toContain('CREATE OR REPLACE FUNCTION app.api_get_entity_graph');
+    expect(sql).toContain('CREATE OR REPLACE FUNCTION app.api_graph_retrieve');
+    expect(sql).toContain("RAISE EXCEPTION 'project_id required'");
+    expect(sql).toContain("app.has_acl(v_workspace_id, 'memory', 'read', p_project_id");
+  });
+
+  it('hard-bounds traversal and rejects cross-project seeds', () => {
+    expect(sql).toContain('p_max_hops > 2');
+    expect(sql).toContain('p_max_nodes > 24');
+    expect(sql).toContain('p_max_edges > 48');
+    expect(sql).toContain("RAISE EXCEPTION 'seed entity not found in project'");
+    expect(sql).toContain('ee.project_id = p_project_id');
+  });
+
+  it('exposes graph RPCs only to the service role', () => {
+    expect(sql).toContain('FROM PUBLIC, anon, authenticated');
+    expect(sql).toContain('TO service_role');
+    expect(sql).toContain('SET search_path = pg_catalog, public, app');
   });
 });
