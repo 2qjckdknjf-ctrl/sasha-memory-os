@@ -12,6 +12,7 @@ import { AuthPanel } from './AuthPanel';
 import { AuditPage } from './AuditPage';
 import { ConflictsPage } from './ConflictsPage';
 import { ConnectionsPage } from './ConnectionsPage';
+import { EntityGraphPage } from './EntityGraphPage';
 import { HandoffsPage } from './HandoffsPage';
 import { HomePage } from './HomePage';
 import { MemoryInspectorPage } from './MemoryInspectorPage';
@@ -1862,6 +1863,34 @@ export function App() {
               onSearchTermChange={setSearch}
               onPackContextChange={setPackContext}
               onSearch={onSearch}
+            />
+          }
+        />
+        <Route
+          path="/entities"
+          element={
+            <EntityGraphPage
+              actor={actor}
+              backend={backend}
+              backendResolved={backendResolved}
+              subjectId={subjectId}
+              projectId={readProjectId}
+              scopeLabel={scopeLabel}
+              scopePanel={globalScopePanel}
+            />
+          }
+        />
+        <Route
+          path="/entities/:id"
+          element={
+            <EntityGraphPage
+              actor={actor}
+              backend={backend}
+              backendResolved={backendResolved}
+              subjectId={subjectId}
+              projectId={readProjectId}
+              scopeLabel={scopeLabel}
+              scopePanel={globalScopePanel}
             />
           }
         />

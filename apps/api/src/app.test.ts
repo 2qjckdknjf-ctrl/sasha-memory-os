@@ -4326,4 +4326,106 @@ describe('memory api demo slice', () => {
     expect(search.status).toBe(200);
     expect((await search.json()).hits).toEqual([]);
   });
+
+  it('fails closed for graph reads without an explicit project or durable backend', async () => {
+    const app = createApp({});
+
+    const missingProject = await app.request('/v1/entities?query=Slice', {
+      headers: { 'x-actor-key': 'cursor' },
+    });
+    expect(missingProject.status).toBe(400);
+    expect(await missingProject.json()).toEqual({ error: 'project_id is required' });
+
+    const localOnly = await app.request(
+      `/v1/entities?project_id=${memoryOsProjectId}&query=Slice`,
+      { headers: { 'x-actor-key': 'cursor' } },
+    );
+    expect(localOnly.status).toBe(501);
+    expect(await localOnly.json()).toMatchObject({
+      error: 'not_implemented',
+      available: false,
+      backend: 'memory-store',
+    });
+  });
+
+  it('routes entity search, inspector and bounded traversal through the gateway', async () => {
+    const entityId = 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeee41';
+    const gateway = {
+      searchEntities: vi.fn(async () => ({
+        projectId: memoryOsProjectId,
+        query: 'Slice',
+        entities: [{ id: entityId, projectId: memoryOsProjectId }],
+        count: 1,
+        limit: 20,
+        backend: 'supabase',
+      })),
+      getEntityGraph: vi.fn(async () => ({
+        projectId: memoryOsProjectId,
+        entity: { id: entityId, projectId: memoryOsProjectId },
+        aliases: [],
+        edges: [],
+        memories: [],
+        budget: { maxEdges: 48 },
+        backend: 'supabase',
+      })),
+      graphRetrieve: vi.fn(async () => ({
+        projectId: memoryOsProjectId,
+        seedEntityIds: [entityId],
+        nodes: [{ id: entityId }],
+        edges: [],
+        memories: [],
+        trace: { visitedNodeCount: 1, traversedEdgeCount: 0 },
+        backend: 'supabase',
+      })),
+    };
+    const app = createApp({ gateway: gateway as any });
+
+    const search = await app.request(
+      `/v1/entities?project_id=${memoryOsProjectId}&query=Slice&limit=20`,
+      { headers: { 'x-actor-key': 'cursor' } },
+    );
+    expect(search.status).toBe(200);
+    expect(gateway.searchEntities).toHaveBeenCalledWith({
+      subjectId: cursor,
+      projectId: memoryOsProjectId,
+      query: 'Slice',
+      limit: 20,
+    });
+
+    const detail = await app.request(`/v1/entities/${entityId}`, {
+      headers: { 'x-actor-key': 'cursor' },
+    });
+    expect(detail.status).toBe(200);
+    expect(gateway.getEntityGraph).toHaveBeenCalledWith({
+      subjectId: cursor,
+      entityId,
+      maxEdges: 48,
+    });
+
+    const graph = await app.request('/v1/graph/retrieve', {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'x-actor-key': 'cursor',
+      },
+      body: JSON.stringify({
+        project_id: memoryOsProjectId,
+        seed_entity_ids: [entityId],
+        max_hops: 2,
+        max_nodes: 24,
+        max_edges: 48,
+        min_confidence: 0.7,
+      }),
+    });
+    expect(graph.status).toBe(200);
+    expect(gateway.graphRetrieve).toHaveBeenCalledWith({
+      subjectId: cursor,
+      projectId: memoryOsProjectId,
+      seedEntityIds: [entityId],
+      maxHops: 2,
+      maxNodes: 24,
+      maxEdges: 48,
+      minConfidence: 0.7,
+    });
+  });
 });

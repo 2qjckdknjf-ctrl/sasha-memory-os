@@ -40,6 +40,73 @@ export function createMemoryOsClient(config: MemoryOsEnv): SupabaseClient {
   });
 }
 
+export type EntitySummary = {
+  id: string;
+  projectId: string;
+  stableId: string;
+  entityClass: string;
+  canonicalName: string;
+  status: string;
+  confidence: number;
+  sourceRef: string;
+  sourceEventId?: string | null;
+  createdFromMemoryId?: string | null;
+  aliases: Array<{
+    alias: string;
+    confidence: number;
+    sourceRef: string;
+  }>;
+  memoryCount: number;
+  searchRank: number;
+};
+
+export type EntitySearchResult = {
+  projectId: string;
+  query: string;
+  entities: EntitySummary[];
+  count: number;
+  limit: number;
+  backend: 'supabase';
+};
+
+export type EntityGraphResult = {
+  projectId: string;
+  entity: Omit<EntitySummary, 'aliases' | 'memoryCount' | 'searchRank'> & {
+    workspaceId: string;
+    validFrom?: string | null;
+    validTo?: string | null;
+    mergedIntoEntityId?: string | null;
+    metadata: Record<string, unknown>;
+  };
+  aliases: Array<Record<string, unknown>>;
+  edges: Array<Record<string, unknown>>;
+  memories: Array<Record<string, unknown>>;
+  budget: { maxEdges: number };
+  backend: 'supabase';
+};
+
+export type GraphRetrievalResult = {
+  projectId: string;
+  seedEntityIds: string[];
+  nodes: Array<Record<string, unknown>>;
+  edges: Array<Record<string, unknown>>;
+  memories: Array<Record<string, unknown>>;
+  budget: {
+    maxHops: number;
+    maxNodes: number;
+    maxEdges: number;
+    minConfidence: number;
+  };
+  trace: {
+    visitedNodeCount: number;
+    traversedEdgeCount: number;
+    stoppedReason: 'complete' | 'max_hops' | 'max_nodes' | 'max_edges' | 'low_evidence';
+    evidenceRequired: true;
+    packVersion: 'm17-s05-v1';
+  };
+  backend: 'supabase';
+};
+
 function throwReturnedRpcError(data: unknown): void {
   if (
     data &&
@@ -167,6 +234,64 @@ export class SupabaseMemoryGateway {
     const { data, error } = await this.client.rpc('api_search_memories', args);
     if (error) throw error;
     return data;
+  }
+
+  async searchEntities(input: {
+    subjectId: string;
+    projectId: string;
+    query?: string;
+    limit?: number;
+  }) {
+    const { data, error } = await this.client.rpc('api_search_entities', {
+      p_secret: this.apiSecret,
+      p_subject_id: input.subjectId,
+      p_project_id: input.projectId,
+      p_query: input.query ?? '',
+      p_limit: input.limit ?? 20,
+    });
+    if (error) throw error;
+    throwReturnedRpcError(data);
+    return data as EntitySearchResult;
+  }
+
+  async getEntityGraph(input: {
+    subjectId: string;
+    entityId: string;
+    maxEdges?: number;
+  }) {
+    const { data, error } = await this.client.rpc('api_get_entity_graph', {
+      p_secret: this.apiSecret,
+      p_subject_id: input.subjectId,
+      p_entity_id: input.entityId,
+      p_max_edges: input.maxEdges ?? 48,
+    });
+    if (error) throw error;
+    throwReturnedRpcError(data);
+    return data as EntityGraphResult;
+  }
+
+  async graphRetrieve(input: {
+    subjectId: string;
+    projectId: string;
+    seedEntityIds: string[];
+    maxHops?: number;
+    maxNodes?: number;
+    maxEdges?: number;
+    minConfidence?: number;
+  }) {
+    const { data, error } = await this.client.rpc('api_graph_retrieve', {
+      p_secret: this.apiSecret,
+      p_subject_id: input.subjectId,
+      p_project_id: input.projectId,
+      p_seed_entity_ids: input.seedEntityIds,
+      p_max_hops: input.maxHops ?? 2,
+      p_max_nodes: input.maxNodes ?? 24,
+      p_max_edges: input.maxEdges ?? 48,
+      p_min_confidence: input.minConfidence ?? 0.7,
+    });
+    if (error) throw error;
+    throwReturnedRpcError(data);
+    return data as GraphRetrievalResult;
   }
 
   async listMemories(input: {

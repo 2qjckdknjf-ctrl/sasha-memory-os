@@ -26,6 +26,7 @@ const primaryLinks: PrimaryLink[] = [
   { to: '/handoffs', label: 'Хэнд-оффы' },
   { to: '/conflicts', label: 'Конфликты' },
   { to: '/search', label: 'Поиск' },
+  { to: '/entities', label: 'Граф знаний' },
   { to: '/projects', label: 'Проекты', end: true },
 ];
 

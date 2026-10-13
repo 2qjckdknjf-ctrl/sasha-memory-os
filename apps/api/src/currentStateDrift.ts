@@ -30,6 +30,7 @@ import {
   OFFICIAL_M17_ENTITY_MIGRATION_BACKFILL_PACK_VERSION,
   OFFICIAL_M17_ENTITY_RESOLUTION_PACK_VERSION,
   OFFICIAL_M17_GRAPH_RETRIEVAL_PACK_VERSION,
+  OFFICIAL_M17_LIVE_GRAPH_PACK_VERSION,
 } from '@memory-os/schemas';
 
 const WORKSPACE_ROOT = resolve(import.meta.dirname, '../../..');
@@ -40,8 +41,8 @@ export const CURRENT_STATE_PATH = resolve(
 
 export const OFFICIAL_M14_1_BASELINE_MANIFEST_VERSION = 'm14.1-v1' as const;
 export const CURRENT_OPERATIONAL_MILESTONE =
-  'm17-entity-migration-backfill' as const;
-export const CURRENT_NEXT_SLICE = 'M17.5_GRAPH_INSPECTOR_LIVE_E2E' as const;
+  'm17-live-graph-retrieval-inspector' as const;
+export const CURRENT_NEXT_SLICE = 'M17.6_GRAPH_HYBRID_FUSION_EVALS' as const;
 
 export type CurrentStateManifest = {
   manifestVersion: string;
@@ -90,6 +91,7 @@ export type CurrentStateManifest = {
     m17EntityResolution: string;
     m17GraphRetrieval: string;
     m17EntityMigrationBackfill: string;
+    m17LiveGraph: string;
   };
   deployments: {
     flyApi: {
@@ -148,6 +150,7 @@ export type CurrentStateDriftReport = {
 };
 
 const SHA_RE = /^[0-9a-f]{40}$/i;
+const CANONICAL_MIGRATION_FILE_RE = /^\d{14}_[a-z0-9_]+\.sql$/;
 const FORBIDDEN_DEFAULT_PROJECT_ENV_READ =
   /process\.env\.MEMORY_OS_DEFAULT_PROJECT_ID|env\.MEMORY_OS_DEFAULT_PROJECT_ID/;
 
@@ -257,10 +260,10 @@ export function validateCurrentStateDrift(
     });
   }
 
-  if (manifest.completedThrough !== 'M17.4') {
+  if (manifest.completedThrough !== 'M17.5') {
     findings.push({
       code: 'completed-through',
-      message: `expected contractPacks completedThrough M17.4, got ${manifest.completedThrough}`,
+      message: `expected contractPacks completedThrough M17.5, got ${manifest.completedThrough}`,
     });
   }
 
@@ -308,6 +311,7 @@ export function validateCurrentStateDrift(
       m17GraphRetrieval: OFFICIAL_M17_GRAPH_RETRIEVAL_PACK_VERSION,
       m17EntityMigrationBackfill:
         OFFICIAL_M17_ENTITY_MIGRATION_BACKFILL_PACK_VERSION,
+      m17LiveGraph: OFFICIAL_M17_LIVE_GRAPH_PACK_VERSION,
     };
 
   for (const [key, expected] of Object.entries(expectedPacks) as Array<
@@ -335,7 +339,7 @@ export function validateCurrentStateDrift(
 
   const migrationFiles = listFileNames(
     resolve(workspaceRoot, 'supabase/migrations'),
-  ).filter((name) => name.endsWith('.sql'));
+  ).filter((name) => CANONICAL_MIGRATION_FILE_RE.test(name));
   if (migrationFiles.length !== manifest.supabase.migrationCount) {
     findings.push({
       code: 'migration-count',
