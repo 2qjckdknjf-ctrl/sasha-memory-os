@@ -118,3 +118,7 @@ Canonical order (do not skip): see [M14_1_BASELINE.md](docs/engineering/M14_1_BA
 18. ~~M17.3 Graph-aware retrieval~~ — bounded traversal + hybrid fusion (live graph DB BLOCKED)
 19. **M17.4 Entity migration backfill**
 20. M17.5+ / M18–M20; Fly API deferred
+
+## AI разборы 2026-10-13
+
+[Сверка рекомендаций с существующими функциями](docs/AI_DIGEST_RECONCILIATION_2026-10-13.md) и [действующий innovation backlog](docs/AI_INNOVATION_BACKLOG_2026-09-08.md). Сначала SHARED_MEMORY_E2E_REMEDIATION; новые требования к handoff/redaction/recall quality не снимают current live blockers.

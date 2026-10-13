@@ -117,3 +117,7 @@ Those belong to the consuming agent platform/domain product.
 - No cross-project or cross-tenant retrieval because content is semantically similar.
 - No treating model-generated summaries as authoritative without source refs.
 - No executing project actions from Memory OS itself.
+
+## Сверка всех доступных AI разборов 2026-10-13
+
+[Матрица existing функций и уточнённых AC](AI_DIGEST_RECONCILIATION_2026-10-13.md) переиспользует M-01…20: scoped task/handoff state, operational lessons/persistence gate, redaction BEFORE embedding, recall feedback и authoritative freshness/structured retrieval. MCP handoff/hybrid search/ACL/graph contracts уже частично есть; complete consumer-resume/privacy/feedback/live graph acceptance не доказаны. SHARED_MEMORY_E2E_REMEDIATION остаётся первым, M17.4 freeze и baseline 32-dim contracts сохранены. Эта запись не подтверждает production readiness.
