@@ -318,6 +318,32 @@ describe('M18.2 project context pack', () => {
     expect(pack.activeBlockers).toEqual([]);
   });
 
+  it('matches milestone markers only at M-digit token boundaries', () => {
+    const pack = buildProjectContextPack(
+      {
+        projectId,
+        decisions: [
+          decision({
+            id: 'ordinary-newer',
+            title: 'Team2 architecture decision',
+            content: 'Next canonical slice: WRONG_NEXT',
+            recordedAt: '2026-10-13T15:59:00.000Z',
+          }),
+          decision({
+            id: 'real-milestone',
+            title: 'M18.1 live receipt',
+            content: 'Next canonical slice: RIGHT_NEXT',
+            recordedAt: '2026-10-13T15:58:00.000Z',
+          }),
+        ],
+      },
+      { projectId },
+    );
+
+    expect(pack.currentMilestone?.id).toBe('real-milestone');
+    expect(pack.nextWork[0]?.text).toBe('RIGHT_NEXT');
+  });
+
   it('marks fixed section caps and text clipping in the budget receipt', () => {
     const completed = [
       'completed evidence '.repeat(30),

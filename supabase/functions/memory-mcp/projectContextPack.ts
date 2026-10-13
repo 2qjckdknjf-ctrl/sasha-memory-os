@@ -189,8 +189,25 @@ function hasMilestoneMarker(title: string): boolean {
   if (liveAt >= 0 && lower.indexOf("pass", liveAt + 4) >= 0) return true;
   for (let index = 0; index < lower.length - 1; index += 1) {
     if (lower[index] !== "m") continue;
-    const next = lower.charCodeAt(index + 1);
-    if (next >= 48 && next <= 57) return true;
+    const previous = index > 0 ? lower.charCodeAt(index - 1) : -1;
+    const previousIsAlphaNumeric =
+      (previous >= 48 && previous <= 57) ||
+      (previous >= 97 && previous <= 122);
+    if (previousIsAlphaNumeric) continue;
+    let cursor = index + 1;
+    if (lower.charCodeAt(cursor) < 48 || lower.charCodeAt(cursor) > 57) continue;
+    while (
+      cursor < lower.length &&
+      lower.charCodeAt(cursor) >= 48 &&
+      lower.charCodeAt(cursor) <= 57
+    ) {
+      cursor += 1;
+    }
+    const following = cursor < lower.length ? lower.charCodeAt(cursor) : -1;
+    const followingIsAlphaNumeric =
+      (following >= 48 && following <= 57) ||
+      (following >= 97 && following <= 122);
+    if (!followingIsAlphaNumeric) return true;
   }
   return false;
 }

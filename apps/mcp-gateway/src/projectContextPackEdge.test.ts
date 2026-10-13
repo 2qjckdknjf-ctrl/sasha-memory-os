@@ -321,6 +321,41 @@ describe("Edge project context pack", () => {
     expect(result).toEqual(buildProjectContextPack(raw, options));
   });
 
+  it("matches shared M-digit milestone token boundaries", () => {
+    const raw = {
+      projectId,
+      decisions: [
+        {
+          ...memory(
+            "ordinary-newer",
+            "Team2 architecture decision",
+            "2026-10-13T15:59:00Z",
+          ),
+          content: "Next canonical slice: WRONG_NEXT",
+        },
+        {
+          ...memory(
+            "real-milestone",
+            "M18.1 live receipt",
+            "2026-10-13T15:58:00Z",
+          ),
+          content: "Next canonical slice: RIGHT_NEXT",
+        },
+      ],
+      tasks: [],
+      facts: [],
+    };
+    const options = {
+      projectId,
+      now: new Date("2026-10-13T16:00:00Z"),
+    };
+    const result = buildEdgeProjectContextPack(raw, options);
+
+    expect(result.currentMilestone?.id).toBe("real-milestone");
+    expect(result.nextWork[0]?.text).toBe("RIGHT_NEXT");
+    expect(result).toEqual(buildProjectContextPack(raw, options));
+  });
+
   it("matches shared truncation receipts for fixed caps and clipped text", () => {
     const raw = {
       projectId,
