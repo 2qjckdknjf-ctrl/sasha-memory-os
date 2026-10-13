@@ -28,3 +28,9 @@ P0 — обязательный gate до соответствующей опе�
 M-01/M-14/M-17 progressive disclosure: сначала compact current-state/source/evidence summary, затем scope-filtered entity/doc details по запросу; version/budget/omission trace сохраняется. M-03/M-04/M-06 state/event separation уже имеет domain types, temporal/supersession foundations; проверить current state vs immutable event/history and conflicts, не переписывать history. P0 current-truth invariant; P1 after shared live gate.
 
 M-13/M-15/M-19 Paper to Agent / Document to Skill: P2 после source/ACL/redaction/admission. Из лицензированного документа извлекается proposed procedure с citations/source revision/limitations/preconditions; candidate не executable policy и не verified fact. Human/domain + ROMA independent validation required; generated instructions quarantined, no automatic durable promotion. Reuse existing exemplar/proposal/consolidation, no new compiler service by default.
+
+## Подтверждённый dependency gate 2026-10-13
+
+Existing M14 dependency-upgrade/security work (pack m14-s07-v1), M-08 / shared admission: P0 перед следующими executable acceptance runs. CI [38362581165](https://github.com/2qjckdknjf-ctrl/sasha-memory-os/actions/runs/38362581165) на 77981f8 остановился в critical dependency audit: vitest 3.2.7 → tinypool 1.1.1, [GHSA-5gmw-xhrv-c9v3](https://github.com/advisories/GHSA-5gmw-xhrv-c9v3) и [GHSA-85c8-ppgw-ccpr](https://github.com/advisories/GHSA-85c8-ppgw-ccpr). Это реальный release/check blocker, не результат ошибки документов.
+
+AC: проверить поддерживаемое обновление существующего test runner/transitive dependency, frozen-lock install + typecheck/test + critical audit PASS на exact HEAD, без подавления advisories или обхода CI. Smoke/container/shared-memory acceptance затем повторяется; passing ephemeral contract отдельно не закрывает security/live gate. Этот docs change записывает remediation в existing backlog; dependency code/lockfile не исправлены.
