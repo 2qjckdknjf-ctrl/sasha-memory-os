@@ -500,7 +500,10 @@ async function callTool(
           p_query: query,
           p_limit: 8,
         }) as Record<string, unknown>;
-        if (String(entitySearch.projectId ?? "") !== project) {
+        if (
+          String(entitySearch.projectId ?? "").trim().toLowerCase() !==
+            project.trim().toLowerCase()
+        ) {
           throw new Error("entity search project mismatch");
         }
         const entities = (Array.isArray(entitySearch.entities)
@@ -509,7 +512,8 @@ async function callTool(
             const entity = value && typeof value === "object"
               ? value as Record<string, unknown>
               : {};
-            return String(entity.projectId ?? "") === project &&
+            return String(entity.projectId ?? "").trim().toLowerCase() ===
+                project.trim().toLowerCase() &&
               typeof entity.id === "string" &&
               typeof entity.stableId === "string";
           }).slice(0, 8) as Array<Record<string, unknown>>;
@@ -551,7 +555,10 @@ async function callTool(
           p_max_edges: 48,
           p_min_confidence: 0.7,
         }) as Record<string, unknown>;
-        if (String(graph.projectId ?? "") !== project) {
+        if (
+          String(graph.projectId ?? "").trim().toLowerCase() !==
+            project.trim().toLowerCase()
+        ) {
           throw new Error("graph retrieval project mismatch");
         }
         const fused = fuseEdgeGraphHits({
@@ -559,6 +566,12 @@ async function callTool(
           hybridHits: ranked,
           graphNodes: Array.isArray(graph.nodes) ? graph.nodes : [],
           graphMemories: Array.isArray(graph.memories) ? graph.memories : [],
+          recordedAfter: args.recorded_after
+            ? String(args.recorded_after)
+            : null,
+          recordedBefore: args.recorded_before
+            ? String(args.recorded_before)
+            : null,
         });
         const edgeEvidence = (Array.isArray(graph.edges) ? graph.edges : [])
           .flatMap((value) => {

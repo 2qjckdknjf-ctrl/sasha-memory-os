@@ -99,6 +99,7 @@ import {
   buildProactiveConsolidationReason,
   embedMemoryText,
   type HybridHitLike,
+  inRecordedWindow,
   packSearchContext,
   planCandidateConsolidations,
   planProactiveConsolidation,
@@ -606,12 +607,22 @@ function graphMemoryId(value: Record<string, unknown>): string | null {
   return typeof value.id === 'string' && value.id.trim() ? value.id : null;
 }
 
+function normalizeProjectId(value: string): string {
+  return value.trim().toLowerCase();
+}
+
+function sameProjectId(left: string, right: string): boolean {
+  return normalizeProjectId(left) === normalizeProjectId(right);
+}
+
 function fuseLiveGraphSearch(input: {
   projectId: string;
   hybridHits: HybridHitLike[];
   graph: Awaited<ReturnType<SupabaseMemoryGateway['graphRetrieve']>>;
+  recordedAfter?: string;
+  recordedBefore?: string;
 }): GraphHybridHit[] {
-  if (input.graph.projectId !== input.projectId) {
+  if (!sameProjectId(input.graph.projectId, input.projectId)) {
     throw new Error('graph retrieval project mismatch');
   }
 
@@ -623,7 +634,7 @@ function fuseLiveGraphSearch(input: {
         : 'project_id' in hit.memory && typeof hit.memory.project_id === 'string'
           ? hit.memory.project_id
           : null;
-    if (memoryProjectId && memoryProjectId !== input.projectId) {
+    if (memoryProjectId && !sameProjectId(memoryProjectId, input.projectId)) {
       throw new Error('hybrid search project mismatch');
     }
     const memoryId = hit.memory.id ? String(hit.memory.id) : '';
@@ -645,6 +656,17 @@ function fuseLiveGraphSearch(input: {
     const memory = isRecord(rawMemory) ? rawMemory : {};
     const memoryId = graphMemoryId(memory);
     if (!memoryId) return [];
+    if (
+      !inRecordedWindow(
+        typeof memory.recordedAt === 'string' ? memory.recordedAt : null,
+        {
+          recordedAfter: input.recordedAfter,
+          recordedBefore: input.recordedBefore,
+        },
+      )
+    ) {
+      return [];
+    }
     graphByMemory.set(memoryId, memory);
     const entityIds = asStringArray(memory.entityIds);
     return [
@@ -6168,11 +6190,11 @@ export function createApp(options?: {
           query: body.query ?? '',
           limit: 8,
         });
-        if (entitySearch.projectId !== projectId) {
+        if (!sameProjectId(entitySearch.projectId, projectId)) {
           throw new Error('entity search project mismatch');
         }
         const seeds = entitySearch.entities
-          .filter((entity) => entity.projectId === projectId)
+          .filter((entity) => sameProjectId(entity.projectId, projectId))
           .slice(0, 8);
         const plan = planGraphRetrieval({
           projectId,
@@ -6219,7 +6241,13 @@ export function createApp(options?: {
           maxEdges: plan.budget.maxEdges,
           minConfidence: plan.budget.minEdgeEvidenceConfidence,
         });
-        const hits = fuseLiveGraphSearch({ projectId, hybridHits, graph });
+        const hits = fuseLiveGraphSearch({
+          projectId,
+          hybridHits,
+          graph,
+          recordedAfter: body.recorded_after,
+          recordedBefore: body.recorded_before,
+        });
         const edgeEvidence = graph.edges.flatMap((rawEdge) => {
           const edge = isRecord(rawEdge) ? rawEdge : {};
           return typeof edge.sourceRef === 'string' && edge.sourceRef.trim()

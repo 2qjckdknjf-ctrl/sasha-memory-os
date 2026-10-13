@@ -29,14 +29,24 @@ describe("Edge M17.6 graph/hybrid fusion", () => {
           graphScore: 1,
           entityIds: ["entity-1"],
           evidenceRefs: ["memory-entity:relevant"],
+          recordedAt: "2026-08-02T00:00:00.000Z",
         },
         {
           id: "unsupported",
           graphScore: 1,
           entityIds: ["entity-1"],
           evidenceRefs: [],
+          recordedAt: "2026-08-03T00:00:00.000Z",
+        },
+        {
+          id: "old-evidence",
+          graphScore: 1,
+          entityIds: ["entity-1"],
+          evidenceRefs: ["memory-entity:old"],
+          recordedAt: "2025-08-03T00:00:00.000Z",
         },
       ],
+      recordedAfter: "2026-01-01T00:00:00.000Z",
     });
 
     expect(EDGE_GRAPH_FUSION_PACK_VERSION).toBe("m17-s06-v1");
@@ -47,6 +57,7 @@ describe("Edge M17.6 graph/hybrid fusion", () => {
       evidenceRefs: ["memory-entity:relevant"],
     });
     expect(fused.some((hit) => hit.memory.id === "unsupported")).toBe(false);
+    expect(fused.some((hit) => hit.memory.id === "old-evidence")).toBe(false);
   });
 
   it("fails closed when a hybrid RPC row belongs to another project", () => {

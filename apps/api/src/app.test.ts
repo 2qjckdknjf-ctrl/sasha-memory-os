@@ -4486,6 +4486,7 @@ describe('memory api demo slice', () => {
             content: 'A lexical distractor about deployment.',
             status: 'verified',
             projectId: memoryOsProjectId,
+            recordedAt: '2026-08-01T00:00:00.000Z',
           },
           score: 1,
           reason: 'rpc',
@@ -4497,6 +4498,7 @@ describe('memory api demo slice', () => {
             content: 'The evidence-backed kickoff decision.',
             status: 'verified',
             projectId: memoryOsProjectId,
+            recordedAt: '2026-08-02T00:00:00.000Z',
           },
           score: 0.8,
           reason: 'rpc',
@@ -4543,6 +4545,7 @@ describe('memory api demo slice', () => {
             graphScore: 1,
             entityIds: [entityId],
             evidenceRefs: [`memory-entity:${linkedMemoryId}`],
+            recordedAt: '2026-08-02T00:00:00.000Z',
           },
           {
             id: evidenceLessMemoryId,
@@ -4552,6 +4555,17 @@ describe('memory api demo slice', () => {
             graphScore: 1,
             entityIds: [entityId],
             evidenceRefs: [],
+            recordedAt: '2026-08-03T00:00:00.000Z',
+          },
+          {
+            id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaa64',
+            title: 'Old evidence-bearing graph memory',
+            status: 'verified',
+            memoryType: 'fact',
+            graphScore: 1,
+            entityIds: [entityId],
+            evidenceRefs: ['memory-entity:old'],
+            recordedAt: '2025-08-03T00:00:00.000Z',
           },
         ],
         budget: { maxHops: 2, maxNodes: 24, maxEdges: 48, minConfidence: 0.7 },
@@ -4575,6 +4589,7 @@ describe('memory api demo slice', () => {
         project_id: memoryOsProjectId,
         retrieval_mode: 'graph',
         pack_context: true,
+        recorded_after: '2026-01-01T00:00:00.000Z',
       }),
     });
     expect(response.status).toBe(200);
@@ -4583,7 +4598,7 @@ describe('memory api demo slice', () => {
     expect(payload.graph).toMatchObject({
       enabled: true,
       packVersion: 'm17-s06-v1',
-      graphHitCount: 2,
+      graphHitCount: 3,
       fusedHitCount: 2,
     });
     expect(payload.hits[0]).toMatchObject({
@@ -4594,6 +4609,12 @@ describe('memory api demo slice', () => {
     expect(
       payload.hits.some(
         (hit: { memory?: { id?: string } }) => hit.memory?.id === evidenceLessMemoryId,
+      ),
+    ).toBe(false);
+    expect(
+      payload.hits.some(
+        (hit: { memory?: { id?: string } }) =>
+          hit.memory?.id === 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaa64',
       ),
     ).toBe(false);
     expect(payload.context.citations[0].memoryId).toBe(linkedMemoryId);
@@ -4667,5 +4688,70 @@ describe('memory api demo slice', () => {
     });
     expect(payload.hits[0].memory.id).toBe(memoryId);
     expect(gateway.graphRetrieve).not.toHaveBeenCalled();
+  });
+
+  it('accepts uppercase project UUIDs while validating canonical RPC echoes', async () => {
+    const uppercaseProjectId = memoryOsProjectId.toUpperCase();
+    const entityId = 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeee91';
+    const gateway = {
+      search: vi.fn(async () => [
+        {
+          memory: {
+            id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaa91',
+            title: 'Uppercase project test',
+            content: 'Case-normalized project boundary.',
+            status: 'verified',
+            projectId: memoryOsProjectId,
+          },
+          score: 1,
+        },
+      ]),
+      searchEntities: vi.fn(async () => ({
+        projectId: memoryOsProjectId,
+        query: 'uppercase',
+        entities: [
+          {
+            id: entityId,
+            projectId: memoryOsProjectId,
+            stableId: 'entity:project:uppercase',
+          },
+        ],
+        count: 1,
+        limit: 8,
+        backend: 'supabase',
+      })),
+      graphRetrieve: vi.fn(async () => ({
+        projectId: memoryOsProjectId,
+        seedEntityIds: [entityId],
+        nodes: [{ id: entityId, stableId: 'entity:project:uppercase' }],
+        edges: [],
+        memories: [],
+        budget: { maxHops: 2, maxNodes: 24, maxEdges: 48, minConfidence: 0.7 },
+        trace: {
+          visitedNodeCount: 1,
+          traversedEdgeCount: 0,
+          stoppedReason: 'complete',
+          evidenceRequired: true,
+          packVersion: 'm17-s05-v1',
+        },
+        backend: 'supabase',
+      })),
+    };
+    const app = createApp({ gateway: gateway as any });
+    const response = await app.request('/v1/search', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-actor-key': 'cursor' },
+      body: JSON.stringify({
+        query: 'uppercase',
+        project_id: uppercaseProjectId,
+        retrieval_mode: 'graph',
+      }),
+    });
+
+    expect(response.status).toBe(200);
+    expect((await response.json()).graph).toMatchObject({
+      enabled: true,
+      packVersion: 'm17-s06-v1',
+    });
   });
 });

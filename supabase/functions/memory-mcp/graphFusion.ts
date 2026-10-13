@@ -33,12 +33,38 @@ function unitScore(value: unknown): number {
   return Math.min(1, score);
 }
 
+function sameProjectId(left: string, right: string): boolean {
+  return left.trim().toLowerCase() === right.trim().toLowerCase();
+}
+
+function inRecordedWindow(
+  recordedAt: unknown,
+  recordedAfter?: string | null,
+  recordedBefore?: string | null,
+): boolean {
+  if (!recordedAfter && !recordedBefore) return true;
+  if (typeof recordedAt !== "string") return false;
+  const recorded = Date.parse(recordedAt);
+  if (Number.isNaN(recorded)) return false;
+  if (recordedAfter) {
+    const after = Date.parse(recordedAfter);
+    if (!Number.isNaN(after) && recorded < after) return false;
+  }
+  if (recordedBefore) {
+    const before = Date.parse(recordedBefore);
+    if (!Number.isNaN(before) && recorded > before) return false;
+  }
+  return true;
+}
+
 export function fuseEdgeGraphHits(input: {
   projectId: string;
   hybridHits: EdgeSearchHit[];
   graphNodes: unknown[];
   graphMemories: unknown[];
   graphWeight?: number;
+  recordedAfter?: string | null;
+  recordedBefore?: string | null;
 }): EdgeGraphSearchHit[] {
   if (!input.projectId.trim()) throw new Error("project_id is required");
   const graphWeight = input.graphWeight ?? EDGE_GRAPH_WEIGHT;
@@ -65,7 +91,7 @@ export function fuseEdgeGraphHits(input: {
     const memoryProjectId = String(
       hit.memory.projectId ?? hit.memory.project_id ?? "",
     );
-    if (memoryProjectId && memoryProjectId !== input.projectId) {
+    if (memoryProjectId && !sameProjectId(memoryProjectId, input.projectId)) {
       throw new Error("hybrid search project mismatch");
     }
     const memoryId = typeof hit.memory.id === "string" ? hit.memory.id : "";
@@ -85,6 +111,13 @@ export function fuseEdgeGraphHits(input: {
     const memory = recordOf(value);
     const memoryId = typeof memory.id === "string" ? memory.id : "";
     if (!memoryId) continue;
+    if (
+      !inRecordedWindow(
+        memory.recordedAt,
+        input.recordedAfter,
+        input.recordedBefore,
+      )
+    ) continue;
     const evidenceRefs = [
       ...new Set(stringArray(memory.evidenceRefs).map((ref) => ref.trim()).filter(Boolean)),
     ];
