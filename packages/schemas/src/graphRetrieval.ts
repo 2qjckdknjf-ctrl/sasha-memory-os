@@ -47,6 +47,11 @@ export type FusedRetrievalHit = {
   reason: string;
 };
 
+function finiteUnitScore(value: number): number {
+  if (!Number.isFinite(value) || value <= 0) return 0;
+  return Math.min(1, value);
+}
+
 export type GraphRetrievalPlan = {
   enabled: boolean;
   reason: string;
@@ -264,32 +269,49 @@ export function fuseGraphHybridHits(input: {
 }): FusedRetrievalHit[] {
   requireExplicitProjectId(input.projectId);
   const graphWeight = input.graphWeight ?? GRAPH_HYBRID_FUSION_WEIGHT;
+  if (!Number.isFinite(graphWeight) || graphWeight < 0 || graphWeight > 1) {
+    throw new Error('graphWeight must be between 0 and 1');
+  }
   const hybridWeight = 1 - graphWeight;
+  const maxHybridScore = Math.max(
+    0,
+    ...input.hybridHits.map((hit) =>
+      Number.isFinite(hit.score) && hit.score > 0 ? hit.score : 0,
+    ),
+  );
 
   const byMemory = new Map<string, FusedRetrievalHit>();
 
   for (const hit of input.hybridHits) {
+    const normalizedHybridScore =
+      maxHybridScore > 0 ? finiteUnitScore(hit.score / maxHybridScore) : 0;
     byMemory.set(hit.memoryId, {
       stableId: hit.stableId ?? null,
       memoryId: hit.memoryId,
       graphScore: 0,
-      hybridScore: hit.score,
-      fusedScore: hit.score * hybridWeight,
+      hybridScore: normalizedHybridScore,
+      fusedScore: normalizedHybridScore * hybridWeight,
       evidenceRefs: [],
       reason: hit.reason,
     });
   }
 
   for (const graphHit of input.graphHits) {
+    const evidenceRefs = [
+      ...new Set(graphHit.evidenceRefs.map((ref) => ref.trim()).filter(Boolean)),
+    ];
+    // Graph assertions without durable evidence never influence ranking.
+    if (evidenceRefs.length === 0) continue;
+    const graphScore = finiteUnitScore(graphHit.graphScore);
     const existing = byMemory.get(graphHit.memoryId);
     if (existing) {
       existing.stableId = existing.stableId ?? graphHit.stableId;
-      existing.graphScore = Math.max(existing.graphScore, graphHit.graphScore);
+      existing.graphScore = Math.max(existing.graphScore, graphScore);
       existing.fusedScore =
         existing.hybridScore * hybridWeight +
         existing.graphScore * graphWeight;
       existing.evidenceRefs = [
-        ...new Set([...existing.evidenceRefs, ...graphHit.evidenceRefs]),
+        ...new Set([...existing.evidenceRefs, ...evidenceRefs]),
       ];
       existing.reason = `graph+hybrid fusion (${existing.reason})`;
       continue;
@@ -298,13 +320,15 @@ export function fuseGraphHybridHits(input: {
     byMemory.set(graphHit.memoryId, {
       stableId: graphHit.stableId,
       memoryId: graphHit.memoryId,
-      graphScore: graphHit.graphScore,
+      graphScore,
       hybridScore: 0,
-      fusedScore: graphHit.graphScore * graphWeight,
-      evidenceRefs: [...graphHit.evidenceRefs],
+      fusedScore: graphScore * graphWeight,
+      evidenceRefs,
       reason: 'graph-only hit',
     });
   }
 
-  return [...byMemory.values()].sort((a, b) => b.fusedScore - a.fusedScore);
+  return [...byMemory.values()].sort(
+    (a, b) => b.fusedScore - a.fusedScore || a.memoryId.localeCompare(b.memoryId),
+  );
 }

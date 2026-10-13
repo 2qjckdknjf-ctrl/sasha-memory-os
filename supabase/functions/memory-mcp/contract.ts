@@ -26,7 +26,7 @@ export const EDGE_TOOL_DEFS: EdgeToolDef[] = [
   {
     name: "memory.search",
     description:
-      "Hybrid RRF search over allowed memories (optional temporal window + packed context)",
+      "Hybrid RRF search over allowed memories with optional evidence-backed graph fusion",
     inputSchema: {
       type: "object",
       properties: {
@@ -37,6 +37,7 @@ export const EDGE_TOOL_DEFS: EdgeToolDef[] = [
         recorded_before: { type: "string" },
         pack_context: { type: "boolean" },
         max_context_chars: { type: "number" },
+        retrieval_mode: { type: "string", enum: ["hybrid", "graph"] },
         actor_subject_id: { type: "string" },
       },
       required: ["query"],

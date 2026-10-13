@@ -30,6 +30,7 @@ import {
   OFFICIAL_M17_ENTITY_MIGRATION_BACKFILL_PACK_VERSION,
   OFFICIAL_M17_ENTITY_RESOLUTION_PACK_VERSION,
   OFFICIAL_M17_GRAPH_RETRIEVAL_PACK_VERSION,
+  OFFICIAL_M17_GRAPH_HYBRID_FUSION_PACK_VERSION,
   OFFICIAL_M17_LIVE_GRAPH_PACK_VERSION,
 } from '@memory-os/schemas';
 
@@ -41,8 +42,8 @@ export const CURRENT_STATE_PATH = resolve(
 
 export const OFFICIAL_M14_1_BASELINE_MANIFEST_VERSION = 'm14.1-v1' as const;
 export const CURRENT_OPERATIONAL_MILESTONE =
-  'm17-live-graph-retrieval-inspector' as const;
-export const CURRENT_NEXT_SLICE = 'M17.6_GRAPH_HYBRID_FUSION_EVALS' as const;
+  'm17-graph-hybrid-fusion-evals' as const;
+export const CURRENT_NEXT_SLICE = 'M18.1_CURSOR_BOOTSTRAP_CONTRACT' as const;
 
 export type CurrentStateManifest = {
   manifestVersion: string;
@@ -92,6 +93,7 @@ export type CurrentStateManifest = {
     m17GraphRetrieval: string;
     m17EntityMigrationBackfill: string;
     m17LiveGraph: string;
+    m17GraphHybridFusion: string;
   };
   deployments: {
     flyApi: {
@@ -260,10 +262,10 @@ export function validateCurrentStateDrift(
     });
   }
 
-  if (manifest.completedThrough !== 'M17.5') {
+  if (manifest.completedThrough !== 'M17.6') {
     findings.push({
       code: 'completed-through',
-      message: `expected contractPacks completedThrough M17.5, got ${manifest.completedThrough}`,
+      message: `expected contractPacks completedThrough M17.6, got ${manifest.completedThrough}`,
     });
   }
 
@@ -312,6 +314,7 @@ export function validateCurrentStateDrift(
       m17EntityMigrationBackfill:
         OFFICIAL_M17_ENTITY_MIGRATION_BACKFILL_PACK_VERSION,
       m17LiveGraph: OFFICIAL_M17_LIVE_GRAPH_PACK_VERSION,
+      m17GraphHybridFusion: OFFICIAL_M17_GRAPH_HYBRID_FUSION_PACK_VERSION,
     };
 
   for (const [key, expected] of Object.entries(expectedPacks) as Array<

@@ -21,6 +21,7 @@ export * from './entityResolution.js';
 export * from './graphRetrieval.js';
 export * from './entityMigrationBackfill.js';
 export * from './entityGraphLive.js';
+export * from './graphHybridFusion.js';
 export * from './appleCompanion.js';
 export * from './memory.js';
 export * from './jobs.js';

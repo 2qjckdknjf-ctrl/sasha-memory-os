@@ -21,6 +21,7 @@ type SearchRequestInput = {
   projectId?: string | null;
   packContext: boolean;
   maxContextChars: number;
+  retrievalMode?: 'hybrid' | 'graph';
 };
 
 type TransferredObjectsPathInput = {
@@ -131,12 +132,14 @@ export function buildSearchRequest(input: SearchRequestInput): {
   project_id?: string;
   pack_context: boolean;
   max_context_chars: number;
+  retrieval_mode?: 'hybrid' | 'graph';
 } {
   const body: {
     query: string;
     project_id?: string;
     pack_context: boolean;
     max_context_chars: number;
+    retrieval_mode?: 'hybrid' | 'graph';
   } = {
     query: input.query,
     pack_context: input.packContext,
@@ -144,6 +147,9 @@ export function buildSearchRequest(input: SearchRequestInput): {
   };
   if (input.projectId) {
     body.project_id = input.projectId;
+  }
+  if (input.retrievalMode) {
+    body.retrieval_mode = input.retrievalMode;
   }
   return body;
 }

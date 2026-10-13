@@ -46,6 +46,7 @@
 | [engineering/M17_SLICE_03.md](engineering/M17_SLICE_03.md) | M17 Slice 03: graph-aware retrieval |
 | [engineering/M17_SLICE_04.md](engineering/M17_SLICE_04.md) | M17 Slice 04: durable entity graph migration and idempotent backfill |
 | [engineering/M17_SLICE_05.md](engineering/M17_SLICE_05.md) | M17 Slice 05: server-only live graph retrieval and entity inspector |
+| [engineering/M17_SLICE_06.md](engineering/M17_SLICE_06.md) | M17 Slice 06: graph/hybrid fusion, Edge MCP mode and frozen retrieval evals |
 | [engineering/M14_DOC_CATALOG.md](engineering/M14_DOC_CATALOG.md) | Versioned GA doc catalog for current official surfaces |
 | [engineering/ONBOARDING.md](engineering/ONBOARDING.md) | First-hour onboarding guide on current MCP + Control Center surfaces |
 | [engineering/M14_SLICE_05.md](engineering/M14_SLICE_05.md) | M14 Slice 05: incident runbook pack |

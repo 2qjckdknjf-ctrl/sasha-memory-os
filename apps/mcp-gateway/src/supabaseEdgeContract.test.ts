@@ -20,6 +20,14 @@ describe("supabase edge memory-mcp contract", () => {
     ]);
   });
 
+  it("adds graph fusion as an optional memory.search mode without adding a tool", () => {
+    const search = EDGE_TOOL_DEFS.find((tool) => tool.name === "memory.search");
+    expect(search?.inputSchema.properties).toMatchObject({
+      retrieval_mode: { type: "string", enum: ["hybrid", "graph"] },
+    });
+    expect(search?.inputSchema.required).toEqual(["query"]);
+  });
+
   it("requires project_id only on write/context tools", () => {
     const requiredByTool = Object.fromEntries(
       EDGE_TOOL_DEFS.map((tool) => [tool.name, tool.inputSchema.required ?? []]),

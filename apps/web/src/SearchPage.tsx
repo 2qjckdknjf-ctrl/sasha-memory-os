@@ -1,6 +1,11 @@
 import type { ReactNode } from 'react';
 import { SearchResults } from './SearchResults';
-import { type SearchContext, type SearchHit } from './controlCenter';
+import {
+  type GraphSearchTrace,
+  type SearchContext,
+  type SearchHit,
+  type SearchRetrievalMode,
+} from './controlCenter';
 
 type Props = {
   scopeLabel: string;
@@ -8,9 +13,13 @@ type Props = {
   search: string;
   packContext: boolean;
   searchContext: SearchContext | null;
+  retrievalMode: SearchRetrievalMode;
+  graphAvailable: boolean;
+  graphTrace: GraphSearchTrace | null;
   hits: SearchHit[];
   onSearchTermChange: (value: string) => void;
   onPackContextChange: (value: boolean) => void;
+  onRetrievalModeChange: (value: SearchRetrievalMode) => void;
   onSearch: () => void | Promise<void>;
 };
 
@@ -20,9 +29,13 @@ export function SearchPage({
   search,
   packContext,
   searchContext,
+  retrievalMode,
+  graphAvailable,
+  graphTrace,
   hits,
   onSearchTermChange,
   onPackContextChange,
+  onRetrievalModeChange,
   onSearch,
 }: Props) {
   return (
@@ -63,6 +76,26 @@ export function SearchPage({
           <details className="details-panel">
             <summary>Advanced</summary>
             <div className="details-panel__body">
+              <label>
+                Режим поиска
+                <select
+                  value={retrievalMode}
+                  onChange={(event) =>
+                    onRetrievalModeChange(event.target.value as SearchRetrievalMode)
+                  }
+                >
+                  <option value="hybrid">Hybrid RRF</option>
+                  <option value="graph" disabled={!graphAvailable}>
+                    Graph + Hybrid (evidence-aware)
+                  </option>
+                </select>
+              </label>
+              {!graphAvailable ? (
+                <p className="hint">
+                  Graph-поиск доступен только в Supabase после выбора одного проекта.
+                </p>
+              ) : null}
+
               <label className="checkbox-row">
                 <input
                   type="checkbox"
@@ -86,6 +119,30 @@ export function SearchPage({
               ) : (
                 <p className="hint">Контекст для агентов появится после поиска с Advanced.</p>
               )}
+
+              {graphTrace ? (
+                <div className="item item--plain">
+                  <div className="meta">
+                    <span className="badge state">
+                      {graphTrace.enabled ? 'graph fused' : 'hybrid fallback'}
+                    </span>
+                    <span>{graphTrace.packVersion}</span>
+                    {graphTrace.trace ? (
+                      <span>
+                        {graphTrace.trace.visitedNodeCount} nodes ·{' '}
+                        {graphTrace.trace.traversedEdgeCount} edges ·{' '}
+                        {graphTrace.trace.stoppedReason}
+                      </span>
+                    ) : null}
+                  </div>
+                  <p>{graphTrace.reason}</p>
+                  {graphTrace.evidenceRefs && graphTrace.evidenceRefs.length > 0 ? (
+                    <p className="hint">
+                      Evidence: {graphTrace.evidenceRefs.join(' · ')}
+                    </p>
+                  ) : null}
+                </div>
+              ) : null}
             </div>
           </details>
         </form>

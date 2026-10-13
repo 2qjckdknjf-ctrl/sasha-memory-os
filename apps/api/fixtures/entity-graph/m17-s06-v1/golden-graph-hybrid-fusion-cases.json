@@ -1,0 +1,59 @@
+{
+  "version": "m17-s06-v1",
+  "projectId": "44444444-4444-4444-8444-444444444402",
+  "thresholds": {
+    "recallAt3Floor": 1,
+    "mrrMustNotRegress": true,
+    "evidenceRequired": true
+  },
+  "cases": [
+    {
+      "id": "graph-promotes-evidence-backed-decision",
+      "relevantMemoryIds": ["relevant-decision"],
+      "hybridHits": [
+        { "memoryId": "lexical-distractor", "score": 0.04, "reason": "hybrid rrf" },
+        { "memoryId": "relevant-decision", "score": 0.038, "reason": "hybrid rrf" },
+        { "memoryId": "weak-distractor", "score": 0.03, "reason": "hybrid rrf" }
+      ],
+      "graphHits": [
+        {
+          "stableId": "entity:decision:relevant",
+          "memoryId": "relevant-decision",
+          "graphScore": 1,
+          "evidenceRefs": ["memory-entity:relevant-decision"]
+        }
+      ]
+    },
+    {
+      "id": "graph-preserves-already-correct-top-hit",
+      "relevantMemoryIds": ["already-top"],
+      "hybridHits": [
+        { "memoryId": "already-top", "score": 0.05, "reason": "hybrid rrf" },
+        { "memoryId": "runner-up", "score": 0.04, "reason": "hybrid rrf" }
+      ],
+      "graphHits": [
+        {
+          "stableId": "entity:decision:already-top",
+          "memoryId": "already-top",
+          "graphScore": 0.8,
+          "evidenceRefs": ["edge:decided_in:already-top"]
+        }
+      ]
+    },
+    {
+      "id": "unsupported-graph-assertion-never-ranks",
+      "relevantMemoryIds": ["safe-hybrid"],
+      "hybridHits": [
+        { "memoryId": "safe-hybrid", "score": 0.04, "reason": "hybrid rrf" }
+      ],
+      "graphHits": [
+        {
+          "stableId": "entity:fact:unsupported",
+          "memoryId": "unsupported-graph-only",
+          "graphScore": 1,
+          "evidenceRefs": []
+        }
+      ]
+    }
+  ]
+}
