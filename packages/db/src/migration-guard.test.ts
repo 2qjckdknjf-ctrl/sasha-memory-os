@@ -80,6 +80,12 @@ const m15RuntimeRecoveryMigrationPath = fileURLToPath(
     import.meta.url,
   ),
 );
+const m20SecurityMigrationPath = fileURLToPath(
+  new URL(
+    '../../../supabase/migrations/20261013135122_m20_security_search_path_hardening.sql',
+    import.meta.url,
+  ),
+);
 
 describe('m8 slice 03 migration guards', () => {
   const sql = readFileSync(migrationPath, 'utf8');
@@ -529,5 +535,29 @@ describe('M15 runtime recovery migration guards', () => {
     expect(sql).toContain(`o.payload->>'jobId'`);
     expect(sql).toContain(`o.payload->>'job_id'`);
     expect(sql).toContain('CREATE OR REPLACE FUNCTION app.api_dead_letter_stale_jobs');
+  });
+});
+
+describe('M20 security boundary migration guards', () => {
+  const sql = readFileSync(m20SecurityMigrationPath, 'utf8');
+
+  it('pins the remaining mutable function search path', () => {
+    expect(sql).toContain(
+      'ALTER FUNCTION app.sanitize_memory_conflict_evidence_refs(jsonb)',
+    );
+    expect(sql).toContain('SET search_path = pg_catalog');
+  });
+
+  it('keeps privileged Memory RPCs server-only', () => {
+    expect(sql).toContain(
+      'REVOKE ALL ON SCHEMA app FROM PUBLIC, anon, authenticated',
+    );
+    expect(sql).toContain(`left(p.proname, 4) = 'api_'`);
+    expect(sql).toContain(
+      'REVOKE EXECUTE ON FUNCTION %I.%I(%s) FROM PUBLIC, anon, authenticated',
+    );
+    expect(sql).toContain(
+      'GRANT EXECUTE ON FUNCTION %I.%I(%s) TO service_role',
+    );
   });
 });

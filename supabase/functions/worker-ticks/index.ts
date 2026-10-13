@@ -824,7 +824,12 @@ Deno.serve(async (req: Request) => {
     }
     return json({ error: "not found", path }, 404);
   } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    return json({ error: message }, 500);
+    console.error(
+      JSON.stringify({
+        event: "worker_tick_failed",
+        errorType: err instanceof Error ? err.name : "UnknownError",
+      }),
+    );
+    return json({ error: "internal worker error" }, 500);
   }
 });

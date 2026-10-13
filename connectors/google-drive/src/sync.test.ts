@@ -11,11 +11,19 @@ import { describe, expect, it, vi } from 'vitest';
 import ExcelJS from 'exceljs';
 import {
   driveFileWithinSelectedScope,
+  escapeGoogleDriveQueryLiteral,
   googleDriveConnector,
   pullGoogleDriveDelta,
   pullGoogleDriveStubDelta,
   validateGoogleDriveSelectionScope,
 } from './sync.js';
+
+describe('escapeGoogleDriveQueryLiteral', () => {
+  it('escapes every backslash before every single quote', () => {
+    expect(escapeGoogleDriveQueryLiteral("folder\\name's child"))
+      .toBe("folder\\\\name\\'s child");
+  });
+});
 
 const connectionId = '88888888-8888-4888-8888-888888888803';
 const selectedDriveMetadata = {

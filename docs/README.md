@@ -35,6 +35,7 @@
 | [engineering/M15_SLICE_08.md](engineering/M15_SLICE_08.md) | M15 Slice 08: observability / SLOs |
 | [engineering/M15_LIVE_E2E_CLOSURE.md](engineering/M15_LIVE_E2E_CLOSURE.md) | M15 live E2E exit gate (BLOCKED → M16.1) |
 | [engineering/M15_RUNTIME_RECOVERY.md](engineering/M15_RUNTIME_RECOVERY.md) | M15 production connector readiness + terminal outbox recovery |
+| [engineering/M20_SECURITY_GOVERNANCE.md](engineering/M20_SECURITY_GOVERNANCE.md) | M20 server-only RPC boundary + GitHub release governance |
 | [engineering/M16_SLICE_01.md](engineering/M16_SLICE_01.md) | M16 Slice 01: Apple capability feasibility matrix |
 | [engineering/M16_SLICE_02.md](engineering/M16_SLICE_02.md) | M16 Slice 02: Apple companion security foundation |
 | [engineering/M16_SLICE_03.md](engineering/M16_SLICE_03.md) | M16 Slice 03: iCloud Drive / Files |

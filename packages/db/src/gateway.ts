@@ -2,23 +2,40 @@ import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 
 export type MemoryOsEnv = {
   url: string;
-  anonKey: string;
+  serverKey: string;
+  keyRole: 'service_role' | 'publishable';
   apiSecret: string;
 };
 
 export function loadMemoryOsEnv(
   env: NodeJS.ProcessEnv = process.env,
 ): MemoryOsEnv | null {
-  const url = env.MEMORY_OS_SUPABASE_URL;
-  const anonKey =
-    env.MEMORY_OS_SUPABASE_ANON_KEY || env.MEMORY_OS_SUPABASE_PUBLISHABLE_KEY;
-  const apiSecret = env.MEMORY_OS_API_SECRET;
-  if (!url || !anonKey || !apiSecret) return null;
-  return { url, anonKey, apiSecret };
+  const url = env.MEMORY_OS_SUPABASE_URL?.trim();
+  const serviceRoleKey = env.MEMORY_OS_SUPABASE_SERVICE_ROLE_KEY?.trim();
+  const publishableKey = (
+    env.MEMORY_OS_SUPABASE_ANON_KEY || env.MEMORY_OS_SUPABASE_PUBLISHABLE_KEY
+  )?.trim();
+  const apiSecret = env.MEMORY_OS_API_SECRET?.trim();
+  const runtime = env.MEMORY_OS_ENV?.trim().toLowerCase();
+
+  if (runtime === 'production' && !serviceRoleKey) {
+    throw new Error(
+      'MEMORY_OS_SUPABASE_SERVICE_ROLE_KEY is required in production',
+    );
+  }
+
+  const serverKey = serviceRoleKey || publishableKey;
+  if (!url || !serverKey || !apiSecret) return null;
+  return {
+    url,
+    serverKey,
+    keyRole: serviceRoleKey ? 'service_role' : 'publishable',
+    apiSecret,
+  };
 }
 
 export function createMemoryOsClient(config: MemoryOsEnv): SupabaseClient {
-  return createClient(config.url, config.anonKey, {
+  return createClient(config.url, config.serverKey, {
     auth: { persistSession: false, autoRefreshToken: false },
   });
 }

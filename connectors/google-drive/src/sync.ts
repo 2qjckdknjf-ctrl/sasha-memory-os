@@ -731,7 +731,7 @@ async function listDriveChildren(input: {
     url.searchParams.set('pageSize', String(DRIVE_PAGE_SIZE));
     url.searchParams.set(
       'q',
-      `'${input.parentId.replace(/'/g, "\\'")}' in parents and trashed = false`,
+      `'${escapeGoogleDriveQueryLiteral(input.parentId)}' in parents and trashed = false`,
     );
     url.searchParams.set('fields', `nextPageToken,files(${DRIVE_FILE_FIELDS})`);
     url.searchParams.set('supportsAllDrives', 'true');
@@ -760,6 +760,10 @@ async function listDriveChildren(input: {
     pageToken = payload.nextPageToken ?? null;
   } while (pageToken);
   return files;
+}
+
+export function escapeGoogleDriveQueryLiteral(value: string): string {
+  return value.replaceAll('\\', '\\\\').replaceAll("'", "\\'");
 }
 
 async function listDriveChangesSinceToken(input: {

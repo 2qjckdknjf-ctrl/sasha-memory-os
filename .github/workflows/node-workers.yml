@@ -6,6 +6,9 @@ on:
   schedule:
     - cron: '45 */6 * * *'
 
+permissions:
+  contents: read
+
 jobs:
   consolidate-and-sync:
     runs-on: ubuntu-latest
@@ -26,8 +29,10 @@ jobs:
 
       - name: Consolidation once
         env:
+          MEMORY_OS_ENV: production
           MEMORY_OS_SUPABASE_URL: ${{ secrets.MEMORY_OS_SUPABASE_URL }}
           MEMORY_OS_SUPABASE_ANON_KEY: ${{ secrets.MEMORY_OS_SUPABASE_ANON_KEY }}
+          MEMORY_OS_SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.MEMORY_OS_SUPABASE_SERVICE_ROLE_KEY }}
           MEMORY_OS_API_SECRET: ${{ secrets.MEMORY_OS_API_SECRET }}
           MEMORY_OS_VAULT_BACKEND: ${{ secrets.MEMORY_OS_VAULT_BACKEND }}
           MEMORY_OS_VAULT_KEY: ${{ secrets.MEMORY_OS_VAULT_KEY }}
@@ -41,8 +46,10 @@ jobs:
 
       - name: ROMA scheduled project health once
         env:
+          MEMORY_OS_ENV: production
           MEMORY_OS_SUPABASE_URL: ${{ secrets.MEMORY_OS_SUPABASE_URL }}
           MEMORY_OS_SUPABASE_ANON_KEY: ${{ secrets.MEMORY_OS_SUPABASE_ANON_KEY }}
+          MEMORY_OS_SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.MEMORY_OS_SUPABASE_SERVICE_ROLE_KEY }}
           MEMORY_OS_API_SECRET: ${{ secrets.MEMORY_OS_API_SECRET }}
           MEMORY_OS_WORKSPACE_ID: ${{ secrets.MEMORY_OS_WORKSPACE_ID }}
           MEMORY_OS_ROMA_SUBJECT_ID: ${{ secrets.MEMORY_OS_ROMA_SUBJECT_ID }}
@@ -53,6 +60,7 @@ jobs:
           MEMORY_OS_ENV: production
           MEMORY_OS_SUPABASE_URL: ${{ secrets.MEMORY_OS_SUPABASE_URL }}
           MEMORY_OS_SUPABASE_ANON_KEY: ${{ secrets.MEMORY_OS_SUPABASE_ANON_KEY }}
+          MEMORY_OS_SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.MEMORY_OS_SUPABASE_SERVICE_ROLE_KEY }}
           MEMORY_OS_API_SECRET: ${{ secrets.MEMORY_OS_API_SECRET }}
           MEMORY_OS_VAULT_BACKEND: ${{ secrets.MEMORY_OS_VAULT_BACKEND }}
           MEMORY_OS_VAULT_KEY: ${{ secrets.MEMORY_OS_VAULT_KEY }}

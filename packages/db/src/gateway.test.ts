@@ -1,5 +1,52 @@
 import { describe, expect, it, vi } from 'vitest';
-import { SupabaseMemoryGateway } from './gateway.js';
+import { loadMemoryOsEnv, SupabaseMemoryGateway } from './gateway.js';
+
+describe('loadMemoryOsEnv', () => {
+  const base = {
+    MEMORY_OS_SUPABASE_URL: 'https://memory.example.test',
+    MEMORY_OS_API_SECRET: 'test-api-secret',
+  };
+
+  it('prefers the server-only service role for trusted runtimes', () => {
+    expect(
+      loadMemoryOsEnv({
+        ...base,
+        MEMORY_OS_SUPABASE_ANON_KEY: 'test-anon-key',
+        MEMORY_OS_SUPABASE_SERVICE_ROLE_KEY: 'test-service-role-key',
+      }),
+    ).toEqual({
+      url: base.MEMORY_OS_SUPABASE_URL,
+      serverKey: 'test-service-role-key',
+      keyRole: 'service_role',
+      apiSecret: base.MEMORY_OS_API_SECRET,
+    });
+  });
+
+  it('allows a publishable key only outside production', () => {
+    expect(
+      loadMemoryOsEnv({
+        ...base,
+        MEMORY_OS_ENV: 'local',
+        MEMORY_OS_SUPABASE_PUBLISHABLE_KEY: 'test-publishable-key',
+      }),
+    ).toEqual({
+      url: base.MEMORY_OS_SUPABASE_URL,
+      serverKey: 'test-publishable-key',
+      keyRole: 'publishable',
+      apiSecret: base.MEMORY_OS_API_SECRET,
+    });
+  });
+
+  it('fails closed when production has no service role key', () => {
+    expect(() =>
+      loadMemoryOsEnv({
+        ...base,
+        MEMORY_OS_ENV: 'production',
+        MEMORY_OS_SUPABASE_ANON_KEY: 'test-anon-key',
+      }),
+    ).toThrow('MEMORY_OS_SUPABASE_SERVICE_ROLE_KEY is required in production');
+  });
+});
 
 describe('SupabaseMemoryGateway.upsertRomaProjectHealthSchedule', () => {
   it('omits enabled and reason RPC args when they are not provided', async () => {
