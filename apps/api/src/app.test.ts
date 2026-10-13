@@ -1636,6 +1636,55 @@ describe('memory api demo slice', () => {
     expect(body.decisions.length).toBeGreaterThan(0);
   });
 
+  it('serves a bounded cited project context pack without project fallback', async () => {
+    const app = createApp({});
+    const res = await app.request(
+      `/v1/projects/${memoryOsProjectId}/context-pack?max_tokens=900`,
+      { headers: { 'x-subject-id': cursor } },
+    );
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body).toMatchObject({
+      packVersion: 'm18-s02-v1',
+      projectId: memoryOsProjectId,
+      provenance: {
+        source: 'context.project',
+        subjectScoped: true,
+        explicitProject: true,
+      },
+      budget: { maxTokens: 900 },
+    });
+    expect(body.canonicalDecisions.length).toBeGreaterThan(0);
+    expect(body.citations.length).toBeGreaterThan(0);
+    expect(body.budget.estimatedTokens).toBeLessThanOrEqual(900);
+
+    const invalid = await app.request(
+      `/v1/projects/${memoryOsProjectId}/context-pack?max_tokens=invalid`,
+      { headers: { 'x-subject-id': cursor } },
+    );
+    expect(invalid.status).toBe(400);
+  });
+
+  it('fails a project context pack closed when the source project does not match', async () => {
+    const gateway = {
+      projectContext: vi.fn(async () => ({
+        projectId: otherProjectId,
+        decisions: [],
+        tasks: [],
+        facts: [],
+      })),
+    };
+    const app = createApp({ gateway: gateway as any });
+    const res = await app.request(
+      `/v1/projects/${memoryOsProjectId}/context-pack`,
+      { headers: { 'x-subject-id': cursor } },
+    );
+    expect(res.status).toBe(409);
+    expect(await res.json()).toEqual({
+      error: 'project context project mismatch',
+    });
+  });
+
   it('keeps personal Gmail and Calendar memories out of agent search/context while owner still sees them', async () => {
     const app = createApp({});
     for (const memory of [

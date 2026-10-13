@@ -47,6 +47,7 @@ import {
 } from '@memory-os/ingestion';
 import {
   applyExtractionSchema,
+  buildProjectContextPack,
   captureDocumentSchema,
   captureLinkSchema,
   captureTextSchema,
@@ -808,11 +809,13 @@ export const mcpTools: McpTool[] = [
   },
   {
     name: 'context.project',
-    description: 'Current project context: decisions, tasks, facts',
+    description:
+      'Compact project context pack with current goal, milestone, blockers, next work, freshness and citations',
     inputSchema: {
       type: 'object',
       properties: {
         project_id: { type: 'string' },
+        max_tokens: { type: 'number' },
         actor_subject_id: { type: 'string' },
       },
       required: ['project_id', 'actor_subject_id'],
@@ -1634,8 +1637,15 @@ export function createMcpHandlers(options?: {
           if (!projectId) {
             throw new Error('project reference is required; pass project UUID or slug');
           }
+          const maxTokens = args.max_tokens === undefined
+            ? undefined
+            : Number(args.max_tokens);
           if (gateway) {
-            return gateway.projectContext(String(args.actor_subject_id), projectId);
+            const raw = await gateway.projectContext(
+              String(args.actor_subject_id),
+              projectId,
+            );
+            return buildProjectContextPack(raw, { projectId, maxTokens });
           }
           const authz = localAuthzForSubject(
             String(args.actor_subject_id),
@@ -1651,11 +1661,12 @@ export function createMcpHandlers(options?: {
           ) {
             throw new Error('forbidden');
           }
-          return {
+          const raw = {
             ...projectContext(filterReadableOfflineMemories(authz, store), projectId),
             state: store.getProjectState(projectId),
             latest_handoff: store.latestHandoff(projectId),
           };
+          return buildProjectContextPack(raw, { projectId, maxTokens });
         }
         case 'memory.store_decision': {
           const resolvedProjectId = await resolveProjectForArgs({

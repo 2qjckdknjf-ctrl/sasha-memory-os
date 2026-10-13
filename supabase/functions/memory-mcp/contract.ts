@@ -45,11 +45,13 @@ export const EDGE_TOOL_DEFS: EdgeToolDef[] = [
   },
   {
     name: "context.project",
-    description: "Current project context: decisions, tasks, facts",
+    description:
+      "Compact project context pack with current goal, milestone, blockers, next work, freshness and citations",
     inputSchema: {
       type: "object",
       properties: {
         project_id: { type: "string" },
+        max_tokens: { type: "number" },
         actor_subject_id: { type: "string" },
       },
       required: ["project_id"],

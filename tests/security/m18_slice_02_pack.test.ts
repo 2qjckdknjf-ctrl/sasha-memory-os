@@ -1,0 +1,47 @@
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+import { describe, expect, it } from 'vitest';
+import { OFFICIAL_M18_PROJECT_CONTEXT_PACK } from '@memory-os/schemas';
+
+function repoFile(relativePath: string): string {
+  return readFileSync(
+    fileURLToPath(new URL(`../../${relativePath}`, import.meta.url)),
+    'utf8',
+  );
+}
+
+describe('M18.2 project context pack', () => {
+  it('freezes the bounded explicit-project contract', () => {
+    expect(OFFICIAL_M18_PROJECT_CONTEXT_PACK).toMatchObject({
+      version: 'm18-s02-v1',
+      tokenBudget: { default: 1800, min: 768, max: 8000 },
+      invariants: {
+        explicitProjectRequired: true,
+        crossProjectRecordFailsClosed: true,
+        noDefaultProjectFallback: true,
+        citationsRequiredForClaims: true,
+        sourceFreshnessRequired: true,
+        modeAToolCount: 7,
+      },
+    });
+  });
+
+  it('ships API, MCP, Edge and Cursor integration without an eighth tool', () => {
+    const api = repoFile('apps/api/src/app.ts');
+    const mcp = repoFile('apps/mcp-gateway/src/tools.ts');
+    const edge = repoFile('supabase/functions/memory-mcp/index.ts');
+    const cursor = repoFile('scripts/cursor-mcp-session.mjs');
+    const current = JSON.parse(repoFile('docs/engineering/CURRENT_STATE.json'));
+
+    expect(api).toContain("'/v1/projects/:id/context-pack'");
+    expect(mcp).toContain('buildProjectContextPack');
+    expect(edge).toContain('buildEdgeProjectContextPack');
+    expect(cursor).toContain("result.packVersion === 'm18-s02-v1'");
+    expect(current).toMatchObject({
+      completedThrough: 'M18.2',
+      nextSlice: 'M18.3_ROMA_INTEGRATION',
+      officialPacks: { m18ProjectContext: 'm18-s02-v1' },
+      chatgptModeA: { toolCount: 7 },
+    });
+  });
+});

@@ -1,0 +1,514 @@
+export const OFFICIAL_M18_PROJECT_CONTEXT_PACK_VERSION = 'm18-s02-v1' as const;
+export const DEFAULT_PROJECT_CONTEXT_MAX_TOKENS = 1800;
+export const MIN_PROJECT_CONTEXT_MAX_TOKENS = 768;
+export const MAX_PROJECT_CONTEXT_MAX_TOKENS = 8000;
+export const PROJECT_CONTEXT_FRESHNESS_SLA_SECONDS = 24 * 60 * 60;
+
+type JsonRecord = Record<string, unknown>;
+
+export type ProjectContextCitation = {
+  id: string;
+  kind: 'memory' | 'project_state' | 'handoff';
+  sourceId: string;
+  title: string | null;
+  projectId: string;
+  recordedAt: string | null;
+  sourceEventId: string | null;
+};
+
+export type ProjectContextItem = {
+  text: string;
+  citations: string[];
+};
+
+export type ProjectContextDecision = {
+  id: string;
+  title: string;
+  summary: string;
+  status: string;
+  recordedAt: string | null;
+  citations: string[];
+};
+
+export type ProjectContextPack = {
+  packVersion: typeof OFFICIAL_M18_PROJECT_CONTEXT_PACK_VERSION;
+  projectId: string;
+  generatedAt: string;
+  currentGoal: ProjectContextItem | null;
+  canonicalDecisions: ProjectContextDecision[];
+  currentMilestone: ProjectContextDecision | null;
+  activeBlockers: ProjectContextItem[];
+  recentMerges: Array<{
+    pullRequestUrl: string | null;
+    mergeSha: string | null;
+    title: string;
+    citations: string[];
+  }>;
+  unresolvedConflicts: ProjectContextItem[];
+  nextWork: ProjectContextItem[];
+  sourceFreshness: {
+    status: 'fresh' | 'stale' | 'unknown';
+    newestRecordedAt: string | null;
+    ageSeconds: number | null;
+    slaSeconds: number;
+    citations: string[];
+  };
+  citations: ProjectContextCitation[];
+  provenance: {
+    source: 'context.project';
+    subjectScoped: true;
+    explicitProject: true;
+    sourceCount: number;
+  };
+  budget: {
+    maxTokens: number;
+    estimatedTokens: number;
+    truncated: boolean;
+    originalCounts: { decisions: number; tasks: number; facts: number };
+    includedCounts: {
+      canonicalDecisions: number;
+      blockers: number;
+      recentMerges: number;
+      conflicts: number;
+      nextWork: number;
+    };
+  };
+  text: string;
+};
+
+export const OFFICIAL_M18_PROJECT_CONTEXT_PACK = {
+  version: OFFICIAL_M18_PROJECT_CONTEXT_PACK_VERSION,
+  roadmapSections: ['18', 'project-context-pack', 'shared-agent-lifecycle'],
+  tokenBudget: {
+    default: DEFAULT_PROJECT_CONTEXT_MAX_TOKENS,
+    min: MIN_PROJECT_CONTEXT_MAX_TOKENS,
+    max: MAX_PROJECT_CONTEXT_MAX_TOKENS,
+  },
+  requiredFields: [
+    'currentGoal',
+    'canonicalDecisions',
+    'currentMilestone',
+    'activeBlockers',
+    'recentMerges',
+    'unresolvedConflicts',
+    'nextWork',
+    'sourceFreshness',
+    'citations',
+    'provenance',
+  ],
+  invariants: {
+    explicitProjectRequired: true,
+    subjectScopedSourcesOnly: true,
+    projectEchoMustMatch: true,
+    crossProjectRecordFailsClosed: true,
+    citationsRequiredForClaims: true,
+    sourceFreshnessRequired: true,
+    tokenBudgetRequired: true,
+    noDefaultProjectFallback: true,
+    modeAToolCount: 7,
+  },
+} as const;
+
+function objectOf(value: unknown): JsonRecord {
+  return value && typeof value === 'object' && !Array.isArray(value)
+    ? (value as JsonRecord)
+    : {};
+}
+
+function stringOf(value: unknown): string {
+  return typeof value === 'string' ? value.trim() : '';
+}
+
+function arrayOf(value: unknown): unknown[] {
+  return Array.isArray(value) ? value : [];
+}
+
+function sameProject(left: string, right: string): boolean {
+  return left.trim().toLowerCase() === right.trim().toLowerCase();
+}
+
+function dateMs(value: unknown): number | null {
+  const parsed = typeof value === 'string' ? Date.parse(value) : Number.NaN;
+  return Number.isNaN(parsed) ? null : parsed;
+}
+
+function normalizedText(value: unknown, maxChars: number): string {
+  const compact = stringOf(value).replace(/\s+/g, ' ');
+  if (maxChars <= 0) return '';
+  if (compact.length <= maxChars) return compact;
+  return `${compact.slice(0, Math.max(0, maxChars - 1))}…`;
+}
+
+function estimatedTokens(value: unknown): number {
+  return Math.ceil(JSON.stringify(value).length / 4);
+}
+
+function updateEstimatedTokens(pack: ProjectContextPack): void {
+  for (let attempt = 0; attempt < 4; attempt += 1) {
+    const next = estimatedTokens(pack);
+    if (next === pack.budget.estimatedTokens) return;
+    pack.budget.estimatedTokens = next;
+  }
+}
+
+function memoryProjectId(memory: JsonRecord): string {
+  return stringOf(
+    memory.effectiveProjectId ??
+      memory.effective_project_id ??
+      memory.projectId ??
+      memory.project_id,
+  );
+}
+
+function memoryRecordedAt(memory: JsonRecord): string | null {
+  return (
+    stringOf(memory.recordedAt ?? memory.recorded_at ?? memory.created_at) || null
+  );
+}
+
+function memorySourceEventId(memory: JsonRecord): string | null {
+  return stringOf(memory.sourceEventId ?? memory.source_event_id) || null;
+}
+
+function citationForMemory(memory: JsonRecord, projectId: string): ProjectContextCitation {
+  const id = normalizedText(memory.id, 128);
+  return {
+    id: `memory:${id}`,
+    kind: 'memory',
+    sourceId: id,
+    title: normalizedText(memory.title, 220) || null,
+    projectId,
+    recordedAt: memoryRecordedAt(memory),
+    sourceEventId: normalizedText(memorySourceEventId(memory), 128) || null,
+  };
+}
+
+function decisionFromMemory(
+  memory: JsonRecord,
+  projectId: string,
+  summaryChars: number,
+): ProjectContextDecision {
+  const citation = citationForMemory(memory, projectId);
+  return {
+    id: citation.sourceId,
+    title: normalizedText(memory.title, 220) || 'Untitled decision',
+    summary: normalizedText(memory.content, summaryChars),
+    status: stringOf(memory.status) || 'unknown',
+    recordedAt: citation.recordedAt,
+    citations: [citation.id],
+  };
+}
+
+function nextWorkFromContent(content: string): string | null {
+  const match =
+    /(?:Next canonical slice|Next allowed slice|Next slice):\s*([^\n]+)/i.exec(
+      content,
+    );
+  return match?.[1]?.trim() || null;
+}
+
+function blockersFromContent(content: string): string[] {
+  const match =
+    /(?:Known external blockers remain|Remaining blockers|Blockers):\s*([\s\S]*?)(?=\n\s*\n(?:Next|Verification|Repository)|\nNext canonical slice:|$)/i.exec(
+      content,
+    );
+  if (!match?.[1]) return [];
+  return match[1]
+    .split(/\n\s*-\s+|;\s+/)
+    .map((value) => value.replace(/^[-\s]+/, '').trim())
+    .filter(Boolean);
+}
+
+function stateValues(rawState: unknown, key: string): string[] {
+  const stateRow = objectOf(rawState);
+  const state = objectOf(stateRow.state);
+  return arrayOf(state[key]).map(stringOf).filter(Boolean);
+}
+
+function validateSources(
+  values: unknown[],
+  projectId: string,
+): JsonRecord[] {
+  return values.map(objectOf).filter((memory) => {
+    const sourceProjectId = memoryProjectId(memory);
+    if (sourceProjectId && !sameProject(sourceProjectId, projectId)) {
+      throw new Error('project context source project mismatch');
+    }
+    return Boolean(stringOf(memory.id));
+  });
+}
+
+export function resolveProjectContextMaxTokens(value: unknown): number {
+  const parsed = Number(value ?? DEFAULT_PROJECT_CONTEXT_MAX_TOKENS);
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    throw new Error('max_tokens must be a positive number');
+  }
+  return Math.min(
+    MAX_PROJECT_CONTEXT_MAX_TOKENS,
+    Math.max(MIN_PROJECT_CONTEXT_MAX_TOKENS, Math.floor(parsed)),
+  );
+}
+
+export function buildProjectContextPack(
+  rawValue: unknown,
+  options: {
+    projectId: string;
+    maxTokens?: number;
+    now?: Date;
+  },
+): ProjectContextPack {
+  const projectId = options.projectId.trim();
+  if (!projectId) throw new Error('project_id is required');
+  const raw = objectOf(rawValue);
+  const rawProjectId = stringOf(raw.projectId ?? raw.project_id);
+  if (rawProjectId && !sameProject(rawProjectId, projectId)) {
+    throw new Error('project context project mismatch');
+  }
+
+  const decisions = validateSources(arrayOf(raw.decisions), projectId).sort(
+    (left, right) =>
+      (dateMs(memoryRecordedAt(right)) ?? 0) -
+      (dateMs(memoryRecordedAt(left)) ?? 0),
+  );
+  const tasks = validateSources(arrayOf(raw.tasks), projectId);
+  const facts = validateSources(arrayOf(raw.facts), projectId);
+  const maxTokens = resolveProjectContextMaxTokens(options.maxTokens);
+  const now = options.now ?? new Date();
+  const noiseTitle = /^(?:ChatGPT smoke decision|Cursor .*receipt)/i;
+  const canonicalSources = decisions.filter((memory) => {
+    const status = stringOf(memory.status).toLowerCase();
+    return (
+      ['active', 'verified'].includes(status) &&
+      !noiseTitle.test(stringOf(memory.title))
+    );
+  });
+  const milestoneSource =
+    canonicalSources.find((memory) =>
+      /(?:M\d+(?:\.\d+)?|LIVE .*PASS|MERGED|APPLIED)/i.test(
+        stringOf(memory.title),
+      ),
+    ) ?? canonicalSources[0] ?? null;
+  const milestoneCitation = milestoneSource
+    ? citationForMemory(milestoneSource, projectId)
+    : null;
+  const nextFromMilestone = milestoneSource
+    ? nextWorkFromContent(stringOf(milestoneSource.content))
+    : null;
+  const blockerTexts = milestoneSource
+    ? blockersFromContent(stringOf(milestoneSource.content))
+    : [];
+  const stateRow = objectOf(raw.state);
+  const stateProjectId = stringOf(stateRow.projectId ?? stateRow.project_id);
+  if (stateProjectId && !sameProject(stateProjectId, projectId)) {
+    throw new Error('project context state project mismatch');
+  }
+  const stateCitation: ProjectContextCitation | null = stringOf(stateRow.id)
+    ? {
+        id: `project-state:${stringOf(stateRow.id)}`,
+        kind: 'project_state',
+        sourceId: stringOf(stateRow.id),
+        title: stringOf(stateRow.summary) || null,
+        projectId,
+        recordedAt:
+          stringOf(stateRow.updated_at ?? stateRow.created_at) || null,
+        sourceEventId: null,
+      }
+    : null;
+  const currentGoal = nextFromMilestone
+    ? {
+        text: `Next canonical slice: ${normalizedText(nextFromMilestone, 420)}`,
+        citations: milestoneCitation ? [milestoneCitation.id] : [],
+      }
+    : stringOf(stateRow.summary)
+      ? {
+          text: normalizedText(stateRow.summary, 520),
+          citations: stateCitation ? [stateCitation.id] : [],
+        }
+      : null;
+
+  const stateNext = stateValues(raw.state, 'next');
+  const stateBlocked = stateValues(raw.state, 'blocked');
+  const stateConflicts = [
+    ...stateValues(raw.state, 'unresolved_conflicts'),
+    ...stateValues(raw.state, 'conflicts'),
+  ];
+  const allSources = [...decisions, ...tasks, ...facts];
+  const newestSource = [...allSources].sort(
+    (left, right) =>
+      (dateMs(memoryRecordedAt(right)) ?? 0) -
+      (dateMs(memoryRecordedAt(left)) ?? 0),
+  )[0];
+  const newestAt = newestSource ? memoryRecordedAt(newestSource) : null;
+  const newestMs = dateMs(newestAt);
+  const ageSeconds = newestMs === null
+    ? null
+    : Math.max(0, Math.floor((now.getTime() - newestMs) / 1000));
+  const freshnessCitation = newestSource
+    ? citationForMemory(newestSource, projectId)
+    : null;
+  const originalCounts = {
+    decisions: decisions.length,
+    tasks: tasks.length,
+    facts: facts.length,
+  };
+
+  let canonicalLimit = 6;
+  let blockerLimit = 6;
+  let mergeLimit = 5;
+  let conflictLimit = 4;
+  let nextLimit = 4;
+  let summaryChars = 420;
+  let expandedText = true;
+
+  const create = (): ProjectContextPack => {
+    const canonicalDecisions = canonicalSources
+      .slice(0, canonicalLimit)
+      .map((memory) => decisionFromMemory(memory, projectId, summaryChars));
+    const currentMilestone = milestoneSource
+      ? decisionFromMemory(milestoneSource, projectId, summaryChars)
+      : null;
+    const blockerSource = blockerTexts.length ? blockerTexts : stateBlocked;
+    const blockerCitation = blockerTexts.length
+      ? milestoneCitation
+      : stateCitation;
+    const activeBlockers = blockerSource.slice(0, blockerLimit).map((text) => ({
+      text: normalizedText(text, 280),
+      citations: blockerCitation ? [blockerCitation.id] : [],
+    }));
+    const recentMerges = canonicalSources
+      .map((memory) => {
+        const content = stringOf(memory.content);
+        const pullRequestUrl =
+          /https:\/\/github\.com\/[^\s)]+\/pull\/\d+/.exec(content)?.[0] ?? null;
+        const mergeSha =
+          /(?:Merge SHA:|merge SHA)\s*([0-9a-f]{40})/i.exec(content)?.[1] ?? null;
+        return pullRequestUrl || mergeSha
+          ? {
+              pullRequestUrl,
+              mergeSha,
+              title: stringOf(memory.title),
+              citations: [citationForMemory(memory, projectId).id],
+            }
+          : null;
+      })
+      .filter((value): value is NonNullable<typeof value> => value !== null)
+      .slice(0, mergeLimit);
+    const unresolvedConflicts = stateConflicts
+      .slice(0, conflictLimit)
+      .map((text) => ({
+        text: normalizedText(text, 280),
+        citations: stateCitation ? [stateCitation.id] : [],
+      }));
+    const nextSource = nextFromMilestone ? [nextFromMilestone] : stateNext;
+    const nextCitation = nextFromMilestone ? milestoneCitation : stateCitation;
+    const nextWork = nextSource.slice(0, nextLimit).map((text) => ({
+      text: normalizedText(text, 280),
+      citations: nextCitation ? [nextCitation.id] : [],
+    }));
+
+    const citationIds = new Set<string>();
+    const collect = (items: Array<{ citations: string[] }>) =>
+      items.forEach((item) => item.citations.forEach((id) => citationIds.add(id)));
+    collect(canonicalDecisions);
+    collect(activeBlockers);
+    collect(recentMerges);
+    collect(unresolvedConflicts);
+    collect(nextWork);
+    if (currentGoal) collect([currentGoal]);
+    if (currentMilestone) collect([currentMilestone]);
+    if (freshnessCitation) citationIds.add(freshnessCitation.id);
+    const availableCitations = new Map<string, ProjectContextCitation>();
+    for (const memory of allSources) {
+      const citation = citationForMemory(memory, projectId);
+      availableCitations.set(citation.id, citation);
+    }
+    if (stateCitation) availableCitations.set(stateCitation.id, stateCitation);
+    const citations = [...citationIds]
+      .map((id) => availableCitations.get(id))
+      .filter((value): value is ProjectContextCitation => Boolean(value));
+    const text = expandedText
+      ? [
+          currentGoal ? `Goal: ${currentGoal.text}` : 'Goal: unavailable',
+          currentMilestone
+            ? `Milestone: ${currentMilestone.title}`
+            : 'Milestone: unavailable',
+          activeBlockers.length
+            ? `Blockers: ${activeBlockers.map((item) => item.text).join('; ')}`
+            : 'Blockers: none observed in readable current context',
+          nextWork.length
+            ? `Next: ${nextWork.map((item) => item.text).join('; ')}`
+            : 'Next: unavailable',
+        ].join('\n')
+      : `Project ${projectId}; use structured fields and citations.`;
+    const pack: ProjectContextPack = {
+      packVersion: OFFICIAL_M18_PROJECT_CONTEXT_PACK_VERSION,
+      projectId,
+      generatedAt: now.toISOString(),
+      currentGoal,
+      canonicalDecisions,
+      currentMilestone,
+      activeBlockers,
+      recentMerges,
+      unresolvedConflicts,
+      nextWork,
+      sourceFreshness: {
+        status:
+          ageSeconds === null
+            ? 'unknown'
+            : ageSeconds <= PROJECT_CONTEXT_FRESHNESS_SLA_SECONDS
+              ? 'fresh'
+              : 'stale',
+        newestRecordedAt: newestAt,
+        ageSeconds,
+        slaSeconds: PROJECT_CONTEXT_FRESHNESS_SLA_SECONDS,
+        citations: freshnessCitation ? [freshnessCitation.id] : [],
+      },
+      citations,
+      provenance: {
+        source: 'context.project',
+        subjectScoped: true,
+        explicitProject: true,
+        sourceCount: allSources.length + (stateCitation ? 1 : 0),
+      },
+      budget: {
+        maxTokens,
+        estimatedTokens: 0,
+        truncated: false,
+        originalCounts,
+        includedCounts: {
+          canonicalDecisions: canonicalDecisions.length,
+          blockers: activeBlockers.length,
+          recentMerges: recentMerges.length,
+          conflicts: unresolvedConflicts.length,
+          nextWork: nextWork.length,
+        },
+      },
+      text,
+    };
+    updateEstimatedTokens(pack);
+    return pack;
+  };
+
+  let pack = create();
+  let truncated = false;
+  while (pack.budget.estimatedTokens > maxTokens) {
+    truncated = true;
+    if (canonicalLimit > 0) canonicalLimit -= 1;
+    else if (mergeLimit > 0) mergeLimit -= 1;
+    else if (blockerLimit > 1) blockerLimit -= 1;
+    else if (nextLimit > 1) nextLimit -= 1;
+    else if (conflictLimit > 0) conflictLimit -= 1;
+    else if (summaryChars > 80) summaryChars -= 40;
+    else if (blockerLimit > 0) blockerLimit = 0;
+    else if (expandedText) expandedText = false;
+    else break;
+    pack = create();
+  }
+  pack.budget.truncated = truncated ||
+    pack.budget.includedCounts.canonicalDecisions < canonicalSources.length;
+  updateEstimatedTokens(pack);
+  if (pack.budget.estimatedTokens > maxTokens) {
+    throw new Error('project context pack cannot satisfy max_tokens');
+  }
+  return pack;
+}
