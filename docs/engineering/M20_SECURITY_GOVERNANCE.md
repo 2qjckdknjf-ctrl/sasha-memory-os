@@ -39,6 +39,13 @@ migration before M20, verifies immutable checksums for both, and fails its
 post-apply SQL unless the runtime reconciliation function and M20 role boundary
 are present.
 
+Scheduled Node workers resolve one server-only key before any worker starts.
+They prefer the configured repository secret; if that secret is absent or
+empty, the workflow uses the existing Supabase account access token to retrieve
+the project's secret/legacy service-role key from the Management API. The value
+is immediately masked, exported only to the runner environment, and never
+printed or persisted as an artifact.
+
 The API secret remains mandatory inside every privileged RPC. This provides a
 second independent check if a service credential is accidentally used outside
 its intended runtime.

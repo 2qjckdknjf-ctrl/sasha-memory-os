@@ -27,12 +27,62 @@ jobs:
       - name: Install
         run: pnpm install --frozen-lockfile
 
+      - name: Resolve server-only Supabase key
+        env:
+          CONFIGURED_SERVER_KEY: ${{ secrets.MEMORY_OS_SUPABASE_SERVICE_ROLE_KEY }}
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+        run: |
+          set -euo pipefail
+          server_key="${CONFIGURED_SERVER_KEY:-}"
+          key_source="repository-secret"
+
+          if [[ -z "$server_key" ]]; then
+            if [[ -z "${SUPABASE_ACCESS_TOKEN:-}" ]]; then
+              echo "BLOCKED_CREDENTIALS — configure a server key or SUPABASE_ACCESS_TOKEN" >&2
+              exit 1
+            fi
+
+            api_keys_file="$(mktemp)"
+            trap 'rm -f "$api_keys_file"' EXIT
+            status=$(curl -sS -o "$api_keys_file" -w '%{http_code}' \
+              -H "Authorization: Bearer ${SUPABASE_ACCESS_TOKEN}" \
+              'https://api.supabase.com/v1/projects/vpxblcxsvlylqyldiuwr/api-keys?reveal=true')
+            if [[ "$status" != "200" ]]; then
+              echo "BLOCKED_CREDENTIALS — Supabase API-key lookup returned HTTP ${status}" >&2
+              exit 1
+            fi
+
+            server_key=$(jq -r '
+              def items:
+                if type == "array" then .
+                elif (.api_keys? | type) == "array" then .api_keys
+                elif (.data? | type) == "array" then .data
+                else []
+                end;
+              items as $items
+              | (
+                  [$items[] | select((.api_key // .key // "") | startswith("sb_secret_"))]
+                  + [$items[] | select((.name // .role // "") == "service_role")]
+                )
+              | .[0].api_key // .[0].key // empty
+            ' "$api_keys_file")
+            key_source="supabase-management-api"
+          fi
+
+          if [[ -z "$server_key" ]]; then
+            echo "BLOCKED_CREDENTIALS — no Supabase secret/service-role key is available" >&2
+            exit 1
+          fi
+
+          echo "::add-mask::$server_key"
+          printf 'MEMORY_OS_SUPABASE_SERVICE_ROLE_KEY=%s\n' "$server_key" >> "$GITHUB_ENV"
+          echo "server_key_source=${key_source}"
+
       - name: Consolidation once
         env:
           MEMORY_OS_ENV: production
           MEMORY_OS_SUPABASE_URL: ${{ secrets.MEMORY_OS_SUPABASE_URL }}
           MEMORY_OS_SUPABASE_ANON_KEY: ${{ secrets.MEMORY_OS_SUPABASE_ANON_KEY }}
-          MEMORY_OS_SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.MEMORY_OS_SUPABASE_SERVICE_ROLE_KEY }}
           MEMORY_OS_API_SECRET: ${{ secrets.MEMORY_OS_API_SECRET }}
           MEMORY_OS_VAULT_BACKEND: ${{ secrets.MEMORY_OS_VAULT_BACKEND }}
           MEMORY_OS_VAULT_KEY: ${{ secrets.MEMORY_OS_VAULT_KEY }}
@@ -49,7 +99,6 @@ jobs:
           MEMORY_OS_ENV: production
           MEMORY_OS_SUPABASE_URL: ${{ secrets.MEMORY_OS_SUPABASE_URL }}
           MEMORY_OS_SUPABASE_ANON_KEY: ${{ secrets.MEMORY_OS_SUPABASE_ANON_KEY }}
-          MEMORY_OS_SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.MEMORY_OS_SUPABASE_SERVICE_ROLE_KEY }}
           MEMORY_OS_API_SECRET: ${{ secrets.MEMORY_OS_API_SECRET }}
           MEMORY_OS_WORKSPACE_ID: ${{ secrets.MEMORY_OS_WORKSPACE_ID }}
           MEMORY_OS_ROMA_SUBJECT_ID: ${{ secrets.MEMORY_OS_ROMA_SUBJECT_ID }}
@@ -60,7 +109,6 @@ jobs:
           MEMORY_OS_ENV: production
           MEMORY_OS_SUPABASE_URL: ${{ secrets.MEMORY_OS_SUPABASE_URL }}
           MEMORY_OS_SUPABASE_ANON_KEY: ${{ secrets.MEMORY_OS_SUPABASE_ANON_KEY }}
-          MEMORY_OS_SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.MEMORY_OS_SUPABASE_SERVICE_ROLE_KEY }}
           MEMORY_OS_API_SECRET: ${{ secrets.MEMORY_OS_API_SECRET }}
           MEMORY_OS_VAULT_BACKEND: ${{ secrets.MEMORY_OS_VAULT_BACKEND }}
           MEMORY_OS_VAULT_KEY: ${{ secrets.MEMORY_OS_VAULT_KEY }}
