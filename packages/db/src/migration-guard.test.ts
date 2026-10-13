@@ -86,6 +86,12 @@ const m20SecurityMigrationPath = fileURLToPath(
     import.meta.url,
   ),
 );
+const m17EntityGraphMigrationPath = fileURLToPath(
+  new URL(
+    '../../../supabase/migrations/20261013142833_m17_slice_04_entity_graph_backfill.sql',
+    import.meta.url,
+  ),
+);
 
 describe('m8 slice 03 migration guards', () => {
   const sql = readFileSync(migrationPath, 'utf8');
@@ -559,5 +565,40 @@ describe('M20 security boundary migration guards', () => {
     expect(sql).toContain(
       'GRANT EXECUTE ON FUNCTION %I.%I(%s) TO service_role',
     );
+  });
+});
+
+describe('M17.4 entity graph migration guards', () => {
+  const sql = readFileSync(m17EntityGraphMigrationPath, 'utf8');
+
+  it('creates an additive graph projection with stable identities', () => {
+    expect(sql).toContain('CREATE TABLE public.entities');
+    expect(sql).toContain('CREATE TABLE public.entity_aliases');
+    expect(sql).toContain('CREATE TABLE public.entity_edges');
+    expect(sql).toContain('CREATE TABLE public.memory_entities');
+    expect(sql).toContain('UNIQUE (workspace_id, stable_id)');
+    expect(sql).toContain('UNIQUE (workspace_id, idempotency_key)');
+    expect(sql).not.toMatch(/UPDATE public\.memory_records\s+SET/i);
+    expect(sql).not.toMatch(/DELETE FROM public\.memory_records/i);
+  });
+
+  it('uses effective routing, evidence and fail-closed client grants', () => {
+    expect(sql).toContain('app.effective_memory_project_id(m.id)');
+    expect(sql).toContain('entity_edges_require_evidence');
+    expect(sql).toContain('ALTER TABLE public.entities FORCE ROW LEVEL SECURITY');
+    expect(sql).toContain(
+      'REVOKE ALL ON TABLE public.entities FROM PUBLIC, anon, authenticated',
+    );
+    expect(sql).toContain(
+      'REVOKE ALL ON FUNCTION app.api_backfill_entity_graph(uuid)',
+    );
+    expect(sql).toContain("m.status <> 'deleted'");
+  });
+
+  it('avoids free-text entity guessing and makes the backfill repeatable', () => {
+    expect(sql).toContain("m.memory_type IN ('decision', 'task', 'idea')");
+    expect(sql).toContain('ON CONFLICT (workspace_id, stable_id) DO UPDATE');
+    expect(sql).toContain('ON CONFLICT (workspace_id, idempotency_key) DO UPDATE');
+    expect(sql).toContain('SELECT app.api_backfill_entity_graph(NULL)');
   });
 });
