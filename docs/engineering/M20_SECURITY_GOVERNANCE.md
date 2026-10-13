@@ -34,6 +34,11 @@ Migration `20261013135122_m20_security_search_path_hardening.sql`:
 - explicitly retains `service_role` execute privileges;
 - revokes default public function execution for future migrations.
 
+The guarded production migration workflow applies the M15 runtime recovery
+migration before M20, verifies immutable checksums for both, and fails its
+post-apply SQL unless the runtime reconciliation function and M20 role boundary
+are present.
+
 The API secret remains mandatory inside every privileged RPC. This provides a
 second independent check if a service credential is accidentally used outside
 its intended runtime.
