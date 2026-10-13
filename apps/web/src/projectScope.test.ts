@@ -57,6 +57,21 @@ describe('project scope helpers', () => {
     expect(body).not.toHaveProperty('project_id');
   });
 
+  it('adds graph retrieval only when the caller explicitly selects it', () => {
+    expect(
+      buildSearchRequest({
+        query: 'Slice 01',
+        projectId: otherProjectId,
+        packContext: false,
+        maxContextChars: 3_000,
+        retrievalMode: 'graph',
+      }),
+    ).toMatchObject({
+      project_id: otherProjectId,
+      retrieval_mode: 'graph',
+    });
+  });
+
   it('builds explicit project-scoped transferred-object paths without a workspace fallback project', () => {
     const path = buildTransferredObjectsPath({
       workspaceId,

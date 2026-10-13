@@ -91,4 +91,36 @@ describe('M17.3 graph-aware retrieval pack', () => {
     expect(fused[0]?.fusedScore).toBeGreaterThan(0.8);
     expect(fused[0]?.evidenceRefs).toContain('edge:works_on');
   });
+
+  it('normalizes RRF scores and ignores graph assertions without evidence', () => {
+    const fused = fuseGraphHybridHits({
+      projectId,
+      hybridHits: [
+        { memoryId: 'lexical-top', score: 0.04, reason: 'hybrid rrf' },
+        { memoryId: 'graph-linked', score: 0.038, reason: 'hybrid rrf' },
+      ],
+      graphHits: [
+        {
+          stableId: 'entity:decision:graph-linked',
+          memoryId: 'graph-linked',
+          graphScore: 1,
+          evidenceRefs: ['memory-entity:verified'],
+        },
+        {
+          stableId: 'entity:decision:no-evidence',
+          memoryId: 'no-evidence',
+          graphScore: 1,
+          evidenceRefs: [],
+        },
+      ],
+    });
+
+    expect(fused[0]).toMatchObject({
+      memoryId: 'graph-linked',
+      graphScore: 1,
+      hybridScore: 0.95,
+      evidenceRefs: ['memory-entity:verified'],
+    });
+    expect(fused.some((hit) => hit.memoryId === 'no-evidence')).toBe(false);
+  });
 });

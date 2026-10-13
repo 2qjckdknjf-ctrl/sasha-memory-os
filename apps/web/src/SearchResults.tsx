@@ -25,6 +25,9 @@ export function SearchResults({ hits, search }: Props) {
               {typeof hit.score === 'number' ? (
                 <span>score {hit.score.toFixed(4)}</span>
               ) : null}
+              {typeof hit.graphScore === 'number' && hit.graphScore > 0 ? (
+                <span>graph {hit.graphScore.toFixed(4)}</span>
+              ) : null}
             </div>
             <h3>
               {hit.memory?.id ? (
@@ -43,6 +46,9 @@ export function SearchResults({ hits, search }: Props) {
               )}
             </h3>
             <p>{hit.memory?.content ?? ''}</p>
+            {hit.evidenceRefs && hit.evidenceRefs.length > 0 ? (
+              <p className="hint">Evidence: {hit.evidenceRefs.join(' · ')}</p>
+            ) : null}
             {hit.memory?.id ? (
               <div className="actions">
                 <Link

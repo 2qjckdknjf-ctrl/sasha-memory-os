@@ -67,7 +67,10 @@ import {
   githubAppConnectionMetadata,
   githubAppInstallationId,
   githubAppReconcileRequestSchema,
+  fuseGraphHybridHits,
   graphRetrieveRequestSchema,
+  OFFICIAL_M17_GRAPH_HYBRID_FUSION_PACK_VERSION,
+  planGraphRetrieval,
   parseSourceEventEnvelope,
   normalizeConnectionMetadata,
   oauthCompleteSchema,
@@ -96,6 +99,7 @@ import {
   buildProactiveConsolidationReason,
   embedMemoryText,
   type HybridHitLike,
+  inRecordedWindow,
   packSearchContext,
   planCandidateConsolidations,
   planProactiveConsolidation,
@@ -572,6 +576,151 @@ function missingAgenticProjectResponse(c: {
     },
     400,
   );
+}
+
+function missingGraphProjectResponse(c: {
+  json: (body: { error: string }, status: 400) => Response;
+}) {
+  return c.json(
+    {
+      error:
+        'project_id is required for graph retrieval; never default to AISTROYKA',
+    },
+    400,
+  );
+}
+
+type GraphHybridHit = HybridHitLike & {
+  graphScore: number;
+  hybridScore: number;
+  fusedScore: number;
+  evidenceRefs: string[];
+};
+
+function asStringArray(value: unknown): string[] {
+  return Array.isArray(value)
+    ? value.filter((item): item is string => typeof item === 'string')
+    : [];
+}
+
+function graphMemoryId(value: Record<string, unknown>): string | null {
+  return typeof value.id === 'string' && value.id.trim() ? value.id : null;
+}
+
+function normalizeProjectId(value: string): string {
+  return value.trim().toLowerCase();
+}
+
+function sameProjectId(left: string, right: string): boolean {
+  return normalizeProjectId(left) === normalizeProjectId(right);
+}
+
+function fuseLiveGraphSearch(input: {
+  projectId: string;
+  hybridHits: HybridHitLike[];
+  graph: Awaited<ReturnType<SupabaseMemoryGateway['graphRetrieve']>>;
+  recordedAfter?: string;
+  recordedBefore?: string;
+}): GraphHybridHit[] {
+  if (!sameProjectId(input.graph.projectId, input.projectId)) {
+    throw new Error('graph retrieval project mismatch');
+  }
+
+  const hybridByMemory = new Map<string, HybridHitLike>();
+  const hybridForFusion = input.hybridHits.flatMap((hit) => {
+    const memoryProjectId =
+      'projectId' in hit.memory && typeof hit.memory.projectId === 'string'
+        ? hit.memory.projectId
+        : 'project_id' in hit.memory && typeof hit.memory.project_id === 'string'
+          ? hit.memory.project_id
+          : null;
+    if (memoryProjectId && !sameProjectId(memoryProjectId, input.projectId)) {
+      throw new Error('hybrid search project mismatch');
+    }
+    const memoryId = hit.memory.id ? String(hit.memory.id) : '';
+    if (!memoryId) return [];
+    hybridByMemory.set(memoryId, hit);
+    return [{ memoryId, score: Number(hit.score), reason: hit.reason ?? 'hybrid rrf' }];
+  });
+
+  const stableIdByEntityId = new Map<string, string>();
+  for (const rawNode of input.graph.nodes) {
+    const node = isRecord(rawNode) ? rawNode : {};
+    if (typeof node.id === 'string' && typeof node.stableId === 'string') {
+      stableIdByEntityId.set(node.id, node.stableId);
+    }
+  }
+
+  const graphByMemory = new Map<string, Record<string, unknown>>();
+  const graphForFusion = input.graph.memories.flatMap((rawMemory) => {
+    const memory = isRecord(rawMemory) ? rawMemory : {};
+    const memoryId = graphMemoryId(memory);
+    if (!memoryId) return [];
+    if (
+      !inRecordedWindow(
+        typeof memory.recordedAt === 'string' ? memory.recordedAt : null,
+        {
+          recordedAfter: input.recordedAfter,
+          recordedBefore: input.recordedBefore,
+        },
+      )
+    ) {
+      return [];
+    }
+    graphByMemory.set(memoryId, memory);
+    const entityIds = asStringArray(memory.entityIds);
+    return [
+      {
+        memoryId,
+        stableId:
+          entityIds.map((id) => stableIdByEntityId.get(id)).find(Boolean) ??
+          `memory:${memoryId}`,
+        graphScore:
+          typeof memory.graphScore === 'number' ? memory.graphScore : 0,
+        evidenceRefs: asStringArray(memory.evidenceRefs),
+      },
+    ];
+  });
+
+  return fuseGraphHybridHits({
+    projectId: input.projectId,
+    hybridHits: hybridForFusion,
+    graphHits: graphForFusion,
+  })
+    .slice(0, 50)
+    .flatMap((fused) => {
+      const hybrid = hybridByMemory.get(fused.memoryId);
+      const graphMemory = graphByMemory.get(fused.memoryId);
+      if (!hybrid && !graphMemory) return [];
+      const memory = hybrid?.memory ?? {
+        id: fused.memoryId,
+        title:
+          typeof graphMemory?.title === 'string' ? graphMemory.title : 'untitled',
+        content:
+          typeof graphMemory?.contentSnippet === 'string'
+            ? graphMemory.contentSnippet
+            : '',
+        status:
+          typeof graphMemory?.status === 'string' ? graphMemory.status : 'active',
+        memoryType:
+          typeof graphMemory?.memoryType === 'string'
+            ? graphMemory.memoryType
+            : null,
+        projectId: input.projectId,
+      };
+      return [
+        {
+          ...(hybrid ?? { memory, score: fused.fusedScore }),
+          memory,
+          score: fused.fusedScore,
+          reason: fused.reason,
+          graphScore: fused.graphScore,
+          hybridScore: fused.hybridScore,
+          fusedScore: fused.fusedScore,
+          evidenceRefs: fused.evidenceRefs,
+        },
+      ];
+    });
 }
 
 function missingPersonalizationProjectResponse(c: {
@@ -5811,7 +5960,7 @@ export function createApp(options?: {
       recorded_before?: string;
       pack_context?: boolean;
       max_context_chars?: number;
-      retrieval_mode?: 'hybrid' | 'agentic';
+      retrieval_mode?: 'hybrid' | 'agentic' | 'graph';
       agentic?: {
         max_steps?: number;
         max_time_ms?: number;
@@ -5823,8 +5972,15 @@ export function createApp(options?: {
     const authz = c.get('authz');
     const gw = c.get('gateway');
     const pack = Boolean(body.pack_context);
-    const retrievalMode =
-      body.retrieval_mode === 'agentic' || body.agentic ? 'agentic' : 'hybrid';
+    if (
+      body.retrieval_mode &&
+      !['hybrid', 'agentic', 'graph'].includes(body.retrieval_mode)
+    ) {
+      return c.json({ error: 'retrieval_mode must be hybrid, agentic or graph' }, 400);
+    }
+    const retrievalMode = body.agentic
+      ? 'agentic'
+      : (body.retrieval_mode ?? 'hybrid');
     const searchStartedAt = Date.now();
     const requestId = c.get('requestId');
     const storeLocal = c.get('store');
@@ -6003,6 +6159,147 @@ export function createApp(options?: {
           outcome: isForbiddenError(err) ? 'ok' : 'error',
         });
         if (isForbiddenError(err)) return c.json({ error: 'forbidden' }, 403);
+        return c.json({ error: (err as Error).message }, 500);
+      }
+    }
+
+    if (retrievalMode === 'graph') {
+      const projectId = body.project_id?.trim();
+      if (!projectId) return missingGraphProjectResponse(c);
+      if (!gw) {
+        return c.json(
+          {
+            error: 'not_implemented',
+            note: 'Graph/hybrid fusion requires the Supabase backend.',
+            available: false,
+            backend: 'memory-store',
+          },
+          501,
+        );
+      }
+
+      try {
+        const hybridHits = await searchOnce({
+          query: body.query ?? '',
+          projectId,
+          includeHistory: Boolean(body.include_history),
+        });
+        const entitySearch = await gw.searchEntities({
+          subjectId: authz.subjectId,
+          projectId,
+          query: body.query ?? '',
+          limit: 8,
+        });
+        if (!sameProjectId(entitySearch.projectId, projectId)) {
+          throw new Error('entity search project mismatch');
+        }
+        const seeds = entitySearch.entities
+          .filter((entity) => sameProjectId(entity.projectId, projectId))
+          .slice(0, 8);
+        const plan = planGraphRetrieval({
+          projectId,
+          query: body.query ?? '',
+          seeds: seeds.map((entity) => ({ stableId: entity.stableId })),
+          hybridHitCount: hybridHits.length,
+        });
+
+        if (!plan.enabled) {
+          recordSloObservation({
+            targetId: 'search.hybrid',
+            durationMs: Date.now() - searchStartedAt,
+          });
+          return c.json({
+            hits: hybridHits,
+            backend: 'supabase',
+            ranking: 'hybrid-rrf',
+            rankingVersion: SEARCH_RANKING_VERSION,
+            rankingWeightsVersion: SEARCH_RANKING_WEIGHTS_VERSION,
+            graph: {
+              enabled: false,
+              reason: plan.reason,
+              packVersion: OFFICIAL_M17_GRAPH_HYBRID_FUSION_PACK_VERSION,
+              seedEntities: seeds,
+              budget: plan.budget,
+              evidenceRefs: [],
+            },
+            ...(pack
+              ? {
+                  context: packSearchContext(hybridHits, {
+                    maxChars: body.max_context_chars,
+                  }),
+                }
+              : {}),
+          });
+        }
+
+        const graph = await gw.graphRetrieve({
+          subjectId: authz.subjectId,
+          projectId,
+          seedEntityIds: seeds.map((entity) => entity.id),
+          maxHops: plan.budget.maxHops,
+          maxNodes: plan.budget.maxNodes,
+          maxEdges: plan.budget.maxEdges,
+          minConfidence: plan.budget.minEdgeEvidenceConfidence,
+        });
+        const hits = fuseLiveGraphSearch({
+          projectId,
+          hybridHits,
+          graph,
+          recordedAfter: body.recorded_after,
+          recordedBefore: body.recorded_before,
+        });
+        const edgeEvidence = graph.edges.flatMap((rawEdge) => {
+          const edge = isRecord(rawEdge) ? rawEdge : {};
+          return typeof edge.sourceRef === 'string' && edge.sourceRef.trim()
+            ? [edge.sourceRef]
+            : [];
+        });
+        const evidenceRefs = [
+          ...new Set([
+            ...edgeEvidence,
+            ...hits.flatMap((hit) => hit.evidenceRefs),
+          ]),
+        ];
+
+        recordSloObservation({
+          targetId: 'search.hybrid',
+          durationMs: Date.now() - searchStartedAt,
+        });
+        return c.json({
+          hits,
+          backend: 'supabase',
+          ranking: 'hybrid-rrf+graph-evidence',
+          rankingVersion: `${SEARCH_RANKING_VERSION}+${OFFICIAL_M17_GRAPH_HYBRID_FUSION_PACK_VERSION}`,
+          rankingWeightsVersion: SEARCH_RANKING_WEIGHTS_VERSION,
+          graph: {
+            enabled: true,
+            reason: plan.reason,
+            packVersion: OFFICIAL_M17_GRAPH_HYBRID_FUSION_PACK_VERSION,
+            seedEntities: seeds,
+            budget: graph.budget,
+            trace: graph.trace,
+            evidenceRefs,
+            graphHitCount: graph.memories.length,
+            fusedHitCount: hits.length,
+          },
+          ...(pack
+            ? {
+                context: packSearchContext(hits, {
+                  maxChars: body.max_context_chars,
+                }),
+              }
+            : {}),
+        });
+      } catch (err) {
+        recordSloObservation({
+          targetId: 'search.hybrid',
+          durationMs: Date.now() - searchStartedAt,
+          outcome: isForbiddenError(err) ? 'ok' : 'error',
+        });
+        if (isForbiddenError(err)) return c.json({ error: 'forbidden' }, 403);
+        if (isNotFoundError(err)) {
+          return c.json({ error: 'entity_or_project_not_found' }, 404);
+        }
         return c.json({ error: (err as Error).message }, 500);
       }
     }

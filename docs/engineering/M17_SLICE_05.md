@@ -1,6 +1,7 @@
 # M17 Slice 05 - Live graph retrieval and entity inspector
 
-Status: implemented; production apply and live acceptance follow merge and green CI.
+Status: production PASS on 2026-10-13; merged in PR #97 at main SHA
+`dacdb4562c9592f9bde9851a05f7cbf1ca2c3e49`.
 
 Official pack version: `m17-s05-v1`
 
@@ -52,9 +53,12 @@ It proves:
 
 Unit tests cover request validation, gateway RPC arguments, API fail-closed
 behavior, navigation and the explicit-project UI state. Production acceptance
-must rerun the backfill, execute all three RPCs against the canonical project,
-rerun Supabase security/performance advisors and record a Memory OS milestone
-with a read-after-write receipt.
+reran the backfill and all three RPCs against the canonical project. The final
+canonical-project receipt contained 42 eligible memories, 40 entities, 44
+aliases and 39 edges; bounded traversal visited 24 nodes and 39 linked memories
+with `max_nodes` as the explicit stop reason. Supabase advisors reported no new
+graph-specific finding. Memory milestone
+`ce5912e5-876a-49d7-9857-4151aa534900` passed exact read-after-write.
 
 ## Out of scope
 

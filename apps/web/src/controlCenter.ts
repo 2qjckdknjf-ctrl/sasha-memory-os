@@ -61,6 +61,37 @@ export type SearchHit = {
   };
   reason?: string;
   score?: number;
+  graphScore?: number;
+  hybridScore?: number;
+  fusedScore?: number;
+  evidenceRefs?: string[];
+};
+
+export type SearchRetrievalMode = 'hybrid' | 'graph';
+
+export type GraphSearchTrace = {
+  enabled: boolean;
+  reason: string;
+  packVersion: string;
+  seedEntities?: GraphEntitySummary[];
+  budget?: {
+    maxHops: number;
+    maxNodes: number;
+    maxEdges: number;
+    minConfidence?: number;
+    minEdgeEvidenceConfidence?: number;
+    graphWeight?: number;
+  };
+  trace?: {
+    visitedNodeCount: number;
+    traversedEdgeCount: number;
+    stoppedReason: string;
+    evidenceRequired: boolean;
+    packVersion: string;
+  };
+  evidenceRefs?: string[];
+  graphHitCount?: number;
+  fusedHitCount?: number;
 };
 
 export type EntityAliasRecord = {

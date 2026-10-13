@@ -6,6 +6,10 @@ import {
   EDGE_TOOL_DEFS,
   resolveEdgeProjectId,
 } from "./contract.ts";
+import {
+  EDGE_GRAPH_FUSION_PACK_VERSION,
+  fuseEdgeGraphHits,
+} from "./graphFusion.ts";
 
 const SUBJECT = Deno.env.get("MEMORY_OS_CHATGPT_SUBJECT_ID") ??
   "33333333-3333-4333-8333-333333333302";
@@ -451,7 +455,10 @@ async function callTool(
 
   switch (name) {
     case "memory.search": {
-      const project = await resolveProjectId("optional");
+      const retrievalMode = args.retrieval_mode === "graph" ? "graph" : "hybrid";
+      const project = await resolveProjectId(
+        retrievalMode === "graph" ? "required" : "optional",
+      );
       const query = String(args.query ?? "").trim();
       if (!query) throw new Error("query is required");
       const embedded = await embedText(query);
@@ -482,6 +489,134 @@ async function callTool(
         } satisfies Hit;
       });
       const ranked = rerankRrf(hits, embedded.vector);
+      if (retrievalMode === "graph") {
+        if (!project) {
+          throw new Error("project reference is required for graph retrieval");
+        }
+        const entitySearch = await rpc(client, "api_search_entities", {
+          p_secret: secret,
+          p_subject_id: actor,
+          p_project_id: project,
+          p_query: query,
+          p_limit: 8,
+        }) as Record<string, unknown>;
+        if (
+          String(entitySearch.projectId ?? "").trim().toLowerCase() !==
+            project.trim().toLowerCase()
+        ) {
+          throw new Error("entity search project mismatch");
+        }
+        const entities = (Array.isArray(entitySearch.entities)
+          ? entitySearch.entities
+          : []).filter((value) => {
+            const entity = value && typeof value === "object"
+              ? value as Record<string, unknown>
+              : {};
+            return String(entity.projectId ?? "").trim().toLowerCase() ===
+                project.trim().toLowerCase() &&
+              typeof entity.id === "string" &&
+              typeof entity.stableId === "string";
+          }).slice(0, 8) as Array<Record<string, unknown>>;
+
+        if (!ranked.length || !entities.length) {
+          const reason = !ranked.length
+            ? "no hybrid hits to ground graph traversal"
+            : "no graph seeds; hybrid-only retrieval";
+          return {
+            hits: ranked,
+            ranking: "hybrid-rrf",
+            rankingVersion: SEARCH_RANKING_VERSION,
+            rankingWeightsVersion: SEARCH_RANKING_WEIGHTS_VERSION,
+            graph: {
+              enabled: false,
+              reason,
+              packVersion: EDGE_GRAPH_FUSION_PACK_VERSION,
+              seedEntities: entities,
+              evidenceRefs: [],
+            },
+            ...(Boolean(args.pack_context)
+              ? {
+                context: packContext(
+                  ranked,
+                  Number(args.max_context_chars ?? 4000),
+                ),
+              }
+              : {}),
+          };
+        }
+
+        const graph = await rpc(client, "api_graph_retrieve", {
+          p_secret: secret,
+          p_subject_id: actor,
+          p_project_id: project,
+          p_seed_entity_ids: entities.map((entity) => String(entity.id)),
+          p_max_hops: 2,
+          p_max_nodes: 24,
+          p_max_edges: 48,
+          p_min_confidence: 0.7,
+        }) as Record<string, unknown>;
+        if (
+          String(graph.projectId ?? "").trim().toLowerCase() !==
+            project.trim().toLowerCase()
+        ) {
+          throw new Error("graph retrieval project mismatch");
+        }
+        const fused = fuseEdgeGraphHits({
+          projectId: project,
+          hybridHits: ranked,
+          graphNodes: Array.isArray(graph.nodes) ? graph.nodes : [],
+          graphMemories: Array.isArray(graph.memories) ? graph.memories : [],
+          recordedAfter: args.recorded_after
+            ? String(args.recorded_after)
+            : null,
+          recordedBefore: args.recorded_before
+            ? String(args.recorded_before)
+            : null,
+        });
+        const edgeEvidence = (Array.isArray(graph.edges) ? graph.edges : [])
+          .flatMap((value) => {
+            const edge = value && typeof value === "object"
+              ? value as Record<string, unknown>
+              : {};
+            return typeof edge.sourceRef === "string" && edge.sourceRef.trim()
+              ? [edge.sourceRef]
+              : [];
+          });
+        const evidenceRefs = [
+          ...new Set([
+            ...edgeEvidence,
+            ...fused.flatMap((hit) => hit.evidenceRefs),
+          ]),
+        ];
+        return {
+          hits: fused,
+          ranking: "hybrid-rrf+graph-evidence",
+          rankingVersion:
+            `${SEARCH_RANKING_VERSION}+${EDGE_GRAPH_FUSION_PACK_VERSION}`,
+          rankingWeightsVersion: SEARCH_RANKING_WEIGHTS_VERSION,
+          graph: {
+            enabled: true,
+            reason: "hybrid hits provide seeds for bounded graph traversal",
+            packVersion: EDGE_GRAPH_FUSION_PACK_VERSION,
+            seedEntities: entities,
+            budget: graph.budget ?? null,
+            trace: graph.trace ?? null,
+            evidenceRefs,
+            graphHitCount: Array.isArray(graph.memories)
+              ? graph.memories.length
+              : 0,
+            fusedHitCount: fused.length,
+          },
+          ...(Boolean(args.pack_context)
+            ? {
+              context: packContext(
+                fused,
+                Number(args.max_context_chars ?? 4000),
+              ),
+            }
+            : {}),
+        };
+      }
       return {
         hits: ranked,
         ranking: "hybrid-rrf",

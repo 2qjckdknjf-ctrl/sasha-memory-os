@@ -52,6 +52,7 @@ import {
   type ConnectorDefinitionRecord,
   type CorrectMemoryPayload,
   type ExtractionCandidate,
+  type GraphSearchTrace,
   type MeResponse,
   type MemoryStatusAction,
   type OutboxPendingItem,
@@ -60,6 +61,7 @@ import {
   type ReviewQueueItem,
   type SearchContext,
   type SearchHit,
+  type SearchRetrievalMode,
   type StateSummary,
   type TimelineEntry,
 } from './controlCenter';
@@ -79,6 +81,9 @@ export function App() {
   const [search, setSearch] = useState('Slice');
   const [packContext, setPackContext] = useState(false);
   const [searchContext, setSearchContext] = useState<SearchContext | null>(null);
+  const [retrievalMode, setRetrievalMode] =
+    useState<SearchRetrievalMode>('hybrid');
+  const [graphTrace, setGraphTrace] = useState<GraphSearchTrace | null>(null);
   const [hits, setHits] = useState<SearchHit[]>([]);
   const [title, setTitle] = useState('Continue remediation after audit');
   const [content, setContent] = useState(
@@ -147,6 +152,7 @@ export function App() {
   const scopeLabel = routeProjectId
     ? routeProject?.name ?? routeProjectId
     : describeProjectScope(selectedProject);
+  const graphSearchAvailable = backend === 'supabase' && Boolean(readProjectId);
 
   function buildLocalMe(nextActor: Actor): MeResponse {
     return {
@@ -507,7 +513,9 @@ export function App() {
   useEffect(() => {
     setHits([]);
     setSearchContext(null);
-  }, [readProjectId]);
+    setGraphTrace(null);
+    if (!graphSearchAvailable) setRetrievalMode('hybrid');
+  }, [graphSearchAvailable, readProjectId]);
 
   const taskMemories = useMemo(
     () =>
@@ -800,10 +808,16 @@ export function App() {
     setError(null);
     try {
       if (backend !== 'local') {
+        if (retrievalMode === 'graph' && !graphSearchAvailable) {
+          throw new Error(
+            'Graph + Hybrid поиск требует Supabase и один выбранный проект.',
+          );
+        }
         const result = await apiPost<{
           hits: SearchHit[];
           ranking?: string;
           context?: SearchContext;
+          graph?: GraphSearchTrace;
         }>(
           '/v1/search',
           subjectId,
@@ -812,11 +826,13 @@ export function App() {
             projectId: readProjectId,
             packContext,
             maxContextChars: 3_000,
+            retrievalMode,
           }),
           actor,
         );
         setHits(result.hits ?? []);
         setSearchContext(packContext ? (result.context ?? null) : null);
+        setGraphTrace(result.graph ?? null);
       } else {
         const localHits = await searchMemoriesHybridLocal(
           localStore.listCurrentMemories(WORKSPACE_ID, readProjectId ?? undefined),
@@ -833,6 +849,7 @@ export function App() {
         setSearchContext(
           packContext ? packSearchContextLocal(localHits, { maxChars: 3_000 }) : null,
         );
+        setGraphTrace(null);
       }
     } catch (err) {
       setError((err as Error).message);
@@ -1859,9 +1876,13 @@ export function App() {
               search={search}
               packContext={packContext}
               searchContext={searchContext}
+              retrievalMode={retrievalMode}
+              graphAvailable={graphSearchAvailable}
+              graphTrace={graphTrace}
               hits={hits}
               onSearchTermChange={setSearch}
               onPackContextChange={setPackContext}
+              onRetrievalModeChange={setRetrievalMode}
               onSearch={onSearch}
             />
           }
