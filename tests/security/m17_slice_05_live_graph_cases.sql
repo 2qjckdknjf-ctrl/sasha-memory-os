@@ -3,11 +3,16 @@
 
 DO $$
 DECLARE
+  v_workspace constant uuid := '11111111-1111-4111-8111-111111111111';
   v_project constant uuid := '44444444-4444-4444-8444-444444444402';
   v_other_project constant uuid := '44444444-4444-4444-8444-444444444401';
   v_owner constant uuid := '33333333-3333-4333-8333-333333333301';
+  v_cursor constant uuid := '33333333-3333-4333-8333-333333333303';
   v_memory constant uuid := 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeee41';
+  v_private_event constant uuid := 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeee45';
+  v_private_memory constant uuid := 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeee46';
   v_entity uuid;
+  v_private_entity uuid;
   v_project_entity uuid;
   v_foreign_entity uuid;
   v_search jsonb;
@@ -15,12 +20,37 @@ DECLARE
   v_graph jsonb;
   v_rejected boolean;
 BEGIN
+  INSERT INTO public.source_events (
+    id, workspace_id, project_id, provider, event_type, idempotency_key,
+    observed_at, schema_version, sensitivity, storage_mode, payload,
+    created_by_subject
+  ) VALUES (
+    v_private_event, v_workspace, v_project, 'manual', 'm17.private.case',
+    'm17-s05-private-live-db-case', now(), '1.1', 'personal', 'reference',
+    '{"title":"M17.5 private graph sentinel"}'::jsonb, v_owner
+  ) ON CONFLICT (id) DO NOTHING;
+
+  INSERT INTO public.memory_records (
+    id, workspace_id, project_id, memory_type, title, content, status,
+    confidence, sensitivity, source_event_id, created_by_subject,
+    schema_version, valid_from, observed_at
+  ) VALUES (
+    v_private_memory, v_workspace, v_project, 'decision',
+    'M17.5 private graph sentinel', 'Must stay invisible to internal-only agents.',
+    'verified', 1, 'personal', v_private_event, v_owner, '1.0', now(), now()
+  ) ON CONFLICT (id) DO NOTHING;
+
   PERFORM app.api_backfill_entity_graph(v_project);
 
   SELECT id INTO STRICT v_entity
   FROM public.entities
   WHERE project_id = v_project
     AND stable_id = 'entity:decision:memory:' || v_memory::text;
+
+  SELECT id INTO STRICT v_private_entity
+  FROM public.entities
+  WHERE project_id = v_project
+    AND stable_id = 'entity:decision:memory:' || v_private_memory::text;
 
   SELECT id INTO STRICT v_project_entity
   FROM public.entities
@@ -54,7 +84,7 @@ BEGIN
   END IF;
 
   v_detail := app.api_get_entity_graph(
-    'ci-ephemeral-secret', v_owner, v_entity, 48
+    'ci-ephemeral-secret', v_owner, v_project, v_entity, 48
   );
 
   IF v_detail->'entity'->>'id' <> v_entity::text
@@ -117,6 +147,38 @@ BEGIN
     RAISE EXCEPTION 'graph traversal crossed project boundary';
   END IF;
 
+  v_search := app.api_search_entities(
+    'ci-ephemeral-secret', v_cursor, v_project,
+    'M17.5 private graph sentinel', 20
+  );
+  IF (v_search->>'count')::integer <> 0 THEN
+    RAISE EXCEPTION 'sensitivity-limited actor saw private graph entity: %', v_search;
+  END IF;
+
+  v_rejected := false;
+  BEGIN
+    PERFORM app.api_get_entity_graph(
+      'ci-ephemeral-secret', v_cursor, v_project, v_private_entity, 48
+    );
+  EXCEPTION WHEN SQLSTATE '42501' THEN
+    v_rejected := true;
+  END;
+  IF NOT v_rejected THEN
+    RAISE EXCEPTION 'sensitivity-limited actor inspected private graph entity';
+  END IF;
+
+  v_rejected := false;
+  BEGIN
+    PERFORM app.api_get_entity_graph(
+      'ci-ephemeral-secret', v_owner, v_other_project, v_entity, 48
+    );
+  EXCEPTION WHEN SQLSTATE 'P0002' THEN
+    v_rejected := true;
+  END;
+  IF NOT v_rejected THEN
+    RAISE EXCEPTION 'entity inspector ignored the explicit project';
+  END IF;
+
   v_rejected := false;
   BEGIN
     PERFORM app.api_graph_retrieve(
@@ -144,13 +206,17 @@ BEGIN
   END IF;
 
   IF has_function_privilege(
+    'anon', 'app.can_read_graph_source(uuid,uuid,uuid,uuid)', 'EXECUTE'
+  ) OR has_function_privilege(
+    'authenticated', 'app.can_read_graph_source(uuid,uuid,uuid,uuid)', 'EXECUTE'
+  ) OR has_function_privilege(
     'anon', 'public.api_search_entities(text,uuid,uuid,text,integer)', 'EXECUTE'
   ) OR has_function_privilege(
     'authenticated', 'public.api_search_entities(text,uuid,uuid,text,integer)', 'EXECUTE'
   ) OR has_function_privilege(
-    'anon', 'public.api_get_entity_graph(text,uuid,uuid,integer)', 'EXECUTE'
+    'anon', 'public.api_get_entity_graph(text,uuid,uuid,uuid,integer)', 'EXECUTE'
   ) OR has_function_privilege(
-    'authenticated', 'public.api_get_entity_graph(text,uuid,uuid,integer)', 'EXECUTE'
+    'authenticated', 'public.api_get_entity_graph(text,uuid,uuid,uuid,integer)', 'EXECUTE'
   ) OR has_function_privilege(
     'anon',
     'public.api_graph_retrieve(text,uuid,uuid,uuid[],integer,integer,integer,numeric)',

@@ -4218,6 +4218,10 @@ export function createApp(options?: {
   app.get('/v1/entities/:id', async (c) => {
     const authz = c.get('authz');
     const entityId = c.req.param('id');
+    const projectId = c.req.query('project_id')?.trim();
+    if (!projectId) {
+      return c.json({ error: 'project_id is required' }, 400);
+    }
     const rawMaxEdges = Number(c.req.query('max_edges') ?? '48');
     if (!Number.isInteger(rawMaxEdges) || rawMaxEdges < 1 || rawMaxEdges > 48) {
       return c.json({ error: 'max_edges must be between 1 and 48' }, 400);
@@ -4240,6 +4244,7 @@ export function createApp(options?: {
       return c.json(
         await gw.getEntityGraph({
           subjectId: authz.subjectId,
+          projectId,
           entityId,
           maxEdges: rawMaxEdges,
         }),

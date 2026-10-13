@@ -21,6 +21,8 @@ Center.
   48 edges and up to 8 seeds; minimum accepted edge confidence is 0.7.
 - Every RPC validates the API secret, binds the calling subject, requires an
   explicit project and evaluates the existing memory ACL.
+- Entities, aliases and edges derived from a memory or source event also apply
+  that source's sensitivity ceiling before returning graph metadata.
 - `anon` and `authenticated` cannot execute the RPCs or read graph tables
   directly. Only the server-side `service_role` can execute the public wrapper.
 - Seeds and traversed endpoints must belong to the same project. There is no

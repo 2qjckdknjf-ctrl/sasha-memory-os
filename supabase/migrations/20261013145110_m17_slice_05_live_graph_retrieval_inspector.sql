@@ -4,6 +4,53 @@
 -- receive direct table grants, every call binds an explicit subject/project,
 -- and traversal cannot exceed the canonical M17 budget.
 
+CREATE OR REPLACE FUNCTION app.can_read_graph_source(
+  p_workspace_id uuid,
+  p_project_id uuid,
+  p_memory_id uuid,
+  p_source_event_id uuid
+)
+RETURNS boolean
+LANGUAGE sql
+STABLE
+SET search_path = pg_catalog, public, app
+AS $$
+  SELECT CASE
+    WHEN p_memory_id IS NOT NULL THEN EXISTS (
+      SELECT 1
+      FROM public.memory_records source_memory
+      WHERE source_memory.id = p_memory_id
+        AND source_memory.workspace_id = p_workspace_id
+        AND app.effective_memory_project_id(source_memory.id) = p_project_id
+        AND source_memory.status <> 'deleted'
+        AND app.has_acl(
+          source_memory.workspace_id,
+          'memory',
+          'read',
+          p_project_id,
+          source_memory.sensitivity
+        )
+    )
+    WHEN p_source_event_id IS NOT NULL THEN EXISTS (
+      SELECT 1
+      FROM public.source_events source_event
+      WHERE source_event.id = p_source_event_id
+        AND source_event.workspace_id = p_workspace_id
+        AND source_event.project_id = p_project_id
+        AND app.has_acl(
+          source_event.workspace_id,
+          'memory',
+          'read',
+          p_project_id,
+          source_event.sensitivity
+        )
+    )
+    ELSE app.has_acl(
+      p_workspace_id, 'memory', 'read', p_project_id, 'internal'
+    )
+  END;
+$$;
+
 CREATE OR REPLACE FUNCTION app.api_search_entities(
   p_secret text,
   p_subject_id uuid,
@@ -52,12 +99,24 @@ BEGIN
           SELECT 1 FROM public.entity_aliases exact_alias
           WHERE exact_alias.entity_id = e.id
             AND exact_alias.normalized_alias = v_query
+            AND app.can_read_graph_source(
+              exact_alias.workspace_id,
+              e.project_id,
+              exact_alias.memory_id,
+              exact_alias.source_event_id
+            )
         ) AND v_query <> '' THEN 1
         WHEN strpos(lower(e.canonical_name), v_query) = 1 AND v_query <> '' THEN 2
         WHEN EXISTS (
           SELECT 1 FROM public.entity_aliases prefix_alias
           WHERE prefix_alias.entity_id = e.id
             AND strpos(prefix_alias.normalized_alias, v_query) = 1
+            AND app.can_read_graph_source(
+              prefix_alias.workspace_id,
+              e.project_id,
+              prefix_alias.memory_id,
+              prefix_alias.source_event_id
+            )
         ) AND v_query <> '' THEN 3
         ELSE 4
       END AS search_rank
@@ -67,6 +126,9 @@ BEGIN
       AND e.status = 'active'
       AND (e.valid_from IS NULL OR e.valid_from <= now())
       AND (e.valid_to IS NULL OR e.valid_to > now())
+      AND app.can_read_graph_source(
+        e.workspace_id, e.project_id, e.created_from_memory_id, e.source_event_id
+      )
       AND (
         v_query = ''
         OR strpos(lower(e.canonical_name), v_query) > 0
@@ -75,6 +137,12 @@ BEGIN
           SELECT 1 FROM public.entity_aliases matching_alias
           WHERE matching_alias.entity_id = e.id
             AND strpos(matching_alias.normalized_alias, v_query) > 0
+            AND app.can_read_graph_source(
+              matching_alias.workspace_id,
+              e.project_id,
+              matching_alias.memory_id,
+              matching_alias.source_event_id
+            )
             AND (matching_alias.valid_from IS NULL OR matching_alias.valid_from <= now())
             AND (matching_alias.valid_to IS NULL OR matching_alias.valid_to > now())
         )
@@ -112,6 +180,12 @@ BEGIN
       WHERE ea.entity_id = ranked.id
         AND (ea.valid_from IS NULL OR ea.valid_from <= now())
         AND (ea.valid_to IS NULL OR ea.valid_to > now())
+        AND app.can_read_graph_source(
+          ea.workspace_id,
+          ranked.project_id,
+          ea.memory_id,
+          ea.source_event_id
+        )
       ORDER BY ea.confidence DESC, ea.alias, ea.id
       LIMIT 20
     ) selected_alias
@@ -143,6 +217,7 @@ $$;
 CREATE OR REPLACE FUNCTION app.api_get_entity_graph(
   p_secret text,
   p_subject_id uuid,
+  p_project_id uuid,
   p_entity_id uuid,
   p_max_edges integer DEFAULT 48
 )
@@ -165,18 +240,30 @@ BEGIN
   IF p_entity_id IS NULL THEN
     RAISE EXCEPTION 'entity_id required' USING ERRCODE = '22023';
   END IF;
+  IF p_project_id IS NULL THEN
+    RAISE EXCEPTION 'project_id required' USING ERRCODE = '22023';
+  END IF;
   IF v_max_edges < 1 OR v_max_edges > 48 THEN
     RAISE EXCEPTION 'max_edges must be between 1 and 48' USING ERRCODE = '22023';
   END IF;
 
   SELECT * INTO v_entity
   FROM public.entities e
-  WHERE e.id = p_entity_id;
-  IF NOT FOUND OR v_entity.project_id IS NULL THEN
+  WHERE e.id = p_entity_id
+    AND e.project_id = p_project_id;
+  IF NOT FOUND THEN
     RAISE EXCEPTION 'entity not found' USING ERRCODE = 'P0002';
   END IF;
   IF NOT app.has_acl(
     v_entity.workspace_id, 'memory', 'read', v_entity.project_id, 'internal'
+  ) THEN
+    RAISE EXCEPTION 'forbidden' USING ERRCODE = '42501';
+  END IF;
+  IF NOT app.can_read_graph_source(
+    v_entity.workspace_id,
+    v_entity.project_id,
+    v_entity.created_from_memory_id,
+    v_entity.source_event_id
   ) THEN
     RAISE EXCEPTION 'forbidden' USING ERRCODE = '42501';
   END IF;
@@ -198,6 +285,12 @@ BEGIN
     WHERE selected_alias.entity_id = v_entity.id
       AND (selected_alias.valid_from IS NULL OR selected_alias.valid_from <= now())
       AND (selected_alias.valid_to IS NULL OR selected_alias.valid_to > now())
+      AND app.can_read_graph_source(
+        selected_alias.workspace_id,
+        v_entity.project_id,
+        selected_alias.memory_id,
+        selected_alias.source_event_id
+      )
     ORDER BY selected_alias.confidence DESC, selected_alias.alias, selected_alias.id
     LIMIT 100
   ) ea;
@@ -213,6 +306,9 @@ BEGIN
       AND (ee.from_entity_id = v_entity.id OR ee.to_entity_id = v_entity.id)
       AND (ee.valid_from IS NULL OR ee.valid_from <= now())
       AND (ee.valid_to IS NULL OR ee.valid_to > now())
+      AND app.can_read_graph_source(
+        ee.workspace_id, ee.project_id, ee.memory_id, ee.source_event_id
+      )
     ORDER BY ee.confidence DESC, ee.edge_type, ee.id
     LIMIT v_max_edges
   )
@@ -242,7 +338,13 @@ BEGIN
   INTO v_edges
   FROM selected_edges
   JOIN public.entities neighbor ON neighbor.id = selected_edges.neighbor_id
-  WHERE neighbor.project_id = v_entity.project_id;
+  WHERE neighbor.project_id = v_entity.project_id
+    AND app.can_read_graph_source(
+      neighbor.workspace_id,
+      neighbor.project_id,
+      neighbor.created_from_memory_id,
+      neighbor.source_event_id
+    );
 
   SELECT coalesce(jsonb_agg(jsonb_strip_nulls(jsonb_build_object(
     'id', linked.id,
@@ -394,7 +496,10 @@ BEGIN
     AND e.project_id = p_project_id
     AND e.status = 'active'
     AND (e.valid_from IS NULL OR e.valid_from <= now())
-    AND (e.valid_to IS NULL OR e.valid_to > now());
+    AND (e.valid_to IS NULL OR e.valid_to > now())
+    AND app.can_read_graph_source(
+      e.workspace_id, e.project_id, e.created_from_memory_id, e.source_event_id
+    );
   IF v_valid_seed_count <> cardinality(v_seed_ids) THEN
     RAISE EXCEPTION 'seed entity not found in project' USING ERRCODE = 'P0002';
   END IF;
@@ -433,6 +538,21 @@ BEGIN
         AND to_entity.project_id = p_project_id
         AND from_entity.status = 'active'
         AND to_entity.status = 'active'
+        AND app.can_read_graph_source(
+          ee.workspace_id, ee.project_id, ee.memory_id, ee.source_event_id
+        )
+        AND app.can_read_graph_source(
+          from_entity.workspace_id,
+          from_entity.project_id,
+          from_entity.created_from_memory_id,
+          from_entity.source_event_id
+        )
+        AND app.can_read_graph_source(
+          to_entity.workspace_id,
+          to_entity.project_id,
+          to_entity.created_from_memory_id,
+          to_entity.source_event_id
+        )
       ORDER BY ee.confidence DESC, ee.edge_type, ee.id
       LIMIT greatest(p_max_edges - cardinality(v_edge_ids) + 1, 1)
     LOOP
@@ -473,6 +593,9 @@ BEGIN
     WHERE ee.project_id = p_project_id
       AND (ee.from_entity_id = ANY(v_seed_ids) OR ee.to_entity_id = ANY(v_seed_ids))
       AND ee.confidence < p_min_confidence
+      AND app.can_read_graph_source(
+        ee.workspace_id, ee.project_id, ee.memory_id, ee.source_event_id
+      )
   ) THEN
     v_stopped_reason := 'low_evidence';
   END IF;
@@ -593,6 +716,7 @@ $$;
 CREATE OR REPLACE FUNCTION public.api_get_entity_graph(
   p_secret text,
   p_subject_id uuid,
+  p_project_id uuid,
   p_entity_id uuid,
   p_max_edges integer DEFAULT 48
 )
@@ -603,7 +727,7 @@ SECURITY DEFINER
 SET search_path = pg_catalog, public, app
 AS $$
   SELECT app.api_get_entity_graph(
-    p_secret, p_subject_id, p_entity_id, p_max_edges
+    p_secret, p_subject_id, p_project_id, p_entity_id, p_max_edges
   );
 $$;
 
@@ -629,31 +753,35 @@ AS $$
   );
 $$;
 
+REVOKE ALL ON FUNCTION app.can_read_graph_source(uuid, uuid, uuid, uuid)
+  FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON FUNCTION app.api_search_entities(text, uuid, uuid, text, integer)
   FROM PUBLIC, anon, authenticated;
-REVOKE ALL ON FUNCTION app.api_get_entity_graph(text, uuid, uuid, integer)
+REVOKE ALL ON FUNCTION app.api_get_entity_graph(text, uuid, uuid, uuid, integer)
   FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON FUNCTION app.api_graph_retrieve(
   text, uuid, uuid, uuid[], integer, integer, integer, numeric
 ) FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON FUNCTION public.api_search_entities(text, uuid, uuid, text, integer)
   FROM PUBLIC, anon, authenticated;
-REVOKE ALL ON FUNCTION public.api_get_entity_graph(text, uuid, uuid, integer)
+REVOKE ALL ON FUNCTION public.api_get_entity_graph(text, uuid, uuid, uuid, integer)
   FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON FUNCTION public.api_graph_retrieve(
   text, uuid, uuid, uuid[], integer, integer, integer, numeric
 ) FROM PUBLIC, anon, authenticated;
 
+GRANT EXECUTE ON FUNCTION app.can_read_graph_source(uuid, uuid, uuid, uuid)
+  TO service_role;
 GRANT EXECUTE ON FUNCTION app.api_search_entities(text, uuid, uuid, text, integer)
   TO service_role;
-GRANT EXECUTE ON FUNCTION app.api_get_entity_graph(text, uuid, uuid, integer)
+GRANT EXECUTE ON FUNCTION app.api_get_entity_graph(text, uuid, uuid, uuid, integer)
   TO service_role;
 GRANT EXECUTE ON FUNCTION app.api_graph_retrieve(
   text, uuid, uuid, uuid[], integer, integer, integer, numeric
 ) TO service_role;
 GRANT EXECUTE ON FUNCTION public.api_search_entities(text, uuid, uuid, text, integer)
   TO service_role;
-GRANT EXECUTE ON FUNCTION public.api_get_entity_graph(text, uuid, uuid, integer)
+GRANT EXECUTE ON FUNCTION public.api_get_entity_graph(text, uuid, uuid, uuid, integer)
   TO service_role;
 GRANT EXECUTE ON FUNCTION public.api_graph_retrieve(
   text, uuid, uuid, uuid[], integer, integer, integer, numeric

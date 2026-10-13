@@ -4336,6 +4336,15 @@ describe('memory api demo slice', () => {
     expect(missingProject.status).toBe(400);
     expect(await missingProject.json()).toEqual({ error: 'project_id is required' });
 
+    const missingInspectorProject = await app.request(
+      '/v1/entities/eeeeeeee-eeee-4eee-8eee-eeeeeeeeee41',
+      { headers: { 'x-actor-key': 'cursor' } },
+    );
+    expect(missingInspectorProject.status).toBe(400);
+    expect(await missingInspectorProject.json()).toEqual({
+      error: 'project_id is required',
+    });
+
     const localOnly = await app.request(
       `/v1/entities?project_id=${memoryOsProjectId}&query=Slice`,
       { headers: { 'x-actor-key': 'cursor' } },
@@ -4392,12 +4401,16 @@ describe('memory api demo slice', () => {
       limit: 20,
     });
 
-    const detail = await app.request(`/v1/entities/${entityId}`, {
+    const detail = await app.request(
+      `/v1/entities/${entityId}?project_id=${memoryOsProjectId}`,
+      {
       headers: { 'x-actor-key': 'cursor' },
-    });
+      },
+    );
     expect(detail.status).toBe(200);
     expect(gateway.getEntityGraph).toHaveBeenCalledWith({
       subjectId: cursor,
+      projectId: memoryOsProjectId,
       entityId,
       maxEdges: 48,
     });

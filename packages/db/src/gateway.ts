@@ -256,12 +256,14 @@ export class SupabaseMemoryGateway {
 
   async getEntityGraph(input: {
     subjectId: string;
+    projectId: string;
     entityId: string;
     maxEdges?: number;
   }) {
     const { data, error } = await this.client.rpc('api_get_entity_graph', {
       p_secret: this.apiSecret,
       p_subject_id: input.subjectId,
+      p_project_id: input.projectId,
       p_entity_id: input.entityId,
       p_max_edges: input.maxEdges ?? 48,
     });

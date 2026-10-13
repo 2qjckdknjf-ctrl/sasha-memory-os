@@ -79,6 +79,11 @@ export function EntityGraphPage({
   useEffect(() => {
     let cancelled = false;
     if (!backendResolved || !entityId) return;
+    if (!projectId) {
+      setDetail(null);
+      setError('Сначала выберите конкретный проект.');
+      return;
+    }
     if (backend === 'local') {
       setDetail(null);
       setError('Граф доступен только при подключённой базе Supabase.');
@@ -88,7 +93,12 @@ export function EntityGraphPage({
     setLoading(true);
     setError(null);
     setTraversal(null);
-    void apiGet<EntityGraphResponse>(`/v1/entities/${entityId}`, subjectId, actor)
+    const params = new URLSearchParams({ project_id: projectId });
+    void apiGet<EntityGraphResponse>(
+      `/v1/entities/${entityId}?${params}`,
+      subjectId,
+      actor,
+    )
       .then((result) => {
         if (!cancelled) setDetail(result);
       })
@@ -105,7 +115,7 @@ export function EntityGraphPage({
     return () => {
       cancelled = true;
     };
-  }, [actor, backend, backendResolved, entityId, subjectId]);
+  }, [actor, backend, backendResolved, entityId, projectId, subjectId]);
 
   async function runTraversal() {
     if (!detail) return;

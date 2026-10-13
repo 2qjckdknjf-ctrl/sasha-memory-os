@@ -29,6 +29,9 @@ describe('M17.5 live graph security pack', () => {
     expect(migration).toContain('PERFORM app.assert_api_secret(p_secret)');
     expect(migration).toContain('PERFORM app.with_subject(p_subject_id)');
     expect(migration).toContain("RAISE EXCEPTION 'project_id required'");
+    expect(migration).toContain('CREATE OR REPLACE FUNCTION app.can_read_graph_source');
+    expect(migration).toContain('source_memory.sensitivity');
+    expect(migration).toContain('source_event.sensitivity');
     expect(migration).toContain("OR ee.evidence <> '{}'::jsonb");
     expect(migration).not.toContain("'44444444-4444-4444-8444-444444444401'");
   });
