@@ -201,6 +201,33 @@ describe("Edge project context pack", () => {
     expect(result).toEqual(buildProjectContextPack(raw, options));
   });
 
+  it("matches shared projection of in-progress project state", () => {
+    const raw = {
+      projectId,
+      decisions: [],
+      tasks: [],
+      facts: [],
+      state: {
+        id: "active-state",
+        project_id: projectId,
+        summary: "General project summary",
+        created_at: "2026-10-13T15:59:00Z",
+        state: {
+          in_progress: ["Finish the live context-pack acceptance"],
+        },
+      },
+    };
+    const options = { projectId };
+    const result = buildEdgeProjectContextPack(raw, options);
+
+    expect(result.currentGoal).toEqual({
+      text: "Finish the live context-pack acceptance",
+      citations: ["project-state:active-state"],
+    });
+    expect(result.nextWork[0]).toEqual(result.currentGoal);
+    expect(result).toEqual(buildProjectContextPack(raw, options));
+  });
+
   it("matches shared active-task projection", () => {
     const raw = {
       projectId,
@@ -292,6 +319,33 @@ describe("Edge project context pack", () => {
     expect(result.budget.truncated).toBe(true);
     expect(result.canonicalDecisions.length).toBeGreaterThanOrEqual(1);
     expect(result.recentMerges.length).toBeLessThan(3);
+    expect(result).toEqual(buildProjectContextPack(raw, options));
+  });
+
+  it("matches shared merge-evidence classification", () => {
+    const raw = {
+      projectId,
+      decisions: [
+        {
+          ...memory("open-pr", "Review PR #101", "2026-10-13T15:59:00Z"),
+          content: "PR: https://github.com/example/repo/pull/101",
+        },
+        {
+          ...memory("merged-pr", "Completed PR #100", "2026-10-13T15:58:00Z"),
+          content: "Merged: https://github.com/example/repo/pull/100",
+        },
+      ],
+      tasks: [],
+      facts: [],
+    };
+    const options = { projectId };
+    const result = buildEdgeProjectContextPack(raw, options);
+
+    expect(result.recentMerges).toHaveLength(1);
+    expect(result.recentMerges[0]).toMatchObject({
+      pullRequestUrl: "https://github.com/example/repo/pull/100",
+      mergeSha: null,
+    });
     expect(result).toEqual(buildProjectContextPack(raw, options));
   });
 });

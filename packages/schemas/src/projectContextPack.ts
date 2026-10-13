@@ -315,6 +315,23 @@ function githubPullRequestUrl(content: string): string | null {
   return null;
 }
 
+function hasExplicitMergedMarker(content: string): boolean {
+  return content
+    .slice(0, MAX_PARSED_CONTENT_CHARS)
+    .split('\n')
+    .some((line) => {
+      const normalized = line.trim().toLowerCase();
+      return (
+        normalized === 'merged' ||
+        normalized.startsWith('merged:') ||
+        normalized.startsWith('merged ') ||
+        normalized === 'status: merged' ||
+        normalized === 'status=merged' ||
+        normalized === 'merge status: merged'
+      );
+    });
+}
+
 function stateValues(rawState: unknown, key: string): string[] {
   const stateRow = objectOf(rawState);
   const state = objectOf(stateRow.state);
@@ -478,6 +495,7 @@ export function buildProjectContextPack(
         sourceEventId: null,
       }
     : null;
+  const stateInProgress = stateValues(raw.state, 'in_progress');
   const stateNext = stateValues(raw.state, 'next');
   const nextSources: Array<{
     kind: 'handoff' | 'state' | 'milestone' | 'task';
@@ -493,7 +511,7 @@ export function buildProjectContextPack(
     },
     {
       kind: 'state' as const,
-      values: stateNext,
+      values: [...stateInProgress, ...stateNext],
       citation: stateCitation,
       recordedMs: dateMs(stateCitation?.recordedAt) ?? -1,
     },
@@ -688,7 +706,7 @@ export function buildProjectContextPack(
         const pullRequestUrl = githubPullRequestUrl(content);
         const mergeSha =
           /(?:Merge SHA:|merge SHA)\s*([0-9a-f]{40})/i.exec(content)?.[1] ?? null;
-        return pullRequestUrl || mergeSha
+        return mergeSha || hasExplicitMergedMarker(content)
           ? {
               pullRequestUrl,
               mergeSha,

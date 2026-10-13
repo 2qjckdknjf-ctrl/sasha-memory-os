@@ -42,7 +42,8 @@ The default budget is 1,800 estimated tokens. Callers may request `max_tokens`; 
 - Project state and handoff data are optional sources and each requires its own `read` ACL; `memory.read` alone never exposes either source.
 - Every returned claim carries citation IDs; citation metadata preserves source ID, project ID, recorded time and source-event provenance.
 - Freshness is computed from the newest readable memory, project-state update or handoff using the 24-hour operational SLA; absence of a trustworthy timestamp is reported as `unknown`.
-- Active task memories participate in current goal and next-work selection. A newer project-state snapshot supersedes older milestone next-work and blocker text, including an explicitly cleared blocker list.
+- Active task memories and officially tracked `state.in_progress` items participate in current goal and next-work selection. A newer project-state snapshot supersedes older milestone next-work and blocker text, including an explicitly cleared blocker list.
+- A GitHub PR URL is classified as a recent merge only when the same memory also carries a merge SHA or an explicit merged-status marker; review-stage and open PR links are not presented as merged.
 
 ## Acceptance
 

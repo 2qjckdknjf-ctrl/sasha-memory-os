@@ -204,6 +204,33 @@ describe('M18.2 project context pack', () => {
     expect(pack.nextWork[0]).toEqual(pack.currentGoal);
   });
 
+  it('prioritizes officially tracked in-progress work from project state', () => {
+    const pack = buildProjectContextPack(
+      {
+        projectId,
+        decisions: [],
+        tasks: [],
+        facts: [],
+        state: {
+          id: 'active-state',
+          project_id: projectId,
+          summary: 'General project summary',
+          createdAt: '2026-10-13T15:59:00.000Z',
+          state: {
+            in_progress: ['Finish the live context-pack acceptance'],
+          },
+        },
+      },
+      { projectId },
+    );
+
+    expect(pack.currentGoal).toEqual({
+      text: 'Finish the live context-pack acceptance',
+      citations: ['project-state:active-state'],
+    });
+    expect(pack.nextWork[0]).toEqual(pack.currentGoal);
+  });
+
   it('projects active task memories into current goal and next work', () => {
     const pack = buildProjectContextPack(
       {
@@ -293,6 +320,35 @@ describe('M18.2 project context pack', () => {
     expect(pack.budget.estimatedTokens).toBeLessThanOrEqual(768);
     expect(pack.canonicalDecisions.length).toBeGreaterThanOrEqual(1);
     expect(pack.recentMerges.length).toBeLessThan(3);
+  });
+
+  it('does not classify a linked pull request as merged without merge evidence', () => {
+    const pack = buildProjectContextPack(
+      {
+        projectId,
+        decisions: [
+          decision({
+            id: 'open-pr',
+            title: 'Review PR #101',
+            content: 'PR: https://github.com/example/repo/pull/101',
+            recordedAt: '2026-10-13T15:59:00.000Z',
+          }),
+          decision({
+            id: 'merged-pr',
+            title: 'Completed PR #100',
+            content: 'Merged: https://github.com/example/repo/pull/100',
+            recordedAt: '2026-10-13T15:58:00.000Z',
+          }),
+        ],
+      },
+      { projectId },
+    );
+
+    expect(pack.recentMerges).toHaveLength(1);
+    expect(pack.recentMerges[0]).toMatchObject({
+      pullRequestUrl: 'https://github.com/example/repo/pull/100',
+      mergeSha: null,
+    });
   });
 
   it('enforces a bounded response and fails closed on cross-project sources', () => {
