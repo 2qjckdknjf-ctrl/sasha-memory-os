@@ -650,7 +650,7 @@ export function buildProjectContextPack(
           ? [currentNextSource.citation.id]
           : [],
       }
-    : stringOf(stateRow.summary)
+    : !stateClearsNext && stringOf(stateRow.summary)
       ? {
           text: normalizedText(stateRow.summary, 520),
           citations: stateCitation ? [stateCitation.id] : [],
@@ -658,17 +658,29 @@ export function buildProjectContextPack(
       : null;
 
   const stateBlocked = stateValues(raw.state, 'blocked');
+  const stateDefinesBlocked = Object.prototype.hasOwnProperty.call(
+    statePayload,
+    'blocked',
+  );
   const milestoneRecordedMs =
     dateMs(milestoneSource ? memoryRecordedAt(milestoneSource) : null) ?? -1;
+  const stateSupersedesBlockers = Boolean(stateCitation && stateDefinesBlocked);
+  const effectiveHandoffBlockers =
+    stateSupersedesBlockers &&
+      stateRecordedMs >= (dateMs(handoffCreatedAt) ?? -1)
+      ? []
+      : [...handoffBlockers, ...handoffOpenItems];
   const effectiveMilestoneBlockers =
-    stateCitation && stateRecordedMs >= milestoneRecordedMs ? [] : blockerTexts;
+    stateSupersedesBlockers && stateRecordedMs >= milestoneRecordedMs
+      ? []
+      : blockerTexts;
   const blockerSources: Array<{
     values: string[];
     citation: ProjectContextCitation | null;
     recordedMs: number;
   }> = [
     {
-      values: [...handoffBlockers, ...handoffOpenItems].filter(
+      values: effectiveHandoffBlockers.filter(
         (value) => !isNoBlockerSentinel(value),
       ),
       citation: handoffCitation,
@@ -784,6 +796,7 @@ export function buildProjectContextPack(
   let includeCurrentMilestone = true;
   let includeLatestHandoff = true;
   const minimumCanonicalLimit = canonicalSources.length > 0 ? 1 : 0;
+  const minimumConflictLimit = stateConflicts.length > 0 ? 1 : 0;
 
   const create = (): ProjectContextPack => {
     const canonicalDecisions = canonicalSources
@@ -1031,9 +1044,9 @@ export function buildProjectContextPack(
     else if (blockerLimit > 1) blockerLimit -= 1;
     else if (nextLimit > 1) nextLimit -= 1;
     else if (handoffItemLimit > 1) handoffItemLimit -= 1;
-    else if (conflictLimit > 0) conflictLimit -= 1;
     else if (nextLimit > 0) nextLimit = 0;
     else if (expandedText) expandedText = false;
+    else if (conflictLimit > minimumConflictLimit) conflictLimit -= 1;
     else if (includeCurrentMilestone) includeCurrentMilestone = false;
     else if (goalChars > 120) goalChars -= 60;
     else if (itemChars > 120) itemChars -= 40;
@@ -1044,6 +1057,7 @@ export function buildProjectContextPack(
     else if (handoffItemLimit > 0) handoffItemLimit = 0;
     else if (includeLatestHandoff) includeLatestHandoff = false;
     else if (blockerLimit > 0) blockerLimit = 0;
+    else if (conflictLimit > 0) conflictLimit = 0;
     else break;
     pack = create();
   }

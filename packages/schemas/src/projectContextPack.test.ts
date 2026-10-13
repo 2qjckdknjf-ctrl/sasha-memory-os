@@ -377,6 +377,7 @@ describe('M18.2 project context pack', () => {
           id: 'clear-next-state',
           project_id: projectId,
           created_at: '2026-10-13T15:59:00.000Z',
+          summary: 'Historical summary must not become a current goal',
           state: { in_progress: [], next: [] },
         },
       },
@@ -386,6 +387,38 @@ describe('M18.2 project context pack', () => {
     expect(pack.currentGoal).toBeNull();
     expect(pack.nextWork).toEqual([]);
     expect(pack.currentMilestone?.id).toBe('older-next');
+  });
+
+  it('lets newer project state clear older handoff blockers', () => {
+    const pack = buildProjectContextPack(
+      {
+        projectId,
+        decisions: [],
+        tasks: [],
+        facts: [],
+        state: {
+          id: 'clear-blockers-state',
+          project_id: projectId,
+          created_at: '2026-10-13T15:59:00.000Z',
+          state: { blocked: [] },
+        },
+        latestHandoff: {
+          id: 'older-handoff',
+          project_id: projectId,
+          created_at: '2026-10-13T15:00:00.000Z',
+          payload: {
+            blockers: ['resolved handoff blocker'],
+            open_items: ['resolved open item'],
+          },
+        },
+      },
+      { projectId },
+    );
+
+    expect(pack.activeBlockers).toEqual([]);
+    expect(pack.latestHandoff?.blockers[0]?.text).toBe(
+      'resolved handoff blocker',
+    );
   });
 
   it('marks fixed section caps and text clipping in the budget receipt', () => {
@@ -506,6 +539,40 @@ describe('M18.2 project context pack', () => {
     expect(pack.budget.estimatedTokens).toBeLessThanOrEqual(768);
     expect(pack.activeBlockers).toHaveLength(1);
     expect(pack.activeBlockers[0]?.text).toContain('preserve this blocker');
+    expect(pack.nextWork).toEqual([]);
+  });
+
+  it('preserves one unresolved conflict before redundant context', () => {
+    const pack = buildProjectContextPack(
+      {
+        projectId,
+        decisions: [],
+        tasks: [],
+        facts: [],
+        state: {
+          id: 'tight-conflict-state',
+          project_id: projectId,
+          created_at: '2026-10-13T15:59:00.000Z',
+          state: {
+            in_progress: ['finish contested work '.repeat(25)],
+            blocked: ['preserve this blocker '.repeat(15)],
+            risks: ['preserve this unresolved conflict '.repeat(15)],
+          },
+        },
+      },
+      {
+        projectId,
+        maxTokens: 768,
+        now: new Date('2026-10-13T16:00:00.000Z'),
+      },
+    );
+
+    expect(pack.budget.estimatedTokens).toBeLessThanOrEqual(768);
+    expect(pack.activeBlockers).toHaveLength(1);
+    expect(pack.unresolvedConflicts).toHaveLength(1);
+    expect(pack.unresolvedConflicts[0]?.text).toContain(
+      'preserve this unresolved conflict',
+    );
     expect(pack.nextWork).toEqual([]);
   });
 

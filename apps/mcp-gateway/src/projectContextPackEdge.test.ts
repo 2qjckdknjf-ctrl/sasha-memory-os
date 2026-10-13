@@ -388,6 +388,7 @@ describe("Edge project context pack", () => {
         id: "clear-next-state",
         project_id: projectId,
         created_at: "2026-10-13T15:59:00Z",
+        summary: "Historical summary must not become a current goal",
         state: { in_progress: [], next: [] },
       },
     };
@@ -400,6 +401,41 @@ describe("Edge project context pack", () => {
     expect(result.currentGoal).toBeNull();
     expect(result.nextWork).toEqual([]);
     expect(result.currentMilestone?.id).toBe("older-next");
+    expect(result).toEqual(buildProjectContextPack(raw, options));
+  });
+
+  it("matches shared clearing of older handoff blockers by newer state", () => {
+    const raw = {
+      projectId,
+      decisions: [],
+      tasks: [],
+      facts: [],
+      state: {
+        id: "clear-blockers-state",
+        project_id: projectId,
+        created_at: "2026-10-13T15:59:00Z",
+        state: { blocked: [] },
+      },
+      latestHandoff: {
+        id: "older-handoff",
+        project_id: projectId,
+        created_at: "2026-10-13T15:00:00Z",
+        payload: {
+          blockers: ["resolved handoff blocker"],
+          open_items: ["resolved open item"],
+        },
+      },
+    };
+    const options = {
+      projectId,
+      now: new Date("2026-10-13T16:00:00Z"),
+    };
+    const result = buildEdgeProjectContextPack(raw, options);
+
+    expect(result.activeBlockers).toEqual([]);
+    expect(result.latestHandoff?.blockers[0]?.text).toBe(
+      "resolved handoff blocker",
+    );
     expect(result).toEqual(buildProjectContextPack(raw, options));
   });
 
@@ -530,6 +566,40 @@ describe("Edge project context pack", () => {
     expect(result.budget.estimatedTokens).toBeLessThanOrEqual(768);
     expect(result.activeBlockers).toHaveLength(1);
     expect(result.activeBlockers[0]?.text).toContain("preserve this blocker");
+    expect(result.nextWork).toEqual([]);
+    expect(result).toEqual(buildProjectContextPack(raw, options));
+  });
+
+  it("matches shared unresolved-conflict priority at the minimum budget", () => {
+    const raw = {
+      projectId,
+      decisions: [],
+      tasks: [],
+      facts: [],
+      state: {
+        id: "tight-conflict-state",
+        project_id: projectId,
+        created_at: "2026-10-13T15:59:00Z",
+        state: {
+          in_progress: ["finish contested work ".repeat(25)],
+          blocked: ["preserve this blocker ".repeat(15)],
+          risks: ["preserve this unresolved conflict ".repeat(15)],
+        },
+      },
+    };
+    const options = {
+      projectId,
+      maxTokens: 768,
+      now: new Date("2026-10-13T16:00:00Z"),
+    };
+    const result = buildEdgeProjectContextPack(raw, options);
+
+    expect(result.budget.estimatedTokens).toBeLessThanOrEqual(768);
+    expect(result.activeBlockers).toHaveLength(1);
+    expect(result.unresolvedConflicts).toHaveLength(1);
+    expect(result.unresolvedConflicts[0]?.text).toContain(
+      "preserve this unresolved conflict",
+    );
     expect(result.nextWork).toEqual([]);
     expect(result).toEqual(buildProjectContextPack(raw, options));
   });
