@@ -255,6 +255,7 @@ function compactProjectContext(value) {
       nextWork: result.nextWork ?? [],
       sourceFreshness: result.sourceFreshness ?? null,
       citations: result.citations ?? [],
+      provenance: result.provenance ?? null,
       budget: result.budget ?? null,
       text: result.text ?? '',
     };

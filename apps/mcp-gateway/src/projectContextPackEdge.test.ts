@@ -125,4 +125,47 @@ describe("Edge project context pack", () => {
     expect(result.budget.estimatedTokens).toBeLessThanOrEqual(768);
     expect(result).toEqual(buildProjectContextPack(raw, options));
   });
+
+  it("matches shared prioritization of project-state active decision pins", () => {
+    const pinnedId = "66666666-6666-4666-8666-666666666601";
+    const newer = Array.from({ length: 7 }, (_, index) => ({
+      ...memory(
+        `newer-${index}`,
+        `Newer decision ${index}`,
+        `2026-10-13T15:5${index}:00Z`,
+      ),
+      content: `Newer decision content ${index}`,
+    }));
+    const raw = {
+      projectId,
+      decisions: [
+        ...newer,
+        {
+          ...memory(
+            pinnedId,
+            "Pinned architecture decision",
+            "2026-10-01T00:00:00Z",
+          ),
+          content: "This older decision remains canonical by project state.",
+        },
+      ],
+      tasks: [],
+      facts: [],
+      state: {
+        id: "state-pins",
+        project_id: projectId,
+        state: { active_decisions: [pinnedId] },
+      },
+    };
+    const options = {
+      projectId,
+      maxTokens: 1800,
+      now: new Date("2026-10-13T16:00:00Z"),
+    };
+    const result = buildEdgeProjectContextPack(raw, options);
+
+    expect(result.canonicalDecisions[0]?.id).toBe(pinnedId);
+    expect(result.canonicalDecisions).toHaveLength(6);
+    expect(result).toEqual(buildProjectContextPack(raw, options));
+  });
 });

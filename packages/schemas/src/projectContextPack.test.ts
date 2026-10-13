@@ -137,6 +137,41 @@ describe('M18.2 project context pack', () => {
     expect(pack.budget.estimatedTokens).toBeLessThanOrEqual(768);
   });
 
+  it('prioritizes project-state active decision pins over newer decisions', () => {
+    const pinnedId = '66666666-6666-4666-8666-666666666601';
+    const newer = Array.from({ length: 7 }, (_, index) =>
+      decision({
+        id: `newer-${index}`,
+        title: `Newer decision ${index}`,
+        content: `Newer decision content ${index}`,
+        recordedAt: `2026-10-13T15:5${index}:00.000Z`,
+      }),
+    );
+    const pack = buildProjectContextPack(
+      {
+        projectId,
+        decisions: [
+          ...newer,
+          decision({
+            id: pinnedId,
+            title: 'Pinned architecture decision',
+            content: 'This older decision remains canonical by project state.',
+            recordedAt: '2026-10-01T00:00:00.000Z',
+          }),
+        ],
+        state: {
+          id: 'state-pins',
+          project_id: projectId,
+          state: { active_decisions: [pinnedId] },
+        },
+      },
+      { projectId, maxTokens: 1800 },
+    );
+
+    expect(pack.canonicalDecisions[0]?.id).toBe(pinnedId);
+    expect(pack.canonicalDecisions).toHaveLength(6);
+  });
+
   it('enforces a bounded response and fails closed on cross-project sources', () => {
     const decisions = Array.from({ length: 30 }, (_, index) =>
       decision({

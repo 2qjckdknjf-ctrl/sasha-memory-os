@@ -245,12 +245,39 @@ export function buildEdgeProjectContextPack(
   const allSources = [...decisions, ...tasks, ...facts];
   const maxTokens = resolveEdgeProjectContextMaxTokens(options.maxTokens);
   const now = options.now ?? new Date();
-  const canonicalSources = decisions.filter((memory) =>
-    !/^(?:ChatGPT smoke decision|Cursor .*receipt)/i.test(textOf(memory.title))
+  const stateRow = recordOf(raw.state);
+  const stateProjectId = textOf(stateRow.projectId ?? stateRow.project_id);
+  if (
+    stateProjectId &&
+    stateProjectId.trim().toLowerCase() !== projectId.trim().toLowerCase()
+  ) {
+    throw new Error("project context state project mismatch");
+  }
+  const canonicalCandidates = decisions.filter((memory) => {
+    const status = textOf(memory.status).toLowerCase();
+    return ["active", "verified"].includes(status) &&
+      !/^(?:ChatGPT smoke decision|Cursor .*receipt)/i.test(
+        textOf(memory.title),
+      );
+  });
+  const activeDecisionRanks = new Map(
+    stateValues(raw.state, "active_decisions").map((id, index) => [
+      id.toLowerCase(),
+      index,
+    ]),
   );
-  const milestoneSource = canonicalSources.find((memory) =>
+  const canonicalSources = [...canonicalCandidates].sort((left, right) => {
+    const leftRank = activeDecisionRanks.get(textOf(left.id).toLowerCase());
+    const rightRank = activeDecisionRanks.get(textOf(right.id).toLowerCase());
+    if (leftRank !== undefined || rightRank !== undefined) {
+      return (leftRank ?? Number.MAX_SAFE_INTEGER) -
+        (rightRank ?? Number.MAX_SAFE_INTEGER);
+    }
+    return 0;
+  });
+  const milestoneSource = canonicalCandidates.find((memory) =>
     hasMilestoneMarker(textOf(memory.title))
-  ) ?? canonicalSources[0] ?? null;
+  ) ?? canonicalCandidates[0] ?? null;
   const milestoneCitation = milestoneSource
     ? citation(milestoneSource, projectId)
     : null;
@@ -260,14 +287,6 @@ export function buildEdgeProjectContextPack(
   const blockerTexts = milestoneSource
     ? blockersFrom(textOf(milestoneSource.content))
     : [];
-  const stateRow = recordOf(raw.state);
-  const stateProjectId = textOf(stateRow.projectId ?? stateRow.project_id);
-  if (
-    stateProjectId &&
-    stateProjectId.trim().toLowerCase() !== projectId.trim().toLowerCase()
-  ) {
-    throw new Error("project context state project mismatch");
-  }
   const stateCitation = textOf(stateRow.id)
     ? {
       id: `project-state:${compact(stateRow.id, 128)}`,
@@ -468,7 +487,7 @@ export function buildEdgeProjectContextPack(
       blockerSeen.add(key);
       return true;
     }).slice(0, blockerLimit);
-    const recentMerges = canonicalSources.map((memory) => {
+    const recentMerges = canonicalCandidates.map((memory) => {
       const content = textOf(memory.content);
       const pullRequestUrl = githubPullRequestUrl(content);
       const mergeSha =

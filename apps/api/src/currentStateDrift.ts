@@ -44,8 +44,8 @@ export const CURRENT_STATE_PATH = resolve(
 
 export const OFFICIAL_M14_1_BASELINE_MANIFEST_VERSION = 'm14.1-v1' as const;
 export const CURRENT_OPERATIONAL_MILESTONE =
-  'm18-project-context-pack' as const;
-export const CURRENT_NEXT_SLICE = 'M18.3_ROMA_INTEGRATION' as const;
+  'm18-cursor-bootstrap-contract' as const;
+export const CURRENT_NEXT_SLICE = 'M18.2_PROJECT_CONTEXT_PACK' as const;
 
 export type CurrentStateManifest = {
   manifestVersion: string;
@@ -266,10 +266,10 @@ export function validateCurrentStateDrift(
     });
   }
 
-  if (manifest.completedThrough !== 'M18.2') {
+  if (manifest.completedThrough !== 'M18.1') {
     findings.push({
       code: 'completed-through',
-      message: `expected contractPacks completedThrough M18.2, got ${manifest.completedThrough}`,
+      message: `expected contractPacks completedThrough M18.1, got ${manifest.completedThrough}`,
     });
   }
 

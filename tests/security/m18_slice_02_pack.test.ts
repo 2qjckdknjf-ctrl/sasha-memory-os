@@ -38,9 +38,10 @@ describe('M18.2 project context pack', () => {
     expect(edge).toContain('buildEdgeProjectContextPack');
     expect(cursor).toContain("result.packVersion === 'm18-s02-v1'");
     expect(cursor).toContain('canonicalDecisions: result.canonicalDecisions ?? []');
+    expect(cursor).toContain('provenance: result.provenance ?? null');
     expect(current).toMatchObject({
-      completedThrough: 'M18.2',
-      nextSlice: 'M18.3_ROMA_INTEGRATION',
+      completedThrough: 'M18.1',
+      nextSlice: 'M18.2_PROJECT_CONTEXT_PACK',
       officialPacks: { m18ProjectContext: 'm18-s02-v1' },
       chatgptModeA: { toolCount: 7 },
     });

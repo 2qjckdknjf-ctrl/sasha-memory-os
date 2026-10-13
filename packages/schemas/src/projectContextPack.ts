@@ -379,17 +379,39 @@ export function buildProjectContextPack(
   const facts = validateSources(arrayOf(raw.facts), projectId);
   const maxTokens = resolveProjectContextMaxTokens(options.maxTokens);
   const now = options.now ?? new Date();
+  const stateRow = objectOf(raw.state);
+  const stateProjectId = stringOf(stateRow.projectId ?? stateRow.project_id);
+  if (stateProjectId && !sameProject(stateProjectId, projectId)) {
+    throw new Error('project context state project mismatch');
+  }
   const noiseTitle = /^(?:ChatGPT smoke decision|Cursor .*receipt)/i;
-  const canonicalSources = decisions.filter((memory) => {
+  const canonicalCandidates = decisions.filter((memory) => {
     const status = stringOf(memory.status).toLowerCase();
     return (
       ['active', 'verified'].includes(status) &&
       !noiseTitle.test(stringOf(memory.title))
     );
   });
+  const activeDecisionRanks = new Map(
+    stateValues(raw.state, 'active_decisions').map((id, index) => [
+      id.toLowerCase(),
+      index,
+    ]),
+  );
+  const canonicalSources = [...canonicalCandidates].sort((left, right) => {
+    const leftRank = activeDecisionRanks.get(stringOf(left.id).toLowerCase());
+    const rightRank = activeDecisionRanks.get(stringOf(right.id).toLowerCase());
+    if (leftRank !== undefined || rightRank !== undefined) {
+      return (leftRank ?? Number.MAX_SAFE_INTEGER) -
+        (rightRank ?? Number.MAX_SAFE_INTEGER);
+    }
+    return 0;
+  });
   const milestoneSource =
-    canonicalSources.find((memory) => hasMilestoneMarker(stringOf(memory.title))) ??
-    canonicalSources[0] ??
+    canonicalCandidates.find((memory) =>
+      hasMilestoneMarker(stringOf(memory.title))
+    ) ??
+    canonicalCandidates[0] ??
     null;
   const milestoneCitation = milestoneSource
     ? citationForMemory(milestoneSource, projectId)
@@ -400,11 +422,6 @@ export function buildProjectContextPack(
   const blockerTexts = milestoneSource
     ? blockersFromContent(stringOf(milestoneSource.content))
     : [];
-  const stateRow = objectOf(raw.state);
-  const stateProjectId = stringOf(stateRow.projectId ?? stateRow.project_id);
-  if (stateProjectId && !sameProject(stateProjectId, projectId)) {
-    throw new Error('project context state project mismatch');
-  }
   const stateCitation: ProjectContextCitation | null = stringOf(stateRow.id)
     ? {
         id: `project-state:${normalizedText(stateRow.id, 128)}`,
@@ -611,7 +628,7 @@ export function buildProjectContextPack(
       blockerSeen.add(key);
       return true;
     }).slice(0, blockerLimit);
-    const recentMerges = canonicalSources
+    const recentMerges = canonicalCandidates
       .map((memory) => {
         const content = stringOf(memory.content);
         const pullRequestUrl = githubPullRequestUrl(content);
