@@ -4,6 +4,10 @@
 
 This document captures the AI architecture ideas that belong in Sasha Memory OS as the shared context/knowledge layer for multiple projects and agents. Memory OS should not become a generic agent runtime; its job is to provide governed, provenance-aware, project-scoped context to AISTROYKA, ROMA OS, Growth OS, HiAir and development agents.
 
+## Execution precedence — clarified 2026-10-13
+
+This September document is a capability-priority map, not the current implementation queue. The authoritative execution order is [CURRENT_STATE.json](engineering/CURRENT_STATE.json) and the canonical completion plan cited in AGENTS.md. Start with `SHARED_MEMORY_E2E_REMEDIATION`; retain the M17.4 graph-backfill freeze until its existing live acceptance gates pass. Existing M17.3/entity/graph/retrieval implementations must be reused, not restarted. The [2026-10-13 reconciliation](AI_DIGEST_RECONCILIATION_2026-10-13.md) maps each M-* refinement to checked code, blockers, priority and acceptance criteria. P0 below means a requirement before the relevant future operation, not permission to skip the active canonical remediation.
+
 ## Principles
 
 - Memory is not truth by default. Every durable fact should carry provenance, scope, confidence and freshness.
@@ -14,7 +18,7 @@ This document captures the AI architecture ideas that belong in Sasha Memory OS 
 - Make every context pack inspectable so an agent can explain what it used.
 - Keep agent skills and business logic outside Memory OS; Memory OS exposes context contracts and tools.
 
-## P0 — Design / implement next
+## P0 — Contract requirements within the canonical sequence
 
 | ID | Capability | Concrete implementation | Definition of done |
 |---|---|---|---|
@@ -29,7 +33,7 @@ This document captures the AI architecture ideas that belong in Sasha Memory OS 
 | M-09 | Decision Memory | Durable decision objects: decision, rationale, alternatives, owner, date, affected projects/components, supersedes/superseded_by and evidence. | Decision schema + read-after-write + conflict/supersession behavior + retrieval tests. |
 | M-10 | Context Quality Evals | Measure precision/recall, stale-context rate, cross-project leakage, unsupported assertions, conflict surfacing and token efficiency. | Repeatable eval harness + baseline + regression thresholds. |
 
-## P1 — Build after P0 contracts are stable
+## P1 — Refinements after canonical blockers and contract gates
 
 | ID | Capability | Concrete implementation | Expected effect |
 |---|---|---|---|
@@ -100,7 +104,7 @@ Memory OS does **not** own:
 
 Those belong to the consuming agent platform/domain product.
 
-## Recommended delivery sequence
+## Capability dependency order (not the current execution queue)
 
 1. Canonical context schema + provenance/freshness/conflict metadata.
 2. ACL-before-retrieval and adversarial leakage/security evals.
