@@ -184,11 +184,28 @@ describe('M18.2 project context pack', () => {
             recordedAt: '2026-10-13T15:00:00.000Z',
           }),
         ],
+        tasks: [
+          {
+            id: 'older-task',
+            title: 'Superseded task',
+            content: 'Do not keep this older task actionable.',
+            status: 'active',
+            project_id: projectId,
+            recorded_at: '2026-10-13T15:30:00.000Z',
+          },
+        ],
+        facts: [],
         state: {
           id: 'newer-state',
           project_id: projectId,
           createdAt: '2026-10-13T15:59:00.000Z',
           state: { next: ['M18.2_REVISED_NEXT'] },
+        },
+        latestHandoff: {
+          id: 'older-handoff',
+          project_id: projectId,
+          created_at: '2026-10-13T15:45:00.000Z',
+          payload: { recommended_next: ['STALE_HANDOFF_NEXT'] },
         },
       },
       {
@@ -201,7 +218,7 @@ describe('M18.2 project context pack', () => {
       text: 'M18.2_REVISED_NEXT',
       citations: ['project-state:newer-state'],
     });
-    expect(pack.nextWork[0]).toEqual(pack.currentGoal);
+    expect(pack.nextWork).toEqual([pack.currentGoal]);
   });
 
   it('prioritizes officially tracked in-progress work from project state', () => {

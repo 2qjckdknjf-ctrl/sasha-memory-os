@@ -186,13 +186,28 @@ describe("Edge project context pack", () => {
           content: "Next canonical slice: M18.2_OLD_NEXT",
         },
       ],
-      tasks: [],
+      tasks: [
+        {
+          id: "older-task",
+          title: "Superseded task",
+          content: "Do not keep this older task actionable.",
+          status: "active",
+          project_id: projectId,
+          recorded_at: "2026-10-13T15:30:00Z",
+        },
+      ],
       facts: [],
       state: {
         id: "newer-state",
         project_id: projectId,
         created_at: "2026-10-13T15:59:00Z",
         state: { next: ["M18.2_REVISED_NEXT"] },
+      },
+      latestHandoff: {
+        id: "older-handoff",
+        project_id: projectId,
+        created_at: "2026-10-13T15:45:00Z",
+        payload: { recommended_next: ["STALE_HANDOFF_NEXT"] },
       },
     };
     const options = {
@@ -205,7 +220,7 @@ describe("Edge project context pack", () => {
       text: "M18.2_REVISED_NEXT",
       citations: ["project-state:newer-state"],
     });
-    expect(result.nextWork[0]).toEqual(result.currentGoal);
+    expect(result.nextWork).toEqual([result.currentGoal]);
     expect(result).toEqual(buildProjectContextPack(raw, options));
   });
 

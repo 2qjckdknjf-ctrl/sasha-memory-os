@@ -457,6 +457,7 @@ export function buildEdgeProjectContextPack(
       stateInProgress.length === 0 &&
       stateNext.length === 0,
   );
+  const stateSupersedesNext = Boolean(stateCitation && stateDefinesNext);
   const nextSources: Array<{
     kind: "handoff" | "state" | "milestone" | "task";
     values: string[];
@@ -501,9 +502,9 @@ export function buildEdgeProjectContextPack(
     (source) =>
       source.values.some(Boolean) &&
       !(
-        stateClearsNext &&
+        stateSupersedesNext &&
         source.kind !== "state" &&
-        stateRecordedMs >= source.recordedMs
+        stateRecordedMs > source.recordedMs
       ),
   )
     .sort((left, right) => right.recordedMs - left.recordedMs);
