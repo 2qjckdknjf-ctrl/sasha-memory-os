@@ -1,7 +1,7 @@
 {
   "manifestVersion": "m14.1-v1",
   "schemaVersion": "1.2",
-  "generatedAt": "2026-10-13T16:03:16.000Z",
+  "generatedAt": "2026-10-13T16:42:46.000Z",
   "repository": "2qjckdknjf-ctrl/sasha-memory-os",
   "canonicalProjectId": "44444444-4444-4444-8444-444444444402",
   "aistroykaProjectId": "44444444-4444-4444-8444-444444444401",
@@ -20,8 +20,8 @@
     "projectName": "sasha-memory-os",
     "projectRef": "vpxblcxsvlylqyldiuwr",
     "region": "eu-central-1",
-    "latestMigration": "20261013145110_m17_slice_05_live_graph_retrieval_inspector.sql",
-    "migrationCount": 71
+    "latestMigration": "20261013164246_m18_project_context_source_acl.sql",
+    "migrationCount": 72
   },
   "officialPacks": {
     "m14Slo": "m14-s01-v1",

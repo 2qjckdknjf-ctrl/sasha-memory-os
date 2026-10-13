@@ -1663,8 +1663,20 @@ export function createMcpHandlers(options?: {
           }
           const raw = {
             ...projectContext(filterReadableOfflineMemories(authz, store), projectId),
-            state: store.getProjectState(projectId),
-            latest_handoff: store.latestHandoff(projectId),
+            state: authorize(authz, {
+              resourceType: 'project_state',
+              action: 'read',
+              projectId,
+            })
+              ? store.getProjectState(projectId)
+              : null,
+            latest_handoff: authorize(authz, {
+              resourceType: 'handoff',
+              action: 'read',
+              projectId,
+            })
+              ? store.latestHandoff(projectId)
+              : null,
           };
           return buildProjectContextPack(raw, { projectId, maxTokens });
         }

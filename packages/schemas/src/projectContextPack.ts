@@ -375,7 +375,11 @@ export function buildProjectContextPack(
       (dateMs(memoryRecordedAt(right)) ?? 0) -
       (dateMs(memoryRecordedAt(left)) ?? 0),
   );
-  const tasks = validateSources(arrayOf(raw.tasks), projectId);
+  const tasks = validateSources(arrayOf(raw.tasks), projectId).sort(
+    (left, right) =>
+      (dateMs(memoryRecordedAt(right)) ?? 0) -
+      (dateMs(memoryRecordedAt(left)) ?? 0),
+  );
   const facts = validateSources(arrayOf(raw.facts), projectId);
   const maxTokens = resolveProjectContextMaxTokens(options.maxTokens);
   const now = options.now ?? new Date();
@@ -407,6 +411,9 @@ export function buildProjectContextPack(
     }
     return 0;
   });
+  const operationalTasks = tasks.filter((memory) =>
+    ['active', 'verified'].includes(stringOf(memory.status).toLowerCase())
+  );
   const milestoneSource =
     canonicalCandidates.find((memory) =>
       hasMilestoneMarker(stringOf(memory.title))
@@ -471,12 +478,9 @@ export function buildProjectContextPack(
         sourceEventId: null,
       }
     : null;
-  const handoffIsNewer =
-    (dateMs(handoffCreatedAt) ?? -1) >=
-    (dateMs(milestoneSource ? memoryRecordedAt(milestoneSource) : null) ?? -1);
   const stateNext = stateValues(raw.state, 'next');
   const nextSources: Array<{
-    kind: 'handoff' | 'state' | 'milestone';
+    kind: 'handoff' | 'state' | 'milestone' | 'task';
     values: string[];
     citation: ProjectContextCitation | null;
     recordedMs: number;
@@ -500,7 +504,22 @@ export function buildProjectContextPack(
       recordedMs:
         dateMs(milestoneSource ? memoryRecordedAt(milestoneSource) : null) ?? -1,
     },
-  ].filter((source) => source.values.length > 0)
+    ...operationalTasks.map((task) => {
+      const title = stringOf(task.title);
+      const content = stringOf(task.content);
+      return {
+        kind: 'task' as const,
+        values: [
+          normalizedText(
+            title && content ? `${title}: ${content}` : title || content,
+            420,
+          ),
+        ],
+        citation: citationForMemory(task, projectId),
+        recordedMs: dateMs(memoryRecordedAt(task)) ?? -1,
+      };
+    }),
+  ].filter((source) => source.values.some(Boolean))
     .sort((left, right) => right.recordedMs - left.recordedMs);
   const currentNextSource = nextSources[0];
   const currentNext = currentNextSource?.values[0];
@@ -521,6 +540,33 @@ export function buildProjectContextPack(
       : null;
 
   const stateBlocked = stateValues(raw.state, 'blocked');
+  const milestoneRecordedMs =
+    dateMs(milestoneSource ? memoryRecordedAt(milestoneSource) : null) ?? -1;
+  const stateRecordedMs = dateMs(stateCitation?.recordedAt) ?? -1;
+  const effectiveMilestoneBlockers =
+    stateCitation && stateRecordedMs >= milestoneRecordedMs ? [] : blockerTexts;
+  const blockerSources: Array<{
+    values: string[];
+    citation: ProjectContextCitation | null;
+    recordedMs: number;
+  }> = [
+    {
+      values: [...handoffBlockers, ...handoffOpenItems],
+      citation: handoffCitation,
+      recordedMs: dateMs(handoffCreatedAt) ?? -1,
+    },
+    {
+      values: stateBlocked,
+      citation: stateCitation,
+      recordedMs: stateRecordedMs,
+    },
+    {
+      values: effectiveMilestoneBlockers,
+      citation: milestoneCitation,
+      recordedMs: milestoneRecordedMs,
+    },
+  ].filter((source) => source.values.some(Boolean))
+    .sort((left, right) => right.recordedMs - left.recordedMs);
   const stateConflicts = [
     ...stateValues(raw.state, 'unresolved_conflicts'),
     ...stateValues(raw.state, 'conflicts'),
@@ -626,24 +672,9 @@ export function buildProjectContextPack(
           citations: [handoffCitation.id],
         }
       : null;
-    const handoffBlockerItems = toItems(
-      [...handoffBlockers, ...handoffOpenItems],
-      handoffCitation,
-      blockerLimit,
+    const blockerCandidates = blockerSources.flatMap((source) =>
+      toItems(source.values, source.citation, blockerLimit)
     );
-    const milestoneBlockerItems = toItems(
-      blockerTexts,
-      milestoneCitation,
-      blockerLimit,
-    );
-    const stateBlockerItems = toItems(
-      stateBlocked,
-      stateCitation,
-      blockerLimit,
-    );
-    const blockerCandidates = handoffIsNewer
-      ? [...handoffBlockerItems, ...milestoneBlockerItems, ...stateBlockerItems]
-      : [...milestoneBlockerItems, ...stateBlockerItems, ...handoffBlockerItems];
     const blockerSeen = new Set<string>();
     const activeBlockers = blockerCandidates.filter((item) => {
       const key = item.text.toLowerCase();

@@ -39,8 +39,10 @@ The default budget is 1,800 estimated tokens. Callers may request `max_tokens`; 
 - The response echoes the resolved project ID.
 - A mismatched response-level project or any mismatched source record fails closed.
 - Only records already visible to the authenticated subject are packed.
+- Project state and handoff data are optional sources and each requires its own `read` ACL; `memory.read` alone never exposes either source.
 - Every returned claim carries citation IDs; citation metadata preserves source ID, project ID, recorded time and source-event provenance.
 - Freshness is computed from the newest readable memory, project-state update or handoff using the 24-hour operational SLA; absence of a trustworthy timestamp is reported as `unknown`.
+- Active task memories participate in current goal and next-work selection. A newer project-state snapshot supersedes older milestone next-work and blocker text, including an explicitly cleared blocker list.
 
 ## Acceptance
 

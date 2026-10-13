@@ -204,6 +204,74 @@ describe('M18.2 project context pack', () => {
     expect(pack.nextWork[0]).toEqual(pack.currentGoal);
   });
 
+  it('projects active task memories into current goal and next work', () => {
+    const pack = buildProjectContextPack(
+      {
+        projectId,
+        decisions: [],
+        tasks: [
+          {
+            id: 'task-1',
+            title: 'Ship connector recovery',
+            content: 'Restore the provider callback and verify the receipt.',
+            status: 'active',
+            project_id: projectId,
+            recorded_at: '2026-10-13T15:59:00.000Z',
+          },
+        ],
+        facts: [],
+      },
+      {
+        projectId,
+        now: new Date('2026-10-13T16:00:00.000Z'),
+      },
+    );
+
+    expect(pack.currentGoal?.text).toContain('Ship connector recovery');
+    expect(pack.currentGoal?.citations).toEqual(['memory:task-1']);
+    expect(pack.nextWork[0]).toEqual(pack.currentGoal);
+  });
+
+  it('lets newer project state replace stale milestone blockers', () => {
+    const raw = {
+      projectId,
+      decisions: [
+        decision({
+          id: 'older-blockers',
+          title: 'M18.1 live pass',
+          content: 'Blockers:\n- stale blocker one\n- stale blocker two',
+          recordedAt: '2026-10-13T15:00:00.000Z',
+        }),
+      ],
+      state: {
+        id: 'newer-blocker-state',
+        project_id: projectId,
+        createdAt: '2026-10-13T15:59:00.000Z',
+        state: { blocked: ['current blocker'] },
+      },
+    };
+    const options = {
+      projectId,
+      now: new Date('2026-10-13T16:00:00.000Z'),
+    };
+    const pack = buildProjectContextPack(raw, options);
+    expect(pack.activeBlockers).toEqual([
+      {
+        text: 'current blocker',
+        citations: ['project-state:newer-blocker-state'],
+      },
+    ]);
+
+    const cleared = buildProjectContextPack(
+      {
+        ...raw,
+        state: { ...raw.state, state: { blocked: [] } },
+      },
+      options,
+    );
+    expect(cleared.activeBlockers).toEqual([]);
+  });
+
   it('preserves a canonical decision before merge metadata at minimum budget', () => {
     const decisions = Array.from({ length: 3 }, (_, index) =>
       decision({

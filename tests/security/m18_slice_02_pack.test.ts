@@ -31,6 +31,10 @@ describe('M18.2 project context pack', () => {
     const mcp = repoFile('apps/mcp-gateway/src/tools.ts');
     const edge = repoFile('supabase/functions/memory-mcp/index.ts');
     const cursor = repoFile('scripts/cursor-mcp-session.mjs');
+    const aclMigration = repoFile(
+      'supabase/migrations/20261013164246_m18_project_context_source_acl.sql',
+    );
+    const ephemeral = repoFile('scripts/ci-ephemeral-shared-memory-smoke.sh');
     const current = JSON.parse(repoFile('docs/engineering/CURRENT_STATE.json'));
 
     expect(api).toContain("'/v1/projects/:id/context-pack'");
@@ -39,6 +43,10 @@ describe('M18.2 project context pack', () => {
     expect(cursor).toContain("result.packVersion === 'm18-s02-v1'");
     expect(cursor).toContain('canonicalDecisions: result.canonicalDecisions ?? []');
     expect(cursor).toContain('provenance: result.provenance ?? null');
+    expect(aclMigration).toContain("'project_state',");
+    expect(aclMigration).toContain("'handoff',");
+    expect(aclMigration.match(/app\.has_acl\(/g)?.length).toBeGreaterThanOrEqual(6);
+    expect(ephemeral).toContain('m18_slice_02_context_acl_cases.sql');
     expect(current).toMatchObject({
       completedThrough: 'M18.1',
       nextSlice: 'M18.2_PROJECT_CONTEXT_PACK',

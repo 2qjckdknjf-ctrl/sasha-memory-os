@@ -5604,7 +5604,17 @@ export function createApp(options?: {
 
     const gw = c.get('gateway');
     try {
-      const rawContext = gw
+      const canReadState = authorize(authz, {
+        resourceType: 'project_state',
+        action: 'read',
+        projectId,
+      });
+      const canReadHandoff = authorize(authz, {
+        resourceType: 'handoff',
+        action: 'read',
+        projectId,
+      });
+      const rawContextValue = gw
         ? await gw.projectContext(authz.subjectId, projectId)
         : {
             ...projectContext(
@@ -5618,9 +5628,22 @@ export function createApp(options?: {
               ),
               projectId,
             ),
-            state: c.get('store').getProjectState(projectId),
-            latest_handoff: c.get('store').latestHandoff(projectId),
+            state: canReadState
+              ? c.get('store').getProjectState(projectId)
+              : null,
+            latest_handoff: canReadHandoff
+              ? c.get('store').latestHandoff(projectId)
+              : null,
           };
+      const rawContext = isRecord(rawContextValue)
+        ? {
+            ...rawContextValue,
+            ...(!canReadState ? { state: null } : {}),
+            ...(!canReadHandoff
+              ? { latestHandoff: null, latest_handoff: null }
+              : {}),
+          }
+        : rawContextValue;
       return c.json(
         buildProjectContextPack(rawContext, {
           projectId,

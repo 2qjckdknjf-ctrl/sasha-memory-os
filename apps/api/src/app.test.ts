@@ -1685,6 +1685,47 @@ describe('memory api demo slice', () => {
     });
   });
 
+  it('omits optional context sources without their source-specific ACL', async () => {
+    const gateway = {
+      projectContext: vi.fn(async () => ({
+        projectId,
+        decisions: [],
+        tasks: [],
+        facts: [],
+        state: {
+          id: 'allowed-state',
+          project_id: projectId,
+          summary: 'Readable project state',
+          created_at: '2026-10-13T15:59:00.000Z',
+          state: { next: ['continue safely'] },
+        },
+        latestHandoff: {
+          id: 'forbidden-handoff',
+          project_id: projectId,
+          created_at: '2026-10-13T16:00:00.000Z',
+          payload: { recommended_next: ['secret handoff work'] },
+        },
+      })),
+    };
+    const app = createApp({ gateway: gateway as any });
+    const res = await app.request(`/v1/projects/${projectId}/context-pack`, {
+      headers: { 'x-subject-id': chatgpt },
+    });
+
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.latestHandoff).toBeNull();
+    expect(body.currentGoal).toEqual({
+      text: 'continue safely',
+      citations: ['project-state:allowed-state'],
+    });
+    expect(body.citations).not.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ id: 'handoff:forbidden-handoff' }),
+      ]),
+    );
+  });
+
   it('keeps personal Gmail and Calendar memories out of agent search/context while owner still sees them', async () => {
     const app = createApp({});
     for (const memory of [

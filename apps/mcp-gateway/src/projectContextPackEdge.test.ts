@@ -201,6 +201,74 @@ describe("Edge project context pack", () => {
     expect(result).toEqual(buildProjectContextPack(raw, options));
   });
 
+  it("matches shared active-task projection", () => {
+    const raw = {
+      projectId,
+      decisions: [],
+      tasks: [
+        {
+          id: "task-1",
+          title: "Ship connector recovery",
+          content: "Restore the provider callback and verify the receipt.",
+          status: "active",
+          project_id: projectId,
+          recorded_at: "2026-10-13T15:59:00Z",
+        },
+      ],
+      facts: [],
+    };
+    const options = {
+      projectId,
+      now: new Date("2026-10-13T16:00:00Z"),
+    };
+    const result = buildEdgeProjectContextPack(raw, options);
+
+    expect(result.currentGoal?.text).toContain("Ship connector recovery");
+    expect(result.currentGoal?.citations).toEqual(["memory:task-1"]);
+    expect(result.nextWork[0]).toEqual(result.currentGoal);
+    expect(result).toEqual(buildProjectContextPack(raw, options));
+  });
+
+  it("matches shared replacement of stale blockers by newer state", () => {
+    const raw = {
+      projectId,
+      decisions: [
+        {
+          ...memory("older-blockers", "M18.1 live pass", "2026-10-13T15:00:00Z"),
+          content: "Blockers:\n- stale blocker one\n- stale blocker two",
+        },
+      ],
+      tasks: [],
+      facts: [],
+      state: {
+        id: "newer-blocker-state",
+        project_id: projectId,
+        created_at: "2026-10-13T15:59:00Z",
+        state: { blocked: ["current blocker"] },
+      },
+    };
+    const options = {
+      projectId,
+      now: new Date("2026-10-13T16:00:00Z"),
+    };
+    const result = buildEdgeProjectContextPack(raw, options);
+    expect(result.activeBlockers).toEqual([
+      {
+        text: "current blocker",
+        citations: ["project-state:newer-blocker-state"],
+      },
+    ]);
+    expect(result).toEqual(buildProjectContextPack(raw, options));
+
+    const clearedRaw = {
+      ...raw,
+      state: { ...raw.state, state: { blocked: [] } },
+    };
+    const cleared = buildEdgeProjectContextPack(clearedRaw, options);
+    expect(cleared.activeBlockers).toEqual([]);
+    expect(cleared).toEqual(buildProjectContextPack(clearedRaw, options));
+  });
+
   it("matches shared canonical retention at the minimum token budget", () => {
     const decisions = Array.from({ length: 3 }, (_, index) => ({
       ...memory(

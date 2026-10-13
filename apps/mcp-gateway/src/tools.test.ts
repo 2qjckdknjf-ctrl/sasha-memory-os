@@ -1401,6 +1401,38 @@ describe('mcp gateway alpha', () => {
     expect(result.canonicalDecisions.length).toBe(1);
   });
 
+  it('omits offline handoff context without handoff.read', async () => {
+    const store = createSeededStore();
+    const handoff = store.createHandoff({
+      workspaceId,
+      projectId,
+      fromSubjectId: owner,
+      payload: {
+        completed: ['secret handoff'],
+        artifacts: [],
+        validation: [],
+        open_items: [],
+        blockers: [],
+        recommended_next: ['secret handoff work'],
+      },
+    });
+    const mcp = createMcpHandlers({ store, profile: 'chatgpt' });
+    const result = (await mcp.call('context.project', {
+      project_id: projectId,
+      actor_subject_id: chatgpt,
+    })) as {
+      latestHandoff: { id: string } | null;
+      citations: Array<{ id: string }>;
+    };
+
+    expect(result.latestHandoff).toBeNull();
+    expect(result.citations).not.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ id: `handoff:${handoff.id}` }),
+      ]),
+    );
+  });
+
   it('lists connections stub offline', async () => {
     const mcp = createMcpHandlers();
     const result = (await mcp.call('connections.list', {
