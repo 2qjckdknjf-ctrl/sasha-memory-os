@@ -174,6 +174,14 @@ describe("Edge project context pack", () => {
       projectId,
       decisions: [
         {
+          ...memory(
+            "unapplied-newest",
+            "Unapplied migrations policy",
+            "2026-10-13T16:00:00Z",
+          ),
+          content: "Next canonical slice: ALSO_WRONG",
+        },
+        {
           ...memory("older-milestone", "M18.1 live pass", "2026-10-13T15:00:00Z"),
           content: "Next canonical slice: M18.2_OLD_NEXT",
         },
@@ -353,6 +361,45 @@ describe("Edge project context pack", () => {
 
     expect(result.currentMilestone?.id).toBe("real-milestone");
     expect(result.nextWork[0]?.text).toBe("RIGHT_NEXT");
+    expect(result).toEqual(buildProjectContextPack(raw, options));
+  });
+
+  it("matches shared clearing of stale next work by empty newer state", () => {
+    const raw = {
+      projectId,
+      decisions: [
+        {
+          ...memory("older-next", "M18.1 live receipt", "2026-10-13T15:00:00Z"),
+          content: "Next canonical slice: STALE_NEXT",
+        },
+      ],
+      tasks: [
+        {
+          id: "older-task",
+          title: "Stale active task",
+          content: "Do not resurrect this task.",
+          status: "active",
+          project_id: projectId,
+          recorded_at: "2026-10-13T15:30:00Z",
+        },
+      ],
+      facts: [],
+      state: {
+        id: "clear-next-state",
+        project_id: projectId,
+        created_at: "2026-10-13T15:59:00Z",
+        state: { in_progress: [], next: [] },
+      },
+    };
+    const options = {
+      projectId,
+      now: new Date("2026-10-13T16:00:00Z"),
+    };
+    const result = buildEdgeProjectContextPack(raw, options);
+
+    expect(result.currentGoal).toBeNull();
+    expect(result.nextWork).toEqual([]);
+    expect(result.currentMilestone?.id).toBe("older-next");
     expect(result).toEqual(buildProjectContextPack(raw, options));
   });
 

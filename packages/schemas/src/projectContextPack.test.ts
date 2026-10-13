@@ -324,6 +324,12 @@ describe('M18.2 project context pack', () => {
         projectId,
         decisions: [
           decision({
+            id: 'unapplied-newest',
+            title: 'Unapplied migrations policy',
+            content: 'Next canonical slice: ALSO_WRONG',
+            recordedAt: '2026-10-13T16:00:00.000Z',
+          }),
+          decision({
             id: 'ordinary-newer',
             title: 'Team2 architecture decision',
             content: 'Next canonical slice: WRONG_NEXT',
@@ -342,6 +348,44 @@ describe('M18.2 project context pack', () => {
 
     expect(pack.currentMilestone?.id).toBe('real-milestone');
     expect(pack.nextWork[0]?.text).toBe('RIGHT_NEXT');
+  });
+
+  it('lets an explicit empty newer state clear stale next work', () => {
+    const pack = buildProjectContextPack(
+      {
+        projectId,
+        decisions: [
+          decision({
+            id: 'older-next',
+            title: 'M18.1 live receipt',
+            content: 'Next canonical slice: STALE_NEXT',
+            recordedAt: '2026-10-13T15:00:00.000Z',
+          }),
+        ],
+        tasks: [
+          {
+            id: 'older-task',
+            title: 'Stale active task',
+            content: 'Do not resurrect this task.',
+            status: 'active',
+            project_id: projectId,
+            recorded_at: '2026-10-13T15:30:00.000Z',
+          },
+        ],
+        facts: [],
+        state: {
+          id: 'clear-next-state',
+          project_id: projectId,
+          created_at: '2026-10-13T15:59:00.000Z',
+          state: { in_progress: [], next: [] },
+        },
+      },
+      { projectId },
+    );
+
+    expect(pack.currentGoal).toBeNull();
+    expect(pack.nextWork).toEqual([]);
+    expect(pack.currentMilestone?.id).toBe('older-next');
   });
 
   it('marks fixed section caps and text clipping in the budget receipt', () => {

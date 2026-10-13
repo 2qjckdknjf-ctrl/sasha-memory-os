@@ -182,18 +182,42 @@ function blockersFrom(content: string): string[] {
     .filter(Boolean);
 }
 
+function isAsciiAlphaNumericCode(code: number): boolean {
+  return (code >= 48 && code <= 57) || (code >= 97 && code <= 122);
+}
+
+function standaloneWordIndex(value: string, word: string, from = 0): number {
+  let at = value.indexOf(word, from);
+  while (at >= 0) {
+    const previous = at > 0 ? value.charCodeAt(at - 1) : -1;
+    const afterIndex = at + word.length;
+    const following = afterIndex < value.length
+      ? value.charCodeAt(afterIndex)
+      : -1;
+    if (!isAsciiAlphaNumericCode(previous) && !isAsciiAlphaNumericCode(following)) {
+      return at;
+    }
+    at = value.indexOf(word, at + 1);
+  }
+  return -1;
+}
+
 function hasMilestoneMarker(title: string): boolean {
   const lower = title.toLowerCase();
-  if (lower.includes("merged") || lower.includes("applied")) return true;
-  const liveAt = lower.indexOf("live");
-  if (liveAt >= 0 && lower.indexOf("pass", liveAt + 4) >= 0) return true;
+  if (
+    standaloneWordIndex(lower, "merged") >= 0 ||
+    standaloneWordIndex(lower, "applied") >= 0
+  ) {
+    return true;
+  }
+  const liveAt = standaloneWordIndex(lower, "live");
+  if (liveAt >= 0 && standaloneWordIndex(lower, "pass", liveAt + 4) >= 0) {
+    return true;
+  }
   for (let index = 0; index < lower.length - 1; index += 1) {
     if (lower[index] !== "m") continue;
     const previous = index > 0 ? lower.charCodeAt(index - 1) : -1;
-    const previousIsAlphaNumeric =
-      (previous >= 48 && previous <= 57) ||
-      (previous >= 97 && previous <= 122);
-    if (previousIsAlphaNumeric) continue;
+    if (isAsciiAlphaNumericCode(previous)) continue;
     let cursor = index + 1;
     if (lower.charCodeAt(cursor) < 48 || lower.charCodeAt(cursor) > 57) continue;
     while (
@@ -204,10 +228,7 @@ function hasMilestoneMarker(title: string): boolean {
       cursor += 1;
     }
     const following = cursor < lower.length ? lower.charCodeAt(cursor) : -1;
-    const followingIsAlphaNumeric =
-      (following >= 48 && following <= 57) ||
-      (following >= 97 && following <= 122);
-    if (!followingIsAlphaNumeric) return true;
+    if (!isAsciiAlphaNumericCode(following)) return true;
   }
   return false;
 }
@@ -425,6 +446,17 @@ export function buildEdgeProjectContextPack(
     : null;
   const stateInProgress = stateValues(raw.state, "in_progress");
   const stateNext = stateValues(raw.state, "next");
+  const statePayload = recordOf(stateRow.state);
+  const stateDefinesNext =
+    Object.prototype.hasOwnProperty.call(statePayload, "in_progress") ||
+    Object.prototype.hasOwnProperty.call(statePayload, "next");
+  const stateRecordedMs = dateMs(stateCitation?.recordedAt) ?? -1;
+  const stateClearsNext = Boolean(
+    stateCitation &&
+      stateDefinesNext &&
+      stateInProgress.length === 0 &&
+      stateNext.length === 0,
+  );
   const nextSources: Array<{
     kind: "handoff" | "state" | "milestone" | "task";
     values: string[];
@@ -465,7 +497,15 @@ export function buildEdgeProjectContextPack(
         recordedMs: dateMs(recordedAt(task)) ?? -1,
       };
     }),
-  ].filter((source) => source.values.some(Boolean))
+  ].filter(
+    (source) =>
+      source.values.some(Boolean) &&
+      !(
+        stateClearsNext &&
+        source.kind !== "state" &&
+        stateRecordedMs >= source.recordedMs
+      ),
+  )
     .sort((left, right) => right.recordedMs - left.recordedMs);
   const currentNextSource = nextSources[0];
   const currentNext = currentNextSource?.values[0];
@@ -509,7 +549,6 @@ export function buildEdgeProjectContextPack(
   const stateBlocked = stateValues(raw.state, "blocked");
   const milestoneRecordedMs =
     dateMs(milestoneSource ? recordedAt(milestoneSource) : null) ?? -1;
-  const stateRecordedMs = dateMs(stateCitation?.recordedAt) ?? -1;
   const effectiveMilestoneBlockers =
     stateCitation && stateRecordedMs >= milestoneRecordedMs ? [] : blockerTexts;
   const blockerSources: Array<{
