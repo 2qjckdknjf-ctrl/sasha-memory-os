@@ -299,6 +299,55 @@ describe('M18.2 project context pack', () => {
     expect(cleared.activeBlockers).toEqual([]);
   });
 
+  it('drops explicit no-blocker sentinels from milestone evidence', () => {
+    const pack = buildProjectContextPack(
+      {
+        projectId,
+        decisions: [
+          decision({
+            id: 'clear-milestone',
+            title: 'M18.2 live pass',
+            content: 'Blockers:\n- none',
+            recordedAt: '2026-10-13T15:59:00.000Z',
+          }),
+        ],
+      },
+      { projectId },
+    );
+
+    expect(pack.activeBlockers).toEqual([]);
+  });
+
+  it('marks fixed section caps and text clipping in the budget receipt', () => {
+    const completed = [
+      'completed evidence '.repeat(30),
+      'second receipt',
+      'third receipt',
+      'fourth receipt',
+      'fifth receipt',
+    ];
+    const pack = buildProjectContextPack(
+      {
+        projectId,
+        decisions: [],
+        tasks: [],
+        facts: [],
+        latestHandoff: {
+          id: 'bounded-handoff',
+          project_id: projectId,
+          created_at: '2026-10-13T15:59:00.000Z',
+          payload: { completed },
+        },
+      },
+      { projectId, maxTokens: 8000 },
+    );
+
+    expect(pack.latestHandoff?.completed).toHaveLength(4);
+    expect(pack.budget.originalCounts.handoffItems).toBe(5);
+    expect(pack.budget.includedCounts.handoffItems).toBe(4);
+    expect(pack.budget.truncated).toBe(true);
+  });
+
   it('preserves a canonical decision before merge metadata at minimum budget', () => {
     const decisions = Array.from({ length: 3 }, (_, index) =>
       decision({

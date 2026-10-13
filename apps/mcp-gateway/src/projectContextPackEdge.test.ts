@@ -299,6 +299,63 @@ describe("Edge project context pack", () => {
     expect(cleared).toEqual(buildProjectContextPack(clearedRaw, options));
   });
 
+  it("matches shared no-blocker sentinel filtering", () => {
+    const raw = {
+      projectId,
+      decisions: [
+        {
+          ...memory("clear-milestone", "M18.2 live pass", "2026-10-13T15:59:00Z"),
+          content: "Blockers:\n- none",
+        },
+      ],
+      tasks: [],
+      facts: [],
+    };
+    const options = {
+      projectId,
+      now: new Date("2026-10-13T16:00:00Z"),
+    };
+    const result = buildEdgeProjectContextPack(raw, options);
+
+    expect(result.activeBlockers).toEqual([]);
+    expect(result).toEqual(buildProjectContextPack(raw, options));
+  });
+
+  it("matches shared truncation receipts for fixed caps and clipped text", () => {
+    const raw = {
+      projectId,
+      decisions: [],
+      tasks: [],
+      facts: [],
+      latestHandoff: {
+        id: "bounded-handoff",
+        project_id: projectId,
+        created_at: "2026-10-13T15:59:00Z",
+        payload: {
+          completed: [
+            "completed evidence ".repeat(30),
+            "second receipt",
+            "third receipt",
+            "fourth receipt",
+            "fifth receipt",
+          ],
+        },
+      },
+    };
+    const options = {
+      projectId,
+      maxTokens: 8000,
+      now: new Date("2026-10-13T16:00:00Z"),
+    };
+    const result = buildEdgeProjectContextPack(raw, options);
+
+    expect(result.latestHandoff?.completed).toHaveLength(4);
+    expect(result.budget.originalCounts.handoffItems).toBe(5);
+    expect(result.budget.includedCounts.handoffItems).toBe(4);
+    expect(result.budget.truncated).toBe(true);
+    expect(result).toEqual(buildProjectContextPack(raw, options));
+  });
+
   it("matches shared canonical retention at the minimum token budget", () => {
     const decisions = Array.from({ length: 3 }, (_, index) => ({
       ...memory(

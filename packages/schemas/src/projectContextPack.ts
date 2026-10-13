@@ -158,6 +158,42 @@ function normalizedText(value: unknown, maxChars: number): string {
   return `${compact.slice(0, Math.max(0, maxChars - 1))}…`;
 }
 
+function isNormalizedTextClipped(value: unknown, maxChars: number): boolean {
+  return normalizedText(value, maxChars + 1).length > maxChars;
+}
+
+function isNoBlockerSentinel(value: string): boolean {
+  let normalized = value.trim().toLowerCase();
+  const leading = new Set(['-', '–', '—', '•']);
+  const trailing = new Set(['.', ',', ':', ';', '!', '-']);
+  while (normalized && leading.has(normalized[0] ?? '')) {
+    normalized = normalized.slice(1).trimStart();
+  }
+  while (normalized && trailing.has(normalized.at(-1) ?? '')) {
+    normalized = normalized.slice(0, -1).trimEnd();
+  }
+  return new Set([
+    'none',
+    'none observed',
+    'no blockers',
+    'no active blockers',
+    'no known blockers',
+    'n/a',
+    'not applicable',
+    'нет',
+    'нет блокеров',
+    'блокеров нет',
+    'без блокеров',
+  ]).has(normalized);
+}
+
+function uniqueNormalizedCount(values: string[]): number {
+  return new Set(
+    values.map((value) => normalizedText(value, Number.MAX_SAFE_INTEGER).toLowerCase())
+      .filter(Boolean),
+  ).size;
+}
+
 function estimatedTokens(value: unknown): number {
   return Math.ceil(JSON.stringify(value).length / 4);
 }
@@ -331,6 +367,14 @@ function hasExplicitMergedMarker(content: string): boolean {
         normalized === 'merge status: merged'
       );
     });
+}
+
+function mergeShaFromContent(content: string): string | null {
+  return /(?:Merge SHA:|merge SHA)\s*([0-9a-f]{40})/i.exec(content)?.[1] ?? null;
+}
+
+function hasMergeEvidence(content: string): boolean {
+  return Boolean(mergeShaFromContent(content) || hasExplicitMergedMarker(content));
 }
 
 function stateValues(rawState: unknown, key: string): string[] {
@@ -570,17 +614,21 @@ export function buildProjectContextPack(
     recordedMs: number;
   }> = [
     {
-      values: [...handoffBlockers, ...handoffOpenItems],
+      values: [...handoffBlockers, ...handoffOpenItems].filter(
+        (value) => !isNoBlockerSentinel(value),
+      ),
       citation: handoffCitation,
       recordedMs: dateMs(handoffCreatedAt) ?? -1,
     },
     {
-      values: stateBlocked,
+      values: stateBlocked.filter((value) => !isNoBlockerSentinel(value)),
       citation: stateCitation,
       recordedMs: stateRecordedMs,
     },
     {
-      values: effectiveMilestoneBlockers,
+      values: effectiveMilestoneBlockers.filter(
+        (value) => !isNoBlockerSentinel(value),
+      ),
       citation: milestoneCitation,
       recordedMs: milestoneRecordedMs,
     },
@@ -592,6 +640,45 @@ export function buildProjectContextPack(
     ...stateValues(raw.state, 'risks'),
   ];
   const allSources = [...decisions, ...tasks, ...facts];
+  const originalBlockerCount = uniqueNormalizedCount(
+    blockerSources.flatMap((source) => source.values),
+  );
+  const originalNextCount = uniqueNormalizedCount(
+    nextSources.flatMap((source) => source.values),
+  );
+  const originalMergeCount = canonicalCandidates.filter((memory) =>
+    hasMergeEvidence(stringOf(memory.content))
+  ).length;
+  const handoffTextValues = [
+    ...handoffCompleted,
+    ...handoffValidation,
+    ...handoffOpenItems,
+    ...handoffBlockers,
+    ...handoffRecommendedNext,
+  ];
+  const boundedItemValues = [
+    ...blockerSources.flatMap((source) => source.values),
+    ...nextSources.flatMap((source) => source.values),
+    ...stateConflicts,
+    ...handoffTextValues,
+  ];
+  const builtInTextClipped =
+    canonicalSources.some(
+      (memory) =>
+        isNormalizedTextClipped(memory.title, 220) ||
+        isNormalizedTextClipped(memory.content, 420),
+    ) ||
+    allSources.some(
+      (memory) =>
+        isNormalizedTextClipped(memory.id, 128) ||
+        isNormalizedTextClipped(memory.title, 220) ||
+        isNormalizedTextClipped(memorySourceEventId(memory), 128),
+    ) ||
+    boundedItemValues.some((value) => isNormalizedTextClipped(value, 280)) ||
+    Boolean(currentGoal && isNormalizedTextClipped(currentGoal.text, 420)) ||
+    isNormalizedTextClipped(stateRow.summary, 220) ||
+    isNormalizedTextClipped(stateRow.id, 128) ||
+    isNormalizedTextClipped(handoffRow.id, 128);
   const newestSource = [...allSources].sort(
     (left, right) =>
       (dateMs(memoryRecordedAt(right)) ?? 0) -
@@ -729,9 +816,8 @@ export function buildProjectContextPack(
       .map((memory) => {
         const content = stringOf(memory.content);
         const pullRequestUrl = githubPullRequestUrl(content);
-        const mergeSha =
-          /(?:Merge SHA:|merge SHA)\s*([0-9a-f]{40})/i.exec(content)?.[1] ?? null;
-        return mergeSha || hasExplicitMergedMarker(content)
+        const mergeSha = mergeShaFromContent(content);
+        return hasMergeEvidence(content)
           ? {
               pullRequestUrl,
               mergeSha,
@@ -907,8 +993,14 @@ export function buildProjectContextPack(
     else break;
     pack = create();
   }
-  pack.budget.truncated = truncated ||
-    pack.budget.includedCounts.canonicalDecisions < canonicalSources.length;
+  const boundedBySectionCaps =
+    pack.budget.includedCounts.canonicalDecisions < canonicalSources.length ||
+    pack.budget.includedCounts.blockers < originalBlockerCount ||
+    pack.budget.includedCounts.recentMerges < originalMergeCount ||
+    pack.budget.includedCounts.conflicts < stateConflicts.length ||
+    pack.budget.includedCounts.nextWork < originalNextCount ||
+    pack.budget.includedCounts.handoffItems < handoffItemCount;
+  pack.budget.truncated = truncated || boundedBySectionCaps || builtInTextClipped;
   updateEstimatedTokens(pack);
   if (pack.budget.estimatedTokens > maxTokens) {
     throw new Error('project context pack cannot satisfy max_tokens');

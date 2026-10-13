@@ -37,6 +37,42 @@ function compact(value: unknown, maxChars: number): string {
     : `${text.slice(0, Math.max(0, maxChars - 1))}…`;
 }
 
+function isCompactTextClipped(value: unknown, maxChars: number): boolean {
+  return compact(value, maxChars + 1).length > maxChars;
+}
+
+function isNoBlockerSentinel(value: string): boolean {
+  let normalized = value.trim().toLowerCase();
+  const leading = new Set(["-", "–", "—", "•"]);
+  const trailing = new Set([".", ",", ":", ";", "!", "-"]);
+  while (normalized && leading.has(normalized[0] ?? "")) {
+    normalized = normalized.slice(1).trimStart();
+  }
+  while (normalized && trailing.has(normalized.at(-1) ?? "")) {
+    normalized = normalized.slice(0, -1).trimEnd();
+  }
+  return new Set([
+    "none",
+    "none observed",
+    "no blockers",
+    "no active blockers",
+    "no known blockers",
+    "n/a",
+    "not applicable",
+    "нет",
+    "нет блокеров",
+    "блокеров нет",
+    "без блокеров",
+  ]).has(normalized);
+}
+
+function uniqueCompactCount(values: string[]): number {
+  return new Set(
+    values.map((value) => compact(value, Number.MAX_SAFE_INTEGER).toLowerCase())
+      .filter(Boolean),
+  ).size;
+}
+
 function dateMs(value: unknown): number | null {
   const parsed = typeof value === "string" ? Date.parse(value) : Number.NaN;
   return Number.isNaN(parsed) ? null : parsed;
@@ -198,6 +234,14 @@ function hasExplicitMergedMarker(content: string): boolean {
         normalized === "status=merged" ||
         normalized === "merge status: merged";
     });
+}
+
+function mergeShaFromContent(content: string): string | null {
+  return /(?:Merge SHA:|merge SHA)\s*([0-9a-f]{40})/i.exec(content)?.[1] ?? null;
+}
+
+function hasMergeEvidence(content: string): boolean {
+  return Boolean(mergeShaFromContent(content) || hasExplicitMergedMarker(content));
 }
 
 function stateValues(rawState: unknown, key: string): string[] {
@@ -457,17 +501,21 @@ export function buildEdgeProjectContextPack(
     recordedMs: number;
   }> = [
     {
-      values: [...handoffBlockers, ...handoffOpenItems],
+      values: [...handoffBlockers, ...handoffOpenItems].filter(
+        (value) => !isNoBlockerSentinel(value),
+      ),
       citation: handoffCitation,
       recordedMs: dateMs(handoffCreatedAt) ?? -1,
     },
     {
-      values: stateBlocked,
+      values: stateBlocked.filter((value) => !isNoBlockerSentinel(value)),
       citation: stateCitation,
       recordedMs: stateRecordedMs,
     },
     {
-      values: effectiveMilestoneBlockers,
+      values: effectiveMilestoneBlockers.filter(
+        (value) => !isNoBlockerSentinel(value),
+      ),
       citation: milestoneCitation,
       recordedMs: milestoneRecordedMs,
     },
@@ -478,6 +526,45 @@ export function buildEdgeProjectContextPack(
     ...stateValues(raw.state, "conflicts"),
     ...stateValues(raw.state, "risks"),
   ];
+  const originalBlockerCount = uniqueCompactCount(
+    blockerSources.flatMap((source) => source.values),
+  );
+  const originalNextCount = uniqueCompactCount(
+    nextSources.flatMap((source) => source.values),
+  );
+  const originalMergeCount = canonicalCandidates.filter((memory) =>
+    hasMergeEvidence(textOf(memory.content))
+  ).length;
+  const handoffTextValues = [
+    ...handoffCompleted,
+    ...handoffValidation,
+    ...handoffOpenItems,
+    ...handoffBlockers,
+    ...handoffRecommendedNext,
+  ];
+  const boundedItemValues = [
+    ...blockerSources.flatMap((source) => source.values),
+    ...nextSources.flatMap((source) => source.values),
+    ...stateConflicts,
+    ...handoffTextValues,
+  ];
+  const builtInTextClipped =
+    canonicalSources.some(
+      (memory) =>
+        isCompactTextClipped(memory.title, 220) ||
+        isCompactTextClipped(memory.content, 420),
+    ) ||
+    allSources.some(
+      (memory) =>
+        isCompactTextClipped(memory.id, 128) ||
+        isCompactTextClipped(memory.title, 220) ||
+        isCompactTextClipped(sourceEventIdOf(memory), 128),
+    ) ||
+    boundedItemValues.some((value) => isCompactTextClipped(value, 280)) ||
+    Boolean(currentGoal && isCompactTextClipped(currentGoal.text, 420)) ||
+    isCompactTextClipped(stateRow.summary, 220) ||
+    isCompactTextClipped(stateRow.id, 128) ||
+    isCompactTextClipped(handoffRow.id, 128);
   const handoffItemCount =
     handoffCompleted.length +
     handoffValidation.length +
@@ -580,9 +667,8 @@ export function buildEdgeProjectContextPack(
     const recentMerges = canonicalCandidates.map((memory) => {
       const content = textOf(memory.content);
       const pullRequestUrl = githubPullRequestUrl(content);
-      const mergeSha =
-        /(?:Merge SHA:|merge SHA)\s*([0-9a-f]{40})/i.exec(content)?.[1] ?? null;
-      return mergeSha || hasExplicitMergedMarker(content)
+      const mergeSha = mergeShaFromContent(content);
+      return hasMergeEvidence(content)
         ? {
           pullRequestUrl,
           mergeSha,
@@ -759,8 +845,14 @@ export function buildEdgeProjectContextPack(
     else break;
     pack = create();
   }
-  pack.budget.truncated = truncated ||
-    pack.budget.includedCounts.canonicalDecisions < canonicalSources.length;
+  const boundedBySectionCaps =
+    pack.budget.includedCounts.canonicalDecisions < canonicalSources.length ||
+    pack.budget.includedCounts.blockers < originalBlockerCount ||
+    pack.budget.includedCounts.recentMerges < originalMergeCount ||
+    pack.budget.includedCounts.conflicts < stateConflicts.length ||
+    pack.budget.includedCounts.nextWork < originalNextCount ||
+    pack.budget.includedCounts.handoffItems < handoffItemCount;
+  pack.budget.truncated = truncated || boundedBySectionCaps || builtInTextClipped;
   for (let attempt = 0; attempt < 4; attempt += 1) {
     const next = Math.ceil(JSON.stringify(pack).length / 4);
     if (next === pack.budget.estimatedTokens) break;
