@@ -71,11 +71,16 @@ function citation(memory: JsonRecord, projectId: string): EdgeContextCitation {
   };
 }
 
-function decision(memory: JsonRecord, projectId: string, summaryChars: number) {
+function decision(
+  memory: JsonRecord,
+  projectId: string,
+  summaryChars: number,
+  titleChars = 220,
+) {
   const source = citation(memory, projectId);
   return {
     id: source.sourceId,
-    title: compact(memory.title, 220) || "Untitled decision",
+    title: compact(memory.title, titleChars) || "Untitled decision",
     summary: compact(memory.content, summaryChars),
     status: textOf(memory.status) || "unknown",
     recordedAt: source.recordedAt,
@@ -493,24 +498,40 @@ export function buildEdgeProjectContextPack(
   let nextLimit = 4;
   let handoffItemLimit = 4;
   let summaryChars = 420;
+  let decisionTitleChars = 220;
+  let itemChars = 280;
+  let goalChars = 420;
+  let citationTitleChars = 220;
   let expandedText = true;
+  let includeCurrentMilestone = true;
+  let includeLatestHandoff = true;
   const minimumCanonicalLimit = canonicalSources.length > 0 ? 1 : 0;
 
   const create = () => {
     const canonicalDecisions = canonicalSources.slice(0, canonicalLimit)
-      .map((memory) => decision(memory, projectId, summaryChars));
-    const currentMilestone = milestoneSource
-      ? decision(milestoneSource, projectId, summaryChars)
+      .map((memory) =>
+        decision(memory, projectId, summaryChars, decisionTitleChars)
+      );
+    const currentMilestone = includeCurrentMilestone && milestoneSource
+      ? decision(
+        milestoneSource,
+        projectId,
+        summaryChars,
+        decisionTitleChars,
+      )
+      : null;
+    const boundedCurrentGoal = currentGoal
+      ? { ...currentGoal, text: compact(currentGoal.text, goalChars) }
       : null;
     const toItems = (
       values: string[],
       sourceCitation: EdgeContextCitation | null,
       limit: number,
     ) => values.slice(0, limit).map((value) => ({
-      text: compact(value, 280),
+      text: compact(value, itemChars),
       citations: sourceCitation ? [sourceCitation.id] : [],
     }));
-    const latestHandoff = handoffCitation
+    const latestHandoff = includeLatestHandoff && handoffCitation
       ? {
         id: handoffCitation.sourceId,
         createdAt: handoffCreatedAt,
@@ -565,7 +586,7 @@ export function buildEdgeProjectContextPack(
         ? {
           pullRequestUrl,
           mergeSha,
-          title: compact(memory.title, 220),
+          title: compact(memory.title, decisionTitleChars),
           citations: [citation(memory, projectId).id],
         }
         : null;
@@ -602,23 +623,42 @@ export function buildEdgeProjectContextPack(
       collect(latestHandoff.recommendedNext);
       latestHandoff.citations.forEach((id) => citationIds.add(id));
     }
-    if (currentGoal) collect([currentGoal]);
+    if (boundedCurrentGoal) collect([boundedCurrentGoal]);
     if (currentMilestone) collect([currentMilestone]);
     if (freshnessCitation) citationIds.add(freshnessCitation.id);
     const available = new Map<string, EdgeContextCitation>();
     for (const source of allSources) {
       const sourceCitation = citation(source, projectId);
-      available.set(sourceCitation.id, sourceCitation);
+      available.set(sourceCitation.id, {
+        ...sourceCitation,
+        title: sourceCitation.title
+          ? compact(sourceCitation.title, citationTitleChars) || null
+          : null,
+      });
     }
-    if (stateCitation) available.set(stateCitation.id, stateCitation);
-    if (handoffCitation) available.set(handoffCitation.id, handoffCitation);
+    if (stateCitation) {
+      available.set(stateCitation.id, {
+        ...stateCitation,
+        title: stateCitation.title
+          ? compact(stateCitation.title, citationTitleChars) || null
+          : null,
+      });
+    }
+    if (handoffCitation) {
+      available.set(handoffCitation.id, {
+        ...handoffCitation,
+        title: citationTitleChars > 0 ? handoffCitation.title : null,
+      });
+    }
     const citations = [...citationIds].flatMap((id) => {
       const value = available.get(id);
       return value ? [value] : [];
     });
     const text = expandedText
       ? [
-        currentGoal ? `Goal: ${currentGoal.text}` : "Goal: unavailable",
+        boundedCurrentGoal
+          ? `Goal: ${boundedCurrentGoal.text}`
+          : "Goal: unavailable",
         currentMilestone
           ? `Milestone: ${currentMilestone.title}`
           : "Milestone: unavailable",
@@ -634,7 +674,7 @@ export function buildEdgeProjectContextPack(
       packVersion: EDGE_PROJECT_CONTEXT_PACK_VERSION,
       projectId,
       generatedAt: now.toISOString(),
-      currentGoal,
+      currentGoal: boundedCurrentGoal,
       canonicalDecisions,
       currentMilestone,
       latestHandoff,
@@ -707,6 +747,15 @@ export function buildEdgeProjectContextPack(
     else if (blockerLimit > 0) blockerLimit = 0;
     else if (handoffItemLimit > 0) handoffItemLimit = 0;
     else if (expandedText) expandedText = false;
+    else if (nextLimit > 0) nextLimit = 0;
+    else if (includeCurrentMilestone) includeCurrentMilestone = false;
+    else if (goalChars > 120) goalChars -= 60;
+    else if (itemChars > 120) itemChars -= 40;
+    else if (decisionTitleChars > 80) decisionTitleChars -= 40;
+    else if (citationTitleChars > 0) {
+      citationTitleChars = Math.max(0, citationTitleChars - 40);
+    } else if (summaryChars > 40) summaryChars -= 20;
+    else if (includeLatestHandoff) includeLatestHandoff = false;
     else break;
     pack = create();
   }

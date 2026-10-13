@@ -322,6 +322,43 @@ describe('M18.2 project context pack', () => {
     expect(pack.recentMerges.length).toBeLessThan(3);
   });
 
+  it('compresses required goal, milestone and citation fields at minimum budget', () => {
+    const pack = buildProjectContextPack(
+      {
+        projectId,
+        decisions: [
+          decision({
+            id: 'long-milestone',
+            title: `M18.2 ${'milestone title '.repeat(30)}`,
+            content: 'canonical evidence '.repeat(80),
+            recordedAt: '2026-10-13T15:58:00.000Z',
+          }),
+        ],
+        tasks: [
+          {
+            id: 'long-task',
+            title: 'active task '.repeat(30),
+            content: 'finish the bounded acceptance '.repeat(30),
+            status: 'active',
+            project_id: projectId,
+            recorded_at: '2026-10-13T15:59:00.000Z',
+          },
+        ],
+        facts: [],
+      },
+      {
+        projectId,
+        maxTokens: 768,
+        now: new Date('2026-10-13T16:00:00.000Z'),
+      },
+    );
+
+    expect(pack.budget.truncated).toBe(true);
+    expect(pack.budget.estimatedTokens).toBeLessThanOrEqual(768);
+    expect(pack.canonicalDecisions).toHaveLength(1);
+    expect(pack.currentGoal?.citations).toEqual(['memory:long-task']);
+  });
+
   it('does not classify a linked pull request as merged without merge evidence', () => {
     const pack = buildProjectContextPack(
       {

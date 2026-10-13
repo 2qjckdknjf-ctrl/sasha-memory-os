@@ -206,11 +206,12 @@ function decisionFromMemory(
   memory: JsonRecord,
   projectId: string,
   summaryChars: number,
+  titleChars = 220,
 ): ProjectContextDecision {
   const citation = citationForMemory(memory, projectId);
   return {
     id: citation.sourceId,
-    title: normalizedText(memory.title, 220) || 'Untitled decision',
+    title: normalizedText(memory.title, titleChars) || 'Untitled decision',
     summary: normalizedText(memory.content, summaryChars),
     status: stringOf(memory.status) || 'unknown',
     recordedAt: citation.recordedAt,
@@ -634,15 +635,39 @@ export function buildProjectContextPack(
   let nextLimit = 4;
   let handoffItemLimit = 4;
   let summaryChars = 420;
+  let decisionTitleChars = 220;
+  let itemChars = 280;
+  let goalChars = 420;
+  let citationTitleChars = 220;
   let expandedText = true;
+  let includeCurrentMilestone = true;
+  let includeLatestHandoff = true;
   const minimumCanonicalLimit = canonicalSources.length > 0 ? 1 : 0;
 
   const create = (): ProjectContextPack => {
     const canonicalDecisions = canonicalSources
       .slice(0, canonicalLimit)
-      .map((memory) => decisionFromMemory(memory, projectId, summaryChars));
-    const currentMilestone = milestoneSource
-      ? decisionFromMemory(milestoneSource, projectId, summaryChars)
+      .map((memory) =>
+        decisionFromMemory(
+          memory,
+          projectId,
+          summaryChars,
+          decisionTitleChars,
+        )
+      );
+    const currentMilestone = includeCurrentMilestone && milestoneSource
+      ? decisionFromMemory(
+          milestoneSource,
+          projectId,
+          summaryChars,
+          decisionTitleChars,
+        )
+      : null;
+    const boundedCurrentGoal = currentGoal
+      ? {
+          ...currentGoal,
+          text: normalizedText(currentGoal.text, goalChars),
+        }
       : null;
     const toItems = (
       values: string[],
@@ -650,10 +675,10 @@ export function buildProjectContextPack(
       limit: number,
     ): ProjectContextItem[] =>
       values.slice(0, limit).map((text) => ({
-        text: normalizedText(text, 280),
+        text: normalizedText(text, itemChars),
         citations: sourceCitation ? [sourceCitation.id] : [],
       }));
-    const latestHandoff = handoffCitation
+    const latestHandoff = includeLatestHandoff && handoffCitation
       ? {
           id: handoffCitation.sourceId,
           createdAt: handoffCreatedAt,
@@ -710,7 +735,7 @@ export function buildProjectContextPack(
           ? {
               pullRequestUrl,
               mergeSha,
-              title: stringOf(memory.title),
+              title: normalizedText(memory.title, decisionTitleChars),
               citations: [citationForMemory(memory, projectId).id],
             }
           : null;
@@ -750,24 +775,41 @@ export function buildProjectContextPack(
       collect(latestHandoff.recommendedNext);
       latestHandoff.citations.forEach((id) => citationIds.add(id));
     }
-    if (currentGoal) collect([currentGoal]);
+    if (boundedCurrentGoal) collect([boundedCurrentGoal]);
     if (currentMilestone) collect([currentMilestone]);
     if (freshnessCitation) citationIds.add(freshnessCitation.id);
     const availableCitations = new Map<string, ProjectContextCitation>();
     for (const memory of allSources) {
       const citation = citationForMemory(memory, projectId);
-      availableCitations.set(citation.id, citation);
+      availableCitations.set(citation.id, {
+        ...citation,
+        title: citation.title
+          ? normalizedText(citation.title, citationTitleChars) || null
+          : null,
+      });
     }
-    if (stateCitation) availableCitations.set(stateCitation.id, stateCitation);
+    if (stateCitation) {
+      availableCitations.set(stateCitation.id, {
+        ...stateCitation,
+        title: stateCitation.title
+          ? normalizedText(stateCitation.title, citationTitleChars) || null
+          : null,
+      });
+    }
     if (handoffCitation) {
-      availableCitations.set(handoffCitation.id, handoffCitation);
+      availableCitations.set(handoffCitation.id, {
+        ...handoffCitation,
+        title: citationTitleChars > 0 ? handoffCitation.title : null,
+      });
     }
     const citations = [...citationIds]
       .map((id) => availableCitations.get(id))
       .filter((value): value is ProjectContextCitation => Boolean(value));
     const text = expandedText
       ? [
-          currentGoal ? `Goal: ${currentGoal.text}` : 'Goal: unavailable',
+          boundedCurrentGoal
+            ? `Goal: ${boundedCurrentGoal.text}`
+            : 'Goal: unavailable',
           currentMilestone
             ? `Milestone: ${currentMilestone.title}`
             : 'Milestone: unavailable',
@@ -783,7 +825,7 @@ export function buildProjectContextPack(
       packVersion: OFFICIAL_M18_PROJECT_CONTEXT_PACK_VERSION,
       projectId,
       generatedAt: now.toISOString(),
-      currentGoal,
+      currentGoal: boundedCurrentGoal,
       canonicalDecisions,
       currentMilestone,
       latestHandoff,
@@ -853,6 +895,15 @@ export function buildProjectContextPack(
     else if (blockerLimit > 0) blockerLimit = 0;
     else if (handoffItemLimit > 0) handoffItemLimit = 0;
     else if (expandedText) expandedText = false;
+    else if (nextLimit > 0) nextLimit = 0;
+    else if (includeCurrentMilestone) includeCurrentMilestone = false;
+    else if (goalChars > 120) goalChars -= 60;
+    else if (itemChars > 120) itemChars -= 40;
+    else if (decisionTitleChars > 80) decisionTitleChars -= 40;
+    else if (citationTitleChars > 0) {
+      citationTitleChars = Math.max(0, citationTitleChars - 40);
+    } else if (summaryChars > 40) summaryChars -= 20;
+    else if (includeLatestHandoff) includeLatestHandoff = false;
     else break;
     pack = create();
   }

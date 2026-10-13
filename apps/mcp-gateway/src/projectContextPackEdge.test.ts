@@ -325,6 +325,45 @@ describe("Edge project context pack", () => {
     expect(result).toEqual(buildProjectContextPack(raw, options));
   });
 
+  it("matches shared required-field compression at the minimum budget", () => {
+    const raw = {
+      projectId,
+      decisions: [
+        {
+          ...memory(
+            "long-milestone",
+            `M18.2 ${"milestone title ".repeat(30)}`,
+            "2026-10-13T15:58:00Z",
+          ),
+          content: "canonical evidence ".repeat(80),
+        },
+      ],
+      tasks: [
+        {
+          id: "long-task",
+          title: "active task ".repeat(30),
+          content: "finish the bounded acceptance ".repeat(30),
+          status: "active",
+          project_id: projectId,
+          recorded_at: "2026-10-13T15:59:00Z",
+        },
+      ],
+      facts: [],
+    };
+    const options = {
+      projectId,
+      maxTokens: 768,
+      now: new Date("2026-10-13T16:00:00Z"),
+    };
+    const result = buildEdgeProjectContextPack(raw, options);
+
+    expect(result.budget.truncated).toBe(true);
+    expect(result.budget.estimatedTokens).toBeLessThanOrEqual(768);
+    expect(result.canonicalDecisions).toHaveLength(1);
+    expect(result.currentGoal?.citations).toEqual(["memory:long-task"]);
+    expect(result).toEqual(buildProjectContextPack(raw, options));
+  });
+
   it("matches shared merge-evidence classification", () => {
     const raw = {
       projectId,

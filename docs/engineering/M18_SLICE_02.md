@@ -22,7 +22,7 @@ The pack contains:
 - claim-level citation identifiers and a citation catalog;
 - subject/project provenance and a deterministic token budget receipt.
 
-The default budget is 1,800 estimated tokens. Callers may request `max_tokens`; values are clamped to the supported 768–8,000 range. Lower-priority entries and summaries are reduced before the response is returned. The receipt reports requested maximum, final estimate, included counts, original counts, and whether truncation occurred.
+The default budget is 1,800 estimated tokens. Callers may request `max_tokens`; values are clamped to the supported 768–8,000 range. Lower-priority entries and summaries are reduced before the response is returned. At the minimum budget, redundant next-work and milestone copies plus display text and citation titles may also be compacted while at least one readable canonical decision remains. The receipt reports requested maximum, final estimate, included counts, original counts, and whether truncation occurred.
 
 ## Surfaces
 
