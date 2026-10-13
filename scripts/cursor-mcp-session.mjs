@@ -206,6 +206,7 @@ async function callTool(name, args) {
 }
 
 function searchArgs(query) {
+  const includeHistory = values['include-history'];
   return {
     actor_subject_id: CURSOR_SUBJECT_ID,
     workspace_id: WORKSPACE_ID,
@@ -213,7 +214,10 @@ function searchArgs(query) {
     query,
     pack_context: values['pack-context'] !== 'false',
     max_context_chars: Number(values['max-context-chars'] ?? 6000),
-    include_history: values['include-history'] === 'true',
+    include_history:
+      includeHistory === undefined
+        ? command === 'search'
+        : includeHistory === 'true',
   };
 }
 
