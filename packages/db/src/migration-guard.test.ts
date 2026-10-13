@@ -74,6 +74,12 @@ const p0ProjectIdentityMigrationPath = fileURLToPath(
     import.meta.url,
   ),
 );
+const m15RuntimeRecoveryMigrationPath = fileURLToPath(
+  new URL(
+    '../../../supabase/migrations/20261013133423_m15_runtime_outbox_reconciliation.sql',
+    import.meta.url,
+  ),
+);
 
 describe('m8 slice 03 migration guards', () => {
   const sql = readFileSync(migrationPath, 'utf8');
@@ -486,5 +492,42 @@ describe('P0 project identity migration guards', () => {
     expect(p0Sql).toContain(
       `'project_id', effective_project.effective_project_id`,
     );
+  });
+});
+
+describe('M15 runtime recovery migration guards', () => {
+  const sql = readFileSync(m15RuntimeRecoveryMigrationPath, 'utf8');
+
+  it('reports token presence without exposing token material', () => {
+    expect(sql).toContain('CREATE OR REPLACE FUNCTION app.api_reconcile_connector_readiness');
+    expect(sql).toContain(`'tokenMaterialPresent', token_material_present`);
+    expect(sql).toContain(`'readyForSync', ready_for_sync`);
+    expect(sql).toContain('FROM connector_vault_blobs b');
+    expect(sql).toContain('FROM vault.secrets s');
+    expect(sql).not.toContain('decrypted_secret');
+    expect(sql).not.toContain(`encode(b.ciphertext`);
+  });
+
+  it('only marks missing-token active connections as reauth required', () => {
+    expect(sql).toContain(`a.status NOT IN ('revoked', 'disabled')`);
+    expect(sql).toContain(`m.token_material_present = false`);
+    expect(sql).toContain(`status = 'reauth_required'`);
+    expect(sql).toContain(`'connections.readiness.reconciled'`);
+  });
+
+  it('reconciles only allowlisted outbox events linked to terminal jobs', () => {
+    expect(sql).toContain('CREATE OR REPLACE FUNCTION app.api_reconcile_terminal_outbox');
+    expect(sql).toContain(`'capture.text.queued'`);
+    expect(sql).toContain(`'capture.document.queued'`);
+    expect(sql).toContain(`'ingest.succeeded'`);
+    expect(sql).toContain(`j.status IN ('succeeded', 'failed', 'dead_letter')`);
+    expect(sql).toContain('FOR UPDATE OF o SKIP LOCKED');
+    expect(sql).toContain(`'outbox.terminal.reconciled'`);
+  });
+
+  it('supports historical snake_case and current camelCase job ids', () => {
+    expect(sql).toContain(`o.payload->>'jobId'`);
+    expect(sql).toContain(`o.payload->>'job_id'`);
+    expect(sql).toContain('CREATE OR REPLACE FUNCTION app.api_dead_letter_stale_jobs');
   });
 });

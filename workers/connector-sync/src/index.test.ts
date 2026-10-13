@@ -116,6 +116,58 @@ describe('parseWorkerIntervalMs', () => {
 });
 
 describe('planConnectorSync', () => {
+  it('reconciles connector readiness and terminal outbox before enqueue', async () => {
+    vi.stubEnv('MEMORY_OS_CONNECTOR_PULL_MODE', 'vault');
+    const callOrder: string[] = [];
+    const gateway = {
+      reconcileConnectorReadiness: vi.fn(async (input: { applyMissingTokenStatus: boolean }) => {
+        callOrder.push('readiness');
+        return {
+          total: 2,
+          ready: 1,
+          reauthRequired: 1,
+          changed: 1,
+          applied: input.applyMissingTokenStatus,
+          connections: [],
+        };
+      }),
+      deadLetterStaleJobs: vi.fn(async () => {
+        callOrder.push('dead-letter');
+        return { deadLettered: 0 };
+      }),
+      reconcileTerminalOutbox: vi.fn(async () => {
+        callOrder.push('outbox');
+        return { reconciled: 4 };
+      }),
+      listOutboxPending: vi.fn(async () => ({ count: 0 })),
+      enqueueConnectorSync: vi.fn(async () => {
+        callOrder.push('enqueue');
+        return { count: 0, enqueued: [] };
+      }),
+      claimConnectorSyncJobs: vi.fn(async () => ({ count: 0, jobs: [] })),
+    };
+
+    const plan = await planConnectorSync({
+      gateway: gateway as any,
+      subjectId: owner,
+      workspaceId,
+      connectorRegistry: createConnectorRegistry([]),
+    });
+
+    expect(callOrder).toEqual(['readiness', 'dead-letter', 'outbox', 'enqueue']);
+    expect(gateway.reconcileConnectorReadiness).toHaveBeenCalledWith(
+      expect.objectContaining({ applyMissingTokenStatus: true }),
+    );
+    expect(plan.terminalOutboxReconciled).toBe(4);
+    expect(plan.connectorReadiness).toEqual({
+      total: 2,
+      ready: 1,
+      reauthRequired: 1,
+      changed: 1,
+      applied: true,
+    });
+  });
+
   it('dispatches via the injected connector registry', async () => {
     let initialSyncCalled = false;
     let normalizeCalled = false;

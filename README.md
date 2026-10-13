@@ -55,6 +55,8 @@ API uses Supabase RPCs + `MEMORY_OS_API_SECRET` (see `.env`). Web talks to API o
 
 OAuth broker: `POST /v1/oauth/start` → `POST /v1/oauth/callback` peeks state, exchanges code over HTTP when `CLIENT_ID`+`CLIENT_SECRET` are set, stores tokens in the shared vault (`MEMORY_OS_VAULT_*`, default backend `supabase`), and writes **vault refs only** to Postgres.
 
+Production recovery semantics: [M15_RUNTIME_RECOVERY.md](docs/engineering/M15_RUNTIME_RECOVERY.md).
+
 Workers:
 
 ```bash
