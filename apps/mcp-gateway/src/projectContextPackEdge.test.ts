@@ -217,7 +217,10 @@ describe("Edge project context pack", () => {
         },
       },
     };
-    const options = { projectId };
+    const options = {
+      projectId,
+      now: new Date("2026-10-13T16:00:00Z"),
+    };
     const result = buildEdgeProjectContextPack(raw, options);
 
     expect(result.currentGoal).toEqual({
@@ -338,7 +341,10 @@ describe("Edge project context pack", () => {
       tasks: [],
       facts: [],
     };
-    const options = { projectId };
+    const options = {
+      projectId,
+      now: new Date("2026-10-13T16:00:00Z"),
+    };
     const result = buildEdgeProjectContextPack(raw, options);
 
     expect(result.recentMerges).toHaveLength(1);
