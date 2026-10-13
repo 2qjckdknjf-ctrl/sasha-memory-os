@@ -1,18 +1,29 @@
 {
-  "packVersion": "shared-memory-e2e-v1",
-  "generatedAt": "2026-08-24T09:25:00.000Z",
-  "overallStatus": "BLOCKED",
+  "packVersion": "shared-memory-e2e-v2",
+  "generatedAt": "2026-10-13T13:07:25.126Z",
+  "overallStatus": "PASS",
   "claimPassFromMocks": false,
-  "preflight": {
-    "projectId": "44444444-4444-4444-8444-444444444402",
-    "workspaceId": "11111111-1111-4111-8111-111111111111"
+  "verificationMode": "read-only-live-session-receipts",
+  "projectId": "44444444-4444-4444-8444-444444444402",
+  "chatgptToCursor": "PASS",
+  "cursorToChatgpt": "PASS",
+  "idempotencyReplay": {
+    "chatgpt": "PASS_SAME_MEMORY_ID",
+    "cursor": "PASS_SAME_MEMORY_ID"
   },
-  "chatgptToCursor": "BLOCKED",
-  "cursorToChatgpt": "REQUIRES_REAL_CHATGPT_SESSION",
-  "remainingExternalStep": "REQUIRES_REAL_CHATGPT_SESSION",
-  "blockers": [
-    "no_live_chatgpt_oauth_session_in_ci",
-    "no_live_cursor_mcp_session_in_ci",
-    "remote_migration_apply_pending"
-  ]
+  "receipts": {
+    "chatgpt": {
+      "memoryId": "abe4e574-9291-433b-9f39-00395eba6e6a",
+      "marker": "shared-e2e-chatgpt-20261013T1506Z-ce22223e",
+      "createdBySubject": "33333333-3333-4333-8333-333333333302",
+      "readBy": "Cursor MCP"
+    },
+    "cursor": {
+      "memoryId": "8b67a712-1e31-41d2-9813-e2dfdf0e4d63",
+      "marker": "shared-e2e-cursor-20261013T1507Z-3303",
+      "createdBySubject": "33333333-3333-4333-8333-333333333303",
+      "readBy": "ChatGPT MCP"
+    }
+  },
+  "blockers": []
 }

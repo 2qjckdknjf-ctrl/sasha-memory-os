@@ -1,8 +1,8 @@
 {
   "manifestVersion": "shared-memory-preflight-v1",
-  "generatedAt": "2026-08-24T09:10:00.000Z",
+  "generatedAt": "2026-10-13T13:07:25.126Z",
   "repository": "2qjckdknjf-ctrl/sasha-memory-os",
-  "mainSha": "80ff315f44af43a1fb26e8ae01e31f6f72796190",
+  "mainSha": "e11260b81ea9c21e6d83270c63a07fc884ea1b60",
   "mainShaAfterRemediation": null,
   "schema": {
     "migrationCountBefore": 63,
@@ -30,24 +30,20 @@
     "openPrs": 0,
     "latestMergedPr": 76,
     "workflowFilesPresent": true,
-    "liveCredentialsAvailable": false
+    "liveCredentialsAvailable": true
   },
   "blockersBeforeRemediation": [
-    "canonicalProjectId pointed at AISTROYKA UUID",
-    "no bidirectional ChatGPT↔Cursor live E2E",
-    "M15 live E2E BLOCKED",
-    "M15.1 remote migration apply pending",
-    "Cursor milestones not proven via real MCP session",
-    "local desktop agent live E2E blocked"
+    "M15 connector/runtime live E2E remains blocked",
+    "production outbox and connector dead-letter backlog remains"
   ],
   "acceptanceGates": {
-    "chatgptWriteCursorRead": "BLOCKED",
-    "cursorWriteChatgptRead": "BLOCKED",
-    "projectIsolation": "IN_PROGRESS",
-    "actorBinding": "IN_PROGRESS",
-    "idempotency": "NOT_STARTED",
-    "localDesktopAgent": "BLOCKED",
-    "remoteMigrationApply": "BLOCKED",
-    "ciVerifiableRuns": "PARTIAL"
+    "chatgptWriteCursorRead": "PASS",
+    "cursorWriteChatgptRead": "PASS",
+    "projectIsolation": "PASS",
+    "actorBinding": "PASS",
+    "idempotency": "PASS",
+    "localDesktopAgent": "PASS_STDIO_MCP",
+    "remoteMigrationApply": "PASS",
+    "ciVerifiableRuns": "PASS_RECEIPT_GATE"
   }
 }

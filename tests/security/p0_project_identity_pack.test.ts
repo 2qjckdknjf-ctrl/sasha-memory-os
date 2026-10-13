@@ -47,6 +47,8 @@ describe('P0 project identity security pack', () => {
     );
     expect(preflight.projects.sashaMemoryOs).toBe(SASHA_MEMORY_OS_PROJECT_ID);
     expect(preflight.projects.aistroyka).toBe(AISTROYKA_PROJECT_ID);
-    expect(preflight.acceptanceGates.projectIsolation).toBe('IN_PROGRESS');
+    expect(preflight.acceptanceGates.projectIsolation).toBe('PASS');
+    expect(preflight.acceptanceGates.chatgptWriteCursorRead).toBe('PASS');
+    expect(preflight.acceptanceGates.cursorWriteChatgptRead).toBe('PASS');
   });
 });

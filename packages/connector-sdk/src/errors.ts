@@ -78,8 +78,26 @@ function messageLooksLikeRateLimit(message: string): boolean {
   );
 }
 
+function formatConnectorErrorMessage(error: unknown): string {
+  if (error instanceof Error && error.message.trim()) return error.message.trim();
+  if (typeof error === 'string' && error.trim()) return error.trim();
+  if (typeof error !== 'object' || error === null) return String(error);
+
+  const record = error as Record<string, unknown>;
+  const message = typeof record.message === 'string' ? record.message.trim() : '';
+  const safeDetails = Object.fromEntries(
+    ['name', 'code', 'details', 'hint', 'status', 'statusCode']
+      .filter((key) => record[key] !== undefined && record[key] !== null)
+      .map((key) => [key, record[key]]),
+  );
+  const suffix = Object.keys(safeDetails).length > 0
+    ? ` ${JSON.stringify(safeDetails)}`
+    : '';
+  return `${message || 'Connector operation failed'}${suffix}`.slice(0, 2_000);
+}
+
 export function classifyConnectorError(error: unknown): ClassifiedConnectorError {
-  const message = error instanceof Error ? error.message : String(error);
+  const message = formatConnectorErrorMessage(error);
   if (error instanceof ConnectorError) {
     return {
       kind: error.kind,

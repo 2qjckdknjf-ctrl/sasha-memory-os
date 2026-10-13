@@ -20,6 +20,9 @@ export const CURRENT_STATE_PATH = resolve(
 );
 
 export const OFFICIAL_M14_1_BASELINE_MANIFEST_VERSION = 'm14.1-v1' as const;
+export const CURRENT_OPERATIONAL_MILESTONE =
+  'm15-live-runtime-remediation' as const;
+export const CURRENT_NEXT_SLICE = 'M15_CONNECTOR_AND_QUEUE_RECOVERY' as const;
 
 export type CurrentStateManifest = {
   manifestVersion: string;
@@ -227,10 +230,10 @@ export function validateCurrentStateDrift(
     });
   }
 
-  if (manifest.currentMilestone !== 'P0-shared-memory-remediation') {
+  if (manifest.currentMilestone !== CURRENT_OPERATIONAL_MILESTONE) {
     findings.push({
       code: 'current-milestone',
-      message: `expected currentMilestone P0-shared-memory-remediation, got ${manifest.currentMilestone}`,
+      message: `expected currentMilestone ${CURRENT_OPERATIONAL_MILESTONE}, got ${manifest.currentMilestone}`,
     });
   }
 
@@ -241,10 +244,10 @@ export function validateCurrentStateDrift(
     });
   }
 
-  if (manifest.nextSlice !== 'SHARED_MEMORY_E2E_REMEDIATION') {
+  if (manifest.nextSlice !== CURRENT_NEXT_SLICE) {
     findings.push({
       code: 'next-slice',
-      message: `expected nextSlice SHARED_MEMORY_E2E_REMEDIATION, got ${manifest.nextSlice}`,
+      message: `expected nextSlice ${CURRENT_NEXT_SLICE}, got ${manifest.nextSlice}`,
     });
   }
 

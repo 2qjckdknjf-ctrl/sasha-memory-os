@@ -6,13 +6,18 @@
 import {
   CANONICAL_WORKSPACE_ID,
   CHATGPT_SUBJECT_ID,
+  CURSOR_SUBJECT_ID,
   AISTROYKA_PROJECT_ID,
   SASHA_MEMORY_OS_PROJECT_ID,
 } from '@memory-os/schemas';
 
 export type McpProfileName = 'full' | 'chatgpt';
 
-export { CHATGPT_SUBJECT_ID, SASHA_MEMORY_OS_PROJECT_ID as DEFAULT_PROJECT_ID };
+export {
+  CHATGPT_SUBJECT_ID,
+  CURSOR_SUBJECT_ID,
+  SASHA_MEMORY_OS_PROJECT_ID as DEFAULT_PROJECT_ID,
+};
 export { AISTROYKA_PROJECT_ID };
 export const DEFAULT_WORKSPACE_ID = CANONICAL_WORKSPACE_ID;
 
@@ -92,7 +97,8 @@ export function getMcpProfile(name?: McpProfileName | string | null): McpProfile
     defaults: {
       actorSubjectId:
         process.env.MEMORY_OS_DEFAULT_SUBJECT_ID?.trim() ||
-        CHATGPT_SUBJECT_ID,
+        process.env.MEMORY_OS_CURSOR_SUBJECT_ID?.trim() ||
+        CURSOR_SUBJECT_ID,
       workspaceId:
         process.env.MEMORY_OS_DEFAULT_WORKSPACE_ID?.trim() ||
         DEFAULT_WORKSPACE_ID,

@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest';
 import { OFFICIAL_M14_SUPPORT_OPS_PACK } from '@memory-os/observability';
 import {
   CHATGPT_PILOT_TOOLS,
+  CHATGPT_SUBJECT_ID,
+  CURSOR_SUBJECT_ID,
   applyProfileDefaults,
   getMcpProfile,
   isToolAllowed,
@@ -103,5 +105,14 @@ describe('mcp profile', () => {
     expect(filled.project_id).toBeUndefined();
     const context = applyProfileDefaults(profile, {}, 'context.project');
     expect(context.project_id).toBeUndefined();
+  });
+
+  it('binds profile defaults to the actual client identity', () => {
+    expect(getMcpProfile('chatgpt').defaults.actorSubjectId).toBe(
+      CHATGPT_SUBJECT_ID,
+    );
+    expect(getMcpProfile('full').defaults.actorSubjectId).toBe(
+      CURSOR_SUBJECT_ID,
+    );
   });
 });

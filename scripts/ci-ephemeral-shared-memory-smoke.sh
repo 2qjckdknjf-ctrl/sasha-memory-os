@@ -19,13 +19,13 @@ if ! command -v docker >/dev/null 2>&1; then
 fi
 
 echo "== supabase start (db + api only)"
-supabase start -x gotrue,realtime,storage,imgproxy,edge-runtime,logflare,vector,studio
+supabase start -x gotrue,realtime,storage-api,imgproxy,edge-runtime,logflare,vector,studio
 
 echo "== supabase db reset (migrations + idempotent seed)"
 supabase db reset
 
 echo "== ensure local API is running after reset"
-supabase start -x gotrue,realtime,storage,imgproxy,edge-runtime,logflare,vector,studio >/dev/null
+supabase start -x gotrue,realtime,storage-api,imgproxy,edge-runtime,logflare,vector,studio >/dev/null
 
 DB_URL="$(supabase status -o json | node -e 'const j=JSON.parse(require("fs").readFileSync(0,"utf8")); process.stdout.write(j.DB_URL||"")')"
 if [[ -z "$DB_URL" ]]; then
@@ -85,7 +85,44 @@ export MEMORY_OS_PROJECT_ID="${PROJECT_ID}"
 echo "== ChatGPT MCP smoke on ephemeral DB"
 ./scripts/smoke-mcp-chatgpt.sh
 
-echo "== shared-memory fixture harness"
+echo "== create Cursor stdio MCP receipt on ephemeral DB"
+export SHARED_MEMORY_CHATGPT_MEMORY_ID="$(node -e '
+  const body = JSON.parse(require("node:fs").readFileSync("/tmp/memory-os-mcp-chatgpt-decision.json", "utf8"));
+  process.stdout.write(String(body.result?.structuredContent?.id ?? ""));
+')"
+export SHARED_MEMORY_CHATGPT_MARKER="$(node -e '
+  const body = JSON.parse(require("node:fs").readFileSync("/tmp/memory-os-mcp-chatgpt-decision.json", "utf8"));
+  const content = String(body.result?.structuredContent?.content ?? "");
+  const match = /marker=([^\s]+)/.exec(content);
+  process.stdout.write(match?.[1] ?? "");
+')"
+CURSOR_MARKER="ephemeral-cursor-$(date +%s)-${RANDOM}"
+CURSOR_RECEIPT="$(node scripts/cursor-mcp-session.mjs store-decision \
+  --project-id "$PROJECT_ID" \
+  --title "Cursor ephemeral receipt $CURSOR_MARKER" \
+  --content "Cursor stdio MCP receipt; marker=$CURSOR_MARKER" \
+  --idempotency-key "$CURSOR_MARKER")"
+export SHARED_MEMORY_CURSOR_MEMORY_ID="$(node -e '
+  const body = JSON.parse(process.argv[1]);
+  process.stdout.write(String(body.id ?? ""));
+' "$CURSOR_RECEIPT")"
+export SHARED_MEMORY_CURSOR_MARKER="$CURSOR_MARKER"
+
+missing_receipts=()
+[[ -z "$SHARED_MEMORY_CHATGPT_MEMORY_ID" ]] && missing_receipts+=(chatgpt_memory_id)
+[[ -z "$SHARED_MEMORY_CHATGPT_MARKER" ]] && missing_receipts+=(chatgpt_marker)
+[[ -z "$SHARED_MEMORY_CURSOR_MEMORY_ID" ]] && missing_receipts+=(cursor_memory_id)
+if (( ${#missing_receipts[@]} > 0 )); then
+  echo "ephemeral_smoke=missing_session_receipt fields=${missing_receipts[*]}" >&2
+  exit 1
+fi
+
+echo "== verify ChatGPT HTTP and Cursor stdio MCP receipts"
+export SHARED_MEMORY_E2E_RESULT="/tmp/ephemeral-shared-memory-e2e-result.json"
 ./scripts/acceptance-shared-memory-e2e.sh
+node -e '
+  const result = JSON.parse(require("node:fs").readFileSync(process.argv[1], "utf8"));
+  if (result.overallStatus !== "PASS" || result.claimPassFromMocks !== false) process.exit(1);
+' "$SHARED_MEMORY_E2E_RESULT"
 
 echo "ephemeral_smoke=pass project_id=${PROJECT_ID}"
