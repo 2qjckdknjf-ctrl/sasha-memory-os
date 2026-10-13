@@ -1,27 +1,27 @@
 {
   "manifestVersion": "m14.1-v1",
-  "schemaVersion": "1.1",
-  "generatedAt": "2026-10-13T13:07:25.126Z",
+  "schemaVersion": "1.2",
+  "generatedAt": "2026-10-13T13:51:22.000Z",
   "repository": "2qjckdknjf-ctrl/sasha-memory-os",
   "canonicalProjectId": "44444444-4444-4444-8444-444444444402",
   "aistroykaProjectId": "44444444-4444-4444-8444-444444444401",
   "hiairProjectId": "44444444-4444-4444-8444-444444444403",
   "canonicalWorkspaceId": "11111111-1111-4111-8111-111111111111",
-  "reconciledAgainstMainSha": "e11260b81ea9c21e6d83270c63a07fc884ea1b60",
+  "reconciledAgainstMainSha": "9c5fb55379f7fc4ea6eb4376800e1564f92e888f",
   "contractPacksCompletedThrough": "M17.3",
-  "liveOperationalMilestone": "M15_LIVE_RUNTIME_REMEDIATION",
-  "nextAllowedSlice": "M15_CONNECTOR_AND_QUEUE_RECOVERY",
-  "currentMilestone": "m15-live-runtime-remediation",
+  "liveOperationalMilestone": "M20_SECURITY_GOVERNANCE",
+  "nextAllowedSlice": "M17.4_ENTITY_MIGRATION_BACKFILL",
+  "currentMilestone": "m20-security-governance",
   "completedThrough": "M17.3",
-  "nextSlice": "M15_CONNECTOR_AND_QUEUE_RECOVERY",
+  "nextSlice": "M17.4_ENTITY_MIGRATION_BACKFILL",
   "frozenSlices": [],
   "canonicalPlanMemoryTitle": "SASHA MEMORY OS — CANONICAL COMPLETION PLAN TO 100% — 2026-08-21",
   "supabase": {
     "projectName": "sasha-memory-os",
     "projectRef": "vpxblcxsvlylqyldiuwr",
     "region": "eu-central-1",
-    "latestMigration": "20261013133423_m15_runtime_outbox_reconciliation.sql",
-    "migrationCount": 67
+    "latestMigration": "20261013135122_m20_security_search_path_hardening.sql",
+    "migrationCount": 68
   },
   "officialPacks": {
     "m14Slo": "m14-s01-v1",
@@ -87,7 +87,7 @@
     "passedAt": "2026-08-15",
     "toolCount": 7,
     "transport": "supabase-edge-memory-mcp",
-    "note": "Mode A PASS is ChatGPT-only; shared-memory bidirectional E2E remains BLOCKED."
+    "note": "Mode A remains PASS; bidirectional ChatGPT/Cursor shared-memory E2E also passed on 2026-10-13."
   },
   "sharedMemoryE2E": {
     "packVersion": "shared-memory-e2e-v2",
@@ -108,7 +108,23 @@
   },
   "m15LiveE2E": {
     "overallStatus": "BLOCKED",
-    "claimPassFromMocks": false
+    "claimPassFromMocks": false,
+    "runtimeRecovery": "PASS",
+    "terminalOutboxReconciled": 146,
+    "terminalOutboxPending": 0,
+    "readyConnectors": 0,
+    "blocker": "Real GitHub/Google OAuth provider credentials and user consent are required for live connector E2E."
+  },
+  "repositorySecurity": {
+    "mainProtected": true,
+    "strictRequiredChecks": ["smoke", "ephemeral-contract", "live-edge-smoke"],
+    "forcePushAllowed": false,
+    "branchDeletionAllowed": false,
+    "secretScanning": "enabled",
+    "pushProtection": "enabled",
+    "dependabotAlerts": "enabled",
+    "dependabotSecurityUpdates": "enabled",
+    "codeqlDefaultSetup": "enabled"
   },
   "appleBridge": {
     "feasibilityPack": "m16-s01-v1",
@@ -124,29 +140,36 @@
     "m14PackTestsGlob": "tests/security/m14_slice_*_pack.test.ts",
     "m15PackTestsGlob": "tests/security/m15_*pack.test.ts",
     "m16PackTestsGlob": "tests/security/m16_slice_*_pack.test.ts",
-    "p0ProjectIdentityPack": "tests/security/p0_project_identity_pack.test.ts"
+    "p0ProjectIdentityPack": "tests/security/p0_project_identity_pack.test.ts",
+    "m20RoleBoundarySql": "tests/security/m20_security_role_boundary_cases.sql"
   },
   "openPrPolicy": {
     "staleDraftPr16": {
       "number": 16,
       "disposition": "closed-as-superseded",
       "rationale": "Closed via #59."
+    },
+    "ownerSnapshotPr87": {
+      "number": 87,
+      "disposition": "closed-as-superseded",
+      "rationale": "All intended records already exist in Memory OS; newer P0/M15 milestones supersede its stale blocker snapshot."
     }
   },
   "knownBlockers": [
     {
       "id": "m15-live-e2e-credentials",
       "severity": "M15",
-      "summary": "M15 connector/runtime live E2E remains BLOCKED by degraded/revoked connectors and queued delivery backlog."
+      "summary": "Runtime recovery passed and the outbox backlog is zero; live connector E2E remains blocked only by missing real provider OAuth credentials/consent."
     },
     {
-      "id": "production-delivery-backlog",
-      "severity": "P1",
-      "summary": "Dead-letter connector jobs and unpublished outbox records require bounded recovery and replay."
+      "id": "supabase-leaked-password-protection",
+      "severity": "M20",
+      "summary": "Verify and enable leaked-password protection in Supabase Auth before the final security release gate."
     }
   ],
   "readmeMustContain": [
     "M15_LIVE_RUNTIME_REMEDIATION",
+    "M20_SECURITY_GOVERNANCE",
     "docs/engineering/CURRENT_STATE.json",
     "44444444-4444-4444-8444-444444444402"
   ],

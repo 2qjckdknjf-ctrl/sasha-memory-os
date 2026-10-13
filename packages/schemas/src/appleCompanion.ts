@@ -493,9 +493,13 @@ function uniqueNonEmptyStrings(values: Array<string | undefined>): string[] {
   return [...new Set(values.filter((value): value is string => Boolean(value && value.trim())))];
 }
 
-function normalizeAppleCompanionProviderItemIdentifier(value: string): string {
+export function normalizeAppleCompanionProviderItemIdentifier(value: string): string {
   if (value === '/') return value;
-  return value.replace(/\/+$/, '');
+  let end = value.length;
+  while (end > 0 && value.charCodeAt(end - 1) === 47) {
+    end -= 1;
+  }
+  return value.slice(0, end);
 }
 
 function resolveAppleCompanionShareTitle(share: AppleCompanionSharePayload): string {

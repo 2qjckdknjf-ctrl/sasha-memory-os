@@ -67,6 +67,38 @@ function json(data: unknown, status = 200): Response {
   });
 }
 
+function sanitizeDiagnosticText(value: string, secret: string): string {
+  return value
+    .replaceAll(secret, "[redacted]")
+    .replace(/[\u0000-\u001f\u007f]+/gu, " ")
+    .slice(0, 500);
+}
+
+function errorDiagnostic(
+  err: unknown,
+  secret: string,
+): { errorType: string; errorCode?: string; errorMessage?: string } {
+  if (err instanceof Error) {
+    return {
+      errorType: err.name || "Error",
+      errorMessage: sanitizeDiagnosticText(err.message, secret),
+    };
+  }
+  if (typeof err === "object" && err !== null) {
+    const record = err as Record<string, unknown>;
+    return {
+      errorType: "SupabaseError",
+      ...(typeof record.code === "string"
+        ? { errorCode: sanitizeDiagnosticText(record.code, secret) }
+        : {}),
+      ...(typeof record.message === "string"
+        ? { errorMessage: sanitizeDiagnosticText(record.message, secret) }
+        : {}),
+    };
+  }
+  return { errorType: typeof err };
+}
+
 function extractSecret(req: Request): string | null {
   const header = req.headers.get("x-memory-os-api-secret")?.trim();
   if (header) return header;
@@ -824,7 +856,13 @@ Deno.serve(async (req: Request) => {
     }
     return json({ error: "not found", path }, 404);
   } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    return json({ error: message }, 500);
+    console.error(
+      JSON.stringify({
+        event: "worker_tick_failed",
+        path,
+        ...errorDiagnostic(err, secret),
+      }),
+    );
+    return json({ error: "internal worker error" }, 500);
   }
 });

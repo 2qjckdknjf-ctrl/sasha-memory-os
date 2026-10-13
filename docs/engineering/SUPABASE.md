@@ -38,18 +38,23 @@ Seed loaded: workspace `sasha-home`, project `aistroyka`, verified decision + st
 
 Copy `.env.example` → `.env` and fill:
 
-- `MEMORY_OS_SUPABASE_ANON_KEY` / publishable key
+- `MEMORY_OS_SUPABASE_ANON_KEY` / publishable key — browser Auth only
+- `MEMORY_OS_SUPABASE_SERVICE_ROLE_KEY` — trusted API/workers/MCP only; required
+  when `MEMORY_OS_ENV=production`
 - `MEMORY_OS_API_SECRET` — must match `app.runtime_config.api_secret`
 
-API talks to Postgres through `public.api_*` RPCs (SECURITY DEFINER + ACL).  
-The browser never receives the API secret; only `apps/api` does.
+API/workers/MCP talk to Postgres through `public.api_*` RPCs using the
+server-only service role plus `MEMORY_OS_API_SECRET` (defence in depth), then
+the RPC enforces the subject/workspace/project ACL. `anon` and `authenticated`
+cannot execute privileged Memory RPCs directly. The browser receives neither
+the API secret nor the service role key.
 
 ```bash
 npx pnpm@9.15.9 dev:api   # http://localhost:8787 backend=supabase
 npx pnpm@9.15.9 dev:web   # http://localhost:5173
 ```
 
-Never commit `service_role` or `MEMORY_OS_API_SECRET`.
+Never commit or expose `service_role` or `MEMORY_OS_API_SECRET`.
 
 ## Remote smoke tests
 

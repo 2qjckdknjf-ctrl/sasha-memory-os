@@ -21,8 +21,8 @@ export const CURRENT_STATE_PATH = resolve(
 
 export const OFFICIAL_M14_1_BASELINE_MANIFEST_VERSION = 'm14.1-v1' as const;
 export const CURRENT_OPERATIONAL_MILESTONE =
-  'm15-live-runtime-remediation' as const;
-export const CURRENT_NEXT_SLICE = 'M15_CONNECTOR_AND_QUEUE_RECOVERY' as const;
+  'm20-security-governance' as const;
+export const CURRENT_NEXT_SLICE = 'M17.4_ENTITY_MIGRATION_BACKFILL' as const;
 
 export type CurrentStateManifest = {
   manifestVersion: string;

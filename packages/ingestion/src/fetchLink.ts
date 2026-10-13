@@ -1,6 +1,7 @@
 import { lookup } from 'node:dns/promises';
 import { isIP } from 'node:net';
 import { URL } from 'node:url';
+import { parse, type DefaultTreeAdapterMap } from 'parse5';
 
 const BLOCKED_HOSTS = new Set(['localhost', 'metadata.google.internal']);
 const MAX_BYTES = 1_000_000;
@@ -81,16 +82,40 @@ export type FetchedLink = {
   contentType: string | null;
 };
 
-function stripHtml(html: string): { title: string; text: string } {
-  const titleMatch = html.match(/<title[^>]*>([^<]*)<\/title>/i);
-  const title = (titleMatch?.[1] ?? '').replace(/\s+/g, ' ').trim() || 'Linked page';
-  const text = html
-    .replace(/<script[\s\S]*?<\/script>/gi, ' ')
-    .replace(/<style[\s\S]*?<\/style>/gi, ' ')
-    .replace(/<[^>]+>/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim();
-  return { title, text };
+type ParsedHtmlNode = DefaultTreeAdapterMap['node'];
+
+function collectParsedHtmlText(
+  node: ParsedHtmlNode,
+  output: { body: string[]; title: string[] },
+  inTitle = false,
+): void {
+  const tagName = 'tagName' in node ? node.tagName.toLowerCase() : null;
+  if (tagName === 'script' || tagName === 'style' || tagName === 'noscript') {
+    return;
+  }
+
+  const nextInTitle = inTitle || tagName === 'title';
+  if ('value' in node) {
+    (nextInTitle ? output.title : output.body).push(node.value);
+  }
+  if ('childNodes' in node) {
+    for (const child of node.childNodes) {
+      collectParsedHtmlText(child, output, nextInTitle);
+    }
+  }
+}
+
+function normalizeExtractedText(parts: string[]): string {
+  return parts.join(' ').replace(/\s+/g, ' ').trim();
+}
+
+export function stripHtml(html: string): { title: string; text: string } {
+  const output = { body: [] as string[], title: [] as string[] };
+  collectParsedHtmlText(parse(html), output);
+  return {
+    title: normalizeExtractedText(output.title) || 'Linked page',
+    text: normalizeExtractedText(output.body),
+  };
 }
 
 /** Fetch a public URL after DNS/SSRF checks. No redirects to private IPs. */

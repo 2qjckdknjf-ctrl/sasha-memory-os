@@ -19,9 +19,21 @@ import {
   markAppleCompanionQueueItemDone,
   markAppleCompanionQueueItemFailed,
   markAppleCompanionQueueItemUploading,
+  normalizeAppleCompanionProviderItemIdentifier,
   resolveAppleCompanionFileBookmark,
   withAppleCompanionSecurityScopedLease,
 } from './appleCompanion.js';
+
+describe('normalizeAppleCompanionProviderItemIdentifier', () => {
+  it('removes an adversarial trailing slash run in linear time semantics', () => {
+    expect(
+      normalizeAppleCompanionProviderItemIdentifier(
+        `/provider/item${'/'.repeat(20_000)}`,
+      ),
+    ).toBe('/provider/item');
+    expect(normalizeAppleCompanionProviderItemIdentifier('/')).toBe('/');
+  });
+});
 
 const basePayload = {
   workspace_id: '11111111-1111-4111-8111-111111111111',

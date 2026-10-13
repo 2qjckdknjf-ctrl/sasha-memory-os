@@ -18,14 +18,16 @@ if ! command -v docker >/dev/null 2>&1; then
   exit 1
 fi
 
-echo "== supabase start (db + api only)"
-supabase start -x gotrue,realtime,storage-api,imgproxy,edge-runtime,logflare,vector,studio
+echo "== supabase start (db + api + auth key issuer)"
+# Keep gotrue enabled: current Supabase CLI versions omit generated publishable
+# and secret keys from `status -o json` when the Auth service is excluded.
+supabase start -x realtime,storage-api,imgproxy,edge-runtime,logflare,vector,studio
 
 echo "== supabase db reset (migrations + idempotent seed)"
 supabase db reset
 
 echo "== ensure local API is running after reset"
-supabase start -x gotrue,realtime,storage-api,imgproxy,edge-runtime,logflare,vector,studio >/dev/null
+supabase start -x realtime,storage-api,imgproxy,edge-runtime,logflare,vector,studio >/dev/null
 
 DB_URL="$(supabase status -o json | node -e 'const j=JSON.parse(require("fs").readFileSync(0,"utf8")); process.stdout.write(j.DB_URL||"")')"
 if [[ -z "$DB_URL" ]]; then
@@ -42,16 +44,22 @@ psql "$DB_URL" -v ON_ERROR_STOP=1 -f tests/security/p0_routing_corrections_polic
 psql "$DB_URL" -v ON_ERROR_STOP=1 -f tests/security/p0_effective_project_personalization_cases.sql
 psql "$DB_URL" -v ON_ERROR_STOP=1 -f tests/security/p0_migration_upgrade_legacy_cases.sql
 psql "$DB_URL" -v ON_ERROR_STOP=1 -f tests/security/m15_runtime_recovery_cases.sql
+psql "$DB_URL" -v ON_ERROR_STOP=1 -f tests/security/m20_security_role_boundary_cases.sql
 
 STATUS_JSON="$(supabase status -o json)"
 export MEMORY_OS_SUPABASE_URL="$(node -e 'const j=JSON.parse(process.argv[1]); process.stdout.write(j.API_URL||"")' "$STATUS_JSON")"
 export MEMORY_OS_SUPABASE_ANON_KEY="$(node -e 'const j=JSON.parse(process.argv[1]); process.stdout.write(j.ANON_KEY||j.PUBLISHABLE_KEY||"")' "$STATUS_JSON")"
+export MEMORY_OS_SUPABASE_SERVICE_ROLE_KEY="$(node -e 'const j=JSON.parse(process.argv[1]); process.stdout.write(j.SERVICE_ROLE_KEY||j.SECRET_KEY||"")' "$STATUS_JSON")"
 if [[ -z "$MEMORY_OS_SUPABASE_ANON_KEY" ]]; then
   # Default local Supabase demo anon key when status omits it (gotrue excluded).
   export MEMORY_OS_SUPABASE_ANON_KEY="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS1kZW1vIiwicm9sZSI6ImFub24iLCJleHAiOjE5ODM4MTI5OTZ9.CRXP1A7WOeoJeXxjNni43kdQwgnWNReilDMblYTn_I0"
 fi
 if [[ -z "$MEMORY_OS_SUPABASE_URL" ]]; then
   echo "ephemeral_smoke=missing_supabase_api_env"
+  exit 1
+fi
+if [[ -z "$MEMORY_OS_SUPABASE_SERVICE_ROLE_KEY" ]]; then
+  echo "ephemeral_smoke=missing_service_role_key"
   exit 1
 fi
 export MEMORY_OS_API_SECRET="${API_SECRET}"
