@@ -16,8 +16,8 @@
   },
   "dependencies": {
     "@hono/node-server": "^2.1.0",
-    "@memory-os/connector-apple-bridge": "workspace:*",
     "@memory-os/authz": "workspace:^",
+    "@memory-os/connector-apple-bridge": "workspace:*",
     "@memory-os/connector-github": "workspace:*",
     "@memory-os/connector-gmail": "workspace:*",
     "@memory-os/connector-google-calendar": "workspace:*",
@@ -30,10 +30,9 @@
     "@memory-os/observability": "workspace:*",
     "@memory-os/retrieval": "workspace:^",
     "@memory-os/schemas": "workspace:^",
-
     "@supabase/supabase-js": "^2.112.3",
     "dotenv": "^17.4.2",
-    "hono": "^4.13.1"
+    "hono": "4.13.13"
   },
   "devDependencies": {
     "tsx": "^4.23.12"

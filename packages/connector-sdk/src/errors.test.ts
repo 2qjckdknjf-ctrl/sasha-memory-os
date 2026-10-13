@@ -22,4 +22,19 @@ describe('classifyConnectorError', () => {
     expect(classified.retryable).toBe(true);
     expect(classified.statusCode).toBe(429);
   });
+
+  it('preserves safe structured diagnostics instead of writing object coercion noise', () => {
+    const classified = classifyConnectorError({
+      message: 'RPC rejected the connector update',
+      code: 'PGRST202',
+      details: 'Function signature did not match',
+      hint: 'Refresh the schema cache',
+      access_token: 'must-not-be-serialized',
+    });
+
+    expect(classified.message).toContain('RPC rejected the connector update');
+    expect(classified.message).toContain('PGRST202');
+    expect(classified.message).not.toContain('[object Object]');
+    expect(classified.message).not.toContain('must-not-be-serialized');
+  });
 });

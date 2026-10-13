@@ -17,7 +17,7 @@ import {
   type VaultStore,
 } from '@memory-os/connector-sdk';
 import { parseDocument } from '@memory-os/ingestion';
-import XLSX from 'xlsx';
+import ExcelJS from 'exceljs';
 
 export type DriveSyncDelta = {
   externalId: string;
@@ -927,36 +927,31 @@ function resolveDriveNativeExportPlan(input: {
   }
 }
 
-function parseDriveSheetWorkbook(input: {
+async function parseDriveSheetWorkbook(input: {
   bytes: Buffer;
   filename: string;
-}): {
+}): Promise<{
   text: string;
   mimeType: 'text/plain';
   filename: string;
-} {
-  const workbook = XLSX.read(input.bytes, { type: 'buffer' });
-  const sheetTexts = workbook.SheetNames.map((sheetName) => {
-    const sheet = workbook.Sheets[sheetName];
-    if (!sheet) return '';
-    const rows = XLSX.utils.sheet_to_json<(string | number | boolean | null)[]>(sheet, {
-      header: 1,
-      raw: false,
-      defval: '',
-      blankrows: false,
+}> {
+  const workbook = new ExcelJS.Workbook();
+  await workbook.xlsx.load(
+    input.bytes as unknown as Parameters<typeof workbook.xlsx.load>[0],
+  );
+  const sheetTexts = workbook.worksheets.map((sheet) => {
+    const lines: string[] = [];
+    sheet.eachRow({ includeEmpty: false }, (row) => {
+      const cells = Array.from({ length: row.cellCount }, (_, index) =>
+        row.getCell(index + 1).text.trim(),
+      );
+      const line = cells.join('\t').trim();
+      if (line) lines.push(line);
     });
-    const lines = rows
-      .map((row) =>
-        row
-          .map((cell) => String(cell ?? '').trim())
-          .join('\t')
-          .trim(),
-      )
-      .filter((line) => line.length > 0);
     if (lines.length === 0) {
-      return `Sheet: ${sheetName}`;
+      return `Sheet: ${sheet.name}`;
     }
-    return [`Sheet: ${sheetName}`, ...lines].join('\n');
+    return [`Sheet: ${sheet.name}`, ...lines].join('\n');
   }).filter((text) => text.trim().length > 0);
   const text = sheetTexts.join('\n\n').trim();
   if (!text) {
@@ -1007,7 +1002,7 @@ async function exportAndParseDriveNativeFile(input: {
   const parsed =
     plan.exportMimeType ===
     'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
-      ? parseDriveSheetWorkbook({
+      ? await parseDriveSheetWorkbook({
           bytes,
           filename: plan.exportFilename,
         })

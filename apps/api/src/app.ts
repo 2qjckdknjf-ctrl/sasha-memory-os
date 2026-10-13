@@ -8,16 +8,6 @@ import {
   type AuthzContext,
 } from '@memory-os/authz';
 import {
-  AISTROYKA_PROJECT_ID,
-  CANONICAL_WORKSPACE_ID,
-  CHATGPT_SUBJECT_ID,
-  CURSOR_SUBJECT_ID,
-  OWNER_SUBJECT_ID,
-  PROJECT_ID_BY_SLUG,
-  ROMA_SUBJECT_ID,
-  SASHA_MEMORY_OS_PROJECT_ID,
-} from '@memory-os/schemas';
-import {
   createSeededStore,
   type MemoryRecord,
   type MemoryStore,
@@ -50,6 +40,14 @@ import {
   type SyncCursor,
 } from '@memory-os/connector-sdk';
 import {
+  AISTROYKA_PROJECT_ID,
+  CANONICAL_WORKSPACE_ID,
+  CHATGPT_SUBJECT_ID,
+  CURSOR_SUBJECT_ID,
+  OWNER_SUBJECT_ID,
+  PROJECT_ID_BY_SLUG,
+  ROMA_SUBJECT_ID,
+  SASHA_MEMORY_OS_PROJECT_ID,
   appleCompanionIngestRequestSchema,
   appleCompanionTransferredObjectDeleteRequestSchema,
   appleCompanionTransferredObjectSchema,

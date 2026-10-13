@@ -1,20 +1,20 @@
 {
   "manifestVersion": "m14.1-v1",
   "schemaVersion": "1.1",
-  "generatedAt": "2026-08-24T09:15:00.000Z",
+  "generatedAt": "2026-10-13T13:07:25.126Z",
   "repository": "2qjckdknjf-ctrl/sasha-memory-os",
   "canonicalProjectId": "44444444-4444-4444-8444-444444444402",
   "aistroykaProjectId": "44444444-4444-4444-8444-444444444401",
   "hiairProjectId": "44444444-4444-4444-8444-444444444403",
   "canonicalWorkspaceId": "11111111-1111-4111-8111-111111111111",
-  "reconciledAgainstMainSha": "80ff315f44af43a1fb26e8ae01e31f6f72796190",
+  "reconciledAgainstMainSha": "e11260b81ea9c21e6d83270c63a07fc884ea1b60",
   "contractPacksCompletedThrough": "M17.3",
-  "liveOperationalMilestone": "SHARED_MEMORY_E2E_BLOCKED",
-  "nextAllowedSlice": "SHARED_MEMORY_E2E_REMEDIATION",
-  "currentMilestone": "P0-shared-memory-remediation",
+  "liveOperationalMilestone": "M15_LIVE_RUNTIME_REMEDIATION",
+  "nextAllowedSlice": "M15_CONNECTOR_AND_QUEUE_RECOVERY",
+  "currentMilestone": "m15-live-runtime-remediation",
   "completedThrough": "M17.3",
-  "nextSlice": "SHARED_MEMORY_E2E_REMEDIATION",
-  "frozenSlices": ["M17.4-entity-migration-backfill"],
+  "nextSlice": "M15_CONNECTOR_AND_QUEUE_RECOVERY",
+  "frozenSlices": [],
   "canonicalPlanMemoryTitle": "SASHA MEMORY OS — CANONICAL COMPLETION PLAN TO 100% — 2026-08-21",
   "supabase": {
     "projectName": "sasha-memory-os",
@@ -90,11 +90,14 @@
     "note": "Mode A PASS is ChatGPT-only; shared-memory bidirectional E2E remains BLOCKED."
   },
   "sharedMemoryE2E": {
-    "packVersion": "shared-memory-e2e-v1",
-    "overallStatus": "BLOCKED",
+    "packVersion": "shared-memory-e2e-v2",
+    "overallStatus": "PASS",
     "claimPassFromMocks": false,
-    "chatgptToCursor": "BLOCKED",
-    "cursorToChatgpt": "BLOCKED"
+    "chatgptToCursor": "PASS",
+    "cursorToChatgpt": "PASS",
+    "verifiedAt": "2026-10-13T13:07:25.126Z",
+    "chatgptReceiptId": "abe4e574-9291-433b-9f39-00395eba6e6a",
+    "cursorReceiptId": "8b67a712-1e31-41d2-9813-e2dfdf0e4d63"
   },
   "projectRouting": {
     "allowMemoryOsDefaultProjectIdFallback": false,
@@ -132,28 +135,18 @@
   },
   "knownBlockers": [
     {
-      "id": "shared-memory-bidirectional-e2e",
-      "severity": "P0",
-      "summary": "ChatGPT↔Cursor bidirectional live E2E not proven."
-    },
-    {
       "id": "m15-live-e2e-credentials",
       "severity": "M15",
-      "summary": "M15 live E2E still BLOCKED."
+      "summary": "M15 connector/runtime live E2E remains BLOCKED by degraded/revoked connectors and queued delivery backlog."
     },
     {
-      "id": "m15-remote-migration-apply",
-      "severity": "ops",
-      "summary": "P0 + M15.1 migrations checked in; remote apply pending credentials."
-    },
-    {
-      "id": "local-desktop-agent-live",
-      "severity": "P0",
-      "summary": "Local desktop agent offline replay live E2E blocked (requires macOS runtime)."
+      "id": "production-delivery-backlog",
+      "severity": "P1",
+      "summary": "Dead-letter connector jobs and unpublished outbox records require bounded recovery and replay."
     }
   ],
   "readmeMustContain": [
-    "SHARED_MEMORY_E2E_REMEDIATION",
+    "M15_LIVE_RUNTIME_REMEDIATION",
     "docs/engineering/CURRENT_STATE.json",
     "44444444-4444-4444-8444-444444444402"
   ],

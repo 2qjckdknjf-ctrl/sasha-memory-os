@@ -20,18 +20,19 @@
 
 **Dedicated Supabase live** — project `sasha-memory-os` (`vpxblcxsvlylqyldiuwr`, `eu-central-1`). Details: [docs/engineering/SUPABASE.md](docs/engineering/SUPABASE.md).
 
-Machine-readable snapshot: [docs/engineering/CURRENT_STATE.json](docs/engineering/CURRENT_STATE.json) (`m14.1-v1`).
+Machine-readable snapshot: [docs/engineering/CURRENT_STATE.json](docs/engineering/CURRENT_STATE.json) (`m14.1-v1` schema, reconciled 2026-10-13).
 
-- **Live operational milestone:** `SHARED_MEMORY_E2E_REMEDIATION` (bidirectional ChatGPT↔Cursor gate **BLOCKED**)
+- **Live operational milestone:** `M15_LIVE_RUNTIME_REMEDIATION`
 - **Contract packs completed through:** M17.3 (graph-aware retrieval contracts)
 - **Canonical Memory OS project UUID:** `44444444-4444-4444-8444-444444444402`
 - **M6 ChatGPT Mode A PASS (2026-08-15):** ChatGPT-only; does not close shared-memory E2E
-- **Frozen until shared-memory PASS:** M17.4 entity backfill slice and GraphRAG backfill
+- **Bidirectional ChatGPT↔Cursor E2E PASS (2026-10-13):** real-session receipts, explicit project isolation, actor attribution verified
+- **M17.4 is no longer frozen:** it remains pending behind M15 production runtime recovery
 - Core path live: WP-01…08 RPCs, vault OAuth, hybrid RRF retrieval, embeddings, consolidation/outbox/jobs, MCP, Control Center
 - M10–M13 foundations merged (Drive/Gmail/Calendar policies, ROMA project-health, bounded agentic retrieval / consolidation / ranking)
 - Apple: companion-required personal-source contracts complete; live device E2E still blocked
 - Entity graph: foundation + resolution + bounded graph-aware retrieval; live graph DB E2E blocked
-- Known blockers: M15 live connector E2E; Apple live device E2E; remote M15.1 migration apply; Fly deferred
+- Known blockers: degraded/revoked live connectors, outbox/dead-letter backlog, Apple live device E2E; Fly deferred
 
 ## Репозиторий
 
@@ -107,7 +108,7 @@ Canonical order (do not skip): see [M14_1_BASELINE.md](docs/engineering/M14_1_BA
 7. ~~M15.6 deletion / revoke lifecycle~~ — tombstone/stop-sync convergence (fixture PASS; live BLOCKED)
 8. ~~M15.7 autonomous capture policy~~ — auto-promote / reject / preview (live BLOCKED)
 9. ~~M15.8 observability / SLOs~~ — M15 metric catalog (live dashboard BLOCKED)
-10. ~~M15 live E2E closure~~ — exit gate **BLOCKED** (documented limitations → M16; not PASS from mocks)
+10. M15 live E2E closure — fixture contract exists; production connector/runtime recovery remains **BLOCKED**
 11. ~~M16.1 Apple capability feasibility matrix~~ — companion-required; no server iCloud scrape
 12. ~~M16.2 Apple companion security foundation~~ — Keychain/device binding/encrypted transport (signing BLOCKED)
 13. ~~M16.3 iCloud Drive / Files~~ — selected-scope metadata-first (live picker BLOCKED)
@@ -116,9 +117,11 @@ Canonical order (do not skip): see [M14_1_BASELINE.md](docs/engineering/M14_1_BA
 16. ~~M17.1 Entity graph foundation~~ — classes/edges/merge policy (live graph BLOCKED)
 17. ~~M17.2 Entity resolution~~ — cross-source signals; golden >=95% (live E2E BLOCKED)
 18. ~~M17.3 Graph-aware retrieval~~ — bounded traversal + hybrid fusion (live graph DB BLOCKED)
-19. **M17.4 Entity migration backfill**
-20. M17.5+ / M18–M20; Fly API deferred
+19. ~~P0 bidirectional ChatGPT↔Cursor shared memory~~ — live real-session receipts **PASS** (2026-10-13)
+20. **M15 production runtime recovery** — connectors, outbox, dead letters, freshness and live exit gate
+21. M17.4 Entity migration backfill
+22. M17.5+ / M18–M20; Fly API deferred
 
 ## AI разборы 2026-10-13
 
-[Сверка рекомендаций с существующими функциями](docs/AI_DIGEST_RECONCILIATION_2026-10-13.md) и [действующий innovation backlog](docs/AI_INNOVATION_BACKLOG_2026-09-08.md). Сначала SHARED_MEMORY_E2E_REMEDIATION; новые требования к handoff/redaction/recall quality не снимают current live blockers.
+[Сверка рекомендаций с существующими функциями](docs/AI_DIGEST_RECONCILIATION_2026-10-13.md) и [действующий innovation backlog](docs/AI_INNOVATION_BACKLOG_2026-09-08.md). Снача M15 production runtime recovery; новые требования к handoff/redaction/recall quality не снимают current live blockers.

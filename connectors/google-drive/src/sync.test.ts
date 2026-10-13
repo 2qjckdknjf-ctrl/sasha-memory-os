@@ -8,7 +8,7 @@ import {
   runConnectorSync,
 } from '@memory-os/connector-sdk';
 import { describe, expect, it, vi } from 'vitest';
-import XLSX from 'xlsx';
+import ExcelJS from 'exceljs';
 import {
   driveFileWithinSelectedScope,
   googleDriveConnector,
@@ -101,15 +101,12 @@ function appendDrivePermissionResponses(fetchImpl: ReturnType<typeof vi.fn>, cou
   return fetchImpl;
 }
 
-function createWorkbookBuffer(sheets: Record<string, string[][]>) {
-  const workbook = XLSX.utils.book_new();
+async function createWorkbookBuffer(sheets: Record<string, string[][]>) {
+  const workbook = new ExcelJS.Workbook();
   for (const [sheetName, rows] of Object.entries(sheets)) {
-    XLSX.utils.book_append_sheet(workbook, XLSX.utils.aoa_to_sheet(rows), sheetName);
+    workbook.addWorksheet(sheetName).addRows(rows);
   }
-  return XLSX.write(workbook, {
-    type: 'buffer',
-    bookType: 'xlsx',
-  });
+  return Buffer.from(await workbook.xlsx.writeBuffer());
 }
 
 function driveFetchFixtureSequence() {
@@ -449,6 +446,12 @@ describe('pullGoogleDriveDelta', () => {
           },
         },
       };
+      const workbookBuffer = await createWorkbookBuffer({
+        Plan: [
+          ['Owner', 'Status'],
+          ['Sasha', 'active'],
+        ],
+      });
       const fetchImpl = vi
         .fn()
         .mockResolvedValueOnce(Response.json({ startPageToken: 'drive-token-native' }))
@@ -498,12 +501,7 @@ describe('pullGoogleDriveDelta', () => {
         .mockResolvedValueOnce(drivePermissionResponse())
         .mockResolvedValueOnce(
           new Response(
-            createWorkbookBuffer({
-              Plan: [
-                ['Owner', 'Status'],
-                ['Sasha', 'active'],
-              ],
-            }),
+            workbookBuffer,
             {
               headers: {
                 'content-type':

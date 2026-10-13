@@ -14,8 +14,9 @@
   },
   "dependencies": {
     "@memory-os/schemas": "workspace:*",
-    "mammoth": "^1.11.0",
-    "pdf-parse": "^1.1.1"
+    "jszip": "3.10.2",
+    "pdf-parse": "^1.1.1",
+    "saxes": "6.0.0"
   },
   "devDependencies": {
     "@types/pdf-parse": "^1.1.5"

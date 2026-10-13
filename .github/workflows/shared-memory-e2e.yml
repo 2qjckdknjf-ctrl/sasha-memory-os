@@ -2,8 +2,28 @@ name: Shared Memory E2E
 
 on:
   workflow_dispatch:
+    inputs:
+      chatgpt_memory_id:
+        description: Memory ID written by the real ChatGPT MCP session
+        required: true
+        type: string
+      chatgpt_marker:
+        description: Unique marker contained in the ChatGPT receipt
+        required: true
+        type: string
+      cursor_memory_id:
+        description: Memory ID written by the real Cursor MCP session
+        required: true
+        type: string
+      cursor_marker:
+        description: Unique marker contained in the Cursor receipt
+        required: true
+        type: string
   schedule:
     - cron: '0 6 * * 1'
+
+permissions:
+  contents: read
 
 jobs:
   fixture-gate:
@@ -24,7 +44,7 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: P0 project identity pack
-        run: vitest run tests/security/p0_project_identity_pack.test.ts
+        run: pnpm exec vitest run tests/security/p0_project_identity_pack.test.ts
 
       - name: Project identity schema tests
         run: pnpm --filter @memory-os/schemas test -- projectIdentity
@@ -36,15 +56,32 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Live shared-memory E2E
+      - name: Verify live ChatGPT and Cursor session receipts
         env:
           LIVE_SECRET: ${{ secrets.MEMORY_OS_API_SECRET }}
           LIVE_SUPABASE_URL: ${{ secrets.MEMORY_OS_SUPABASE_URL }}
           MEMORY_OS_PROJECT_ID: ${{ secrets.MEMORY_OS_PROJECT_ID }}
+          SHARED_MEMORY_CHATGPT_MEMORY_ID: ${{ inputs.chatgpt_memory_id }}
+          SHARED_MEMORY_CHATGPT_MARKER: ${{ inputs.chatgpt_marker }}
+          SHARED_MEMORY_CURSOR_MEMORY_ID: ${{ inputs.cursor_memory_id }}
+          SHARED_MEMORY_CURSOR_MARKER: ${{ inputs.cursor_marker }}
         run: |
           if [[ -z "$LIVE_SECRET" || -z "$LIVE_SUPABASE_URL" ]]; then
-            echo "shared_memory_e2e=BLOCKED_missing_repo_secrets"
-            exit 0
+            echo "shared_memory_e2e=BLOCKED_missing_repo_secrets" >&2
+            exit 2
           fi
-          echo "shared_memory_e2e=REQUIRES_REAL_CHATGPT_SESSION"
-          echo "Run scripts/acceptance-shared-memory-e2e.sh locally with OAuth-bound ChatGPT + Cursor MCP sessions."
+          export MEMORY_OS_API_SECRET="$LIVE_SECRET"
+          export MEMORY_OS_API_BASE_URL="${LIVE_SUPABASE_URL%/}/functions/v1/memory-mcp"
+          export SHARED_MEMORY_E2E_RESULT="$RUNNER_TEMP/SHARED_MEMORY_E2E_RESULT.json"
+          ./scripts/acceptance-shared-memory-e2e.sh
+          node -e '
+            const result = JSON.parse(require("node:fs").readFileSync(process.argv[1], "utf8"));
+            if (result.overallStatus !== "PASS" || result.claimPassFromMocks !== false) process.exit(1);
+          ' "$SHARED_MEMORY_E2E_RESULT"
+
+      - name: Upload acceptance receipt
+        uses: actions/upload-artifact@v4
+        with:
+          name: shared-memory-e2e-result
+          path: ${{ runner.temp }}/SHARED_MEMORY_E2E_RESULT.json
+          if-no-files-found: error
