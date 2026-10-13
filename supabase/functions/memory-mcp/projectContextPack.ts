@@ -83,20 +83,101 @@ function decision(memory: JsonRecord, projectId: string, summaryChars: number) {
   };
 }
 
+const MAX_PARSED_CONTENT_CHARS = 50_000;
+
+function valueAfterLabel(content: string, labels: string[]): string | null {
+  const bounded = content.slice(0, MAX_PARSED_CONTENT_CHARS);
+  const lower = bounded.toLowerCase();
+  for (const label of labels) {
+    const marker = `${label.toLowerCase()}:`;
+    const at = lower.indexOf(marker);
+    if (at < 0) continue;
+    const start = at + marker.length;
+    const newline = bounded.indexOf("\n", start);
+    return bounded.slice(start, newline < 0 ? bounded.length : newline).trim() || null;
+  }
+  return null;
+}
+
 function nextWorkFrom(content: string): string | null {
-  return /(?:Next canonical slice|Next allowed slice|Next slice):\s*([^\n]+)/i
-    .exec(content)?.[1]?.trim() || null;
+  return valueAfterLabel(content, [
+    "Next canonical slice",
+    "Next allowed slice",
+    "Next slice",
+  ]);
 }
 
 function blockersFrom(content: string): string[] {
-  const match =
-    /(?:Known external blockers remain|Remaining blockers|Blockers):\s*([\s\S]*?)(?=\n\s*\n(?:Next|Verification|Repository)|\nNext canonical slice:|$)/i
-      .exec(content);
-  if (!match?.[1]) return [];
-  return match[1]
-    .split(/\n\s*-\s+|;\s+/)
-    .map((value) => value.replace(/^[-\s]+/, "").trim())
+  const bounded = content.slice(0, MAX_PARSED_CONTENT_CHARS);
+  const lower = bounded.toLowerCase();
+  const labels = [
+    "known external blockers remain:",
+    "remaining blockers:",
+    "blockers:",
+  ];
+  let start = -1;
+  for (const label of labels) {
+    const at = lower.indexOf(label);
+    if (at >= 0 && (start < 0 || at < start)) start = at + label.length;
+  }
+  if (start < 0) return [];
+  let end = bounded.length;
+  for (const marker of [
+    "\n\nnext",
+    "\n\nverification",
+    "\n\nrepository",
+    "\nnext canonical slice:",
+  ]) {
+    const at = lower.indexOf(marker, start);
+    if (at >= 0 && at < end) end = at;
+  }
+  return bounded.slice(start, end)
+    .split("\n")
+    .flatMap((line) => line.split(";"))
+    .map((value) => {
+      const trimmed = value.trim();
+      return trimmed.startsWith("-") ? trimmed.slice(1).trim() : trimmed;
+    })
     .filter(Boolean);
+}
+
+function hasMilestoneMarker(title: string): boolean {
+  const lower = title.toLowerCase();
+  if (lower.includes("merged") || lower.includes("applied")) return true;
+  const liveAt = lower.indexOf("live");
+  if (liveAt >= 0 && lower.indexOf("pass", liveAt + 4) >= 0) return true;
+  for (let index = 0; index < lower.length - 1; index += 1) {
+    if (lower[index] !== "m") continue;
+    const next = lower.charCodeAt(index + 1);
+    if (next >= 48 && next <= 57) return true;
+  }
+  return false;
+}
+
+function githubPullRequestUrl(content: string): string | null {
+  const bounded = content.slice(0, MAX_PARSED_CONTENT_CHARS);
+  const marker = "https://github.com/";
+  let searchFrom = 0;
+  while (searchFrom < bounded.length) {
+    const at = bounded.indexOf(marker, searchFrom);
+    if (at < 0) return null;
+    let end = at;
+    while (end < bounded.length) {
+      const char = bounded[end];
+      if (!char || char <= " " || [")", "]", "`", '"', "'"].includes(char)) break;
+      end += 1;
+    }
+    const candidate = bounded.slice(at, end).replace(/[.,;:]$/, "");
+    const pullAt = candidate.indexOf("/pull/");
+    if (pullAt > marker.length) {
+      const number = candidate.slice(pullAt + "/pull/".length);
+      if (number && [...number].every((char) => char >= "0" && char <= "9")) {
+        return candidate;
+      }
+    }
+    searchFrom = Math.max(end, at + marker.length);
+  }
+  return null;
 }
 
 function stateValues(rawState: unknown, key: string): string[] {
@@ -159,7 +240,7 @@ export function buildEdgeProjectContextPack(
     !/^(?:ChatGPT smoke decision|Cursor .*receipt)/i.test(textOf(memory.title))
   );
   const milestoneSource = canonicalSources.find((memory) =>
-    /(?:M\d+(?:\.\d+)?|LIVE .*PASS|MERGED|APPLIED)/i.test(textOf(memory.title))
+    hasMilestoneMarker(textOf(memory.title))
   ) ?? canonicalSources[0] ?? null;
   const milestoneCitation = milestoneSource
     ? citation(milestoneSource, projectId)
@@ -248,8 +329,7 @@ export function buildEdgeProjectContextPack(
     }));
     const recentMerges = canonicalSources.map((memory) => {
       const content = textOf(memory.content);
-      const pullRequestUrl =
-        /https:\/\/github\.com\/[^\s)]+\/pull\/\d+/.exec(content)?.[0] ?? null;
+      const pullRequestUrl = githubPullRequestUrl(content);
       const mergeSha =
         /(?:Merge SHA:|merge SHA)\s*([0-9a-f]{40})/i.exec(content)?.[1] ?? null;
       return pullRequestUrl || mergeSha
