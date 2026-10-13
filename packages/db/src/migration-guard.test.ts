@@ -92,6 +92,12 @@ const m17EntityGraphMigrationPath = fileURLToPath(
     import.meta.url,
   ),
 );
+const m17EntityGraphHardeningMigrationPath = fileURLToPath(
+  new URL(
+    '../../../supabase/migrations/20261013144045_m17_slice_04_entity_graph_advisor_hardening.sql',
+    import.meta.url,
+  ),
+);
 
 describe('m8 slice 03 migration guards', () => {
   const sql = readFileSync(migrationPath, 'utf8');
@@ -570,6 +576,7 @@ describe('M20 security boundary migration guards', () => {
 
 describe('M17.4 entity graph migration guards', () => {
   const sql = readFileSync(m17EntityGraphMigrationPath, 'utf8');
+  const hardeningSql = readFileSync(m17EntityGraphHardeningMigrationPath, 'utf8');
 
   it('creates an additive graph projection with stable identities', () => {
     expect(sql).toContain('CREATE TABLE public.entities');
@@ -600,5 +607,16 @@ describe('M17.4 entity graph migration guards', () => {
     expect(sql).toContain('ON CONFLICT (workspace_id, stable_id) DO UPDATE');
     expect(sql).toContain('ON CONFLICT (workspace_id, idempotency_key) DO UPDATE');
     expect(sql).toContain('SELECT app.api_backfill_entity_graph(NULL)');
+  });
+
+  it('closes graph-specific advisor findings without reopening client access', () => {
+    expect(hardeningSql.match(/CREATE INDEX IF NOT EXISTS/g)).toHaveLength(11);
+    expect(hardeningSql).toContain(
+      'DROP POLICY IF EXISTS entities_write ON public.entities',
+    );
+    expect(hardeningSql).not.toMatch(/CREATE POLICY .*_write[\s\S]*FOR ALL/);
+    expect(hardeningSql).toContain(
+      'REVOKE ALL ON TABLE public.entities FROM PUBLIC, anon, authenticated',
+    );
   });
 });

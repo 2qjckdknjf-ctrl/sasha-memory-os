@@ -197,6 +197,36 @@ BEGIN
      OR has_function_privilege('authenticated', 'app.api_backfill_entity_graph(uuid)', 'EXECUTE') THEN
     RAISE EXCEPTION 'entity graph leaked direct client grants';
   END IF;
+
+  IF EXISTS (
+    SELECT 1
+    FROM pg_policies
+    WHERE schemaname = 'public'
+      AND tablename IN ('entities', 'entity_aliases', 'entity_edges', 'memory_entities')
+      AND cmd = 'ALL'
+  ) THEN
+    RAISE EXCEPTION 'graph tables retain FOR ALL policies that duplicate SELECT';
+  END IF;
+
+  IF EXISTS (
+    SELECT expected.index_name
+    FROM unnest(ARRAY[
+      'idx_entities_project_fk',
+      'idx_entities_source_event_fk',
+      'idx_entities_merged_into_fk',
+      'idx_entity_aliases_source_event_fk',
+      'idx_entity_aliases_memory_fk',
+      'idx_entity_edges_project_fk',
+      'idx_entity_edges_from_fk',
+      'idx_entity_edges_to_fk',
+      'idx_entity_edges_source_event_fk',
+      'idx_entity_edges_memory_fk',
+      'idx_memory_entities_project_fk'
+    ]) AS expected(index_name)
+    WHERE to_regclass('public.' || expected.index_name) IS NULL
+  ) THEN
+    RAISE EXCEPTION 'graph foreign-key covering indexes are incomplete';
+  END IF;
 END $$;
 
 \echo m17_slice_04_entity_graph_cases=pass
