@@ -1428,5 +1428,26 @@ describe('mcp gateway alpha', () => {
       },
     });
     expect((handoff as { projectId: string }).projectId).toBe(memoryOsProjectId);
+    const context = (await mcp.call('context.project', {
+      project_id: memoryOsProjectId,
+      actor_subject_id: cursor,
+      max_tokens: 1800,
+    })) as {
+      latestHandoff: {
+        id: string;
+        recommendedNext: Array<{ text: string; citations: string[] }>;
+      } | null;
+      nextWork: Array<{ text: string; citations: string[] }>;
+      citations: Array<{ id: string; kind: string }>;
+    };
+    expect(context.latestHandoff?.id).toBe((handoff as { id: string }).id);
+    expect(context.latestHandoff?.recommendedNext[0]?.text).toBe('ship WP-02');
+    expect(context.nextWork[0]?.text).toBe('ship WP-02');
+    expect(context.citations).toContainEqual(
+      expect.objectContaining({
+        id: `handoff:${(handoff as { id: string }).id}`,
+        kind: 'handoff',
+      }),
+    );
   });
 });

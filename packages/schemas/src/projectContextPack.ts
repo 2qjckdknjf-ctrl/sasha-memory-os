@@ -37,6 +37,18 @@ export type ProjectContextPack = {
   currentGoal: ProjectContextItem | null;
   canonicalDecisions: ProjectContextDecision[];
   currentMilestone: ProjectContextDecision | null;
+  latestHandoff: {
+    id: string;
+    createdAt: string | null;
+    fromSubjectId: string | null;
+    toSubjectId: string | null;
+    completed: ProjectContextItem[];
+    validation: ProjectContextItem[];
+    openItems: ProjectContextItem[];
+    blockers: ProjectContextItem[];
+    recommendedNext: ProjectContextItem[];
+    citations: string[];
+  } | null;
   activeBlockers: ProjectContextItem[];
   recentMerges: Array<{
     pullRequestUrl: string | null;
@@ -64,13 +76,19 @@ export type ProjectContextPack = {
     maxTokens: number;
     estimatedTokens: number;
     truncated: boolean;
-    originalCounts: { decisions: number; tasks: number; facts: number };
+    originalCounts: {
+      decisions: number;
+      tasks: number;
+      facts: number;
+      handoffItems: number;
+    };
     includedCounts: {
       canonicalDecisions: number;
       blockers: number;
       recentMerges: number;
       conflicts: number;
       nextWork: number;
+      handoffItems: number;
     };
   };
   text: string;
@@ -88,6 +106,7 @@ export const OFFICIAL_M18_PROJECT_CONTEXT_PACK = {
     'currentGoal',
     'canonicalDecisions',
     'currentMilestone',
+    'latestHandoff',
     'activeBlockers',
     'recentMerges',
     'unresolvedConflicts',
@@ -302,6 +321,15 @@ function stateValues(rawState: unknown, key: string): string[] {
   return arrayOf(state[key]).map(stringOf).filter(Boolean);
 }
 
+function valuesForKeys(rawValue: unknown, keys: string[]): string[] {
+  const raw = objectOf(rawValue);
+  for (const key of keys) {
+    const values = arrayOf(raw[key]).map(stringOf).filter(Boolean);
+    if (values.length > 0) return values;
+  }
+  return [];
+}
+
 function validateSources(
   values: unknown[],
   projectId: string,
@@ -379,27 +407,73 @@ export function buildProjectContextPack(
   }
   const stateCitation: ProjectContextCitation | null = stringOf(stateRow.id)
     ? {
-        id: `project-state:${stringOf(stateRow.id)}`,
+        id: `project-state:${normalizedText(stateRow.id, 128)}`,
         kind: 'project_state',
-        sourceId: stringOf(stateRow.id),
-        title: stringOf(stateRow.summary) || null,
+        sourceId: normalizedText(stateRow.id, 128),
+        title: normalizedText(stateRow.summary, 220) || null,
         projectId,
         recordedAt:
           stringOf(stateRow.updated_at ?? stateRow.created_at) || null,
         sourceEventId: null,
       }
     : null;
-  const currentGoal = nextFromMilestone
+  const handoffRow = objectOf(raw.latestHandoff ?? raw.latest_handoff);
+  const handoffProjectId = stringOf(
+    handoffRow.projectId ?? handoffRow.project_id,
+  );
+  if (handoffProjectId && !sameProject(handoffProjectId, projectId)) {
+    throw new Error('project context handoff project mismatch');
+  }
+  const handoffPayload = objectOf(handoffRow.payload);
+  const handoffCompleted = valuesForKeys(handoffPayload, ['completed']);
+  const handoffValidation = valuesForKeys(handoffPayload, ['validation']);
+  const handoffOpenItems = valuesForKeys(handoffPayload, [
+    'open_items',
+    'openItems',
+  ]);
+  const handoffBlockers = valuesForKeys(handoffPayload, ['blockers']);
+  const handoffRecommendedNext = valuesForKeys(handoffPayload, [
+    'recommended_next',
+    'recommendedNext',
+  ]);
+  const handoffCreatedAt =
+    stringOf(handoffRow.createdAt ?? handoffRow.created_at) || null;
+  const handoffCitation: ProjectContextCitation | null = stringOf(handoffRow.id)
     ? {
-        text: `Next canonical slice: ${normalizedText(nextFromMilestone, 420)}`,
-        citations: milestoneCitation ? [milestoneCitation.id] : [],
+        id: `handoff:${normalizedText(handoffRow.id, 128)}`,
+        kind: 'handoff',
+        sourceId: normalizedText(handoffRow.id, 128),
+        title: 'Latest agent handoff',
+        projectId,
+        recordedAt: handoffCreatedAt,
+        sourceEventId: null,
       }
-    : stringOf(stateRow.summary)
+    : null;
+  const handoffIsNewer =
+    (dateMs(handoffCreatedAt) ?? -1) >=
+    (dateMs(milestoneSource ? memoryRecordedAt(milestoneSource) : null) ?? -1);
+  const goalFromHandoff = handoffRecommendedNext[0];
+  const currentGoal = handoffIsNewer && goalFromHandoff
+    ? {
+        text: normalizedText(goalFromHandoff, 420),
+        citations: handoffCitation ? [handoffCitation.id] : [],
+      }
+    : nextFromMilestone
       ? {
-          text: normalizedText(stateRow.summary, 520),
-          citations: stateCitation ? [stateCitation.id] : [],
+          text: `Next canonical slice: ${normalizedText(nextFromMilestone, 420)}`,
+          citations: milestoneCitation ? [milestoneCitation.id] : [],
         }
-      : null;
+      : goalFromHandoff
+        ? {
+            text: normalizedText(goalFromHandoff, 420),
+            citations: handoffCitation ? [handoffCitation.id] : [],
+          }
+        : stringOf(stateRow.summary)
+          ? {
+              text: normalizedText(stateRow.summary, 520),
+              citations: stateCitation ? [stateCitation.id] : [],
+            }
+          : null;
 
   const stateNext = stateValues(raw.state, 'next');
   const stateBlocked = stateValues(raw.state, 'blocked');
@@ -413,18 +487,35 @@ export function buildProjectContextPack(
       (dateMs(memoryRecordedAt(right)) ?? 0) -
       (dateMs(memoryRecordedAt(left)) ?? 0),
   )[0];
-  const newestAt = newestSource ? memoryRecordedAt(newestSource) : null;
+  const newestMemoryCitation = newestSource
+    ? citationForMemory(newestSource, projectId)
+    : null;
+  const freshnessCitation = [
+    newestMemoryCitation,
+    stateCitation,
+    handoffCitation,
+  ]
+    .filter((value): value is ProjectContextCitation => Boolean(value))
+    .sort(
+      (left, right) =>
+        (dateMs(right.recordedAt) ?? -1) - (dateMs(left.recordedAt) ?? -1),
+    )[0] ?? null;
+  const newestAt = freshnessCitation?.recordedAt ?? null;
   const newestMs = dateMs(newestAt);
   const ageSeconds = newestMs === null
     ? null
     : Math.max(0, Math.floor((now.getTime() - newestMs) / 1000));
-  const freshnessCitation = newestSource
-    ? citationForMemory(newestSource, projectId)
-    : null;
+  const handoffItemCount =
+    handoffCompleted.length +
+    handoffValidation.length +
+    handoffOpenItems.length +
+    handoffBlockers.length +
+    handoffRecommendedNext.length;
   const originalCounts = {
     decisions: decisions.length,
     tasks: tasks.length,
     facts: facts.length,
+    handoffItems: handoffItemCount,
   };
 
   let canonicalLimit = 6;
@@ -432,6 +523,7 @@ export function buildProjectContextPack(
   let mergeLimit = 5;
   let conflictLimit = 4;
   let nextLimit = 4;
+  let handoffItemLimit = 4;
   let summaryChars = 420;
   let expandedText = true;
 
@@ -442,14 +534,77 @@ export function buildProjectContextPack(
     const currentMilestone = milestoneSource
       ? decisionFromMemory(milestoneSource, projectId, summaryChars)
       : null;
-    const blockerSource = blockerTexts.length ? blockerTexts : stateBlocked;
-    const blockerCitation = blockerTexts.length
-      ? milestoneCitation
-      : stateCitation;
-    const activeBlockers = blockerSource.slice(0, blockerLimit).map((text) => ({
-      text: normalizedText(text, 280),
-      citations: blockerCitation ? [blockerCitation.id] : [],
-    }));
+    const toItems = (
+      values: string[],
+      sourceCitation: ProjectContextCitation | null,
+      limit: number,
+    ): ProjectContextItem[] =>
+      values.slice(0, limit).map((text) => ({
+        text: normalizedText(text, 280),
+        citations: sourceCitation ? [sourceCitation.id] : [],
+      }));
+    const latestHandoff = handoffCitation
+      ? {
+          id: handoffCitation.sourceId,
+          createdAt: handoffCreatedAt,
+          fromSubjectId:
+            stringOf(handoffRow.fromSubjectId ?? handoffRow.from_subject_id) ||
+            null,
+          toSubjectId:
+            stringOf(handoffRow.toSubjectId ?? handoffRow.to_subject_id) || null,
+          completed: toItems(
+            handoffCompleted,
+            handoffCitation,
+            handoffItemLimit,
+          ),
+          validation: toItems(
+            handoffValidation,
+            handoffCitation,
+            handoffItemLimit,
+          ),
+          openItems: toItems(
+            handoffOpenItems,
+            handoffCitation,
+            handoffItemLimit,
+          ),
+          blockers: toItems(
+            handoffBlockers,
+            handoffCitation,
+            handoffItemLimit,
+          ),
+          recommendedNext: toItems(
+            handoffRecommendedNext,
+            handoffCitation,
+            handoffItemLimit,
+          ),
+          citations: [handoffCitation.id],
+        }
+      : null;
+    const handoffBlockerItems = toItems(
+      [...handoffBlockers, ...handoffOpenItems],
+      handoffCitation,
+      blockerLimit,
+    );
+    const milestoneBlockerItems = toItems(
+      blockerTexts,
+      milestoneCitation,
+      blockerLimit,
+    );
+    const stateBlockerItems = toItems(
+      stateBlocked,
+      stateCitation,
+      blockerLimit,
+    );
+    const blockerCandidates = handoffIsNewer
+      ? [...handoffBlockerItems, ...milestoneBlockerItems, ...stateBlockerItems]
+      : [...milestoneBlockerItems, ...stateBlockerItems, ...handoffBlockerItems];
+    const blockerSeen = new Set<string>();
+    const activeBlockers = blockerCandidates.filter((item) => {
+      const key = item.text.toLowerCase();
+      if (!key || blockerSeen.has(key)) return false;
+      blockerSeen.add(key);
+      return true;
+    }).slice(0, blockerLimit);
     const recentMerges = canonicalSources
       .map((memory) => {
         const content = stringOf(memory.content);
@@ -473,12 +628,27 @@ export function buildProjectContextPack(
         text: normalizedText(text, 280),
         citations: stateCitation ? [stateCitation.id] : [],
       }));
-    const nextSource = nextFromMilestone ? [nextFromMilestone] : stateNext;
-    const nextCitation = nextFromMilestone ? milestoneCitation : stateCitation;
-    const nextWork = nextSource.slice(0, nextLimit).map((text) => ({
-      text: normalizedText(text, 280),
-      citations: nextCitation ? [nextCitation.id] : [],
-    }));
+    const handoffNextItems = toItems(
+      handoffRecommendedNext,
+      handoffCitation,
+      nextLimit,
+    );
+    const milestoneNextItems = toItems(
+      nextFromMilestone ? [nextFromMilestone] : [],
+      milestoneCitation,
+      nextLimit,
+    );
+    const stateNextItems = toItems(stateNext, stateCitation, nextLimit);
+    const nextCandidates = handoffIsNewer
+      ? [...handoffNextItems, ...milestoneNextItems, ...stateNextItems]
+      : [...milestoneNextItems, ...stateNextItems, ...handoffNextItems];
+    const nextSeen = new Set<string>();
+    const nextWork = nextCandidates.filter((item) => {
+      const key = item.text.toLowerCase();
+      if (!key || nextSeen.has(key)) return false;
+      nextSeen.add(key);
+      return true;
+    }).slice(0, nextLimit);
 
     const citationIds = new Set<string>();
     const collect = (items: Array<{ citations: string[] }>) =>
@@ -488,6 +658,14 @@ export function buildProjectContextPack(
     collect(recentMerges);
     collect(unresolvedConflicts);
     collect(nextWork);
+    if (latestHandoff) {
+      collect(latestHandoff.completed);
+      collect(latestHandoff.validation);
+      collect(latestHandoff.openItems);
+      collect(latestHandoff.blockers);
+      collect(latestHandoff.recommendedNext);
+      latestHandoff.citations.forEach((id) => citationIds.add(id));
+    }
     if (currentGoal) collect([currentGoal]);
     if (currentMilestone) collect([currentMilestone]);
     if (freshnessCitation) citationIds.add(freshnessCitation.id);
@@ -497,6 +675,9 @@ export function buildProjectContextPack(
       availableCitations.set(citation.id, citation);
     }
     if (stateCitation) availableCitations.set(stateCitation.id, stateCitation);
+    if (handoffCitation) {
+      availableCitations.set(handoffCitation.id, handoffCitation);
+    }
     const citations = [...citationIds]
       .map((id) => availableCitations.get(id))
       .filter((value): value is ProjectContextCitation => Boolean(value));
@@ -521,6 +702,7 @@ export function buildProjectContextPack(
       currentGoal,
       canonicalDecisions,
       currentMilestone,
+      latestHandoff,
       activeBlockers,
       recentMerges,
       unresolvedConflicts,
@@ -542,7 +724,10 @@ export function buildProjectContextPack(
         source: 'context.project',
         subjectScoped: true,
         explicitProject: true,
-        sourceCount: allSources.length + (stateCitation ? 1 : 0),
+        sourceCount:
+          allSources.length +
+          (stateCitation ? 1 : 0) +
+          (handoffCitation ? 1 : 0),
       },
       budget: {
         maxTokens,
@@ -555,6 +740,13 @@ export function buildProjectContextPack(
           recentMerges: recentMerges.length,
           conflicts: unresolvedConflicts.length,
           nextWork: nextWork.length,
+          handoffItems: latestHandoff
+            ? latestHandoff.completed.length +
+              latestHandoff.validation.length +
+              latestHandoff.openItems.length +
+              latestHandoff.blockers.length +
+              latestHandoff.recommendedNext.length
+            : 0,
         },
       },
       text,
@@ -571,9 +763,11 @@ export function buildProjectContextPack(
     else if (mergeLimit > 0) mergeLimit -= 1;
     else if (blockerLimit > 1) blockerLimit -= 1;
     else if (nextLimit > 1) nextLimit -= 1;
+    else if (handoffItemLimit > 1) handoffItemLimit -= 1;
     else if (conflictLimit > 0) conflictLimit -= 1;
     else if (summaryChars > 80) summaryChars -= 40;
     else if (blockerLimit > 0) blockerLimit = 0;
+    else if (handoffItemLimit > 0) handoffItemLimit = 0;
     else if (expandedText) expandedText = false;
     else break;
     pack = create();

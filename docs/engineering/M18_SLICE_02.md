@@ -13,6 +13,7 @@ The pack contains:
 - current goal;
 - canonical decisions;
 - current milestone;
+- latest agent handoff, including completed work, validation, open items, blockers and recommended next steps;
 - active blockers;
 - recent PR merges and merge SHAs when present in evidence;
 - unresolved conflicts;
@@ -39,7 +40,7 @@ The default budget is 1,800 estimated tokens. Callers may request `max_tokens`; 
 - A mismatched response-level project or any mismatched source record fails closed.
 - Only records already visible to the authenticated subject are packed.
 - Every returned claim carries citation IDs; citation metadata preserves source ID, project ID, recorded time and source-event provenance.
-- Freshness is computed from the newest readable source using the 24-hour operational SLA; absence of a trustworthy timestamp is reported as `unknown`.
+- Freshness is computed from the newest readable memory, project-state update or handoff using the 24-hour operational SLA; absence of a trustworthy timestamp is reported as `unknown`.
 
 ## Acceptance
 

@@ -34,6 +34,18 @@ describe("Edge project context pack", () => {
         ],
         tasks: [],
         facts: [],
+        latestHandoff: {
+          id: "handoff-1",
+          projectId,
+          createdAt: "2026-10-13T15:59:00Z",
+          payload: {
+            completed: ["implementation complete"],
+            validation: ["full gate passed"],
+            open_items: ["review deployment receipt"],
+            blockers: ["provider consent absent"],
+            recommended_next: ["continue from handoff"],
+          },
+        },
       };
     const options = {
         projectId,
@@ -54,8 +66,17 @@ describe("Edge project context pack", () => {
       budget: { maxTokens: 768 },
     });
     expect(result.currentMilestone?.citations).toEqual(["memory:memory-1"]);
-    expect(result.activeBlockers[0]?.text).toContain("OAuth consent absent");
-    expect(result.nextWork[0]?.text).toBe("M18.2_PROJECT_CONTEXT_PACK");
+    expect(result.activeBlockers).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ text: "OAuth consent absent" }),
+      ]),
+    );
+    expect(result.latestHandoff?.validation[0]?.text).toBe("full gate passed");
+    expect(result.nextWork).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ text: "M18.2_PROJECT_CONTEXT_PACK" }),
+      ]),
+    );
     expect(result.budget.estimatedTokens).toBeLessThanOrEqual(768);
     expect(result).toEqual(buildProjectContextPack(raw, options));
   });
@@ -75,5 +96,33 @@ describe("Edge project context pack", () => {
         { projectId },
       )
     ).toThrow(/source project mismatch/i);
+  });
+
+  it("matches shared freshness and budget behavior for state-only context", () => {
+    const raw = {
+      projectId,
+      decisions: [],
+      tasks: [],
+      facts: [],
+      state: {
+        id: "state-1",
+        project_id: projectId,
+        summary: "state ".repeat(2_000),
+        created_at: "2026-10-13T15:59:30Z",
+      },
+    };
+    const options = {
+      projectId,
+      maxTokens: 768,
+      now: new Date("2026-10-13T16:00:00Z"),
+    };
+    const result = buildEdgeProjectContextPack(raw, options);
+
+    expect(result.sourceFreshness).toMatchObject({
+      status: "fresh",
+      citations: ["project-state:state-1"],
+    });
+    expect(result.budget.estimatedTokens).toBeLessThanOrEqual(768);
+    expect(result).toEqual(buildProjectContextPack(raw, options));
   });
 });

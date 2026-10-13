@@ -7,7 +7,7 @@ const FRESHNESS_SLA_SECONDS = 24 * 60 * 60;
 type JsonRecord = Record<string, unknown>;
 type EdgeContextCitation = {
   id: string;
-  kind: "memory" | "project_state";
+  kind: "memory" | "project_state" | "handoff";
   sourceId: string;
   title: string | null;
   projectId: string;
@@ -185,6 +185,15 @@ function stateValues(rawState: unknown, key: string): string[] {
   return listOf(state[key]).map(textOf).filter(Boolean);
 }
 
+function valuesForKeys(rawValue: unknown, keys: string[]): string[] {
+  const raw = recordOf(rawValue);
+  for (const key of keys) {
+    const values = listOf(raw[key]).map(textOf).filter(Boolean);
+    if (values.length > 0) return values;
+  }
+  return [];
+}
+
 function validatedSources(
   values: unknown[],
   projectId: string,
@@ -261,19 +270,68 @@ export function buildEdgeProjectContextPack(
   }
   const stateCitation = textOf(stateRow.id)
     ? {
-      id: `project-state:${textOf(stateRow.id)}`,
+      id: `project-state:${compact(stateRow.id, 128)}`,
       kind: "project_state" as const,
-      sourceId: textOf(stateRow.id),
-      title: textOf(stateRow.summary) || null,
+      sourceId: compact(stateRow.id, 128),
+      title: compact(stateRow.summary, 220) || null,
       projectId,
       recordedAt: textOf(stateRow.updated_at ?? stateRow.created_at) || null,
       sourceEventId: null,
     }
     : null;
-  const currentGoal = nextFromMilestone
+  const handoffRow = recordOf(raw.latestHandoff ?? raw.latest_handoff);
+  const handoffProjectId = textOf(
+    handoffRow.projectId ?? handoffRow.project_id,
+  );
+  if (
+    handoffProjectId &&
+    handoffProjectId.trim().toLowerCase() !== projectId.trim().toLowerCase()
+  ) {
+    throw new Error("project context handoff project mismatch");
+  }
+  const handoffPayload = recordOf(handoffRow.payload);
+  const handoffCompleted = valuesForKeys(handoffPayload, ["completed"]);
+  const handoffValidation = valuesForKeys(handoffPayload, ["validation"]);
+  const handoffOpenItems = valuesForKeys(handoffPayload, [
+    "open_items",
+    "openItems",
+  ]);
+  const handoffBlockers = valuesForKeys(handoffPayload, ["blockers"]);
+  const handoffRecommendedNext = valuesForKeys(handoffPayload, [
+    "recommended_next",
+    "recommendedNext",
+  ]);
+  const handoffCreatedAt =
+    textOf(handoffRow.createdAt ?? handoffRow.created_at) || null;
+  const handoffCitation: EdgeContextCitation | null = textOf(handoffRow.id)
+    ? {
+      id: `handoff:${compact(handoffRow.id, 128)}`,
+      kind: "handoff",
+      sourceId: compact(handoffRow.id, 128),
+      title: "Latest agent handoff",
+      projectId,
+      recordedAt: handoffCreatedAt,
+      sourceEventId: null,
+    }
+    : null;
+  const handoffIsNewer =
+    (dateMs(handoffCreatedAt) ?? -1) >=
+    (dateMs(milestoneSource ? recordedAt(milestoneSource) : null) ?? -1);
+  const goalFromHandoff = handoffRecommendedNext[0];
+  const currentGoal = handoffIsNewer && goalFromHandoff
+    ? {
+      text: compact(goalFromHandoff, 420),
+      citations: handoffCitation ? [handoffCitation.id] : [],
+    }
+    : nextFromMilestone
     ? {
       text: `Next canonical slice: ${compact(nextFromMilestone, 420)}`,
       citations: milestoneCitation ? [milestoneCitation.id] : [],
+    }
+    : goalFromHandoff
+    ? {
+      text: compact(goalFromHandoff, 420),
+      citations: handoffCitation ? [handoffCitation.id] : [],
     }
     : textOf(stateRow.summary)
     ? {
@@ -285,24 +343,41 @@ export function buildEdgeProjectContextPack(
     (left, right) =>
       (dateMs(recordedAt(right)) ?? 0) - (dateMs(recordedAt(left)) ?? 0),
   )[0];
-  const newestRecordedAt = newestSource ? recordedAt(newestSource) : null;
+  const newestMemoryCitation = newestSource
+    ? citation(newestSource, projectId)
+    : null;
+  const freshnessCitation = [
+    newestMemoryCitation,
+    stateCitation,
+    handoffCitation,
+  ]
+    .filter((value): value is EdgeContextCitation => Boolean(value))
+    .sort(
+      (left, right) =>
+        (dateMs(right.recordedAt) ?? -1) - (dateMs(left.recordedAt) ?? -1),
+    )[0] ?? null;
+  const newestRecordedAt = freshnessCitation?.recordedAt ?? null;
   const newestMs = dateMs(newestRecordedAt);
   const ageSeconds = newestMs === null
     ? null
     : Math.max(0, Math.floor((now.getTime() - newestMs) / 1000));
-  const freshnessCitation = newestSource
-    ? citation(newestSource, projectId)
-    : null;
   const stateBlocked = stateValues(raw.state, "blocked");
   const stateConflicts = [
     ...stateValues(raw.state, "unresolved_conflicts"),
     ...stateValues(raw.state, "conflicts"),
   ];
   const stateNext = stateValues(raw.state, "next");
+  const handoffItemCount =
+    handoffCompleted.length +
+    handoffValidation.length +
+    handoffOpenItems.length +
+    handoffBlockers.length +
+    handoffRecommendedNext.length;
   const originalCounts = {
     decisions: decisions.length,
     tasks: tasks.length,
     facts: facts.length,
+    handoffItems: handoffItemCount,
   };
 
   let canonicalLimit = 6;
@@ -310,6 +385,7 @@ export function buildEdgeProjectContextPack(
   let mergeLimit = 5;
   let conflictLimit = 4;
   let nextLimit = 4;
+  let handoffItemLimit = 4;
   let summaryChars = 420;
   let expandedText = true;
 
@@ -319,14 +395,75 @@ export function buildEdgeProjectContextPack(
     const currentMilestone = milestoneSource
       ? decision(milestoneSource, projectId, summaryChars)
       : null;
-    const blockerSource = blockerTexts.length ? blockerTexts : stateBlocked;
-    const blockerCitation = blockerTexts.length
-      ? milestoneCitation
-      : stateCitation;
-    const activeBlockers = blockerSource.slice(0, blockerLimit).map((value) => ({
+    const toItems = (
+      values: string[],
+      sourceCitation: EdgeContextCitation | null,
+      limit: number,
+    ) => values.slice(0, limit).map((value) => ({
       text: compact(value, 280),
-      citations: blockerCitation ? [blockerCitation.id] : [],
+      citations: sourceCitation ? [sourceCitation.id] : [],
     }));
+    const latestHandoff = handoffCitation
+      ? {
+        id: handoffCitation.sourceId,
+        createdAt: handoffCreatedAt,
+        fromSubjectId:
+          textOf(handoffRow.fromSubjectId ?? handoffRow.from_subject_id) || null,
+        toSubjectId:
+          textOf(handoffRow.toSubjectId ?? handoffRow.to_subject_id) || null,
+        completed: toItems(
+          handoffCompleted,
+          handoffCitation,
+          handoffItemLimit,
+        ),
+        validation: toItems(
+          handoffValidation,
+          handoffCitation,
+          handoffItemLimit,
+        ),
+        openItems: toItems(
+          handoffOpenItems,
+          handoffCitation,
+          handoffItemLimit,
+        ),
+        blockers: toItems(
+          handoffBlockers,
+          handoffCitation,
+          handoffItemLimit,
+        ),
+        recommendedNext: toItems(
+          handoffRecommendedNext,
+          handoffCitation,
+          handoffItemLimit,
+        ),
+        citations: [handoffCitation.id],
+      }
+      : null;
+    const handoffBlockerItems = toItems(
+      [...handoffBlockers, ...handoffOpenItems],
+      handoffCitation,
+      blockerLimit,
+    );
+    const milestoneBlockerItems = toItems(
+      blockerTexts,
+      milestoneCitation,
+      blockerLimit,
+    );
+    const stateBlockerItems = toItems(
+      stateBlocked,
+      stateCitation,
+      blockerLimit,
+    );
+    const blockerCandidates = handoffIsNewer
+      ? [...handoffBlockerItems, ...milestoneBlockerItems, ...stateBlockerItems]
+      : [...milestoneBlockerItems, ...stateBlockerItems, ...handoffBlockerItems];
+    const blockerSeen = new Set<string>();
+    const activeBlockers = blockerCandidates.filter((item) => {
+      const key = item.text.toLowerCase();
+      if (!key || blockerSeen.has(key)) return false;
+      blockerSeen.add(key);
+      return true;
+    }).slice(0, blockerLimit);
     const recentMerges = canonicalSources.map((memory) => {
       const content = textOf(memory.content);
       const pullRequestUrl = githubPullRequestUrl(content);
@@ -347,12 +484,27 @@ export function buildEdgeProjectContextPack(
         citations: stateCitation ? [stateCitation.id] : [],
       }),
     );
-    const nextSource = nextFromMilestone ? [nextFromMilestone] : stateNext;
-    const nextCitation = nextFromMilestone ? milestoneCitation : stateCitation;
-    const nextWork = nextSource.slice(0, nextLimit).map((value) => ({
-      text: compact(value, 280),
-      citations: nextCitation ? [nextCitation.id] : [],
-    }));
+    const handoffNextItems = toItems(
+      handoffRecommendedNext,
+      handoffCitation,
+      nextLimit,
+    );
+    const milestoneNextItems = toItems(
+      nextFromMilestone ? [nextFromMilestone] : [],
+      milestoneCitation,
+      nextLimit,
+    );
+    const stateNextItems = toItems(stateNext, stateCitation, nextLimit);
+    const nextCandidates = handoffIsNewer
+      ? [...handoffNextItems, ...milestoneNextItems, ...stateNextItems]
+      : [...milestoneNextItems, ...stateNextItems, ...handoffNextItems];
+    const nextSeen = new Set<string>();
+    const nextWork = nextCandidates.filter((item) => {
+      const key = item.text.toLowerCase();
+      if (!key || nextSeen.has(key)) return false;
+      nextSeen.add(key);
+      return true;
+    }).slice(0, nextLimit);
     const citationIds = new Set<string>();
     const collect = (items: Array<{ citations: string[] }>) =>
       items.forEach((item) => item.citations.forEach((id) => citationIds.add(id)));
@@ -361,6 +513,14 @@ export function buildEdgeProjectContextPack(
     collect(recentMerges);
     collect(unresolvedConflicts);
     collect(nextWork);
+    if (latestHandoff) {
+      collect(latestHandoff.completed);
+      collect(latestHandoff.validation);
+      collect(latestHandoff.openItems);
+      collect(latestHandoff.blockers);
+      collect(latestHandoff.recommendedNext);
+      latestHandoff.citations.forEach((id) => citationIds.add(id));
+    }
     if (currentGoal) collect([currentGoal]);
     if (currentMilestone) collect([currentMilestone]);
     if (freshnessCitation) citationIds.add(freshnessCitation.id);
@@ -370,6 +530,7 @@ export function buildEdgeProjectContextPack(
       available.set(sourceCitation.id, sourceCitation);
     }
     if (stateCitation) available.set(stateCitation.id, stateCitation);
+    if (handoffCitation) available.set(handoffCitation.id, handoffCitation);
     const citations = [...citationIds].flatMap((id) => {
       const value = available.get(id);
       return value ? [value] : [];
@@ -395,6 +556,7 @@ export function buildEdgeProjectContextPack(
       currentGoal,
       canonicalDecisions,
       currentMilestone,
+      latestHandoff,
       activeBlockers,
       recentMerges,
       unresolvedConflicts,
@@ -415,7 +577,10 @@ export function buildEdgeProjectContextPack(
         source: "context.project",
         subjectScoped: true,
         explicitProject: true,
-        sourceCount: allSources.length + (stateCitation ? 1 : 0),
+        sourceCount:
+          allSources.length +
+          (stateCitation ? 1 : 0) +
+          (handoffCitation ? 1 : 0),
       },
       budget: {
         maxTokens,
@@ -428,6 +593,13 @@ export function buildEdgeProjectContextPack(
           recentMerges: recentMerges.length,
           conflicts: unresolvedConflicts.length,
           nextWork: nextWork.length,
+          handoffItems: latestHandoff
+            ? latestHandoff.completed.length +
+              latestHandoff.validation.length +
+              latestHandoff.openItems.length +
+              latestHandoff.blockers.length +
+              latestHandoff.recommendedNext.length
+            : 0,
         },
       },
       text,
@@ -448,9 +620,11 @@ export function buildEdgeProjectContextPack(
     else if (mergeLimit > 0) mergeLimit -= 1;
     else if (blockerLimit > 1) blockerLimit -= 1;
     else if (nextLimit > 1) nextLimit -= 1;
+    else if (handoffItemLimit > 1) handoffItemLimit -= 1;
     else if (conflictLimit > 0) conflictLimit -= 1;
     else if (summaryChars > 80) summaryChars -= 40;
     else if (blockerLimit > 0) blockerLimit = 0;
+    else if (handoffItemLimit > 0) handoffItemLimit = 0;
     else if (expandedText) expandedText = false;
     else break;
     pack = create();
