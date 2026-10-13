@@ -168,4 +168,62 @@ describe("Edge project context pack", () => {
     expect(result.canonicalDecisions).toHaveLength(6);
     expect(result).toEqual(buildProjectContextPack(raw, options));
   });
+
+  it("matches shared precedence for newer project-state next work", () => {
+    const raw = {
+      projectId,
+      decisions: [
+        {
+          ...memory("older-milestone", "M18.1 live pass", "2026-10-13T15:00:00Z"),
+          content: "Next canonical slice: M18.2_OLD_NEXT",
+        },
+      ],
+      tasks: [],
+      facts: [],
+      state: {
+        id: "newer-state",
+        project_id: projectId,
+        created_at: "2026-10-13T15:59:00Z",
+        state: { next: ["M18.2_REVISED_NEXT"] },
+      },
+    };
+    const options = {
+      projectId,
+      now: new Date("2026-10-13T16:00:00Z"),
+    };
+    const result = buildEdgeProjectContextPack(raw, options);
+
+    expect(result.currentGoal).toEqual({
+      text: "M18.2_REVISED_NEXT",
+      citations: ["project-state:newer-state"],
+    });
+    expect(result.nextWork[0]).toEqual(result.currentGoal);
+    expect(result).toEqual(buildProjectContextPack(raw, options));
+  });
+
+  it("matches shared canonical retention at the minimum token budget", () => {
+    const decisions = Array.from({ length: 3 }, (_, index) => ({
+      ...memory(
+        `merge-decision-${index}`,
+        `M18 decision ${index}`,
+        `2026-10-13T15:0${index}:00Z`,
+      ),
+      content:
+        `PR: https://github.com/example/repo/pull/${index + 1}\n` +
+        `Merge SHA: ${String(index + 1).repeat(40)}\n` +
+        "Architecture evidence ".repeat(40),
+    }));
+    const raw = { projectId, decisions, tasks: [], facts: [] };
+    const options = {
+      projectId,
+      maxTokens: 768,
+      now: new Date("2026-10-13T16:00:00Z"),
+    };
+    const result = buildEdgeProjectContextPack(raw, options);
+
+    expect(result.budget.truncated).toBe(true);
+    expect(result.canonicalDecisions.length).toBeGreaterThanOrEqual(1);
+    expect(result.recentMerges.length).toBeLessThan(3);
+    expect(result).toEqual(buildProjectContextPack(raw, options));
+  });
 });

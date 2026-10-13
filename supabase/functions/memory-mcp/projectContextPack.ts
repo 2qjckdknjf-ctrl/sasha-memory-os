@@ -328,7 +328,7 @@ export function buildEdgeProjectContextPack(
   const handoffCitation: EdgeContextCitation | null = textOf(handoffRow.id)
     ? {
       id: `handoff:${compact(handoffRow.id, 128)}`,
-      kind: "handoff",
+      kind: "handoff" as const,
       sourceId: compact(handoffRow.id, 128),
       title: "Latest agent handoff",
       projectId,
@@ -339,21 +339,44 @@ export function buildEdgeProjectContextPack(
   const handoffIsNewer =
     (dateMs(handoffCreatedAt) ?? -1) >=
     (dateMs(milestoneSource ? recordedAt(milestoneSource) : null) ?? -1);
-  const goalFromHandoff = handoffRecommendedNext[0];
-  const currentGoal = handoffIsNewer && goalFromHandoff
+  const stateNext = stateValues(raw.state, "next");
+  const nextSources: Array<{
+    kind: "handoff" | "state" | "milestone";
+    values: string[];
+    citation: EdgeContextCitation | null;
+    recordedMs: number;
+  }> = [
+    {
+      kind: "handoff" as const,
+      values: handoffRecommendedNext,
+      citation: handoffCitation,
+      recordedMs: dateMs(handoffCreatedAt) ?? -1,
+    },
+    {
+      kind: "state" as const,
+      values: stateNext,
+      citation: stateCitation,
+      recordedMs: dateMs(stateCitation?.recordedAt) ?? -1,
+    },
+    {
+      kind: "milestone" as const,
+      values: nextFromMilestone ? [nextFromMilestone] : [],
+      citation: milestoneCitation,
+      recordedMs:
+        dateMs(milestoneSource ? recordedAt(milestoneSource) : null) ?? -1,
+    },
+  ].filter((source) => source.values.length > 0)
+    .sort((left, right) => right.recordedMs - left.recordedMs);
+  const currentNextSource = nextSources[0];
+  const currentNext = currentNextSource?.values[0];
+  const currentGoal = currentNext && currentNextSource
     ? {
-      text: compact(goalFromHandoff, 420),
-      citations: handoffCitation ? [handoffCitation.id] : [],
-    }
-    : nextFromMilestone
-    ? {
-      text: `Next canonical slice: ${compact(nextFromMilestone, 420)}`,
-      citations: milestoneCitation ? [milestoneCitation.id] : [],
-    }
-    : goalFromHandoff
-    ? {
-      text: compact(goalFromHandoff, 420),
-      citations: handoffCitation ? [handoffCitation.id] : [],
+      text: currentNextSource.kind === "milestone"
+        ? `Next canonical slice: ${compact(currentNext, 420)}`
+        : compact(currentNext, 420),
+      citations: currentNextSource.citation
+        ? [currentNextSource.citation.id]
+        : [],
     }
     : textOf(stateRow.summary)
     ? {
@@ -389,7 +412,6 @@ export function buildEdgeProjectContextPack(
     ...stateValues(raw.state, "conflicts"),
     ...stateValues(raw.state, "risks"),
   ];
-  const stateNext = stateValues(raw.state, "next");
   const handoffItemCount =
     handoffCompleted.length +
     handoffValidation.length +
@@ -411,6 +433,7 @@ export function buildEdgeProjectContextPack(
   let handoffItemLimit = 4;
   let summaryChars = 420;
   let expandedText = true;
+  const minimumCanonicalLimit = canonicalSources.length > 0 ? 1 : 0;
 
   const create = () => {
     const canonicalDecisions = canonicalSources.slice(0, canonicalLimit)
@@ -507,20 +530,9 @@ export function buildEdgeProjectContextPack(
         citations: stateCitation ? [stateCitation.id] : [],
       }),
     );
-    const handoffNextItems = toItems(
-      handoffRecommendedNext,
-      handoffCitation,
-      nextLimit,
+    const nextCandidates = nextSources.flatMap((source) =>
+      toItems(source.values, source.citation, nextLimit)
     );
-    const milestoneNextItems = toItems(
-      nextFromMilestone ? [nextFromMilestone] : [],
-      milestoneCitation,
-      nextLimit,
-    );
-    const stateNextItems = toItems(stateNext, stateCitation, nextLimit);
-    const nextCandidates = handoffIsNewer
-      ? [...handoffNextItems, ...milestoneNextItems, ...stateNextItems]
-      : [...milestoneNextItems, ...stateNextItems, ...handoffNextItems];
     const nextSeen = new Set<string>();
     const nextWork = nextCandidates.filter((item) => {
       const key = item.text.toLowerCase();
@@ -639,13 +651,13 @@ export function buildEdgeProjectContextPack(
   let truncated = false;
   while (pack.budget.estimatedTokens > maxTokens) {
     truncated = true;
-    if (canonicalLimit > 0) canonicalLimit -= 1;
-    else if (mergeLimit > 0) mergeLimit -= 1;
+    if (mergeLimit > 0) mergeLimit -= 1;
+    else if (summaryChars > 80) summaryChars -= 40;
+    else if (canonicalLimit > minimumCanonicalLimit) canonicalLimit -= 1;
     else if (blockerLimit > 1) blockerLimit -= 1;
     else if (nextLimit > 1) nextLimit -= 1;
     else if (handoffItemLimit > 1) handoffItemLimit -= 1;
     else if (conflictLimit > 0) conflictLimit -= 1;
-    else if (summaryChars > 80) summaryChars -= 40;
     else if (blockerLimit > 0) blockerLimit = 0;
     else if (handoffItemLimit > 0) handoffItemLimit = 0;
     else if (expandedText) expandedText = false;

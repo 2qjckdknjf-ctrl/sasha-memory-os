@@ -172,6 +172,61 @@ describe('M18.2 project context pack', () => {
     expect(pack.canonicalDecisions).toHaveLength(6);
   });
 
+  it('lets newer project state supersede stale milestone next work', () => {
+    const pack = buildProjectContextPack(
+      {
+        projectId,
+        decisions: [
+          decision({
+            id: 'older-milestone',
+            title: 'M18.1 live pass',
+            content: 'Next canonical slice: M18.2_OLD_NEXT',
+            recordedAt: '2026-10-13T15:00:00.000Z',
+          }),
+        ],
+        state: {
+          id: 'newer-state',
+          project_id: projectId,
+          createdAt: '2026-10-13T15:59:00.000Z',
+          state: { next: ['M18.2_REVISED_NEXT'] },
+        },
+      },
+      {
+        projectId,
+        now: new Date('2026-10-13T16:00:00.000Z'),
+      },
+    );
+
+    expect(pack.currentGoal).toEqual({
+      text: 'M18.2_REVISED_NEXT',
+      citations: ['project-state:newer-state'],
+    });
+    expect(pack.nextWork[0]).toEqual(pack.currentGoal);
+  });
+
+  it('preserves a canonical decision before merge metadata at minimum budget', () => {
+    const decisions = Array.from({ length: 3 }, (_, index) =>
+      decision({
+        id: `merge-decision-${index}`,
+        title: `M18 decision ${index}`,
+        content:
+          `PR: https://github.com/example/repo/pull/${index + 1}\n` +
+          `Merge SHA: ${String(index + 1).repeat(40)}\n` +
+          'Architecture evidence '.repeat(40),
+        recordedAt: `2026-10-13T15:0${index}:00.000Z`,
+      }),
+    );
+    const pack = buildProjectContextPack(
+      { projectId, decisions },
+      { projectId, maxTokens: 768 },
+    );
+
+    expect(pack.budget.truncated).toBe(true);
+    expect(pack.budget.estimatedTokens).toBeLessThanOrEqual(768);
+    expect(pack.canonicalDecisions.length).toBeGreaterThanOrEqual(1);
+    expect(pack.recentMerges.length).toBeLessThan(3);
+  });
+
   it('enforces a bounded response and fails closed on cross-project sources', () => {
     const decisions = Array.from({ length: 30 }, (_, index) =>
       decision({
