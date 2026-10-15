@@ -13,6 +13,21 @@ export type QueryEmbeddingCache = {
   size(): number;
 };
 
+export async function queryEmbeddingCacheKey(input: {
+  engine: string;
+  model: string;
+  dimensions: number;
+  text: string;
+}): Promise<string> {
+  const bytes = new TextEncoder().encode(
+    `${input.engine}:${input.model}:${input.dimensions}:${input.text}`,
+  );
+  const digest = await crypto.subtle.digest("SHA-256", bytes);
+  return Array.from(new Uint8Array(digest), (value) =>
+    value.toString(16).padStart(2, "0")
+  ).join("");
+}
+
 /**
  * Small isolate-local cache for query embeddings. It collapses concurrent
  * identical loads and bounds both lifetime and entry count. Keys never leave
@@ -22,10 +37,12 @@ export function createQueryEmbeddingCache(input?: {
   ttlMs?: number;
   maxEntries?: number;
   now?: () => number;
+  cacheable?: (value: QueryEmbedding) => boolean;
 }): QueryEmbeddingCache {
   const ttlMs = input?.ttlMs ?? 5 * 60_000;
   const maxEntries = input?.maxEntries ?? 128;
   const now = input?.now ?? Date.now;
+  const cacheable = input?.cacheable ?? (() => true);
   if (!Number.isFinite(ttlMs) || ttlMs <= 0) throw new Error("ttlMs must be positive");
   if (!Number.isInteger(maxEntries) || maxEntries <= 0) {
     throw new Error("maxEntries must be a positive integer");
@@ -57,7 +74,9 @@ export function createQueryEmbeddingCache(input?: {
         entries.delete(oldest);
       }
       try {
-        return await value;
+        const resolved = await value;
+        if (!cacheable(resolved)) entries.delete(key);
+        return resolved;
       } catch (error) {
         const entry = entries.get(key);
         if (entry?.value === value) entries.delete(key);

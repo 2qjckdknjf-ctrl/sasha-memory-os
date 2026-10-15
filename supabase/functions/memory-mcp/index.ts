@@ -10,7 +10,10 @@ import {
   EDGE_GRAPH_FUSION_PACK_VERSION,
   fuseEdgeGraphHits,
 } from "./graphFusion.ts";
-import { createQueryEmbeddingCache } from "./queryEmbeddingCache.ts";
+import {
+  createQueryEmbeddingCache,
+  queryEmbeddingCacheKey,
+} from "./queryEmbeddingCache.ts";
 import { buildEdgeProjectContextPack } from "./projectContextPack.ts";
 
 const SUBJECT = Deno.env.get("MEMORY_OS_CHATGPT_SUBJECT_ID") ??
@@ -30,7 +33,9 @@ const OAUTH_SCOPES = ["openid", "email", "profile"];
 const OAUTH_SECURITY_SCHEMES = [{ type: "oauth2", scopes: OAUTH_SCOPES }];
 const SEARCH_RANKING_VERSION = "hybrid-rrf+m13-s06-v1";
 const SEARCH_RANKING_WEIGHTS_VERSION = "m13-s06-v1";
-const QUERY_EMBEDDING_CACHE = createQueryEmbeddingCache();
+const QUERY_EMBEDDING_CACHE = createQueryEmbeddingCache({
+  cacheable: (value) => value.engine === "openai" || value.engine === "stub-hash",
+});
 
 const READ_ONLY = new Set(["memory.search", "memory.get", "context.project"]);
 const tools = EDGE_TOOL_DEFS.map((tool) => ({
@@ -296,7 +301,12 @@ async function embedText(
   const dims = requested === 32 || requested === 1536 ? requested : 1536;
   const model = Deno.env.get("MEMORY_OS_OPENAI_EMBED_MODEL") ??
     "text-embedding-3-small";
-  const cacheKey = `${apiKey ? "openai" : "stub"}:${model}:${dims}:${text}`;
+  const cacheKey = await queryEmbeddingCacheKey({
+    engine: apiKey ? "openai" : "stub",
+    model,
+    dimensions: dims,
+    text,
+  });
   return await QUERY_EMBEDDING_CACHE.getOrLoad(cacheKey, async () => {
     if (!apiKey) return { vector: hashEmbed(text, 32), engine: "stub-hash" };
     try {

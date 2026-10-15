@@ -31,8 +31,9 @@ Official pack: `m20-s03-v1`
   the 60-operation soak and the separate 16-way dedupe/concurrency gate.
 - The Edge MCP keeps a bounded five-minute, 128-entry isolate-local query
   embedding cache. Identical requests share one in-flight provider call; failed
-  loads are evicted and retried. This removes repeated provider latency without
-  changing ranking weights, persisting queries, or logging payloads.
+  or fallback loads are evicted and retried. Cache keys are SHA-256 digests, not
+  query text. This removes repeated provider latency without changing ranking
+  weights, persisting queries, or logging payloads.
 
 ## Idempotency hardening
 

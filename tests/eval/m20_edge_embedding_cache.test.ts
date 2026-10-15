@@ -1,7 +1,22 @@
 import { describe, expect, it, vi } from 'vitest';
-import { createQueryEmbeddingCache } from '../../supabase/functions/memory-mcp/queryEmbeddingCache.js';
+import {
+  createQueryEmbeddingCache,
+  queryEmbeddingCacheKey,
+} from '../../supabase/functions/memory-mcp/queryEmbeddingCache.js';
 
 describe('M20.3 Edge query embedding cache', () => {
+  it('uses a fixed-size digest instead of retaining query text in the cache key', async () => {
+    const key = await queryEmbeddingCacheKey({
+      engine: 'openai',
+      model: 'text-embedding-3-small',
+      dimensions: 32,
+      text: 'private owner query',
+    });
+
+    expect(key).toMatch(/^[a-f0-9]{64}$/);
+    expect(key).not.toContain('private owner query');
+  });
+
   it('collapses concurrent and repeated identical embedding loads', async () => {
     const loader = vi.fn(async () => ({ vector: [0.1, 0.2], engine: 'test' }));
     const cache = createQueryEmbeddingCache();
@@ -40,5 +55,18 @@ describe('M20.3 Edge query embedding cache', () => {
     now += 101;
     await cache.getOrLoad('a', good);
     expect(good).toHaveBeenCalledTimes(5);
+  });
+
+  it('does not cache transient provider fallbacks', async () => {
+    const cache = createQueryEmbeddingCache({
+      cacheable: (value) => value.engine !== 'stub-hash-fallback',
+    });
+    const fallback = vi.fn(async () => ({ vector: [1], engine: 'stub-hash-fallback' }));
+
+    await cache.getOrLoad('transient', fallback);
+    await cache.getOrLoad('transient', fallback);
+
+    expect(fallback).toHaveBeenCalledTimes(2);
+    expect(cache.size()).toBe(0);
   });
 });
