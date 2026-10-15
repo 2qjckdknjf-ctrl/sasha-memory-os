@@ -72,13 +72,32 @@ describe('M18.4 ChatGPT automatic writeback pack', () => {
     expect(ephemeral).toContain('m18_slice_04_chatgpt_writeback_cases.sql');
     expect(docs).toContain('ChatGPT Mode A remains exactly seven tools');
     expect(current).toMatchObject({
-      completedThrough: 'M18.3',
-      nextSlice: 'M18.4_CHATGPT_AUTOMATIC_WRITEBACK_POLICY',
+      completedThrough: 'M18.4',
+      nextSlice: 'M19_CONTROL_CENTER_GOVERNANCE_COMPLETION',
       officialPacks: { m18ChatgptWriteback: 'm18-s04-v1' },
       chatgptModeA: { toolCount: 7 },
       supabase: {
         latestMigration: '20261015190000_m18_chatgpt_automatic_writeback.sql',
         migrationCount: 75,
+      },
+      m18ChatgptWritebackLiveReceipt: {
+        packVersion: 'm18-s04-v1',
+        memoryId: 'b664431d-7e33-49f3-bd3b-27dbb24150f0',
+        acceptanceMemoryId: '5375c33d-1a98-47af-9554-d9b90c6449aa',
+        implementationPullRequest: 108,
+        edgeFunctionVersion: 12,
+        toolCount: 7,
+        created: true,
+        deduplicated: true,
+        conflictReviewRequired: true,
+        conflictWritePerformed: false,
+        readAfterWrite: true,
+        searchReadAfterWrite: true,
+        persistedProvenanceReturned: true,
+        auditOutcomeCount: 3,
+        crossClientExitGate: true,
+        sameCanonicalStateActors: ['chatgpt', 'cursor', 'roma'],
+        freshnessSlaPassed: true,
       },
     });
   });
