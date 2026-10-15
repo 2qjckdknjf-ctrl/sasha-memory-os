@@ -605,7 +605,8 @@ BEGIN
       'retention-fixture'
     ),
     (
-      v_workspace, v_project, v_unaffected_memory, v_retention_entity, 'related',
+      v_workspace, v_project, v_unaffected_memory, v_retention_entity,
+      'project_context',
       'retention-shared-fixture'
     );
   INSERT INTO public.artifacts (
