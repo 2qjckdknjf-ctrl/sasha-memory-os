@@ -71,18 +71,32 @@ describe('M19 Control Center governance pack', () => {
     );
     expect(ci).toContain('Resolve server-only Supabase key');
     expect(docs).toContain('/governance#routing-inbox');
-    expect(docs).toContain('FINAL TRUSTED-MAIN LIVE GATE PENDING');
+    expect(docs).toContain('COMPLETE / TRUSTED-MAIN LIVE PASS');
     expect(current).toMatchObject({
-      completedThrough: 'M18.4',
-      nextSlice: 'M19_CONTROL_CENTER_GOVERNANCE_COMPLETION',
+      completedThrough: 'M19',
+      nextSlice: 'M20_PRODUCTION_GA_CLOSURE',
       officialPacks: { m19ControlCenterGovernance: 'm19-s01-v1' },
       supabase: {
         latestMigration: '20261015200000_m19_control_center_governance.sql',
         migrationCount: 76,
       },
+      m19ControlCenterGovernanceLiveReceipt: {
+        memoryId: '4376487c-d83f-42d1-bc1d-2d900baf2a30',
+        supersedesMemoryId: '1cb2e53b-93eb-481e-8cd3-6cfcc4da534f',
+        implementationPullRequest: 110,
+        securityGatePullRequest: 111,
+        receiptPullRequest: 112,
+        trustedMainCiRun: 38780909955,
+        liveBrowserJob: 116581233306,
+        ownerReadsPassed: true,
+        nonOwnerDenied: true,
+        opaqueCursorRedacted: true,
+        crossWorkspaceRoutingRejected: true,
+        browserProductionMetricsRendered: true,
+        browserSecretServerOnly: true,
+        pullRequestCredentialJobSkipped: true,
+        readAfterWrite: true,
+      },
     });
-    expect(current).not.toHaveProperty(
-      'm19ControlCenterGovernanceLiveReceipt',
-    );
   });
 });
