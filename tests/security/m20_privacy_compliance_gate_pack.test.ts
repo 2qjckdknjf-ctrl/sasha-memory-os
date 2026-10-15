@@ -44,6 +44,7 @@ describe('M20.4 privacy and compliance gate', () => {
         exportIsFullyPaginated: true,
         exportUsesStableSnapshot: true,
         exportUsesMaterializedSnapshot: true,
+        exportSnapshotItemsAreRowBounded: true,
         exportSnapshotsAreOwnerBoundAndEphemeral: true,
         connectorRevocationIsWorkspaceWide: true,
         legacyConnectorIdentityResolved: true,
@@ -51,6 +52,7 @@ describe('M20.4 privacy and compliance gate', () => {
         correctionPreservesEffectiveProject: true,
         legacyRequestsFailClosed: true,
         futureRetentionCutoffsRejected: true,
+        retentionLocksCandidatesBeforeMutation: true,
         retentionOnlyExpiresQuarantinedArtifacts: true,
         retentionRedactsSharedEntities: true,
         retentionIsProjectScoped: true,
@@ -124,8 +126,10 @@ describe('M20.4 privacy and compliance gate', () => {
     expect(migration).toContain("'snapshotAt'");
     expect(migration).toContain("'exportId'");
     expect(migration).toContain('privacy_export_snapshots');
+    expect(migration).toContain('privacy_export_snapshot_items');
     expect(migration).toContain('source_event_in_project_export_at');
     expect(migration).toContain('as_of must not be null or in the future');
+    expect(migration).toContain('FOR UPDATE OF m');
     expect(migration).toContain("s.payload #>> '{source,account_id}'");
     expect(migration).toContain('j.source_event_id = ANY(v_source_ids)');
     expect(migration).toContain(`a.metadata @> '{"quarantine": true}'::jsonb`);

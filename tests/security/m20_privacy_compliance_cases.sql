@@ -270,6 +270,22 @@ BEGIN
     v_secret, v_owner, v_workspace, v_project, 1, 0, v_snapshot_at
   );
   v_snapshot_memory_count := (v_export->'counts'->>'memories')::integer;
+  IF EXISTS (
+    SELECT 1
+    FROM public.privacy_export_snapshots snapshot
+    WHERE snapshot.id = (v_export->>'exportId')::uuid
+      AND snapshot.manifest ?| ARRAY[
+        'memories', 'sourceEvents', 'artifacts', 'connectorAccounts',
+        'privacyRequests'
+      ]
+  ) OR (
+    SELECT count(*)
+    FROM public.privacy_export_snapshot_items item
+    WHERE item.snapshot_id = (v_export->>'exportId')::uuid
+      AND item.item_type = 'memory'
+  ) <> v_snapshot_memory_count THEN
+    RAISE EXCEPTION 'privacy export snapshot was not materialized row-wise';
+  END IF;
   v_mutated_memory := (v_export->'memories'->0->>'id')::uuid;
   SELECT content INTO v_original_content
   FROM public.memory_records
@@ -886,6 +902,10 @@ BEGIN
   IF has_table_privilege('anon', 'public.privacy_export_snapshots', 'SELECT')
      OR has_table_privilege(
        'authenticated', 'public.privacy_export_snapshots', 'SELECT'
+     ) OR has_table_privilege(
+       'anon', 'public.privacy_export_snapshot_items', 'SELECT'
+     ) OR has_table_privilege(
+       'authenticated', 'public.privacy_export_snapshot_items', 'SELECT'
      ) THEN
     RAISE EXCEPTION 'privacy export snapshots are directly readable';
   END IF;

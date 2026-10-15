@@ -22,7 +22,7 @@ M20.4 makes the policy executable rather than documentary only.
 | D — Connector secrets | OAuth access/refresh, cursors | Vault/KMS plus Postgres refs | Service/owner ops only; source revocation removes vault payloads, refs and cursors |
 | E — Ops / audit | privacy requests, outbox, jobs, audit | Supabase Postgres | Owner ops; bodies/reasons/tokens are excluded or redacted |
 | F — Embeddings / graph | vectors, entities, aliases, edges | Supabase Postgres + pgvector | Same ACL as parent memory; deletion clears vectors and removes graph projection |
-| G — Transient portability snapshot | Materialized project export bundle | Supabase Postgres, service-only table | Bound to owner/workspace/project, inaccessible after 15 minutes, removed after the final page or on the next export cleanup |
+| G — Transient portability snapshot | Row-wise project export items plus a small manifest | Supabase Postgres, service-only tables | Bound to owner/workspace/project, inaccessible after 15 minutes, removed after the final page or on the next export cleanup |
 
 Sensitivity labels are `public`, `internal`, `personal`, `confidential`, and
 `restricted`. RLS and RPC authorization enforce the effective project and
@@ -58,7 +58,8 @@ workspace-level rows are preserved.
   typed decision/task payloads, provenance/evidence (including sources routed
   from another stored project), artifacts/chunks, connector metadata and the
   retention policy. Pagination uses one immutable materialized snapshot with
-  `exportId` plus `snapshotAt`; it never returns connector secrets or vault refs.
+  `exportId` plus `snapshotAt` and aggregates only the requested page; it never
+  returns connector secrets or vault refs.
 - Request: `POST /v1/privacy/requests` creates an idempotent owner request.
 - Execution: `POST /v1/privacy/requests/:id/execute` performs correction,
   retraction, memory deletion, or connector-source revocation.

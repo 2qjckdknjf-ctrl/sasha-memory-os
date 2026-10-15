@@ -31,9 +31,25 @@ CREATE TABLE IF NOT EXISTS public.privacy_export_snapshots (
   project_id uuid NOT NULL REFERENCES public.projects (id) ON DELETE CASCADE,
   subject_id uuid NOT NULL REFERENCES public.subjects (id) ON DELETE CASCADE,
   snapshot_at timestamptz NOT NULL,
-  bundle jsonb NOT NULL,
+  manifest jsonb NOT NULL,
   created_at timestamptz NOT NULL DEFAULT now(),
   expires_at timestamptz NOT NULL DEFAULT (now() + interval '15 minutes')
+);
+
+CREATE TABLE IF NOT EXISTS public.privacy_export_snapshot_items (
+  snapshot_id uuid NOT NULL
+    REFERENCES public.privacy_export_snapshots (id) ON DELETE CASCADE,
+  item_type text NOT NULL CHECK (
+    item_type IN (
+      'memory', 'source_event', 'artifact', 'connector_account',
+      'privacy_request'
+    )
+  ),
+  item_id uuid NOT NULL,
+  position integer NOT NULL CHECK (position > 0),
+  payload jsonb NOT NULL,
+  PRIMARY KEY (snapshot_id, item_type, position),
+  UNIQUE (snapshot_id, item_type, item_id)
 );
 
 CREATE INDEX IF NOT EXISTS idx_privacy_export_snapshots_expiry
@@ -41,7 +57,11 @@ CREATE INDEX IF NOT EXISTS idx_privacy_export_snapshots_expiry
 
 ALTER TABLE public.privacy_export_snapshots ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.privacy_export_snapshots FORCE ROW LEVEL SECURITY;
+ALTER TABLE public.privacy_export_snapshot_items ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.privacy_export_snapshot_items FORCE ROW LEVEL SECURITY;
 REVOKE ALL ON TABLE public.privacy_export_snapshots
+  FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON TABLE public.privacy_export_snapshot_items
   FROM PUBLIC, anon, authenticated;
 
 CREATE OR REPLACE FUNCTION app.api_create_privacy_request_v2(
@@ -334,24 +354,6 @@ AS $$
   );
 $$;
 
-CREATE OR REPLACE FUNCTION app.jsonb_array_page(
-  p_items jsonb,
-  p_offset integer,
-  p_limit integer
-)
-RETURNS jsonb
-LANGUAGE sql
-IMMUTABLE
-SET search_path = pg_catalog
-AS $$
-  SELECT coalesce(jsonb_agg(item.value ORDER BY item.ordinality), '[]'::jsonb)
-  FROM jsonb_array_elements(coalesce(p_items, '[]'::jsonb))
-    WITH ORDINALITY AS item(value, ordinality)
-  WHERE item.ordinality > greatest(0, coalesce(p_offset, 0))
-    AND item.ordinality <=
-      greatest(0, coalesce(p_offset, 0)) + greatest(1, coalesce(p_limit, 1));
-$$;
-
 CREATE OR REPLACE FUNCTION app.api_export_project_privacy_bundle(
   p_secret text,
   p_subject_id uuid,
@@ -407,85 +409,23 @@ BEGIN
   WHERE snapshot.expires_at <= statement_timestamp();
 
   IF v_export_id IS NULL THEN
-
-  SELECT count(*) INTO v_memory_count FROM public.memory_records m
-  WHERE m.workspace_id = p_workspace_id
-    AND app.effective_memory_project_id_at(m.id, v_snapshot_at) = p_project_id
-    AND m.recorded_at <= v_snapshot_at;
-  SELECT count(*) INTO v_source_count FROM public.source_events s
-  WHERE app.source_event_in_project_export_at(
-    s.id, p_workspace_id, p_project_id, v_snapshot_at
-  );
-  SELECT count(*) INTO v_artifact_count FROM public.artifacts a
-  WHERE a.workspace_id = p_workspace_id
-    AND a.created_at <= v_snapshot_at
-    AND (
-      a.project_id = p_project_id
-      OR app.source_event_in_project_export_at(
-        a.source_event_id, p_workspace_id, p_project_id, v_snapshot_at
-      )
+    v_export_id := gen_random_uuid();
+    INSERT INTO public.privacy_export_snapshots (
+      id, workspace_id, project_id, subject_id, snapshot_at, manifest
+    ) VALUES (
+      v_export_id, p_workspace_id, p_project_id, p_subject_id, v_snapshot_at,
+      '{}'::jsonb
     );
-  SELECT count(*) INTO v_connector_count FROM public.connector_accounts c
-  WHERE c.workspace_id = p_workspace_id
-    AND c.created_at <= v_snapshot_at
-    AND EXISTS (
-      SELECT 1 FROM public.source_events s
-      WHERE (
-          s.connector_account_id = c.id
-          OR s.payload #>> '{source,account_id}' = c.id::text
-        )
-        AND app.source_event_in_project_export_at(
-          s.id, p_workspace_id, p_project_id, v_snapshot_at
-        )
-    );
-  SELECT count(*) INTO v_request_count FROM public.privacy_requests r
-  WHERE r.workspace_id = p_workspace_id AND r.project_id = p_project_id
-    AND r.created_at <= v_snapshot_at;
-  v_max_count := greatest(
-    v_memory_count, v_source_count, v_artifact_count, v_connector_count,
-    v_request_count
-  );
 
-  SELECT jsonb_build_object(
-    'format', 'memory-os.privacy-export.v1',
-    'exportedAt', now(),
-    'snapshotAt', v_snapshot_at,
-    'workspaceId', p_workspace_id,
-    'projectId', p_project_id,
-    'subjectId', p_subject_id,
-    'counts', jsonb_build_object(
-      'memories', v_memory_count,
-      'sourceEvents', v_source_count,
-      'artifacts', v_artifact_count,
-      'connectorAccounts', v_connector_count,
-      'privacyRequests', v_request_count
-    ),
-    'truncated', jsonb_build_object(
-      'memories', v_memory_count > v_offset + v_limit,
-      'sourceEvents', v_source_count > v_offset + v_limit,
-      'artifacts', v_artifact_count > v_offset + v_limit,
-      'connectorAccounts', v_connector_count > v_offset + v_limit,
-      'privacyRequests', v_request_count > v_offset + v_limit
-    ),
-    'pagination', jsonb_build_object(
-      'limit', v_limit,
-      'offset', v_offset,
-      'nextOffset', CASE
-        WHEN v_offset + v_limit < v_max_count THEN v_offset + v_limit
-        ELSE NULL
-      END,
-      'hasMore', v_offset + v_limit < v_max_count
-    ),
-    'retentionPolicy', jsonb_build_object(
-      'version', 'm20-s04-v1',
-      'candidateMemoryDays', 90,
-      'quarantineArtifactDays', 180,
-      'publishedOutboxDays', 30,
-      'deadLetterDays', 90,
-      'auditDays', 365
-    ),
-    'memories', coalesce((
-      SELECT jsonb_agg(jsonb_strip_nulls(jsonb_build_object(
+    INSERT INTO public.privacy_export_snapshot_items (
+      snapshot_id, item_type, item_id, position, payload
+    )
+    SELECT
+      v_export_id,
+      'memory',
+      m.id,
+      row_number() OVER (ORDER BY m.recorded_at DESC, m.id DESC)::integer,
+      jsonb_strip_nulls(jsonb_build_object(
         'id', m.id,
         'workspaceId', m.workspace_id,
         'projectId', app.effective_memory_project_id_at(m.id, v_snapshot_at),
@@ -537,17 +477,22 @@ BEGIN
           )
           FROM public.tasks t WHERE t.memory_id = m.id
         )
-      )) ORDER BY m.recorded_at DESC)
-      FROM (
-        SELECT * FROM public.memory_records candidate
-        WHERE candidate.workspace_id = p_workspace_id
-          AND app.effective_memory_project_id_at(candidate.id, v_snapshot_at) = p_project_id
-          AND candidate.recorded_at <= v_snapshot_at
-        ORDER BY candidate.recorded_at DESC, candidate.id DESC
-      ) m
-    ), '[]'::jsonb),
-    'sourceEvents', coalesce((
-      SELECT jsonb_agg(jsonb_build_object(
+      ))
+    FROM public.memory_records m
+    WHERE m.workspace_id = p_workspace_id
+      AND app.effective_memory_project_id_at(m.id, v_snapshot_at) = p_project_id
+      AND m.recorded_at <= v_snapshot_at;
+    GET DIAGNOSTICS v_memory_count = ROW_COUNT;
+
+    INSERT INTO public.privacy_export_snapshot_items (
+      snapshot_id, item_type, item_id, position, payload
+    )
+    SELECT
+      v_export_id,
+      'source_event',
+      s.id,
+      row_number() OVER (ORDER BY s.recorded_at DESC, s.id DESC)::integer,
+      jsonb_build_object(
         'id', s.id,
         'provider', s.provider,
         'eventType', s.event_type,
@@ -561,17 +506,22 @@ BEGIN
         'payload', s.payload,
         'contentChecksum', s.content_checksum,
         'createdBySubject', s.created_by_subject
-      ) ORDER BY s.recorded_at DESC)
-      FROM (
-        SELECT * FROM public.source_events source
-        WHERE app.source_event_in_project_export_at(
-          source.id, p_workspace_id, p_project_id, v_snapshot_at
-        )
-        ORDER BY source.recorded_at DESC, source.id DESC
-      ) s
-    ), '[]'::jsonb),
-    'artifacts', coalesce((
-      SELECT jsonb_agg(jsonb_build_object(
+      )
+    FROM public.source_events s
+    WHERE app.source_event_in_project_export_at(
+      s.id, p_workspace_id, p_project_id, v_snapshot_at
+    );
+    GET DIAGNOSTICS v_source_count = ROW_COUNT;
+
+    INSERT INTO public.privacy_export_snapshot_items (
+      snapshot_id, item_type, item_id, position, payload
+    )
+    SELECT
+      v_export_id,
+      'artifact',
+      a.id,
+      row_number() OVER (ORDER BY a.created_at DESC, a.id DESC)::integer,
+      jsonb_build_object(
         'id', a.id,
         'sourceEventId', a.source_event_id,
         'mimeType', a.mime_type,
@@ -592,25 +542,27 @@ BEGIN
           ) ORDER BY c.chunk_index)
           FROM public.artifact_chunks c WHERE c.artifact_id = a.id
         ), '[]'::jsonb)
-      ) ORDER BY a.created_at DESC)
-      FROM (
-        SELECT * FROM public.artifacts artifact
-        WHERE artifact.workspace_id = p_workspace_id
-          AND artifact.created_at <= v_snapshot_at
-          AND (
-            artifact.project_id = p_project_id
-            OR app.source_event_in_project_export_at(
-              artifact.source_event_id,
-              p_workspace_id,
-              p_project_id,
-              v_snapshot_at
-            )
-          )
-        ORDER BY artifact.created_at DESC, artifact.id DESC
-      ) a
-    ), '[]'::jsonb),
-    'connectorAccounts', coalesce((
-      SELECT jsonb_agg(jsonb_build_object(
+      )
+    FROM public.artifacts a
+    WHERE a.workspace_id = p_workspace_id
+      AND a.created_at <= v_snapshot_at
+      AND (
+        a.project_id = p_project_id
+        OR app.source_event_in_project_export_at(
+          a.source_event_id, p_workspace_id, p_project_id, v_snapshot_at
+        )
+      );
+    GET DIAGNOSTICS v_artifact_count = ROW_COUNT;
+
+    INSERT INTO public.privacy_export_snapshot_items (
+      snapshot_id, item_type, item_id, position, payload
+    )
+    SELECT
+      v_export_id,
+      'connector_account',
+      c.id,
+      row_number() OVER (ORDER BY c.created_at, c.id)::integer,
+      jsonb_build_object(
         'id', c.id,
         'connectorId', c.connector_id,
         'displayName', c.display_name,
@@ -619,26 +571,31 @@ BEGIN
         'lastSyncAt', c.last_sync_at,
         'createdAt', c.created_at,
         'updatedAt', c.updated_at
-      ) ORDER BY c.created_at)
-      FROM (
-        SELECT * FROM public.connector_accounts candidate
-        WHERE candidate.workspace_id = p_workspace_id
-          AND candidate.created_at <= v_snapshot_at
-          AND EXISTS (
-            SELECT 1 FROM public.source_events s
-            WHERE (
-                s.connector_account_id = candidate.id
-                OR s.payload #>> '{source,account_id}' = candidate.id::text
-              )
-              AND app.source_event_in_project_export_at(
-                s.id, p_workspace_id, p_project_id, v_snapshot_at
-              )
+      )
+    FROM public.connector_accounts c
+    WHERE c.workspace_id = p_workspace_id
+      AND c.created_at <= v_snapshot_at
+      AND EXISTS (
+        SELECT 1 FROM public.source_events s
+        WHERE (
+            s.connector_account_id = c.id
+            OR s.payload #>> '{source,account_id}' = c.id::text
           )
-        ORDER BY candidate.created_at, candidate.id
-      ) c
-    ), '[]'::jsonb),
-    'privacyRequests', coalesce((
-      SELECT jsonb_agg(jsonb_strip_nulls(jsonb_build_object(
+          AND app.source_event_in_project_export_at(
+            s.id, p_workspace_id, p_project_id, v_snapshot_at
+          )
+      );
+    GET DIAGNOSTICS v_connector_count = ROW_COUNT;
+
+    INSERT INTO public.privacy_export_snapshot_items (
+      snapshot_id, item_type, item_id, position, payload
+    )
+    SELECT
+      v_export_id,
+      'privacy_request',
+      r.id,
+      row_number() OVER (ORDER BY r.created_at DESC, r.id DESC)::integer,
+      jsonb_strip_nulls(jsonb_build_object(
         'id', r.id,
         'requestType', r.request_type,
         'status', r.status,
@@ -649,46 +606,61 @@ BEGIN
         'createdAt', r.created_at,
         'completedAt', r.completed_at,
         'resultSummary', r.result_summary
-      )) ORDER BY r.created_at DESC)
-      FROM (
-        SELECT * FROM public.privacy_requests candidate
-        WHERE candidate.workspace_id = p_workspace_id
-          AND candidate.project_id = p_project_id
-          AND candidate.created_at <= v_snapshot_at
-        ORDER BY candidate.created_at DESC, candidate.id DESC
-      ) r
-    ), '[]'::jsonb)
-  ) INTO v_bundle;
+      ))
+    FROM public.privacy_requests r
+    WHERE r.workspace_id = p_workspace_id
+      AND r.project_id = p_project_id
+      AND r.created_at <= v_snapshot_at;
+    GET DIAGNOSTICS v_request_count = ROW_COUNT;
 
-  v_export_id := gen_random_uuid();
-  v_bundle := v_bundle || jsonb_build_object('exportId', v_export_id);
-  INSERT INTO public.privacy_export_snapshots (
-    id, workspace_id, project_id, subject_id, snapshot_at, bundle
-  ) VALUES (
-    v_export_id, p_workspace_id, p_project_id, p_subject_id, v_snapshot_at,
-    v_bundle
-  );
-
-  INSERT INTO public.audit_log (
-    workspace_id, actor_subject_id, action, object_type, reason, after_state
-  ) VALUES (
-    p_workspace_id, p_subject_id, 'privacy.export.completed',
-    'privacy_export', 'privacy export completed',
-    jsonb_build_object(
+    v_bundle := jsonb_build_object(
+      'format', 'memory-os.privacy-export.v1',
+      'exportId', v_export_id,
+      'exportedAt', now(),
+      'snapshotAt', v_snapshot_at,
+      'workspaceId', p_workspace_id,
       'projectId', p_project_id,
-      'memoryCount', v_memory_count,
-      'sourceEventCount', v_source_count,
-      'artifactCount', v_artifact_count,
-      'connectorAccountCount', v_connector_count,
-      'privacyRequestCount', v_request_count,
-      'limit', v_limit,
-      'offset', v_offset,
-      'snapshotAt', v_snapshot_at
-    )
-  );
+      'subjectId', p_subject_id,
+      'counts', jsonb_build_object(
+        'memories', v_memory_count,
+        'sourceEvents', v_source_count,
+        'artifacts', v_artifact_count,
+        'connectorAccounts', v_connector_count,
+        'privacyRequests', v_request_count
+      ),
+      'retentionPolicy', jsonb_build_object(
+        'version', 'm20-s04-v1',
+        'candidateMemoryDays', 90,
+        'quarantineArtifactDays', 180,
+        'publishedOutboxDays', 30,
+        'deadLetterDays', 90,
+        'auditDays', 365
+      )
+    );
+    UPDATE public.privacy_export_snapshots snapshot
+    SET manifest = v_bundle
+    WHERE snapshot.id = v_export_id;
+
+    INSERT INTO public.audit_log (
+      workspace_id, actor_subject_id, action, object_type, reason, after_state
+    ) VALUES (
+      p_workspace_id, p_subject_id, 'privacy.export.completed',
+      'privacy_export', 'privacy export completed',
+      jsonb_build_object(
+        'projectId', p_project_id,
+        'memoryCount', v_memory_count,
+        'sourceEventCount', v_source_count,
+        'artifactCount', v_artifact_count,
+        'connectorAccountCount', v_connector_count,
+        'privacyRequestCount', v_request_count,
+        'limit', v_limit,
+        'offset', v_offset,
+        'snapshotAt', v_snapshot_at
+      )
+    );
 
   ELSE
-    SELECT snapshot.snapshot_at, snapshot.bundle
+    SELECT snapshot.snapshot_at, snapshot.manifest
     INTO v_snapshot_at, v_bundle
     FROM public.privacy_export_snapshots snapshot
     WHERE snapshot.id = v_export_id
@@ -732,17 +704,43 @@ BEGIN
       'nextOffset', CASE WHEN v_has_more THEN v_offset + v_limit ELSE NULL END,
       'hasMore', v_has_more
     ),
-    'memories', app.jsonb_array_page(v_bundle->'memories', v_offset, v_limit),
-    'sourceEvents', app.jsonb_array_page(
-      v_bundle->'sourceEvents', v_offset, v_limit
-    ),
-    'artifacts', app.jsonb_array_page(v_bundle->'artifacts', v_offset, v_limit),
-    'connectorAccounts', app.jsonb_array_page(
-      v_bundle->'connectorAccounts', v_offset, v_limit
-    ),
-    'privacyRequests', app.jsonb_array_page(
-      v_bundle->'privacyRequests', v_offset, v_limit
-    )
+    'memories', coalesce((
+      SELECT jsonb_agg(item.payload ORDER BY item.position)
+      FROM public.privacy_export_snapshot_items item
+      WHERE item.snapshot_id = v_export_id AND item.item_type = 'memory'
+        AND item.position > v_offset
+        AND item.position <= v_offset + v_limit
+    ), '[]'::jsonb),
+    'sourceEvents', coalesce((
+      SELECT jsonb_agg(item.payload ORDER BY item.position)
+      FROM public.privacy_export_snapshot_items item
+      WHERE item.snapshot_id = v_export_id AND item.item_type = 'source_event'
+        AND item.position > v_offset
+        AND item.position <= v_offset + v_limit
+    ), '[]'::jsonb),
+    'artifacts', coalesce((
+      SELECT jsonb_agg(item.payload ORDER BY item.position)
+      FROM public.privacy_export_snapshot_items item
+      WHERE item.snapshot_id = v_export_id AND item.item_type = 'artifact'
+        AND item.position > v_offset
+        AND item.position <= v_offset + v_limit
+    ), '[]'::jsonb),
+    'connectorAccounts', coalesce((
+      SELECT jsonb_agg(item.payload ORDER BY item.position)
+      FROM public.privacy_export_snapshot_items item
+      WHERE item.snapshot_id = v_export_id
+        AND item.item_type = 'connector_account'
+        AND item.position > v_offset
+        AND item.position <= v_offset + v_limit
+    ), '[]'::jsonb),
+    'privacyRequests', coalesce((
+      SELECT jsonb_agg(item.payload ORDER BY item.position)
+      FROM public.privacy_export_snapshot_items item
+      WHERE item.snapshot_id = v_export_id
+        AND item.item_type = 'privacy_request'
+        AND item.position > v_offset
+        AND item.position <= v_offset + v_limit
+    ), '[]'::jsonb)
   );
 
   IF NOT v_has_more THEN
@@ -1545,6 +1543,24 @@ BEGIN
   );
 
   IF NOT p_dry_run THEN
+    -- Serialize candidate approval against destructive expiry and re-evaluate
+    -- the status/age predicate after any concurrent updater has committed.
+    SELECT coalesce(array_agg(eligible.id), '{}'::uuid[])
+    INTO v_candidate_ids
+    FROM (
+      SELECT m.id
+      FROM public.memory_records m
+      WHERE m.workspace_id = p_workspace_id
+        AND app.effective_memory_project_id(m.id) = p_project_id
+        AND m.status = 'candidate'
+        AND m.recorded_at < p_as_of - interval '90 days'
+      FOR UPDATE OF m
+    ) eligible;
+    v_candidate_count := cardinality(v_candidate_ids);
+    v_result := jsonb_set(
+      v_result, '{candidateMemories}', to_jsonb(v_candidate_count), false
+    );
+
     SELECT coalesce(array_agg(DISTINCT entity_id), '{}'::uuid[])
     INTO v_entity_ids
     FROM (
@@ -1722,8 +1738,6 @@ REVOKE ALL ON FUNCTION app.effective_memory_project_id_at(uuid, timestamptz)
 REVOKE ALL ON FUNCTION app.source_event_in_project_export_at(
   uuid, uuid, uuid, timestamptz
 ) FROM PUBLIC, anon, authenticated;
-REVOKE ALL ON FUNCTION app.jsonb_array_page(jsonb, integer, integer)
-  FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON FUNCTION app.api_export_project_privacy_bundle(
   text, uuid, uuid, uuid, integer, integer, timestamptz, uuid
 ) FROM PUBLIC, anon, authenticated;
@@ -1752,8 +1766,6 @@ GRANT EXECUTE ON FUNCTION app.effective_memory_project_id_at(uuid, timestamptz)
 GRANT EXECUTE ON FUNCTION app.source_event_in_project_export_at(
   uuid, uuid, uuid, timestamptz
 ) TO service_role;
-GRANT EXECUTE ON FUNCTION app.jsonb_array_page(jsonb, integer, integer)
-  TO service_role;
 GRANT EXECUTE ON FUNCTION app.api_export_project_privacy_bundle(
   text, uuid, uuid, uuid, integer, integer, timestamptz, uuid
 ) TO service_role;

@@ -11,9 +11,11 @@ Official pack: `m20-s04-v1`
   typed decision/task payloads, artifacts/chunks and non-secret connector
   metadata. Routed memories bring their original source, artifact/chunks and
   non-secret connector account into the bundle. Offset pagination reads an
-  immutable, owner/project-bound materialized snapshot identified by
-  `exportId` and `snapshotAt`; the snapshot expires after 15 minutes and is
-  removed after the final page. The Control Center consumes it to completion.
+  immutable, owner/project-bound row-wise materialized snapshot identified by
+  `exportId` and `snapshotAt`. No whole-project JSON aggregate is built: each
+  response aggregates at most the requested page. The snapshot expires after
+  15 minutes and is removed after the final page. The Control Center consumes
+  it to completion.
 - `POST /v1/privacy/requests`: idempotent correction, retraction, memory deletion
   or connector-source revocation request.
 - `POST /v1/privacy/requests/:id/execute`: idempotent execution with a
@@ -50,7 +52,8 @@ stack, proves:
 4. execution replay is idempotent;
 5. privacy free text never survives in audit/ops state;
 6. retention preview is non-mutating; apply expires only quarantined artifacts,
-   preserves processed provenance, and redacts shared entities that must remain;
+   preserves processed provenance, redacts shared entities that must remain,
+   and locks/revalidates candidate memories before destructive mutation;
 7. legacy targetless requests fail closed before mutation, correction audits
    are redacted, authoritative corrections preserve effective project routing,
    retention removes orphan graph entities, arbitrary metadata references do
