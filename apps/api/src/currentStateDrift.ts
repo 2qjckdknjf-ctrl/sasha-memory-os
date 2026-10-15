@@ -45,8 +45,9 @@ export const CURRENT_STATE_PATH = resolve(
 
 export const OFFICIAL_M14_1_BASELINE_MANIFEST_VERSION = 'm14.1-v1' as const;
 export const CURRENT_OPERATIONAL_MILESTONE =
-  'm18-project-context-live-pass' as const;
-export const CURRENT_NEXT_SLICE = 'M18.3_ROMA_INTEGRATION' as const;
+  'm18-roma-integration-live-pass' as const;
+export const CURRENT_NEXT_SLICE =
+  'M18.4_CHATGPT_AUTOMATIC_WRITEBACK_POLICY' as const;
 
 export type CurrentStateManifest = {
   manifestVersion: string;
@@ -134,6 +135,31 @@ export type CurrentStateManifest = {
     canonicalProjectNoFallback: boolean;
     aistroykaNoFallback: boolean;
     sourceSpecificHandoffAcl: boolean;
+  };
+  m18RomaIntegrationLiveReceipt: {
+    packVersion: string;
+    memoryId: string;
+    verifiedAt: string;
+    pullRequests: number[];
+    mergeShas: string[];
+    migrations: string[];
+    productionMigrationRecord: string;
+    mainCiRun: number;
+    codeqlRun: number;
+    workerRun: number;
+    jobId: string;
+    findingCount: number;
+    findingMemoryIds: string[];
+    auditEventIds: string[];
+    budgetEventCount: number;
+    candidateOnly: boolean;
+    confidence: number;
+    requiresReview: boolean;
+    canonicalProjectId: string;
+    romaSubjectId: string;
+    workspaceWideRomaAclCount: number;
+    handoffWriteGranted: boolean;
+    readAfterWrite: boolean;
   };
   projectRouting: {
     allowMemoryOsDefaultProjectIdFallback: boolean;
@@ -284,10 +310,10 @@ export function validateCurrentStateDrift(
     });
   }
 
-  if (manifest.completedThrough !== 'M18.2') {
+  if (manifest.completedThrough !== 'M18.3') {
     findings.push({
       code: 'completed-through',
-      message: `expected contractPacks completedThrough M18.2, got ${manifest.completedThrough}`,
+      message: `expected contractPacks completedThrough M18.3, got ${manifest.completedThrough}`,
     });
   }
 
@@ -314,6 +340,33 @@ export function validateCurrentStateDrift(
     findings.push({
       code: 'm18-project-context-live-receipt',
       message: 'M18.2 live receipt must preserve the verified pack, Edge v11, seven-tool, bounded-budget and no-fallback evidence',
+    });
+  }
+
+  const romaReceipt = manifest.m18RomaIntegrationLiveReceipt;
+  if (
+    !romaReceipt ||
+    romaReceipt.packVersion !== OFFICIAL_M18_ROMA_INTEGRATION_PACK_VERSION ||
+    romaReceipt.memoryId !== 'ea0746e7-6557-4c66-b017-005e3c06f157' ||
+    romaReceipt.workerRun !== 38764649250 ||
+    romaReceipt.jobId !== 'a5f6a9af-5537-40be-afb4-a9f542c88447' ||
+    romaReceipt.findingCount !== 3 ||
+    romaReceipt.findingMemoryIds.length !== romaReceipt.findingCount ||
+    romaReceipt.auditEventIds.length !== romaReceipt.findingCount ||
+    romaReceipt.budgetEventCount !== romaReceipt.findingCount ||
+    romaReceipt.candidateOnly !== true ||
+    romaReceipt.confidence !== 0.6 ||
+    romaReceipt.requiresReview !== true ||
+    romaReceipt.canonicalProjectId !== '44444444-4444-4444-8444-444444444402' ||
+    romaReceipt.romaSubjectId !== '33333333-3333-4333-8333-333333333304' ||
+    romaReceipt.workspaceWideRomaAclCount !== 0 ||
+    romaReceipt.handoffWriteGranted !== false ||
+    romaReceipt.readAfterWrite !== true
+  ) {
+    findings.push({
+      code: 'm18-roma-integration-live-receipt',
+      message:
+        'M18.3 live receipt must preserve the verified candidate-only ROMA job, audit, budget, least-privilege ACL and read-after-write evidence',
     });
   }
 

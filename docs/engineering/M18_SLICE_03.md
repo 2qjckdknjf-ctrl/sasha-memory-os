@@ -28,4 +28,14 @@ Pack: `m18-s03-v1`
 - Migration `20261015180000_m18_roma_canonical_project_acl.sql` grants ROMA only the canonical project's internal memory read/write plus project, project-state, and handoff read capabilities required by the existing worker. It adds no handoff write, workspace-wide, or personal-data access.
 - After merge, run one real canonical-project ROMA job against production, verify the resulting memory is candidate and project-scoped, and record a Memory OS milestone with read-after-write.
 
-Implementation does not advance `completedThrough` beyond M18.2 until the production acceptance above passes.
+## Production receipt — 2026-10-15
+
+- Implementation PR #104 merged as `50a89d0adf24b8aa4dfd201e93a4b33bfbd7462f`; production runtime fix PR #105 merged as `d8bab09295d6437b500fb9bcb11e7d49c0561679`; canonical ACL PR #106 merged as `960f280a1de8ef958f8c532f688ff3bbbadcac69`.
+- Main CI run `38764027979` passed smoke, ephemeral-contract, and live-edge-smoke; CodeQL run `38764026942` passed.
+- Production migration record `20261015155505_m18_roma_canonical_project_acl` applied after green main CI. ROMA has canonical-project memory read/write plus project, project-state, and handoff read; handoff write is absent and workspace-wide ROMA ACL count is zero.
+- Worker run `38764649250` passed consolidation, ROMA, and connector steps. ROMA job `a5f6a9af-5537-40be-afb4-a9f542c88447` succeeded on attempt 1 and wrote three project-scoped internal findings as ROMA.
+- Memories `7e066738-1807-4e28-a342-21ff16c286ea`, `b4d85980-bd6b-4c6d-9d5c-62eebcac665d`, and `796e7721-201e-4bac-9682-124eb8a4664a` remain candidate with confidence `0.6`; each has `roma.qa_finding.written` audit evidence and one bounded action-budget event.
+- Memory `7e066738-1807-4e28-a342-21ff16c286ea` passed MCP read-after-write. Milestone `ea0746e7-6557-4c66-b017-005e3c06f157` is verified and passed read-after-write.
+- Post-DDL advisors are unchanged known debt: security counts 2 RLS-without-policy INFO, 1 public-extension WARN, 1 leaked-password WARN; performance counts 75 unindexed foreign keys, 30 unused indexes, 42 multiple permissive policies, and 1 absolute Auth connection setting.
+
+M18.3 is complete. Next slice: `M18.4_CHATGPT_AUTOMATIC_WRITEBACK_POLICY`.
