@@ -454,10 +454,10 @@ $$;
 
 REVOKE ALL ON FUNCTION app.api_chatgpt_writeback_decision(
   text, uuid, uuid, uuid, text, text, text, jsonb, numeric, numeric, text, text
-) FROM PUBLIC;
+) FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON FUNCTION public.api_chatgpt_writeback_decision(
   text, uuid, uuid, uuid, text, text, text, jsonb, numeric, numeric, text, text
-) FROM PUBLIC;
+) FROM PUBLIC, anon, authenticated;
 
 GRANT EXECUTE ON FUNCTION app.api_chatgpt_writeback_decision(
   text, uuid, uuid, uuid, text, text, text, jsonb, numeric, numeric, text, text
