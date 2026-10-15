@@ -499,9 +499,15 @@ export function validateCurrentStateDrift(
       '965050bcf981e2e9b86a81d0c79e8bc6d2620b23' ||
     controlCenterReceipt.securityGateMergeSha !==
       'a873471b345e07c6ebad75cd7b77ec768f31955c' ||
+    controlCenterReceipt.implementationPrCiRun !== 38776809143 ||
+    controlCenterReceipt.implementationMainCiRun !== 38777226702 ||
+    controlCenterReceipt.implementationMainCodeqlRun !== 38777226855 ||
     controlCenterReceipt.trustedMainCiRun !== 38780909955 ||
     controlCenterReceipt.trustedMainCodeqlRun !== 38780908745 ||
     controlCenterReceipt.liveBrowserJob !== 116581233306 ||
+    controlCenterReceipt.workerReconciliationRun !== 38779484728 ||
+    controlCenterReceipt.migration !==
+      '20261015200000_m19_control_center_governance.sql' ||
     controlCenterReceipt.productionMigrationRecord !==
       '20261015172818_m19_control_center_governance' ||
     controlCenterReceipt.ownerReadsPassed !== true ||
