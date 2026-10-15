@@ -381,6 +381,9 @@ importers:
       '@memory-os/db':
         specifier: workspace:*
         version: link:../../packages/db
+      '@memory-os/schemas':
+        specifier: workspace:*
+        version: link:../../packages/schemas
 
 packages:
 

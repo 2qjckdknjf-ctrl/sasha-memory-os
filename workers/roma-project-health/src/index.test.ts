@@ -52,6 +52,79 @@ function buildFindingsJob(
   };
 }
 
+function buildReleaseContext(
+  mergeSha = '49d051c436fd2a4fbe9d7f64661edb0b3880aaa0',
+) {
+  return {
+    projectId,
+    decisions: [
+      {
+        id: 'milestone-m18-2',
+        projectId,
+        title: 'M18.2 PROJECT CONTEXT PACK LIVE PASS — PR #103',
+        content: [
+          'Production Edge v11 deployment is live.',
+          'PR: https://github.com/2qjckdknjf-ctrl/sasha-memory-os/pull/103',
+          `Merge SHA: ${mergeSha}`,
+          'Next: M18.3 ROMA integration.',
+        ].join('\n'),
+        status: 'verified',
+        memoryType: 'decision',
+        recordedAt: '2026-10-15T14:33:14.000Z',
+        sourceEventId: 'event-m18-2',
+      },
+    ],
+    tasks: [
+      {
+        id: 'task-m18-3',
+        projectId,
+        title: 'Implement M18.3 ROMA integration',
+        content: 'Private implementation notes must not be copied.',
+        status: 'active',
+        memoryType: 'task',
+        recordedAt: '2026-10-15T14:34:00.000Z',
+        sourceEventId: 'event-task-m18-3',
+      },
+    ],
+    facts: [],
+    state: {
+      id: 'project-state-m18-3',
+      projectId,
+      version: 8,
+      summary: 'M18.3 is active with a release gate.',
+      updatedAt: '2026-10-15T14:35:00.000Z',
+      state: {
+        stage: 'm18-3',
+        blocked: ['Production promotion needs review.'],
+        risks: ['Release evidence could become stale.'],
+        next: ['Complete M18.3 ROMA integration.'],
+      },
+    },
+    latestHandoff: {
+      id: 'handoff-m18-3',
+      projectId,
+      createdAt: '2026-10-15T14:34:30.000Z',
+      payload: { summary: 'M18.2 handed off to ROMA integration.' },
+    },
+  };
+}
+
+function candidateGetMemory() {
+  return vi.fn(async ({ memoryId }: { memoryId: string }) => ({
+    id: memoryId,
+    title: 'ROMA candidate memory',
+    content: 'candidate outcome',
+    status: 'candidate',
+    sensitivity: 'internal',
+    memoryType: 'fact',
+    projectId,
+    workspaceId,
+    recordedAt: '2026-10-15T14:35:00.000Z',
+    createdBySubject: roma,
+    metadata: { needs_review: true },
+  }));
+}
+
 describe('parseWorkerIntervalMs', () => {
   it('returns null when unset', () => {
     expect(parseWorkerIntervalMs({})).toBeNull();
@@ -129,6 +202,7 @@ describe('runRomaProjectHealthJob', () => {
         },
       })),
       captureConnectorRecord,
+      getMemory: candidateGetMemory(),
       appendAuditEvent,
       completeRomaProjectHealth,
     };
@@ -221,6 +295,7 @@ describe('runRomaProjectHealthJob', () => {
         latestHandoff: null,
       })),
       captureConnectorRecord,
+      getMemory: candidateGetMemory(),
       appendAuditEvent,
       completeRomaProjectHealth,
     };
@@ -395,6 +470,7 @@ describe('runRomaProjectFindingsJob', () => {
         latestHandoff: null,
       })),
       captureConnectorRecord,
+      getMemory: candidateGetMemory(),
       appendAuditEvent,
       completeRomaProjectFindings,
     };
@@ -482,6 +558,7 @@ describe('runRomaProjectFindingsJob', () => {
         latestHandoff: null,
       })),
       captureConnectorRecord,
+      getMemory: candidateGetMemory(),
       appendAuditEvent: vi.fn(async ({ afterState }: Record<string, any>) => ({
         id: `audit-${afterState.findingKey}`,
       })),
@@ -543,6 +620,7 @@ describe('runRomaProjectFindingsJob', () => {
         latestHandoff: null,
       })),
       captureConnectorRecord,
+      getMemory: candidateGetMemory(),
       appendAuditEvent: vi.fn(async ({ afterState }: Record<string, any>) => ({
         id: `audit-${afterState.findingKey}`,
       })),
@@ -570,6 +648,170 @@ describe('runRomaProjectFindingsJob', () => {
       .slice(captureConnectorRecord.mock.calls.length / 2)
       .map((call) => call[0]?.idempotencyKey);
     expect(secondKeys).toEqual(firstKeys);
+  });
+
+  it('consumes the M18.2 pack, links release evidence, and keeps claims candidate-only', async () => {
+    const captureConnectorRecord = vi.fn(async (input: Record<string, any>) => ({
+      eventId: `source-${input.idempotencyKey}`,
+      process: {
+        memoryId: `memory-${input.idempotencyKey}`,
+        status: 'candidate',
+      },
+    }));
+    const projectContext = vi.fn(async () => buildReleaseContext());
+    const getMemory = vi.fn(async ({ memoryId }: { memoryId: string }) => ({
+      id: memoryId,
+      title: 'ROMA QA finding',
+      content: 'candidate outcome',
+      status: 'candidate',
+      sensitivity: 'internal',
+      memoryType: 'fact',
+      projectId,
+      workspaceId,
+      recordedAt: '2026-10-15T14:35:00.000Z',
+      createdBySubject: roma,
+      metadata: { needs_review: true },
+    }));
+    const gateway = {
+      listProjects: vi.fn(async () => [
+        {
+          id: projectId,
+          slug: 'aistroyka',
+          name: 'AISTROYKA',
+          status: 'active',
+        },
+      ]),
+      projectContext,
+      captureConnectorRecord,
+      getMemory,
+      appendAuditEvent: vi.fn(async ({ afterState }: Record<string, any>) => ({
+        id: `audit-${afterState.findingKey}`,
+      })),
+      completeRomaProjectFindings: vi.fn(async () => ({
+        jobId: 'job-findings-1',
+        status: 'succeeded',
+      })),
+    };
+
+    const first = await runRomaProjectFindingsJob({
+      gateway: gateway as any,
+      job: buildFindingsJob(),
+      romaSubjectId: roma,
+    });
+    const second = await runRomaProjectFindingsJob({
+      gateway: gateway as any,
+      job: buildFindingsJob(),
+      romaSubjectId: roma,
+    });
+
+    expect(projectContext).toHaveBeenCalledWith(roma, projectId);
+    expect(getMemory).toHaveBeenCalledWith(
+      expect.objectContaining({ subjectId: roma }),
+    );
+    expect(first.findings.map((finding) => finding.idempotencyKey)).toEqual(
+      second.findings.map((finding) => finding.idempotencyKey),
+    );
+    const releaseRisk = captureConnectorRecord.mock.calls
+      .map((call) => call[0] as Record<string, any>)
+      .find((input) => input.metadata?.outcome_type === 'release_risk');
+    expect(releaseRisk).toBeTruthy();
+    expect(releaseRisk?.metadata).toMatchObject({
+      roma_integration_pack: 'm18-s03-v1',
+      project_context_pack: 'm18-s02-v1',
+      canonical_status: 'candidate',
+      requires_review: true,
+      auto_verify_allowed: false,
+      confidence: 0.6,
+    });
+    expect(releaseRisk?.metadata?.release_refs).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          releaseType: 'pull_request',
+          value: 'https://github.com/2qjckdknjf-ctrl/sasha-memory-os/pull/103',
+        }),
+        expect.objectContaining({
+          releaseType: 'commit',
+          value: '49d051c436fd2a4fbe9d7f64661edb0b3880aaa0',
+        }),
+        expect.objectContaining({
+          releaseType: 'deployment',
+          value: 'milestone-m18-2',
+        }),
+      ]),
+    );
+    expect(releaseRisk?.externalVersion).toMatch(/^[a-f0-9]{24}$/);
+    expect(releaseRisk?.text).toContain('Canonical status: candidate');
+    expect(releaseRisk?.text).toContain('cannot silently become verified');
+    expect(releaseRisk?.text).not.toContain('Private implementation notes');
+
+    projectContext.mockResolvedValueOnce(
+      buildReleaseContext('aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'),
+    );
+    await runRomaProjectFindingsJob({
+      gateway: gateway as any,
+      job: buildFindingsJob({ jobId: 'job-findings-2' }),
+      romaSubjectId: roma,
+    });
+    const changedReleaseRisk = captureConnectorRecord.mock.calls
+      .slice(-2)
+      .map((call) => call[0] as Record<string, any>)
+      .find((input) => input.metadata?.outcome_type === 'release_risk');
+    expect(changedReleaseRisk?.externalVersion).not.toBe(
+      releaseRisk?.externalVersion,
+    );
+  });
+
+  it('fails closed if a ROMA outcome is promoted during read-after-write', async () => {
+    const appendAuditEvent = vi.fn();
+    const completeRomaProjectFindings = vi.fn(async () => ({
+      jobId: 'job-findings-1',
+      status: 'failed',
+    }));
+    const gateway = {
+      listProjects: vi.fn(async () => [
+        {
+          id: projectId,
+          slug: 'aistroyka',
+          name: 'AISTROYKA',
+          status: 'active',
+        },
+      ]),
+      projectContext: vi.fn(async () => buildReleaseContext()),
+      captureConnectorRecord: vi.fn(async () => ({
+        eventId: 'source-promoted',
+        process: { memoryId: 'memory-promoted' },
+      })),
+      getMemory: vi.fn(async () => ({
+        id: 'memory-promoted',
+        title: 'ROMA promoted finding',
+        content: 'must fail closed',
+        status: 'verified',
+        sensitivity: 'internal',
+        memoryType: 'fact',
+        projectId,
+        workspaceId,
+        recordedAt: '2026-10-15T14:35:00.000Z',
+        createdBySubject: roma,
+        metadata: {},
+      })),
+      appendAuditEvent,
+      completeRomaProjectFindings,
+    };
+
+    await expect(
+      runRomaProjectFindingsJob({
+        gateway: gateway as any,
+        job: buildFindingsJob(),
+        romaSubjectId: roma,
+      }),
+    ).rejects.toThrow(/must remain a project-scoped candidate/i);
+    expect(appendAuditEvent).not.toHaveBeenCalled();
+    expect(completeRomaProjectFindings).toHaveBeenCalledWith(
+      expect.objectContaining({
+        status: 'failed',
+        error: expect.stringMatching(/must remain a project-scoped candidate/i),
+      }),
+    );
   });
 
   it('fails the findings job when the project is not visible to ROMA', async () => {
@@ -838,6 +1080,7 @@ describe('runRomaProjectHealthTick', () => {
         latestHandoff: null,
       })),
       captureConnectorRecord,
+      getMemory: candidateGetMemory(),
       appendAuditEvent: vi.fn(async () => ({ id: 'audit-roma-1' })),
       completeRomaProjectHealth: vi.fn(async () => ({
         jobId: 'job-roma-1',
@@ -971,6 +1214,7 @@ describe('buildRomaQaFindingApprovalCheckpointRequest', () => {
         eventId: 'source-findings-1',
         process: { memoryId: 'memory-findings-1' },
       })),
+      getMemory: candidateGetMemory(),
       appendAuditEvent: vi.fn(async () => ({ id: 'audit-findings-1' })),
       completeRomaProjectFindings: vi.fn(async () => ({
         jobId: 'job-findings-1',
@@ -995,6 +1239,10 @@ describe('buildRomaQaFindingApprovalCheckpointRequest', () => {
           'Project state lists blocked work items, so ROMA flagged follow-up that may stall delivery.',
         severity: 'high',
         status: 'open',
+        outcomeType: 'release_risk',
+        confidence: 0.6,
+        canonicalStatus: 'candidate',
+        requiresReview: true,
         evidenceRefs: [
           {
             kind: 'project_state',
