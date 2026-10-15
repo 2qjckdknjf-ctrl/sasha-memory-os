@@ -49,6 +49,7 @@ pg_dump "$DB_URL" \
   --schema=public \
   --schema=app \
   --schema=vault \
+  --exclude-table-data='vault.secrets' \
   --file="$task_tmp/current.dump"
 
 createdb --maintenance-db="$DB_URL" --template=template0 "$target_db"
@@ -104,6 +105,44 @@ fi
 psql "$target_url" -v ON_ERROR_STOP=1 -f tests/security/m20_security_role_boundary_cases.sql
 psql "$target_url" -v ON_ERROR_STOP=1 -f tests/security/m20_reliability_dr_cases.sql
 
+# Vault owns and protects its encrypted secret table, so logical drills never
+# copy secret material between databases. Prove the restored extension and app
+# wrappers instead with a transient secret that is rolled back and never
+# printed.
+psql "$target_url" -X -v ON_ERROR_STOP=1 <<'SQL'
+BEGIN;
+DO $$
+DECLARE
+  v_api_secret text;
+  v_ref constant text := 'm20/restore-drill/transient';
+  v_result jsonb;
+BEGIN
+  SELECT value INTO v_api_secret
+  FROM app.runtime_config
+  WHERE key = 'api_secret';
+
+  v_result := app.api_vault_kms_put(
+    v_api_secret, v_ref, 'm20-transient-restore-proof'
+  );
+  IF coalesce((v_result->>'ok')::boolean, false) IS NOT TRUE THEN
+    RAISE EXCEPTION 'restored vault write boundary failed';
+  END IF;
+
+  v_result := app.api_vault_kms_get(v_api_secret, v_ref);
+  IF coalesce((v_result->>'found')::boolean, false) IS NOT TRUE
+     OR v_result->>'plaintext' <> 'm20-transient-restore-proof' THEN
+    RAISE EXCEPTION 'restored vault read boundary failed';
+  END IF;
+
+  v_result := app.api_vault_kms_delete(v_api_secret, v_ref);
+  IF coalesce((v_result->>'deleted')::boolean, false) IS NOT TRUE THEN
+    RAISE EXCEPTION 'restored vault delete boundary failed';
+  END IF;
+END;
+$$;
+ROLLBACK;
+SQL
+
 elapsed_seconds="$(( $(date +%s) - started_at ))"
 max_rto_seconds="$((8 * 60 * 60))"
 if (( elapsed_seconds > max_rto_seconds )); then
@@ -111,4 +150,4 @@ if (( elapsed_seconds > max_rto_seconds )); then
   exit 1
 fi
 
-echo "m20_restore_drill=pass elapsed_seconds=$elapsed_seconds rto_target_seconds=$max_rto_seconds payload_logged=false"
+echo "m20_restore_drill=pass elapsed_seconds=$elapsed_seconds rto_target_seconds=$max_rto_seconds payload_logged=false vault_secret_material_copied=false"

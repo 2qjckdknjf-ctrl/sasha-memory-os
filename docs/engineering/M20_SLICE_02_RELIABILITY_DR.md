@@ -42,13 +42,17 @@ Official pack: `m20-s02-v1`
 Supabase CI environment after all repository migrations and security cases:
 
 1. create a private temporary logical dump of the current `public`, `app`, and
-   `vault` schemas;
+   `vault` schemas; the extension-owned `vault.secrets` rows are deliberately
+   excluded because secret material is recovered by Supabase physical backup,
+   not exported by an application-level logical drill;
 2. restore it into a fresh isolated database on the runner;
 3. compare metadata-only row/ID checksums, table/RLS counts, and RPC counts;
 4. rerun the exhaustive M20.1 RLS/ACL matrix on the restored copy;
 5. run the M20.2 worker and connector recovery drill on the restored copy;
-6. remove the database and dump even on failure;
-7. fail if measured restore time exceeds the accepted eight-hour RTO.
+6. create/read/delete a transient Vault secret inside a rolled-back transaction
+   to prove the restored KMS boundary without copying or printing secrets;
+7. remove the database and dump even on failure;
+8. fail if measured restore time exceeds the accepted eight-hour RTO.
 
 The drill does not log payload bodies or secrets. The dump never leaves the
 ephemeral runner.
