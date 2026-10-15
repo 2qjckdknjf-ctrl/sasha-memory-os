@@ -51,6 +51,7 @@ psql "$DB_URL" -v ON_ERROR_STOP=1 -f tests/security/m18_slice_02_context_acl_cas
 psql "$DB_URL" -v ON_ERROR_STOP=1 -f tests/security/m18_slice_03_roma_release_evidence_cases.sql
 psql "$DB_URL" -v ON_ERROR_STOP=1 -f tests/security/m18_slice_03_roma_canonical_acl_cases.sql
 psql "$DB_URL" -v ON_ERROR_STOP=1 -f tests/security/m18_slice_04_chatgpt_writeback_cases.sql
+psql "$DB_URL" -v ON_ERROR_STOP=1 -f tests/security/m19_control_center_governance_cases.sql
 
 STATUS_JSON="$(supabase status -o json)"
 export MEMORY_OS_SUPABASE_URL="$(node -e 'const j=JSON.parse(process.argv[1]); process.stdout.write(j.API_URL||"")' "$STATUS_JSON")"

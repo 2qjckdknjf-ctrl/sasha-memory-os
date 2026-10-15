@@ -13,6 +13,7 @@ import { AuditPage } from './AuditPage';
 import { ConflictsPage } from './ConflictsPage';
 import { ConnectionsPage } from './ConnectionsPage';
 import { EntityGraphPage } from './EntityGraphPage';
+import { GovernancePage } from './GovernancePage';
 import { HandoffsPage } from './HandoffsPage';
 import { HomePage } from './HomePage';
 import { MemoryInspectorPage } from './MemoryInspectorPage';
@@ -1758,6 +1759,21 @@ export function App() {
               connectionWarnings={connectionWarnings}
               taskPreview={taskSurface.outstanding[0] ?? null}
               lastHandoff={handoffSurface.latest}
+            />
+          }
+        />
+        <Route
+          path="/governance"
+          element={
+            <GovernancePage
+              actor={actor}
+              backend={backend}
+              backendResolved={backendResolved}
+              subjectId={subjectId}
+              projectId={readProjectId}
+              projects={projects}
+              scopeLabel={scopeLabel}
+              scopePanel={globalScopePanel}
             />
           }
         />

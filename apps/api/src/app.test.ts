@@ -4844,4 +4844,77 @@ describe('memory api demo slice', () => {
       packVersion: 'm17-s06-v1',
     });
   });
+
+  it('exposes bounded owner governance fallbacks without inventing live data', async () => {
+    const app = createApp({});
+    const headers = { 'x-subject-id': owner, 'x-actor-key': 'owner' };
+
+    const overview = await app.request(
+      `/v1/governance/overview?workspace_id=${workspaceId}&project_id=${memoryOsProjectId}`,
+      { headers },
+    );
+    expect(overview.status).toBe(200);
+    expect(await overview.json()).toMatchObject({
+      workspaceId,
+      projectId: memoryOsProjectId,
+      backend: 'memory-store',
+      freshness: { status: 'unknown', slaSeconds: 86_400 },
+      routing: { unclassified: 0 },
+      jobs: { queued: 0, running: 0, failed: 0, deadLetter: 0 },
+    });
+
+    const inbox = await app.request(
+      `/v1/routing/unclassified?workspace_id=${workspaceId}`,
+      { headers },
+    );
+    expect(inbox.status).toBe(200);
+    expect(await inbox.json()).toMatchObject({
+      count: 0,
+      items: [],
+      backend: 'memory-store',
+    });
+
+    const jobs = await app.request(`/v1/jobs?workspace_id=${workspaceId}`, {
+      headers,
+    });
+    expect(jobs.status).toBe(200);
+    expect(await jobs.json()).toMatchObject({
+      count: 0,
+      jobs: [],
+      backend: 'memory-store',
+    });
+  });
+
+  it('keeps every governance read and routing mutation owner-only', async () => {
+    const app = createApp({});
+    const headers = { 'x-subject-id': cursor, 'x-actor-key': 'cursor' };
+
+    const responses = await Promise.all([
+      app.request(`/v1/governance/overview?workspace_id=${workspaceId}`, { headers }),
+      app.request(`/v1/routing/unclassified?workspace_id=${workspaceId}`, { headers }),
+      app.request(`/v1/jobs?workspace_id=${workspaceId}`, { headers }),
+      app.request('/v1/routing/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa/correct', {
+        method: 'POST',
+        headers: { ...headers, 'content-type': 'application/json' },
+        body: JSON.stringify({
+          corrected_project_id: memoryOsProjectId,
+          classification: 'MOVE_TO_MEMORY_OS',
+          reason: 'Unauthorized routing attempt.',
+        }),
+      }),
+    ]);
+
+    expect(responses.map((response) => response.status)).toEqual([403, 403, 403, 403]);
+  });
+
+  it('requires explicit workspace scope for governance queues', async () => {
+    const app = createApp({});
+    const headers = { 'x-subject-id': owner, 'x-actor-key': 'owner' };
+    const responses = await Promise.all([
+      app.request('/v1/governance/overview', { headers }),
+      app.request('/v1/routing/unclassified', { headers }),
+      app.request('/v1/jobs', { headers }),
+    ]);
+    expect(responses.map((response) => response.status)).toEqual([400, 400, 400]);
+  });
 });

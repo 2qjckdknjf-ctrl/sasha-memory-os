@@ -273,7 +273,15 @@ export type ConnectionRecord = {
   lastSyncAt?: string | null;
   lastError?: string | null;
   vaultRef?: string | null;
+  cursors?: ConnectorCursorRecord[];
   metadata?: ConnectionMetadataRecord;
+};
+
+export type ConnectorCursorRecord = {
+  stream: string;
+  present: true;
+  schemaVersion: string;
+  updatedAt: string;
 };
 
 export type ConnectionCollectionRecord = {
@@ -366,6 +374,53 @@ export type PrivacyRequestRecord = {
   reason: string;
   correctionText?: string | null;
   createdAt: string;
+};
+
+export type GovernanceOverview = {
+  workspaceId: string;
+  projectId?: string | null;
+  generatedAt: string;
+  freshness: {
+    status: 'fresh' | 'stale' | 'unknown';
+    newestRecordedAt?: string | null;
+    latestMemoryAt?: string | null;
+    latestSourceEventAt?: string | null;
+    latestConnectorSyncAt?: string | null;
+    slaSeconds: number;
+  };
+  projects: { total: number; withState: number };
+  memories: { total: number; candidate: number; disputed: number };
+  routing: { unclassified: number };
+  connections: { total: number; needsAttention: number; revoked: number };
+  jobs: { queued: number; running: number; failed: number; deadLetter: number };
+  outbox: { pending: number };
+  backend?: string;
+};
+
+export type RoutingInboxItem = {
+  memoryId: string;
+  title: string;
+  memoryType: string;
+  status: string;
+  sensitivity: string;
+  recordedAt: string;
+  sourceEventId?: string | null;
+  previousProjectId?: string | null;
+  proposedProjectId: string;
+  classification: 'UNCLASSIFIED' | 'REVIEW_REQUIRED';
+  reason: string;
+  sourceEvidence?: Record<string, unknown>;
+};
+
+export type ProcessingJobRecord = {
+  id: string;
+  jobType: string;
+  status: 'queued' | 'running' | 'succeeded' | 'failed' | 'dead_letter';
+  attempt: number;
+  error?: string | null;
+  createdAt: string;
+  updatedAt: string;
+  connectionId?: string | null;
 };
 
 export type AgentRight = {

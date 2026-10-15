@@ -289,6 +289,19 @@ export function ConnectionsPage({
                   {connection.scopes && connection.scopes.length > 0 ? (
                     <p className="hint">Scopes: {connection.scopes.join(', ')}</p>
                   ) : null}
+                  {connection.cursors && connection.cursors.length > 0 ? (
+                    <p className="hint">
+                      Cursors:{' '}
+                      {connection.cursors
+                        .map(
+                          (cursor) =>
+                            `${cursor.stream} · ${formatTimestamp(cursor.updatedAt)} · schema ${cursor.schemaVersion}`,
+                        )
+                        .join('; ')}. Opaque values скрыты.
+                    </p>
+                  ) : (
+                    <p className="hint">Cursors: ещё не зафиксированы.</p>
+                  )}
                   {health ? (
                     <p className="hint">
                       Health: {health.status}
