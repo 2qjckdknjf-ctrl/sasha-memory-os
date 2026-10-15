@@ -725,6 +725,15 @@ describe("Edge project context pack", () => {
           ...memory("merged-pr", "Completed PR #100", "2026-10-13T15:58:00Z"),
           content: "Merged: https://github.com/example/repo/pull/100",
         },
+        ...["false", "no", "pending"].map((status, index) => ({
+          ...memory(
+            `not-merged-${status}`,
+            `PR #${102 + index} is not merged`,
+            `2026-10-13T15:5${7 - index}:00Z`,
+          ),
+          content:
+            `Merged: ${status}\nPR: https://github.com/example/repo/pull/${102 + index}`,
+        })),
       ],
       tasks: [],
       facts: [],

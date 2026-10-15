@@ -687,6 +687,14 @@ describe('M18.2 project context pack', () => {
             content: 'Merged: https://github.com/example/repo/pull/100',
             recordedAt: '2026-10-13T15:58:00.000Z',
           }),
+          ...['false', 'no', 'pending'].map((status, index) =>
+            decision({
+              id: `not-merged-${status}`,
+              title: `PR #${102 + index} is not merged`,
+              content: `Merged: ${status}\nPR: https://github.com/example/repo/pull/${102 + index}`,
+              recordedAt: `2026-10-13T15:5${7 - index}:00.000Z`,
+            }),
+          ),
         ],
       },
       { projectId },

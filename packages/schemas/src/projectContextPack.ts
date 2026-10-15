@@ -390,16 +390,46 @@ function githubPullRequestUrl(content: string): string | null {
   return null;
 }
 
+function hasAffirmativeMergedValue(value: string): boolean {
+  const normalized = value.trim().toLowerCase();
+  if (
+    ['true', 'yes', 'done', 'complete', 'completed', 'merged'].includes(
+      normalized,
+    )
+  ) {
+    return true;
+  }
+  if (
+    normalized.startsWith('https://') ||
+    normalized.startsWith('http://')
+  ) {
+    return true;
+  }
+  return (
+    normalized.length === 40 &&
+    [...normalized].every(
+      (char) =>
+        (char >= '0' && char <= '9') || (char >= 'a' && char <= 'f'),
+    )
+  );
+}
+
 function hasExplicitMergedMarker(content: string): boolean {
   return content
     .slice(0, MAX_PARSED_CONTENT_CHARS)
     .split('\n')
     .some((line) => {
       const normalized = line.trim().toLowerCase();
+      const colonValue = normalized.startsWith('merged:')
+        ? normalized.slice('merged:'.length)
+        : null;
+      const spacedValue = normalized.startsWith('merged ')
+        ? normalized.slice('merged '.length)
+        : null;
       return (
         normalized === 'merged' ||
-        normalized.startsWith('merged:') ||
-        normalized.startsWith('merged ') ||
+        (colonValue !== null && hasAffirmativeMergedValue(colonValue)) ||
+        (spacedValue !== null && hasAffirmativeMergedValue(spacedValue)) ||
         normalized === 'status: merged' ||
         normalized === 'status=merged' ||
         normalized === 'merge status: merged'
