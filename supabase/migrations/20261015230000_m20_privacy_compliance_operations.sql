@@ -3,7 +3,9 @@
 -- Adds owner-only export, request execution, source-account revocation and
 -- bounded retention. Operational audit rows contain identifiers/counts only;
 -- memory bodies, source payloads, request reasons, corrections and tokens are
--- never copied into audit/ops state.
+-- never copied into audit/telemetry state. Owner-bound portability snapshots
+-- temporarily contain the requested export payload, are denied to client
+-- roles, expire after 15 minutes and are removed after the final page.
 
 ALTER TABLE public.privacy_requests
   DROP CONSTRAINT IF EXISTS privacy_requests_status_check;
@@ -22,6 +24,25 @@ ALTER TABLE public.privacy_requests
 CREATE INDEX IF NOT EXISTS idx_privacy_requests_target_connector
   ON public.privacy_requests (target_connector_account_id)
   WHERE target_connector_account_id IS NOT NULL;
+
+CREATE TABLE IF NOT EXISTS public.privacy_export_snapshots (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  workspace_id uuid NOT NULL REFERENCES public.workspaces (id) ON DELETE CASCADE,
+  project_id uuid NOT NULL REFERENCES public.projects (id) ON DELETE CASCADE,
+  subject_id uuid NOT NULL REFERENCES public.subjects (id) ON DELETE CASCADE,
+  snapshot_at timestamptz NOT NULL,
+  bundle jsonb NOT NULL,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  expires_at timestamptz NOT NULL DEFAULT (now() + interval '15 minutes')
+);
+
+CREATE INDEX IF NOT EXISTS idx_privacy_export_snapshots_expiry
+  ON public.privacy_export_snapshots (expires_at);
+
+ALTER TABLE public.privacy_export_snapshots ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.privacy_export_snapshots FORCE ROW LEVEL SECURITY;
+REVOKE ALL ON TABLE public.privacy_export_snapshots
+  FROM PUBLIC, anon, authenticated;
 
 CREATE OR REPLACE FUNCTION app.api_create_privacy_request_v2(
   p_secret text,
@@ -273,6 +294,64 @@ AS $$
   );
 $$;
 
+CREATE OR REPLACE FUNCTION app.source_event_in_project_export_at(
+  p_source_event_id uuid,
+  p_workspace_id uuid,
+  p_project_id uuid,
+  p_snapshot_at timestamptz
+)
+RETURNS boolean
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = public, app
+AS $$
+  SELECT EXISTS (
+    SELECT 1
+    FROM public.source_events source
+    WHERE source.id = p_source_event_id
+      AND source.workspace_id = p_workspace_id
+      AND source.recorded_at <= p_snapshot_at
+      AND (
+        source.project_id = p_project_id
+        OR EXISTS (
+          SELECT 1
+          FROM public.memory_records memory
+          WHERE memory.workspace_id = p_workspace_id
+            AND memory.recorded_at <= p_snapshot_at
+            AND app.effective_memory_project_id_at(memory.id, p_snapshot_at) =
+                p_project_id
+            AND (
+              memory.source_event_id = source.id
+              OR EXISTS (
+                SELECT 1 FROM public.memory_evidence evidence
+                WHERE evidence.memory_id = memory.id
+                  AND evidence.source_event_id = source.id
+              )
+            )
+        )
+      )
+  );
+$$;
+
+CREATE OR REPLACE FUNCTION app.jsonb_array_page(
+  p_items jsonb,
+  p_offset integer,
+  p_limit integer
+)
+RETURNS jsonb
+LANGUAGE sql
+IMMUTABLE
+SET search_path = pg_catalog
+AS $$
+  SELECT coalesce(jsonb_agg(item.value ORDER BY item.ordinality), '[]'::jsonb)
+  FROM jsonb_array_elements(coalesce(p_items, '[]'::jsonb))
+    WITH ORDINALITY AS item(value, ordinality)
+  WHERE item.ordinality > greatest(0, coalesce(p_offset, 0))
+    AND item.ordinality <=
+      greatest(0, coalesce(p_offset, 0)) + greatest(1, coalesce(p_limit, 1));
+$$;
+
 CREATE OR REPLACE FUNCTION app.api_export_project_privacy_bundle(
   p_secret text,
   p_subject_id uuid,
@@ -280,7 +359,8 @@ CREATE OR REPLACE FUNCTION app.api_export_project_privacy_bundle(
   p_project_id uuid,
   p_limit integer DEFAULT 500,
   p_offset integer DEFAULT 0,
-  p_snapshot_at timestamptz DEFAULT NULL
+  p_snapshot_at timestamptz DEFAULT NULL,
+  p_export_id uuid DEFAULT NULL
 )
 RETURNS jsonb
 LANGUAGE plpgsql
@@ -299,6 +379,8 @@ DECLARE
   v_request_count integer;
   v_max_count integer;
   v_bundle jsonb;
+  v_export_id uuid := p_export_id;
+  v_has_more boolean;
 BEGIN
   PERFORM app.assert_api_secret(p_secret);
   PERFORM app.with_subject(p_subject_id);
@@ -321,16 +403,28 @@ BEGIN
     RAISE EXCEPTION 'snapshot_at cannot be in the future' USING ERRCODE = '22023';
   END IF;
 
+  DELETE FROM public.privacy_export_snapshots snapshot
+  WHERE snapshot.expires_at <= statement_timestamp();
+
+  IF v_export_id IS NULL THEN
+
   SELECT count(*) INTO v_memory_count FROM public.memory_records m
   WHERE m.workspace_id = p_workspace_id
     AND app.effective_memory_project_id_at(m.id, v_snapshot_at) = p_project_id
     AND m.recorded_at <= v_snapshot_at;
   SELECT count(*) INTO v_source_count FROM public.source_events s
-  WHERE s.workspace_id = p_workspace_id AND s.project_id = p_project_id
-    AND s.recorded_at <= v_snapshot_at;
+  WHERE app.source_event_in_project_export_at(
+    s.id, p_workspace_id, p_project_id, v_snapshot_at
+  );
   SELECT count(*) INTO v_artifact_count FROM public.artifacts a
-  WHERE a.workspace_id = p_workspace_id AND a.project_id = p_project_id
-    AND a.created_at <= v_snapshot_at;
+  WHERE a.workspace_id = p_workspace_id
+    AND a.created_at <= v_snapshot_at
+    AND (
+      a.project_id = p_project_id
+      OR app.source_event_in_project_export_at(
+        a.source_event_id, p_workspace_id, p_project_id, v_snapshot_at
+      )
+    );
   SELECT count(*) INTO v_connector_count FROM public.connector_accounts c
   WHERE c.workspace_id = p_workspace_id
     AND c.created_at <= v_snapshot_at
@@ -340,8 +434,9 @@ BEGIN
           s.connector_account_id = c.id
           OR s.payload #>> '{source,account_id}' = c.id::text
         )
-        AND s.project_id = p_project_id
-        AND s.recorded_at <= v_snapshot_at
+        AND app.source_event_in_project_export_at(
+          s.id, p_workspace_id, p_project_id, v_snapshot_at
+        )
     );
   SELECT count(*) INTO v_request_count FROM public.privacy_requests r
   WHERE r.workspace_id = p_workspace_id AND r.project_id = p_project_id
@@ -449,7 +544,6 @@ BEGIN
           AND app.effective_memory_project_id_at(candidate.id, v_snapshot_at) = p_project_id
           AND candidate.recorded_at <= v_snapshot_at
         ORDER BY candidate.recorded_at DESC, candidate.id DESC
-        LIMIT v_limit OFFSET v_offset
       ) m
     ), '[]'::jsonb),
     'sourceEvents', coalesce((
@@ -470,11 +564,10 @@ BEGIN
       ) ORDER BY s.recorded_at DESC)
       FROM (
         SELECT * FROM public.source_events source
-        WHERE source.workspace_id = p_workspace_id
-          AND source.project_id = p_project_id
-          AND source.recorded_at <= v_snapshot_at
+        WHERE app.source_event_in_project_export_at(
+          source.id, p_workspace_id, p_project_id, v_snapshot_at
+        )
         ORDER BY source.recorded_at DESC, source.id DESC
-        LIMIT v_limit OFFSET v_offset
       ) s
     ), '[]'::jsonb),
     'artifacts', coalesce((
@@ -503,10 +596,17 @@ BEGIN
       FROM (
         SELECT * FROM public.artifacts artifact
         WHERE artifact.workspace_id = p_workspace_id
-          AND artifact.project_id = p_project_id
           AND artifact.created_at <= v_snapshot_at
+          AND (
+            artifact.project_id = p_project_id
+            OR app.source_event_in_project_export_at(
+              artifact.source_event_id,
+              p_workspace_id,
+              p_project_id,
+              v_snapshot_at
+            )
+          )
         ORDER BY artifact.created_at DESC, artifact.id DESC
-        LIMIT v_limit OFFSET v_offset
       ) a
     ), '[]'::jsonb),
     'connectorAccounts', coalesce((
@@ -530,11 +630,11 @@ BEGIN
                 s.connector_account_id = candidate.id
                 OR s.payload #>> '{source,account_id}' = candidate.id::text
               )
-              AND s.project_id = p_project_id
-              AND s.recorded_at <= v_snapshot_at
+              AND app.source_event_in_project_export_at(
+                s.id, p_workspace_id, p_project_id, v_snapshot_at
+              )
           )
         ORDER BY candidate.created_at, candidate.id
-        LIMIT v_limit OFFSET v_offset
       ) c
     ), '[]'::jsonb),
     'privacyRequests', coalesce((
@@ -556,10 +656,18 @@ BEGIN
           AND candidate.project_id = p_project_id
           AND candidate.created_at <= v_snapshot_at
         ORDER BY candidate.created_at DESC, candidate.id DESC
-        LIMIT v_limit OFFSET v_offset
       ) r
     ), '[]'::jsonb)
   ) INTO v_bundle;
+
+  v_export_id := gen_random_uuid();
+  v_bundle := v_bundle || jsonb_build_object('exportId', v_export_id);
+  INSERT INTO public.privacy_export_snapshots (
+    id, workspace_id, project_id, subject_id, snapshot_at, bundle
+  ) VALUES (
+    v_export_id, p_workspace_id, p_project_id, p_subject_id, v_snapshot_at,
+    v_bundle
+  );
 
   INSERT INTO public.audit_log (
     workspace_id, actor_subject_id, action, object_type, reason, after_state
@@ -579,6 +687,69 @@ BEGIN
     )
   );
 
+  ELSE
+    SELECT snapshot.snapshot_at, snapshot.bundle
+    INTO v_snapshot_at, v_bundle
+    FROM public.privacy_export_snapshots snapshot
+    WHERE snapshot.id = v_export_id
+      AND snapshot.workspace_id = p_workspace_id
+      AND snapshot.project_id = p_project_id
+      AND snapshot.subject_id = p_subject_id
+      AND snapshot.expires_at > statement_timestamp();
+    IF NOT FOUND THEN
+      RAISE EXCEPTION 'privacy export snapshot not found or expired'
+        USING ERRCODE = 'P0002';
+    END IF;
+    IF p_snapshot_at IS NOT NULL AND p_snapshot_at IS DISTINCT FROM v_snapshot_at THEN
+      RAISE EXCEPTION 'privacy export snapshot mismatch' USING ERRCODE = '22023';
+    END IF;
+  END IF;
+
+  v_memory_count := coalesce((v_bundle #>> '{counts,memories}')::integer, 0);
+  v_source_count := coalesce((v_bundle #>> '{counts,sourceEvents}')::integer, 0);
+  v_artifact_count := coalesce((v_bundle #>> '{counts,artifacts}')::integer, 0);
+  v_connector_count :=
+    coalesce((v_bundle #>> '{counts,connectorAccounts}')::integer, 0);
+  v_request_count :=
+    coalesce((v_bundle #>> '{counts,privacyRequests}')::integer, 0);
+  v_max_count := greatest(
+    v_memory_count, v_source_count, v_artifact_count, v_connector_count,
+    v_request_count
+  );
+  v_has_more := v_offset + v_limit < v_max_count;
+
+  v_bundle := v_bundle || jsonb_build_object(
+    'truncated', jsonb_build_object(
+      'memories', v_memory_count > v_offset + v_limit,
+      'sourceEvents', v_source_count > v_offset + v_limit,
+      'artifacts', v_artifact_count > v_offset + v_limit,
+      'connectorAccounts', v_connector_count > v_offset + v_limit,
+      'privacyRequests', v_request_count > v_offset + v_limit
+    ),
+    'pagination', jsonb_build_object(
+      'limit', v_limit,
+      'offset', v_offset,
+      'nextOffset', CASE WHEN v_has_more THEN v_offset + v_limit ELSE NULL END,
+      'hasMore', v_has_more
+    ),
+    'memories', app.jsonb_array_page(v_bundle->'memories', v_offset, v_limit),
+    'sourceEvents', app.jsonb_array_page(
+      v_bundle->'sourceEvents', v_offset, v_limit
+    ),
+    'artifacts', app.jsonb_array_page(v_bundle->'artifacts', v_offset, v_limit),
+    'connectorAccounts', app.jsonb_array_page(
+      v_bundle->'connectorAccounts', v_offset, v_limit
+    ),
+    'privacyRequests', app.jsonb_array_page(
+      v_bundle->'privacyRequests', v_offset, v_limit
+    )
+  );
+
+  IF NOT v_has_more THEN
+    DELETE FROM public.privacy_export_snapshots snapshot
+    WHERE snapshot.id = v_export_id;
+  END IF;
+
   RETURN v_bundle;
 END;
 $$;
@@ -590,7 +761,8 @@ CREATE OR REPLACE FUNCTION public.api_export_project_privacy_bundle(
   p_project_id uuid,
   p_limit integer DEFAULT 500,
   p_offset integer DEFAULT 0,
-  p_snapshot_at timestamptz DEFAULT NULL
+  p_snapshot_at timestamptz DEFAULT NULL,
+  p_export_id uuid DEFAULT NULL
 )
 RETURNS jsonb
 LANGUAGE sql
@@ -600,7 +772,7 @@ SET search_path = public, app
 AS $$
   SELECT app.api_export_project_privacy_bundle(
     p_secret, p_subject_id, p_workspace_id, p_project_id, p_limit, p_offset,
-    p_snapshot_at
+    p_snapshot_at, p_export_id
   );
 $$;
 
@@ -1231,6 +1403,10 @@ BEGIN
   ) THEN
     RAISE EXCEPTION 'project not found in workspace' USING ERRCODE = 'P0002';
   END IF;
+  IF p_as_of IS NULL OR p_as_of > statement_timestamp() THEN
+    RAISE EXCEPTION 'as_of must not be null or in the future'
+      USING ERRCODE = '22023';
+  END IF;
 
   SELECT coalesce(array_agg(m.id), '{}'::uuid[]) INTO v_candidate_ids
   FROM public.memory_records m
@@ -1543,11 +1719,16 @@ REVOKE ALL ON FUNCTION public.api_create_privacy_request_v2(
 ) FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON FUNCTION app.effective_memory_project_id_at(uuid, timestamptz)
   FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION app.source_event_in_project_export_at(
+  uuid, uuid, uuid, timestamptz
+) FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION app.jsonb_array_page(jsonb, integer, integer)
+  FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON FUNCTION app.api_export_project_privacy_bundle(
-  text, uuid, uuid, uuid, integer, integer, timestamptz
+  text, uuid, uuid, uuid, integer, integer, timestamptz, uuid
 ) FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON FUNCTION public.api_export_project_privacy_bundle(
-  text, uuid, uuid, uuid, integer, integer, timestamptz
+  text, uuid, uuid, uuid, integer, integer, timestamptz, uuid
 ) FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON FUNCTION app.api_execute_privacy_request(text, uuid, uuid)
   FROM PUBLIC, anon, authenticated;
@@ -1568,11 +1749,16 @@ GRANT EXECUTE ON FUNCTION public.api_create_privacy_request_v2(
 ) TO service_role;
 GRANT EXECUTE ON FUNCTION app.effective_memory_project_id_at(uuid, timestamptz)
   TO service_role;
+GRANT EXECUTE ON FUNCTION app.source_event_in_project_export_at(
+  uuid, uuid, uuid, timestamptz
+) TO service_role;
+GRANT EXECUTE ON FUNCTION app.jsonb_array_page(jsonb, integer, integer)
+  TO service_role;
 GRANT EXECUTE ON FUNCTION app.api_export_project_privacy_bundle(
-  text, uuid, uuid, uuid, integer, integer, timestamptz
+  text, uuid, uuid, uuid, integer, integer, timestamptz, uuid
 ) TO service_role;
 GRANT EXECUTE ON FUNCTION public.api_export_project_privacy_bundle(
-  text, uuid, uuid, uuid, integer, integer, timestamptz
+  text, uuid, uuid, uuid, integer, integer, timestamptz, uuid
 ) TO service_role;
 GRANT EXECUTE ON FUNCTION app.api_execute_privacy_request(text, uuid, uuid)
   TO service_role;

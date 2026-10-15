@@ -3577,8 +3577,9 @@ describe('memory api demo slice', () => {
     };
     const app = createApp({ gateway: gateway as any });
     const snapshotAt = '2026-10-15T21:00:00.000Z';
+    const exportId = '99999999-0000-4000-8000-000000000499';
     const response = await app.request(
-      `/v1/export/privacy?workspace_id=${workspaceId}&project_id=${memoryOsProjectId}&limit=999&offset=500&snapshot_at=${encodeURIComponent(snapshotAt)}`,
+      `/v1/export/privacy?workspace_id=${workspaceId}&project_id=${memoryOsProjectId}&limit=999&offset=500&snapshot_at=${encodeURIComponent(snapshotAt)}&export_id=${exportId}`,
       { headers: { 'x-subject-id': owner, 'x-actor-key': 'owner' } },
     );
 
@@ -3590,6 +3591,7 @@ describe('memory api demo slice', () => {
       limit: 500,
       offset: 500,
       snapshotAt,
+      exportId,
     });
   });
 
@@ -3604,6 +3606,45 @@ describe('memory api demo slice', () => {
     expect(response.status).toBe(400);
     await expect(response.json()).resolves.toEqual({ error: 'invalid_snapshot_at' });
     expect(gateway.exportPrivacyBundle).not.toHaveBeenCalled();
+  });
+
+  it('rejects an invalid privacy export materialization cursor', async () => {
+    const gateway = { exportPrivacyBundle: vi.fn() };
+    const app = createApp({ gateway: gateway as any });
+    const response = await app.request(
+      `/v1/export/privacy?workspace_id=${workspaceId}&project_id=${memoryOsProjectId}&export_id=not-a-uuid`,
+      { headers: { 'x-subject-id': owner, 'x-actor-key': 'owner' } },
+    );
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toEqual({ error: 'invalid_export_id' });
+    expect(gateway.exportPrivacyBundle).not.toHaveBeenCalled();
+  });
+
+  it('rejects future retention cutoffs before reaching the gateway', async () => {
+    const gateway = { runRetentionPolicy: vi.fn() };
+    const app = createApp({ gateway: gateway as any });
+    const response = await app.request('/v1/privacy/retention/run', {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'x-subject-id': owner,
+        'x-actor-key': 'owner',
+      },
+      body: JSON.stringify({
+        workspace_id: workspaceId,
+        project_id: memoryOsProjectId,
+        actor_subject_id: owner,
+        as_of: '2999-01-01T00:00:00.000Z',
+        dry_run: false,
+      }),
+    });
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toEqual({
+      error: 'as_of_must_not_be_in_the_future',
+    });
+    expect(gateway.runRetentionPolicy).not.toHaveBeenCalled();
   });
 
   it('requires explicit project_id for privacy requests', async () => {

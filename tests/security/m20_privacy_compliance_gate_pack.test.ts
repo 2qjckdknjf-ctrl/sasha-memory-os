@@ -40,13 +40,17 @@ describe('M20.4 privacy and compliance gate', () => {
         derivationMetadataIsAllowlisted: true,
         sourceRevocationDeletesVaultReferences: true,
         graphProjectionRemovedOnDeletion: true,
+        routedMemoryProvenanceIncluded: true,
         exportIsFullyPaginated: true,
         exportUsesStableSnapshot: true,
+        exportUsesMaterializedSnapshot: true,
+        exportSnapshotsAreOwnerBoundAndEphemeral: true,
         connectorRevocationIsWorkspaceWide: true,
         legacyConnectorIdentityResolved: true,
         connectorCaptureJobsStopped: true,
         correctionPreservesEffectiveProject: true,
         legacyRequestsFailClosed: true,
+        futureRetentionCutoffsRejected: true,
         retentionOnlyExpiresQuarantinedArtifacts: true,
         retentionRedactsSharedEntities: true,
         retentionIsProjectScoped: true,
@@ -118,6 +122,10 @@ describe('M20.4 privacy and compliance gate', () => {
     expect(migration).toContain('api_apply_retention_policy');
     expect(migration).toContain("'nextOffset'");
     expect(migration).toContain("'snapshotAt'");
+    expect(migration).toContain("'exportId'");
+    expect(migration).toContain('privacy_export_snapshots');
+    expect(migration).toContain('source_event_in_project_export_at');
+    expect(migration).toContain('as_of must not be null or in the future');
     expect(migration).toContain("s.payload #>> '{source,account_id}'");
     expect(migration).toContain('j.source_event_id = ANY(v_source_ids)');
     expect(migration).toContain(`a.metadata @> '{"quarantine": true}'::jsonb`);
@@ -153,6 +161,8 @@ describe('M20.4 privacy and compliance gate', () => {
     expect(sql).toContain("a.metadata @> '{\"quarantine\": false}'::jsonb");
     expect(sql).toContain('legacy request without a target unexpectedly executed');
     expect(sql).toContain('crossed the project boundary');
+    expect(sql).toContain('mutated after export snapshot');
+    expect(sql).toContain('future retention cutoff mutated data');
     expect(ephemeral).toContain('m20_privacy_compliance_cases.sql');
     expect(dataMap).toContain('POST /v1/privacy/retention/run');
     expect(dpia).toContain('V1 GA technical review refreshed 2026-10-15');

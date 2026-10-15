@@ -9,15 +9,20 @@ Official pack: `m20-s04-v1`
 - `GET /v1/export/privacy`: owner-only, explicit-project portability bundle
   covering canonical/derived memories, provenance/evidence, source events,
   typed decision/task payloads, artifacts/chunks and non-secret connector
-  metadata. Offset pagination is pinned to the first page's `snapshotAt`
-  cutoff and consumed to completion by the Control Center export action.
+  metadata. Routed memories bring their original source, artifact/chunks and
+  non-secret connector account into the bundle. Offset pagination reads an
+  immutable, owner/project-bound materialized snapshot identified by
+  `exportId` and `snapshotAt`; the snapshot expires after 15 minutes and is
+  removed after the final page. The Control Center consumes it to completion.
 - `POST /v1/privacy/requests`: idempotent correction, retraction, memory deletion
   or connector-source revocation request.
 - `POST /v1/privacy/requests/:id/execute`: idempotent execution with a
   metadata-only result.
 - `POST /v1/privacy/retention/run`: dry-run by default; apply enforces the
   accepted 30/90/180/365-day windows within the explicit project, including
-  project-attributed outbox, dead-letter and audit rows only.
+  project-attributed outbox, dead-letter and audit rows only. A null or future
+  `as_of` cutoff fails closed in the database; the API also rejects future
+  cutoffs before RPC execution.
 - Control Center Privacy UI: full export, target selection, explicit execution,
   and retention preview/apply. Sensitive request text is deliberately absent
   from its operational history.
@@ -34,7 +39,9 @@ cursors, and erases records derived from that account in every project.
 `tests/security/m20_privacy_compliance_cases.sql`, wired into the ephemeral CI
 stack, proves:
 
-1. paginated export includes every primary and derived record plus raw provenance;
+1. paginated export includes every primary and derived record plus raw
+   provenance, including routed-memory provenance, and remains byte-stable when
+   source rows are updated or inserted between page requests;
 2. deletion follows multi-generation derivation chains and removes their
    bodies/evidence/graph projections without deleting graph links owned by
    unaffected memories;
@@ -52,7 +59,9 @@ stack, proves:
 8. connector deletion resolves canonical and legacy payload account identity
    and stops source-linked capture jobs/outbox before erasure;
 9. privacy RPCs are denied to `anon`/`authenticated` and granted to
-   `service_role`.
+   `service_role`; transient export snapshots are not directly readable by
+   client roles and are owner/workspace/project-bound;
+10. future retention cutoffs fail closed without mutation.
 
 The TypeScript gate also freezes route names, retention windows, UI hygiene,
 schema validation, CI wiring, DPIA/data-map freshness and the exact seven-tool

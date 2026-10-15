@@ -55,10 +55,16 @@ DECLARE
   v_retained_source constant uuid := '99999999-0000-4000-8000-000000000441';
   v_retained_artifact constant uuid := '99999999-0000-4000-8000-000000000442';
   v_retained_chunk constant uuid := '99999999-0000-4000-8000-000000000443';
+  v_routed_export_connection constant uuid := '99999999-0000-4000-8000-000000000444';
+  v_routed_export_source constant uuid := '99999999-0000-4000-8000-000000000445';
+  v_routed_export_artifact constant uuid := '99999999-0000-4000-8000-000000000446';
+  v_routed_export_chunk constant uuid := '99999999-0000-4000-8000-000000000447';
+  v_routed_export_memory constant uuid := '99999999-0000-4000-8000-000000000448';
   v_marker constant text := 'M20_PRIVACY_SECRET_MARKER_6f9fd9';
   v_vault_ref constant text := 'vault:test/m20/privacy-connector';
   v_created jsonb;
   v_export jsonb;
+  v_export_replay jsonb;
   v_export_page_2 jsonb;
   v_result jsonb;
   v_request uuid;
@@ -66,6 +72,8 @@ DECLARE
   v_routed_authoritative uuid;
   v_snapshot_at timestamptz;
   v_snapshot_memory_count integer;
+  v_mutated_memory uuid;
+  v_original_content text;
 BEGIN
   INSERT INTO public.source_events (
     id, workspace_id, project_id, provider, event_type, idempotency_key,
@@ -179,6 +187,52 @@ BEGIN
     v_marker, jsonb_build_object('body', v_marker), jsonb_build_object('body', v_marker)
   );
 
+  -- A memory routed into the exported project must bring its original source,
+  -- artifact/chunks, and non-secret connector account with it.
+  INSERT INTO public.connector_accounts (
+    id, workspace_id, connector_id, display_name, status, scopes, metadata
+  ) VALUES (
+    v_routed_export_connection, v_workspace, 'github',
+    'Routed export connector', 'connected', ARRAY['repositories.read'], '{}'::jsonb
+  );
+  INSERT INTO public.source_events (
+    id, workspace_id, project_id, connector_account_id, provider, event_type,
+    idempotency_key, observed_at, recorded_at, payload, created_by_subject
+  ) VALUES (
+    v_routed_export_source, v_workspace, v_other_project,
+    v_routed_export_connection, 'github', 'privacy.routed.export',
+    'm20-privacy/routed-export-source', now(), now(),
+    jsonb_build_object('body', v_marker), v_owner
+  );
+  INSERT INTO public.artifacts (
+    id, workspace_id, project_id, source_event_id, storage_mode, storage_key,
+    metadata
+  ) VALUES (
+    v_routed_export_artifact, v_workspace, v_other_project,
+    v_routed_export_source, 'indexed', 'routed/' || v_marker,
+    jsonb_build_object('body', v_marker)
+  );
+  INSERT INTO public.artifact_chunks (
+    id, workspace_id, artifact_id, chunk_index, content, char_start, char_end
+  ) VALUES (
+    v_routed_export_chunk, v_workspace, v_routed_export_artifact, 0,
+    v_marker, 0, 27
+  );
+  INSERT INTO public.memory_records (
+    id, workspace_id, project_id, memory_type, title, content, status,
+    source_event_id, created_by_subject
+  ) VALUES (
+    v_routed_export_memory, v_workspace, v_other_project, 'fact',
+    'Routed export memory', v_marker, 'active', v_routed_export_source, v_owner
+  );
+  INSERT INTO public.project_routing_corrections (
+    workspace_id, memory_id, previous_project_id, corrected_project_id,
+    classification, reason, source_evidence, actor_subject_id
+  ) VALUES (
+    v_workspace, v_routed_export_memory, v_other_project, v_project,
+    'MOVE_TO_MEMORY_OS', 'M20.4 routed export fixture', '{}'::jsonb, v_owner
+  );
+
   v_export := public.api_export_project_privacy_bundle(
     v_secret, v_owner, v_workspace, v_project, 500
   );
@@ -192,6 +246,20 @@ BEGIN
        'id', v_task_memory, 'task', jsonb_build_object(
          'status', 'in_progress', 'priority', 'high'
        )
+     )))
+     OR NOT (v_export->'memories' @> jsonb_build_array(jsonb_build_object(
+       'id', v_routed_export_memory, 'projectId', v_project,
+       'storedProjectId', v_other_project
+     )))
+     OR NOT (v_export->'sourceEvents' @> jsonb_build_array(jsonb_build_object(
+       'id', v_routed_export_source
+     )))
+     OR NOT (v_export->'artifacts' @> jsonb_build_array(jsonb_build_object(
+       'id', v_routed_export_artifact,
+       'chunks', jsonb_build_array(jsonb_build_object('content', v_marker))
+     )))
+     OR NOT (v_export->'connectorAccounts' @> jsonb_build_array(jsonb_build_object(
+       'id', v_routed_export_connection
      ))) THEN
     RAISE EXCEPTION 'privacy export omitted source, primary, or derived data: %', v_export;
   END IF;
@@ -202,6 +270,13 @@ BEGIN
     v_secret, v_owner, v_workspace, v_project, 1, 0, v_snapshot_at
   );
   v_snapshot_memory_count := (v_export->'counts'->>'memories')::integer;
+  v_mutated_memory := (v_export->'memories'->0->>'id')::uuid;
+  SELECT content INTO v_original_content
+  FROM public.memory_records
+  WHERE id = v_mutated_memory;
+  UPDATE public.memory_records
+  SET content = 'mutated after export snapshot'
+  WHERE id = v_mutated_memory;
   INSERT INTO public.memory_records (
     id, workspace_id, project_id, memory_type, title, content, status,
     recorded_at, created_by_subject
@@ -210,15 +285,24 @@ BEGIN
     'Created after export snapshot', 'Must not shift later pages', 'active',
     v_snapshot_at + interval '1 second', v_owner
   );
+  v_export_replay := public.api_export_project_privacy_bundle(
+    v_secret, v_owner, v_workspace, v_project, 1, 0, v_snapshot_at,
+    (v_export->>'exportId')::uuid
+  );
   v_export_page_2 := public.api_export_project_privacy_bundle(
-    v_secret, v_owner, v_workspace, v_project, 1, 1, v_snapshot_at
+    v_secret, v_owner, v_workspace, v_project, 1, 1, v_snapshot_at,
+    (v_export->>'exportId')::uuid
   );
   IF coalesce((v_export->'pagination'->>'hasMore')::boolean, false) IS NOT TRUE
      OR (v_export->'pagination'->>'nextOffset')::integer <> 1
      OR (v_export->>'snapshotAt')::timestamptz <> v_snapshot_at
      OR (v_export_page_2->>'snapshotAt')::timestamptz <> v_snapshot_at
+     OR v_export_replay->>'exportId' <> v_export->>'exportId'
+     OR v_export_page_2->>'exportId' <> v_export->>'exportId'
+     OR v_export_replay->'memories' IS DISTINCT FROM v_export->'memories'
      OR (v_export_page_2->'counts'->>'memories')::integer <> v_snapshot_memory_count
      OR v_export_page_2::text LIKE '%' || v_snapshot_late_memory::text || '%'
+     OR v_export_replay::text LIKE '%mutated after export snapshot%'
      OR jsonb_array_length(v_export->'memories') > 1
      OR jsonb_array_length(v_export->'sourceEvents') > 1
      OR jsonb_array_length(v_export->'artifacts') > 1
@@ -231,6 +315,9 @@ BEGIN
     RAISE EXCEPTION 'privacy export pagination is incomplete or unstable: %, %',
       v_export, v_export_page_2;
   END IF;
+  UPDATE public.memory_records
+  SET content = v_original_content
+  WHERE id = v_mutated_memory;
 
   v_created := public.api_create_privacy_request_v2(
     v_secret, v_owner, v_workspace, v_project, 'deletion', v_primary, NULL,
@@ -685,6 +772,29 @@ BEGIN
     now() - interval '366 days'
   );
 
+  BEGIN
+    PERFORM public.api_apply_retention_policy(
+      v_secret, v_owner, v_workspace, v_project,
+      statement_timestamp() + interval '1 day', false
+    );
+    RAISE EXCEPTION 'future retention cutoff unexpectedly executed';
+  EXCEPTION WHEN OTHERS THEN
+    IF SQLERRM = 'future retention cutoff unexpectedly executed' THEN
+      RAISE;
+    END IF;
+    IF SQLSTATE <> '22023' THEN
+      RAISE;
+    END IF;
+  END;
+  IF NOT EXISTS (
+    SELECT 1 FROM public.memory_records
+    WHERE id = v_retention_memory AND status = 'candidate'
+  ) OR NOT EXISTS (
+    SELECT 1 FROM public.artifact_chunks WHERE id = v_retention_chunk
+  ) THEN
+    RAISE EXCEPTION 'future retention cutoff mutated data';
+  END IF;
+
   v_result := public.api_apply_retention_policy(
     v_secret, v_owner, v_workspace, v_project, now(), true
   );
@@ -765,13 +875,19 @@ BEGIN
     RAISE EXCEPTION 'privacy executor role boundary is not server-only';
   END IF;
   IF has_function_privilege(
-    'anon', 'public.api_export_project_privacy_bundle(text,uuid,uuid,uuid,integer,integer,timestamptz)', 'EXECUTE'
+    'anon', 'public.api_export_project_privacy_bundle(text,uuid,uuid,uuid,integer,integer,timestamptz,uuid)', 'EXECUTE'
   ) OR has_function_privilege(
-    'authenticated', 'public.api_export_project_privacy_bundle(text,uuid,uuid,uuid,integer,integer,timestamptz)', 'EXECUTE'
+    'authenticated', 'public.api_export_project_privacy_bundle(text,uuid,uuid,uuid,integer,integer,timestamptz,uuid)', 'EXECUTE'
   ) OR NOT has_function_privilege(
-    'service_role', 'public.api_export_project_privacy_bundle(text,uuid,uuid,uuid,integer,integer,timestamptz)', 'EXECUTE'
+    'service_role', 'public.api_export_project_privacy_bundle(text,uuid,uuid,uuid,integer,integer,timestamptz,uuid)', 'EXECUTE'
   ) THEN
     RAISE EXCEPTION 'privacy export role boundary is not server-only';
+  END IF;
+  IF has_table_privilege('anon', 'public.privacy_export_snapshots', 'SELECT')
+     OR has_table_privilege(
+       'authenticated', 'public.privacy_export_snapshots', 'SELECT'
+     ) THEN
+    RAISE EXCEPTION 'privacy export snapshots are directly readable';
   END IF;
 END;
 $$;

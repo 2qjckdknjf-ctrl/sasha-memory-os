@@ -4727,6 +4727,15 @@ export function createApp(options?: {
     if (rawSnapshotAt && !Number.isFinite(snapshotAt)) {
       return c.json({ error: 'invalid_snapshot_at' }, 400);
     }
+    const exportId = c.req.query('export_id') ?? undefined;
+    if (
+      exportId &&
+      !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+        exportId,
+      )
+    ) {
+      return c.json({ error: 'invalid_export_id' }, 400);
+    }
     const gw = c.get('gateway');
     if (!gw) {
       return c.json(
@@ -4743,10 +4752,14 @@ export function createApp(options?: {
           limit,
           offset,
           snapshotAt: snapshotAt === undefined ? undefined : new Date(snapshotAt).toISOString(),
+          exportId,
         }),
       );
     } catch (err) {
       if (isForbiddenError(err)) return c.json({ error: 'forbidden' }, 403);
+      if (/privacy export snapshot/i.test((err as Error).message)) {
+        return c.json({ error: 'privacy_export_snapshot_not_found' }, 404);
+      }
       if (isNotFoundError(err)) return c.json({ error: 'project_not_found' }, 404);
       return c.json({ error: (err as Error).message }, 500);
     }
@@ -4857,6 +4870,9 @@ export function createApp(options?: {
     const authz = c.get('authz');
     if (!authz.isOwner || authz.subjectId !== body.actor_subject_id) {
       return c.json({ error: 'forbidden' }, 403);
+    }
+    if (body.as_of && Date.parse(body.as_of) > Date.now()) {
+      return c.json({ error: 'as_of_must_not_be_in_the_future' }, 400);
     }
     const gw = c.get('gateway');
     if (!gw) {
