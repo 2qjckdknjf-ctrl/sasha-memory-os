@@ -354,6 +354,19 @@ function buildRomaProjectContextPack(
   return pack;
 }
 
+function isAffirmativeDeploymentReceipt(
+  milestone: NonNullable<ProjectContextPack['currentMilestone']>,
+): boolean {
+  const text = `${milestone.title} ${milestone.summary}`;
+  return [
+    /\blive\s+pass\b/i,
+    /\b(?:deployment|deploy|migration)\s+(?:is\s+)?(?:live|complete(?:d)?|applied|verified|successful|passed)\b/i,
+    /\b(?:deployed|migrated|released)\s+(?:to\s+)?production\b/i,
+    /\bproduction\s+(?:edge\s+)?(?:is\s+)?live\b/i,
+    /\bproduction\s+(?:deployment|migration)\s+(?:is\s+)?(?:complete(?:d)?|verified|successful|passed)\b/i,
+  ].some((pattern) => pattern.test(text));
+}
+
 function releaseEvidenceRefs(pack: ProjectContextPack): QaFindingEvidenceRef[] {
   const refs: QaFindingEvidenceRef[] = [];
   for (const merge of pack.recentMerges) {
@@ -379,12 +392,7 @@ function releaseEvidenceRefs(pack: ProjectContextPack): QaFindingEvidenceRef[] {
     }
   }
   const milestone = pack.currentMilestone;
-  if (
-    milestone &&
-    /\b(?:deploy(?:ed|ment)?|live|prod(?:uction)?|release|edge|migration)\b/i.test(
-      `${milestone.title} ${milestone.summary}`,
-    )
-  ) {
+  if (milestone && isAffirmativeDeploymentReceipt(milestone)) {
     refs.push({
       kind: 'release',
       releaseType: 'deployment',

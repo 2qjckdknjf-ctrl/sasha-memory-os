@@ -54,6 +54,10 @@ function buildFindingsJob(
 
 function buildReleaseContext(
   mergeSha = '49d051c436fd2a4fbe9d7f64661edb0b3880aaa0',
+  options: {
+    milestoneTitle?: string;
+    deploymentLine?: string;
+  } = {},
 ) {
   return {
     projectId,
@@ -61,9 +65,11 @@ function buildReleaseContext(
       {
         id: 'milestone-m18-2',
         projectId,
-        title: 'M18.2 PROJECT CONTEXT PACK LIVE PASS — PR #103',
+        title:
+          options.milestoneTitle ??
+          'M18.2 PROJECT CONTEXT PACK LIVE PASS — PR #103',
         content: [
-          'Production Edge v11 deployment is live.',
+          options.deploymentLine ?? 'Production Edge v11 deployment is live.',
           'PR: https://github.com/2qjckdknjf-ctrl/sasha-memory-os/pull/103',
           `Merge SHA: ${mergeSha}`,
           'Blockers:',
@@ -774,6 +780,29 @@ describe('runRomaProjectFindingsJob', () => {
       .find((input) => input.metadata?.outcome_type === 'release_risk');
     expect(changedReleaseRisk?.externalVersion).not.toBe(
       releaseRisk?.externalVersion,
+    );
+
+    projectContext.mockResolvedValueOnce(
+      buildReleaseContext(
+        'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
+        {
+          milestoneTitle: 'M18.3 production deployment pending',
+          deploymentLine: 'Production deployment is pending review.',
+        },
+      ),
+    );
+    await runRomaProjectFindingsJob({
+      gateway: gateway as any,
+      job: buildFindingsJob({ jobId: 'job-findings-3' }),
+      romaSubjectId: roma,
+    });
+    const pendingReleaseRefs = captureConnectorRecord.mock.calls
+      .slice(-2)
+      .flatMap((call) => call[0]?.metadata?.release_refs ?? []);
+    expect(pendingReleaseRefs).not.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ releaseType: 'deployment' }),
+      ]),
     );
   });
 
