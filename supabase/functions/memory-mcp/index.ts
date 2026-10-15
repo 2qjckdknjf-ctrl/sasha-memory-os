@@ -547,7 +547,8 @@ async function callTool(
               : null,
         } satisfies Hit;
       });
-      const ranked = rerankRrf(hits, queryVector ?? []).slice(0, searchLimit);
+      const rankedCandidates = rerankRrf(hits, queryVector ?? []);
+      const ranked = rankedCandidates.slice(0, searchLimit);
       if (retrievalMode === "graph") {
         if (!project) {
           throw new Error("project reference is required for graph retrieval");
@@ -577,8 +578,8 @@ async function callTool(
               typeof entity.stableId === "string";
           }).slice(0, 8) as Array<Record<string, unknown>>;
 
-        if (!ranked.length || !entities.length) {
-          const reason = !ranked.length
+        if (!rankedCandidates.length || !entities.length) {
+          const reason = !rankedCandidates.length
             ? "no hybrid hits to ground graph traversal"
             : "no graph seeds; hybrid-only retrieval";
           return {
@@ -622,7 +623,7 @@ async function callTool(
         }
         const fused = fuseEdgeGraphHits({
           projectId: project,
-          hybridHits: ranked,
+          hybridHits: rankedCandidates,
           graphNodes: Array.isArray(graph.nodes) ? graph.nodes : [],
           graphMemories: Array.isArray(graph.memories) ? graph.memories : [],
           recordedAfter: args.recorded_after

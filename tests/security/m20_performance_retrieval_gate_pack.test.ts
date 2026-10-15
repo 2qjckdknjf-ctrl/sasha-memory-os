@@ -73,8 +73,10 @@ describe('M20.3 performance and retrieval gate', () => {
     expect(edgeMcp).toContain('rpc(client, "api_search_memories_bounded"');
     expect(edgeMcp).toContain('p_limit: candidateLimit');
     expect(edgeMcp).toContain(
-      'rerankRrf(hits, queryVector ?? []).slice(0, searchLimit)',
+      'const rankedCandidates = rerankRrf(hits, queryVector ?? [])',
     );
+    expect(edgeMcp).toContain('const ranked = rankedCandidates.slice(0, searchLimit)');
+    expect(edgeMcp).toContain('hybridHits: rankedCandidates');
     expect(edgeMcp).toContain('const limitedFused = fused.slice(0, searchLimit)');
     expect(edgeMcp).toContain('QUERY_EMBEDDING_PROVIDER_TIMEOUT_MS = 700');
     expect(edgeMcp).toContain(
