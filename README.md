@@ -23,8 +23,8 @@
 
 Machine-readable snapshot: [docs/engineering/CURRENT_STATE.json](docs/engineering/CURRENT_STATE.json) (`m14.1-v1` schema, reconciled 2026-10-15).
 
-- **Live operational milestone:** `M18_CHATGPT_AUTOMATIC_WRITEBACK_LIVE_PASS`; M19 Control Center governance completion is the next delivery slice
-- **Contract packs completed through:** M18.4 (`m18-s04-v1`, approved-only ChatGPT automatic writeback)
+- **Live operational milestone:** `M19_CONTROL_CENTER_GOVERNANCE_LIVE_PASS`; M20 production/GA closure is the next delivery slice
+- **Contract packs completed through:** M19 (`m19-s01-v1`, owner Control Center governance)
 - **Canonical Memory OS project UUID:** `44444444-4444-4444-8444-444444444402`
 - **M6 ChatGPT Mode A PASS (2026-08-15):** ChatGPT-only; does not close shared-memory E2E
 - **Bidirectional ChatGPT↔Cursor E2E PASS (2026-10-13):** real-session receipts, explicit project isolation, actor attribution verified
@@ -33,11 +33,12 @@ Machine-readable snapshot: [docs/engineering/CURRENT_STATE.json](docs/engineerin
 - **M18.2 production PASS:** Edge v11, exact seven-tool discovery, bounded 1,800-token context and cross-project/handoff ACL live checks
 - **M18.3 production PASS:** least-privilege canonical-project ACL, live worker job, three audited candidate findings and MCP read-after-write
 - **M18.4 production PASS:** seven-tool-compatible approved writeback, deterministic dedupe, conflict stop, audited read-after-write and the ChatGPT/Cursor/ROMA same-state exit gate
+- **M19 production PASS:** owner governance overview, routing inbox, job controls, cursor privacy, privilege boundaries and production-backed Chrome E2E
 - Core path live: WP-01…08 RPCs, vault OAuth, hybrid RRF retrieval, embeddings, consolidation/outbox/jobs, MCP, Control Center
 - M10–M13 foundations merged (Drive/Gmail/Calendar policies, ROMA project-health, bounded agentic retrieval / consolidation / ranking)
 - Apple: companion-required personal-source contracts complete; live device E2E still blocked
 - Entity graph: durable projection + server-only search/inspector + evidence-bounded live traversal implementation
-- Known blockers: real provider OAuth credentials/consent, Apple live device E2E, leaked-password protection and remaining advisor debt; Fly deferred. Terminal outbox backlog is zero.
+- Known blockers: real provider OAuth credentials/consent, Apple live device E2E, five non-terminal outbox events without a downstream publisher policy, leaked-password protection and remaining advisor debt; Fly deferred. Terminal capture/ingest outbox backlog is zero.
 
 ## Репозиторий
 
@@ -134,8 +135,8 @@ Canonical order (do not skip): see [M14_1_BASELINE.md](docs/engineering/M14_1_BA
 25. ~~M18.2 project context pack~~ (`m18-s02-v1`) — explicit-project API/MCP pack, migration, Edge v11 and authenticated 1,800-token live acceptance PASS; Memory OS receipt `9ac3fb2e-95de-42aa-aa34-e9954dc0228c`
 26. ~~M18.3 ROMA integration~~ (`m18-s03-v1`) — shared context consumption, audited/deduplicated QA + release-risk outcomes, release evidence and candidate-only production read-after-write PASS; Memory OS receipt `ea0746e7-6557-4c66-b017-005e3c06f157`
 27. ~~M18.4 ChatGPT automatic writeback policy~~ (`m18-s04-v1`) — production Edge v12 create/dedupe/conflict/read-after-write PASS; cross-client M18 exit gate PASS; Memory OS receipt `b664431d-7e33-49f3-bd3b-27dbb24150f0`
-28. **M19 Control Center governance completion** (`m19-s01-v1`) — implementation in progress; live receipt pending
-29. M20 security, live release gates and final GA evidence
+28. ~~M19 Control Center governance completion~~ (`m19-s01-v1`) — production migration, privilege checks, reversible routing probe and Chrome live E2E PASS; Memory OS receipt `1cb2e53b-93eb-481e-8cd3-6cfcc4da534f`
+29. **M20 security, live release gates and final GA evidence**
 
 ## AI разборы 2026-10-13
 

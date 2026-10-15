@@ -63,8 +63,8 @@ describe('M18.3 ROMA integration pack', () => {
     );
     expect(docs).toContain('ChatGPT Mode A remains exactly seven tools');
     expect(current).toMatchObject({
-      completedThrough: 'M18.4',
-      nextSlice: 'M19_CONTROL_CENTER_GOVERNANCE_COMPLETION',
+      completedThrough: 'M19',
+      nextSlice: 'M20_PRODUCTION_GA_CLOSURE',
       officialPacks: { m18RomaIntegration: 'm18-s03-v1' },
       chatgptModeA: { toolCount: 7 },
       m18RomaIntegrationLiveReceipt: {

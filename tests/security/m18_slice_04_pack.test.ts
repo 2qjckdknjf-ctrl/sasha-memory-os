@@ -72,8 +72,8 @@ describe('M18.4 ChatGPT automatic writeback pack', () => {
     expect(ephemeral).toContain('m18_slice_04_chatgpt_writeback_cases.sql');
     expect(docs).toContain('ChatGPT Mode A remains exactly seven tools');
     expect(current).toMatchObject({
-      completedThrough: 'M18.4',
-      nextSlice: 'M19_CONTROL_CENTER_GOVERNANCE_COMPLETION',
+      completedThrough: 'M19',
+      nextSlice: 'M20_PRODUCTION_GA_CLOSURE',
       officialPacks: { m18ChatgptWriteback: 'm18-s04-v1' },
       chatgptModeA: { toolCount: 7 },
       m18ChatgptWritebackLiveReceipt: {
