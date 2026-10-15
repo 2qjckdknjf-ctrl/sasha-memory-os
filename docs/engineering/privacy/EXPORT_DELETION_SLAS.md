@@ -68,7 +68,7 @@ operational audit and telemetry.
 | Retraction | same execution route | 30d | Target memory becomes `retracted` |
 | Erasure | same execution route | 30d | Target plus derived memories are tombstoned; evidence/revisions/chunks/vectors/graph projection and sensitive snapshots are removed |
 | Source revocation | deletion request with `target_connector_account_id` | 30d | Connector is revoked workspace-wide; vault refs/payloads, cursors, pending jobs/outbox and connector-derived records in every project converge to deletion |
-| Retention | `POST /v1/privacy/retention/run` | scheduled owner operation | Dry-run by default; apply enforces `m20-s04-v1` windows |
+| Retention | `POST /v1/privacy/retention/run` | scheduled owner operation | Dry-run by default; apply enforces `m20-s04-v1` windows only for data positively attributed to the explicit project |
 
 Request creation is idempotent. Reusing a key for a different project, request
 type, memory or connector fails closed. Execution is also idempotent: a

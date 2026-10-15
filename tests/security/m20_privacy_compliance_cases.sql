@@ -41,6 +41,9 @@ DECLARE
   v_retention_entity constant uuid := '99999999-0000-4000-8000-000000000427';
   v_task_memory constant uuid := '99999999-0000-4000-8000-000000000428';
   v_unaffected_memory constant uuid := '99999999-0000-4000-8000-000000000429';
+  v_other_retention_outbox constant uuid := '99999999-0000-4000-8000-000000000430';
+  v_other_retention_job constant uuid := '99999999-0000-4000-8000-000000000431';
+  v_other_retention_audit constant uuid := '99999999-0000-4000-8000-000000000432';
   v_marker constant text := 'M20_PRIVACY_SECRET_MARKER_6f9fd9';
   v_vault_ref constant text := 'vault:test/m20/privacy-connector';
   v_created jsonb;
@@ -100,7 +103,7 @@ BEGIN
     (
       v_unaffected_memory, v_workspace, v_project, 'fact',
       'Unaffected graph owner', 'Must preserve its entity link', 'active',
-      'internal', NULL, v_owner, '{}'::jsonb
+      'internal', NULL, v_owner, jsonb_build_object('relatedMemoryId', v_primary)
     );
   INSERT INTO public.memory_evidence (
     memory_id, source_event_id, workspace_id, evidence_span
@@ -221,6 +224,14 @@ BEGIN
         AND m.embedding_vector IS NULL
         AND m.embedding_vector_hq IS NULL) <> 3 THEN
     RAISE EXCEPTION 'primary or recursive derived memory retained content/embedding';
+  END IF;
+  IF NOT EXISTS (
+    SELECT 1 FROM public.memory_records m
+    WHERE m.id = v_unaffected_memory
+      AND m.status = 'active'
+      AND m.content = 'Must preserve its entity link'
+  ) THEN
+    RAISE EXCEPTION 'unrelated metadata reference caused collateral memory erasure';
   END IF;
   IF EXISTS (SELECT 1 FROM public.memory_evidence WHERE memory_id IN (v_primary, v_derived))
      OR EXISTS (SELECT 1 FROM public.artifact_chunks WHERE artifact_id = v_artifact)
@@ -469,17 +480,43 @@ BEGIN
     now() - interval '31 days'
   );
   INSERT INTO public.processing_jobs (
-    id, workspace_id, job_type, status, idempotency_key, created_at, updated_at
+    id, workspace_id, job_type, status, source_event_id, idempotency_key,
+    created_at, updated_at
   ) VALUES (
     v_retention_job, v_workspace, 'ingest', 'dead_letter',
-    'm20-privacy/retention-job', now() - interval '91 days',
-    now() - interval '91 days'
+    v_retention_source, 'm20-privacy/retention-job',
+    now() - interval '91 days', now() - interval '91 days'
   );
   INSERT INTO public.audit_log (
-    id, workspace_id, actor_subject_id, action, object_type, reason, recorded_at
+    id, workspace_id, actor_subject_id, action, object_type, object_id, reason,
+    recorded_at
   ) VALUES (
-    v_retention_audit, v_workspace, v_owner, 'retention.fixture', 'fixture',
-    'retention fixture', now() - interval '366 days'
+    v_retention_audit, v_workspace, v_owner, 'retention.fixture', 'memory',
+    v_retention_memory, 'retention fixture', now() - interval '366 days'
+  );
+  INSERT INTO public.outbox_events (
+    id, workspace_id, aggregate_type, aggregate_id, event_type, payload,
+    created_at, published_at
+  ) VALUES (
+    v_other_retention_outbox, v_workspace, 'memory', v_cross_project_memory,
+    'retention.other-project', '{}'::jsonb, now() - interval '31 days',
+    now() - interval '31 days'
+  );
+  INSERT INTO public.processing_jobs (
+    id, workspace_id, job_type, status, source_event_id, idempotency_key,
+    created_at, updated_at
+  ) VALUES (
+    v_other_retention_job, v_workspace, 'ingest', 'dead_letter',
+    v_cross_project_source, 'm20-privacy/other-retention-job',
+    now() - interval '91 days', now() - interval '91 days'
+  );
+  INSERT INTO public.audit_log (
+    id, workspace_id, actor_subject_id, action, object_type, object_id, reason,
+    recorded_at
+  ) VALUES (
+    v_other_retention_audit, v_workspace, v_owner, 'retention.other-project',
+    'memory', v_cross_project_memory, 'must survive project retention',
+    now() - interval '366 days'
   );
 
   v_result := public.api_apply_retention_policy(
@@ -522,8 +559,14 @@ BEGIN
   ) OR EXISTS (
     SELECT 1 FROM public.source_events s
     WHERE s.id = v_retention_source AND s.payload::text LIKE '%' || v_marker || '%'
+  ) OR NOT EXISTS (
+    SELECT 1 FROM public.outbox_events WHERE id = v_other_retention_outbox
+  ) OR NOT EXISTS (
+    SELECT 1 FROM public.processing_jobs WHERE id = v_other_retention_job
+  ) OR NOT EXISTS (
+    SELECT 1 FROM public.audit_log WHERE id = v_other_retention_audit
   ) THEN
-    RAISE EXCEPTION 'retention apply left expired content or operational rows';
+    RAISE EXCEPTION 'retention apply missed scoped rows or crossed the project boundary';
   END IF;
 
   IF has_function_privilege(

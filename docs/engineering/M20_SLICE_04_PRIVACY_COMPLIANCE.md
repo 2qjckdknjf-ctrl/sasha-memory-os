@@ -16,7 +16,8 @@ Official pack: `m20-s04-v1`
 - `POST /v1/privacy/requests/:id/execute`: idempotent execution with a
   metadata-only result.
 - `POST /v1/privacy/retention/run`: dry-run by default; apply enforces the
-  accepted 30/90/180/365-day windows.
+  accepted 30/90/180/365-day windows within the explicit project, including
+  project-attributed outbox, dead-letter and audit rows only.
 - Control Center Privacy UI: full export, target selection, explicit execution,
   and retention preview/apply. Sensitive request text is deliberately absent
   from its operational history.
@@ -43,7 +44,9 @@ stack, proves:
 5. privacy free text never survives in audit/ops state;
 6. retention preview is non-mutating and apply enforces every window;
 7. legacy targetless requests fail closed before mutation, correction audits
-   are redacted, and retention removes orphan graph entities;
+   are redacted, retention removes orphan graph entities, arbitrary metadata
+   references do not trigger erasure, and operational retention cannot cross
+   the requested project boundary;
 8. privacy RPCs are denied to `anon`/`authenticated` and granted to
    `service_role`.
 

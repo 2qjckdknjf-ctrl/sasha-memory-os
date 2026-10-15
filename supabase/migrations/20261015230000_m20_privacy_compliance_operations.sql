@@ -802,9 +802,26 @@ BEGIN
             v_request.target_connector_account_id IS NOT NULL
             OR app.effective_memory_project_id(m.id) = v_request.project_id
           )
-          AND EXISTS (
-            SELECT 1 FROM unnest(v_affected_ids) affected(id)
-            WHERE m.metadata::text LIKE '%' || affected.id::text || '%'
+          AND (
+            EXISTS (
+              SELECT 1 FROM unnest(v_affected_ids) affected(id)
+              WHERE m.superseded_by = affected.id
+                 OR m.metadata->>'derivedFromMemoryId' = affected.id::text
+                 OR m.metadata->>'derived_from' = affected.id::text
+                 OR m.metadata->>'consolidated_into' = affected.id::text
+                 OR m.metadata->>'corrected_by' = affected.id::text
+                 OR coalesce(m.metadata->'consolidated_from', '[]'::jsonb)
+                    @> jsonb_build_array(affected.id::text)
+            )
+            OR EXISTS (
+              SELECT 1 FROM public.memory_records affected_memory
+              WHERE affected_memory.id = ANY(v_affected_ids)
+                AND (
+                  affected_memory.superseded_by = m.id
+                  OR affected_memory.metadata->>'consolidated_into' = m.id::text
+                  OR affected_memory.metadata->>'corrected_by' = m.id::text
+                )
+            )
           )
       ) expanded;
 
@@ -1070,6 +1087,9 @@ DECLARE
   v_entity_ids uuid[] := '{}'::uuid[];
   v_artifact_ids uuid[] := '{}'::uuid[];
   v_artifact_source_ids uuid[] := '{}'::uuid[];
+  v_outbox_ids uuid[] := '{}'::uuid[];
+  v_dead_letter_ids uuid[] := '{}'::uuid[];
+  v_audit_ids uuid[] := '{}'::uuid[];
   v_candidate_count integer := 0;
   v_artifact_count integer := 0;
   v_outbox_count integer := 0;
@@ -1114,17 +1134,109 @@ BEGIN
   FROM public.artifacts a
   WHERE a.id = ANY(v_artifact_ids) AND a.source_event_id IS NOT NULL;
 
-  SELECT count(*) INTO v_outbox_count FROM public.outbox_events o
-  WHERE o.workspace_id = p_workspace_id
-    AND o.published_at IS NOT NULL
-    AND o.published_at < p_as_of - interval '30 days';
-  SELECT count(*) INTO v_dead_letter_count FROM public.processing_jobs j
+  SELECT coalesce(array_agg(j.id), '{}'::uuid[]) INTO v_dead_letter_ids
+  FROM public.processing_jobs j
   WHERE j.workspace_id = p_workspace_id
     AND j.status = 'dead_letter'
-    AND j.updated_at < p_as_of - interval '90 days';
-  SELECT count(*) INTO v_audit_count FROM public.audit_log a
+    AND j.updated_at < p_as_of - interval '90 days'
+    AND (
+      EXISTS (
+        SELECT 1 FROM public.source_events s
+        WHERE s.id = j.source_event_id AND s.project_id = p_project_id
+      )
+      OR EXISTS (
+        SELECT 1 FROM public.project_notifications n
+        WHERE n.source_job_id = j.id AND n.project_id = p_project_id
+      )
+      OR EXISTS (
+        SELECT 1 FROM public.approval_checkpoints c
+        WHERE c.source_job_id = j.id AND c.project_id = p_project_id
+      )
+      OR EXISTS (
+        SELECT 1 FROM public.outbox_events linked_outbox
+        WHERE linked_outbox.aggregate_type = 'processing_job'
+          AND linked_outbox.aggregate_id = j.id
+          AND linked_outbox.payload->>'projectId' = p_project_id::text
+      )
+    );
+  v_dead_letter_count := cardinality(v_dead_letter_ids);
+
+  SELECT coalesce(array_agg(o.id), '{}'::uuid[]) INTO v_outbox_ids
+  FROM public.outbox_events o
+  WHERE o.workspace_id = p_workspace_id
+    AND o.published_at IS NOT NULL
+    AND o.published_at < p_as_of - interval '30 days'
+    AND (
+      o.payload->>'projectId' = p_project_id::text
+      OR (o.aggregate_type = 'project' AND o.aggregate_id = p_project_id)
+      OR (o.aggregate_type = 'processing_job' AND o.aggregate_id = ANY(v_dead_letter_ids))
+      OR (
+        o.aggregate_type = 'memory'
+        AND EXISTS (
+          SELECT 1 FROM public.memory_records m
+          WHERE m.id = o.aggregate_id
+            AND app.effective_memory_project_id(m.id) = p_project_id
+        )
+      )
+      OR (
+        o.aggregate_type = 'source_event'
+        AND EXISTS (
+          SELECT 1 FROM public.source_events s
+          WHERE s.id = o.aggregate_id AND s.project_id = p_project_id
+        )
+      )
+      OR (
+        o.aggregate_type = 'project_notification'
+        AND EXISTS (
+          SELECT 1 FROM public.project_notifications n
+          WHERE n.id = o.aggregate_id AND n.project_id = p_project_id
+        )
+      )
+      OR (
+        o.aggregate_type = 'approval_checkpoint'
+        AND EXISTS (
+          SELECT 1 FROM public.approval_checkpoints c
+          WHERE c.id = o.aggregate_id AND c.project_id = p_project_id
+        )
+      )
+    );
+  v_outbox_count := cardinality(v_outbox_ids);
+
+  SELECT coalesce(array_agg(a.id), '{}'::uuid[]) INTO v_audit_ids
+  FROM public.audit_log a
   WHERE a.workspace_id = p_workspace_id
-    AND a.recorded_at < p_as_of - interval '365 days';
+    AND a.recorded_at < p_as_of - interval '365 days'
+    AND (
+      (a.object_type = 'project' AND a.object_id = p_project_id)
+      OR a.before_state->>'projectId' = p_project_id::text
+      OR a.after_state->>'projectId' = p_project_id::text
+      OR EXISTS (
+        SELECT 1 FROM public.memory_records m
+        WHERE m.id = a.object_id
+          AND app.effective_memory_project_id(m.id) = p_project_id
+      )
+      OR EXISTS (
+        SELECT 1 FROM public.source_events s
+        WHERE s.id = a.object_id AND s.project_id = p_project_id
+      )
+      OR EXISTS (
+        SELECT 1 FROM public.artifacts artifact
+        WHERE artifact.id = a.object_id AND artifact.project_id = p_project_id
+      )
+      OR EXISTS (
+        SELECT 1 FROM public.privacy_requests r
+        WHERE r.id = a.object_id AND r.project_id = p_project_id
+      )
+      OR EXISTS (
+        SELECT 1 FROM public.project_notifications n
+        WHERE n.id = a.object_id AND n.project_id = p_project_id
+      )
+      OR EXISTS (
+        SELECT 1 FROM public.approval_checkpoints c
+        WHERE c.id = a.object_id AND c.project_id = p_project_id
+      )
+    );
+  v_audit_count := cardinality(v_audit_ids);
 
   v_result := jsonb_build_object(
     'policyVersion', 'm20-s04-v1',
@@ -1252,17 +1364,9 @@ BEGIN
         trace_id = NULL,
         storage_mode = 'reference'
     WHERE s.id = ANY(v_artifact_source_ids);
-    DELETE FROM public.outbox_events o
-    WHERE o.workspace_id = p_workspace_id
-      AND o.published_at IS NOT NULL
-      AND o.published_at < p_as_of - interval '30 days';
-    DELETE FROM public.processing_jobs j
-    WHERE j.workspace_id = p_workspace_id
-      AND j.status = 'dead_letter'
-      AND j.updated_at < p_as_of - interval '90 days';
-    DELETE FROM public.audit_log a
-    WHERE a.workspace_id = p_workspace_id
-      AND a.recorded_at < p_as_of - interval '365 days';
+    DELETE FROM public.outbox_events o WHERE o.id = ANY(v_outbox_ids);
+    DELETE FROM public.processing_jobs j WHERE j.id = ANY(v_dead_letter_ids);
+    DELETE FROM public.audit_log a WHERE a.id = ANY(v_audit_ids);
 
     INSERT INTO public.audit_log (
       workspace_id, actor_subject_id, action, object_type, reason, after_state

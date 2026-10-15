@@ -45,7 +45,10 @@ and defaults to `dry_run=true`. Policy version: `m20-s04-v1`.
 
 The apply path records counts and identifiers only. It never copies memory
 bodies, source payloads, request reasons, correction text, credentials, or
-export payloads into audit/operational telemetry.
+export payloads into audit/operational telemetry. Project retention deletes
+outbox, dead-letter and audit rows only when their source, aggregate, payload or
+linked object positively attributes them to the requested project; ambiguous
+workspace-level rows are preserved.
 
 ## Rights and operational surfaces
 

@@ -37,11 +37,13 @@ describe('M20.4 privacy and compliance gate', () => {
         typedMemoryPayloadsExported: true,
         recursiveDerivedErasure: true,
         unaffectedGraphLinksPreserved: true,
+        derivationMetadataIsAllowlisted: true,
         sourceRevocationDeletesVaultReferences: true,
         graphProjectionRemovedOnDeletion: true,
         exportIsFullyPaginated: true,
         connectorRevocationIsWorkspaceWide: true,
         legacyRequestsFailClosed: true,
+        retentionIsProjectScoped: true,
         auditContainsMetadataOnly: true,
         logsContainSensitiveBodies: false,
         modeAToolCount: 7,
@@ -113,6 +115,8 @@ describe('M20.4 privacy and compliance gate', () => {
     expect(migration).toContain("reason = '[redacted after execution]'");
     expect(migration).toContain("reason = 'privacy correction redacted'");
     expect(migration).toContain('v_previous_affected_count');
+    expect(migration).toContain("m.metadata->>'derivedFromMemoryId'");
+    expect(migration).not.toContain('m.metadata::text LIKE');
     expect(migration).toContain("'decision'");
     expect(migration).toContain("'task'");
     expect(migration).toContain('DELETE FROM public.artifact_chunks');
@@ -134,6 +138,7 @@ describe('M20.4 privacy and compliance gate', () => {
     expect(sql).toContain('sensitive content leaked into operational audit state');
     expect(sql).toContain('cross-project memory were not revoked');
     expect(sql).toContain('legacy request without a target unexpectedly executed');
+    expect(sql).toContain('crossed the project boundary');
     expect(ephemeral).toContain('m20_privacy_compliance_cases.sql');
     expect(dataMap).toContain('POST /v1/privacy/retention/run');
     expect(dpia).toContain('V1 GA technical review refreshed 2026-10-15');
