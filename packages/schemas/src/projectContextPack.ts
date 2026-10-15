@@ -390,6 +390,16 @@ function githubPullRequestUrl(content: string): string | null {
   return null;
 }
 
+function isFullHexSha(value: string): boolean {
+  return (
+    value.length === 40 &&
+    [...value].every(
+      (char) =>
+        (char >= '0' && char <= '9') || (char >= 'a' && char <= 'f'),
+    )
+  );
+}
+
 function hasAffirmativeMergedValue(value: string): boolean {
   const normalized = value.trim().toLowerCase();
   if (
@@ -405,13 +415,7 @@ function hasAffirmativeMergedValue(value: string): boolean {
   ) {
     return true;
   }
-  return (
-    normalized.length === 40 &&
-    [...normalized].every(
-      (char) =>
-        (char >= '0' && char <= '9') || (char >= 'a' && char <= 'f'),
-    )
-  );
+  return isFullHexSha(normalized);
 }
 
 function hasExplicitMergedMarker(content: string): boolean {
@@ -438,7 +442,14 @@ function hasExplicitMergedMarker(content: string): boolean {
 }
 
 function mergeShaFromContent(content: string): string | null {
-  return /(?:Merge SHA:|merge SHA)\s*([0-9a-f]{40})/i.exec(content)?.[1] ?? null;
+  for (const line of content.slice(0, MAX_PARSED_CONTENT_CHARS).split('\n')) {
+    const normalized = line.trim().toLowerCase();
+    const marker = 'merge sha:';
+    if (!normalized.startsWith(marker)) continue;
+    const value = normalized.slice(marker.length).trim();
+    if (isFullHexSha(value)) return value;
+  }
+  return null;
 }
 
 function hasMergeEvidence(content: string): boolean {

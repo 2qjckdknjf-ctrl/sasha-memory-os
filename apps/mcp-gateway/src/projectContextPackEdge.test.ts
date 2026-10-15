@@ -734,6 +734,16 @@ describe("Edge project context pack", () => {
           content:
             `Merged: ${status}\nPR: https://github.com/example/repo/pull/${102 + index}`,
         })),
+        {
+          ...memory(
+            "pre-merge-sha",
+            "PR #105 is awaiting merge",
+            "2026-10-13T15:53:00Z",
+          ),
+          content:
+            "Pre-merge SHA 2222222222222222222222222222222222222222\n" +
+            "PR: https://github.com/example/repo/pull/105",
+        },
       ],
       tasks: [],
       facts: [],

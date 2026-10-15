@@ -695,6 +695,14 @@ describe('M18.2 project context pack', () => {
               recordedAt: `2026-10-13T15:5${7 - index}:00.000Z`,
             }),
           ),
+          decision({
+            id: 'pre-merge-sha',
+            title: 'PR #105 is awaiting merge',
+            content:
+              'Pre-merge SHA 2222222222222222222222222222222222222222\n' +
+              'PR: https://github.com/example/repo/pull/105',
+            recordedAt: '2026-10-13T15:53:00.000Z',
+          }),
         ],
       },
       { projectId },
