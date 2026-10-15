@@ -48,6 +48,9 @@ describe('M19 Control Center governance pack', () => {
     expect(page).not.toContain('onActorChange');
     expect(connections).toContain('Opaque values скрыты');
     expect(migration).toContain('app.assert_workspace_owner');
+    expect(migration).not.toContain("'cursor', cc.opaque_cursor");
+    expect(migration).toContain("'present', true");
+    expect(migration).toContain('p.workspace_id = v_memory.workspace_id');
     expect(migration).toContain('TO service_role');
     expect(migration).toContain('FROM PUBLIC, anon, authenticated');
     expect(ephemeral).toContain('m19_control_center_governance_cases.sql');

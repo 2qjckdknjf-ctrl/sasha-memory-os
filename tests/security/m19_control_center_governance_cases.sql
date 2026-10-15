@@ -8,6 +8,8 @@ DECLARE
   v_owner uuid := '33333333-3333-4333-8333-333333333301';
   v_cursor uuid := '33333333-3333-4333-8333-333333333303';
   v_project uuid := '44444444-4444-4444-8444-444444444402';
+  v_foreign_workspace uuid := '11111111-1111-4111-8111-111111111119';
+  v_foreign_project uuid := '44444444-4444-4444-8444-444444444419';
   v_memory uuid;
   v_job uuid;
   v_overview jsonb;
@@ -61,6 +63,26 @@ BEGIN
   IF v_memory IS NULL THEN
     RAISE EXCEPTION 'M19 test requires one seeded memory';
   END IF;
+
+  INSERT INTO workspaces (id, slug, name)
+  VALUES (v_foreign_workspace, 'm19-foreign-workspace', 'M19 foreign workspace');
+  INSERT INTO projects (id, workspace_id, slug, name)
+  VALUES (v_foreign_project, v_foreign_workspace, 'm19-foreign-project', 'M19 foreign project');
+
+  BEGIN
+    PERFORM app.api_apply_project_routing_correction(
+      v_secret,
+      v_owner,
+      v_memory,
+      v_foreign_project,
+      'MOVE_TO_MEMORY_OS',
+      'cross-workspace target must fail closed',
+      jsonb_build_object('test', 'm19-s01-v1')
+    );
+    RAISE EXCEPTION 'cross-workspace routing target must be rejected';
+  EXCEPTION WHEN SQLSTATE '22023' THEN
+    NULL;
+  END;
 
   PERFORM app.api_apply_project_routing_correction(
     v_secret,

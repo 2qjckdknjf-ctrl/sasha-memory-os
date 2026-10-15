@@ -279,7 +279,7 @@ export type ConnectionRecord = {
 
 export type ConnectorCursorRecord = {
   stream: string;
-  cursor: Record<string, unknown>;
+  present: true;
   schemaVersion: string;
   updatedAt: string;
 };

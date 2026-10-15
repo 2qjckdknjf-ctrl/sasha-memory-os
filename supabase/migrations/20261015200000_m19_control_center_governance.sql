@@ -67,7 +67,7 @@ AS $$
     SELECT jsonb_agg(
       jsonb_build_object(
         'stream', cc.stream,
-        'cursor', cc.opaque_cursor,
+        'present', true,
         'schemaVersion', cc.schema_version,
         'updatedAt', cc.updated_at
       )
@@ -77,6 +77,114 @@ AS $$
     WHERE cc.account_id = a.id
   ) c ON true
   WHERE a.id = p_connection_id;
+$$;
+
+-- The original P0 RPC accepted any globally valid project UUID. Keep routing
+-- corrections inside the memory's workspace before the ledger row is written.
+CREATE OR REPLACE FUNCTION app.api_apply_project_routing_correction(
+  p_secret text,
+  p_actor_subject_id uuid,
+  p_memory_id uuid,
+  p_corrected_project_id uuid,
+  p_classification text,
+  p_reason text,
+  p_source_evidence jsonb DEFAULT '{}'::jsonb
+)
+RETURNS jsonb
+LANGUAGE plpgsql
+VOLATILE
+SECURITY DEFINER
+SET search_path = public, app
+AS $$
+DECLARE
+  v_memory memory_records%ROWTYPE;
+  v_row project_routing_corrections%ROWTYPE;
+BEGIN
+  PERFORM app.assert_api_secret(p_secret);
+  PERFORM app.with_subject(p_actor_subject_id);
+
+  SELECT * INTO v_memory FROM memory_records WHERE id = p_memory_id;
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'memory not found' USING ERRCODE = 'P0002';
+  END IF;
+
+  PERFORM app.assert_workspace_owner(v_memory.workspace_id, p_actor_subject_id);
+
+  IF NOT EXISTS (
+    SELECT 1
+    FROM projects p
+    WHERE p.id = p_corrected_project_id
+      AND p.workspace_id = v_memory.workspace_id
+  ) THEN
+    RAISE EXCEPTION 'corrected project must belong to memory workspace'
+      USING ERRCODE = '22023';
+  END IF;
+
+  IF p_classification NOT IN (
+    'KEEP_AISTROYKA', 'MOVE_TO_MEMORY_OS', 'MOVE_TO_HIAIR', 'UNCLASSIFIED', 'REVIEW_REQUIRED'
+  ) THEN
+    RAISE EXCEPTION 'invalid classification' USING ERRCODE = '22023';
+  END IF;
+
+  INSERT INTO project_routing_corrections (
+    workspace_id,
+    memory_id,
+    previous_project_id,
+    corrected_project_id,
+    classification,
+    reason,
+    source_evidence,
+    actor_subject_id
+  )
+  VALUES (
+    v_memory.workspace_id,
+    p_memory_id,
+    v_memory.project_id,
+    p_corrected_project_id,
+    p_classification,
+    nullif(btrim(p_reason), ''),
+    coalesce(p_source_evidence, '{}'::jsonb),
+    p_actor_subject_id
+  )
+  ON CONFLICT (memory_id) DO UPDATE SET
+    corrected_project_id = EXCLUDED.corrected_project_id,
+    classification = EXCLUDED.classification,
+    reason = EXCLUDED.reason,
+    source_evidence = EXCLUDED.source_evidence,
+    actor_subject_id = EXCLUDED.actor_subject_id
+  RETURNING * INTO v_row;
+
+  INSERT INTO audit_log (
+    workspace_id,
+    actor_subject_id,
+    action,
+    object_type,
+    object_id,
+    reason,
+    before_state,
+    after_state
+  )
+  VALUES (
+    v_memory.workspace_id,
+    p_actor_subject_id,
+    'project_routing.correct',
+    'memory',
+    p_memory_id,
+    p_reason,
+    jsonb_build_object('projectId', v_memory.project_id),
+    jsonb_build_object(
+      'correctedProjectId', p_corrected_project_id,
+      'classification', p_classification
+    )
+  );
+
+  RETURN jsonb_build_object(
+    'memoryId', v_row.memory_id,
+    'previousProjectId', v_row.previous_project_id,
+    'correctedProjectId', v_row.corrected_project_id,
+    'classification', v_row.classification
+  );
+END;
 $$;
 
 CREATE OR REPLACE FUNCTION app.api_control_center_overview(
