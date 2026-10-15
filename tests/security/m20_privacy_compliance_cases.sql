@@ -44,6 +44,14 @@ DECLARE
   v_other_retention_outbox constant uuid := '99999999-0000-4000-8000-000000000430';
   v_other_retention_job constant uuid := '99999999-0000-4000-8000-000000000431';
   v_other_retention_audit constant uuid := '99999999-0000-4000-8000-000000000432';
+  v_routed_correction_memory constant uuid := '99999999-0000-4000-8000-000000000433';
+  v_legacy_connection_source constant uuid := '99999999-0000-4000-8000-000000000434';
+  v_legacy_connection_memory constant uuid := '99999999-0000-4000-8000-000000000435';
+  v_legacy_connection_job constant uuid := '99999999-0000-4000-8000-000000000436';
+  v_legacy_connection_outbox constant uuid := '99999999-0000-4000-8000-000000000437';
+  v_legacy_connection_artifact constant uuid := '99999999-0000-4000-8000-000000000438';
+  v_legacy_connection_chunk constant uuid := '99999999-0000-4000-8000-000000000439';
+  v_snapshot_late_memory constant uuid := '99999999-0000-4000-8000-000000000440';
   v_marker constant text := 'M20_PRIVACY_SECRET_MARKER_6f9fd9';
   v_vault_ref constant text := 'vault:test/m20/privacy-connector';
   v_created jsonb;
@@ -52,6 +60,9 @@ DECLARE
   v_result jsonb;
   v_request uuid;
   v_connector_request uuid;
+  v_routed_authoritative uuid;
+  v_snapshot_at timestamptz;
+  v_snapshot_memory_count integer;
 BEGIN
   INSERT INTO public.source_events (
     id, workspace_id, project_id, provider, event_type, idempotency_key,
@@ -181,14 +192,28 @@ BEGIN
      ))) THEN
     RAISE EXCEPTION 'privacy export omitted source, primary, or derived data: %', v_export;
   END IF;
+  v_snapshot_at := clock_timestamp();
   v_export := public.api_export_project_privacy_bundle(
-    v_secret, v_owner, v_workspace, v_project, 1, 0
+    v_secret, v_owner, v_workspace, v_project, 1, 0, v_snapshot_at
+  );
+  v_snapshot_memory_count := (v_export->'counts'->>'memories')::integer;
+  INSERT INTO public.memory_records (
+    id, workspace_id, project_id, memory_type, title, content, status,
+    recorded_at, created_by_subject
+  ) VALUES (
+    v_snapshot_late_memory, v_workspace, v_project, 'fact',
+    'Created after export snapshot', 'Must not shift later pages', 'active',
+    v_snapshot_at + interval '1 second', v_owner
   );
   v_export_page_2 := public.api_export_project_privacy_bundle(
-    v_secret, v_owner, v_workspace, v_project, 1, 1
+    v_secret, v_owner, v_workspace, v_project, 1, 1, v_snapshot_at
   );
   IF coalesce((v_export->'pagination'->>'hasMore')::boolean, false) IS NOT TRUE
      OR (v_export->'pagination'->>'nextOffset')::integer <> 1
+     OR (v_export->>'snapshotAt')::timestamptz <> v_snapshot_at
+     OR (v_export_page_2->>'snapshotAt')::timestamptz <> v_snapshot_at
+     OR (v_export_page_2->'counts'->>'memories')::integer <> v_snapshot_memory_count
+     OR v_export_page_2::text LIKE '%' || v_snapshot_late_memory::text || '%'
      OR jsonb_array_length(v_export->'memories') > 1
      OR jsonb_array_length(v_export->'sourceEvents') > 1
      OR jsonb_array_length(v_export->'artifacts') > 1
@@ -327,6 +352,44 @@ BEGIN
     RAISE EXCEPTION 'privacy correction leaked sensitive content into audit: %', v_result;
   END IF;
 
+  -- A correction of a routed memory must keep the authoritative replacement
+  -- in the request's effective project, not silently return it to stored scope.
+  INSERT INTO public.memory_records (
+    id, workspace_id, project_id, memory_type, title, content, status,
+    created_by_subject
+  ) VALUES (
+    v_routed_correction_memory, v_workspace, v_other_project, 'fact',
+    'Routed correction target', 'Stored in the previous project', 'active', v_owner
+  );
+  INSERT INTO public.project_routing_corrections (
+    workspace_id, memory_id, previous_project_id, corrected_project_id,
+    classification, reason, source_evidence, actor_subject_id
+  ) VALUES (
+    v_workspace, v_routed_correction_memory, v_other_project, v_project,
+    'MOVE_TO_MEMORY_OS', 'M20.4 routed correction fixture', '{}'::jsonb, v_owner
+  );
+  v_created := public.api_create_privacy_request_v2(
+    v_secret, v_owner, v_workspace, v_project, 'correction',
+    v_routed_correction_memory, NULL, 'correct routed memory',
+    'authoritative routed content', 'm20-privacy/correction-routing'
+  );
+  v_result := public.api_execute_privacy_request(
+    v_secret, v_owner, (v_created->>'id')::uuid
+  );
+  v_routed_authoritative :=
+    (v_result->'resultSummary'->>'authoritativeMemoryId')::uuid;
+  IF v_result->>'status' <> 'completed'
+     OR app.effective_memory_project_id(v_routed_authoritative) <> v_project
+     OR NOT EXISTS (
+       SELECT 1 FROM public.project_routing_corrections prc
+       WHERE prc.memory_id = v_routed_authoritative
+         AND prc.previous_project_id = v_other_project
+         AND prc.corrected_project_id = v_project
+         AND prc.classification = 'MOVE_TO_MEMORY_OS'
+     ) THEN
+    RAISE EXCEPTION 'privacy correction lost effective project routing: %', v_result;
+  END IF;
+
   INSERT INTO public.connector_accounts (
     id, workspace_id, connector_id, display_name, status, scopes, metadata
   ) VALUES (
@@ -352,6 +415,20 @@ BEGIN
     'connector.privacy.fixture', 'm20-privacy/connector-source', now(),
     jsonb_build_object('body', v_marker), v_owner
   );
+  -- Legacy api_capture_connector_record rows carry the account only in the
+  -- payload and use source_event/job_id queue linkage without connectionId.
+  INSERT INTO public.source_events (
+    id, workspace_id, project_id, provider, event_type, idempotency_key,
+    observed_at, payload, created_by_subject
+  ) VALUES (
+    v_legacy_connection_source, v_workspace, v_project, 'github',
+    'connector.capture.legacy', 'm20-privacy/legacy-connector-source', now(),
+    jsonb_build_object(
+      'source', jsonb_build_object('account_id', v_connection),
+      'content', jsonb_build_object('text', v_marker)
+    ),
+    v_owner
+  );
   INSERT INTO public.source_events (
     id, workspace_id, project_id, connector_account_id, provider, event_type,
     idempotency_key, observed_at, payload, created_by_subject
@@ -374,11 +451,38 @@ BEGIN
     v_cross_project_memory, v_workspace, v_other_project, 'fact', v_marker,
     v_marker, 'active', v_cross_project_source, v_owner
   );
+  INSERT INTO public.memory_records (
+    id, workspace_id, project_id, memory_type, title, content, status,
+    source_event_id, created_by_subject
+  ) VALUES (
+    v_legacy_connection_memory, v_workspace, v_project, 'fact', v_marker,
+    v_marker, 'active', v_legacy_connection_source, v_owner
+  );
+  INSERT INTO public.artifacts (
+    id, workspace_id, project_id, source_event_id, storage_mode, storage_key,
+    metadata
+  ) VALUES (
+    v_legacy_connection_artifact, v_workspace, v_project,
+    v_legacy_connection_source, 'indexed', 'private/' || v_marker,
+    jsonb_build_object('body', v_marker)
+  );
+  INSERT INTO public.artifact_chunks (
+    id, workspace_id, artifact_id, chunk_index, content, char_start, char_end
+  ) VALUES (
+    v_legacy_connection_chunk, v_workspace, v_legacy_connection_artifact,
+    0, v_marker, 0, 27
+  );
   INSERT INTO public.processing_jobs (
     id, workspace_id, job_type, status, source_event_id, idempotency_key
   ) VALUES (
     v_connection_job, v_workspace, 'connector_sync', 'queued',
     v_connection_source, 'm20-privacy/connector-job'
+  );
+  INSERT INTO public.processing_jobs (
+    id, workspace_id, job_type, status, source_event_id, idempotency_key
+  ) VALUES (
+    v_legacy_connection_job, v_workspace, 'ingest', 'queued',
+    v_legacy_connection_source, 'm20-privacy/legacy-connector-job'
   );
   INSERT INTO public.outbox_events (
     id, workspace_id, aggregate_type, aggregate_id, event_type, payload
@@ -386,6 +490,16 @@ BEGIN
     v_connection_outbox, v_workspace, 'connector_account', v_connection,
     'connector.sync.requested', jsonb_build_object(
       'connectionId', v_connection, 'jobId', v_connection_job
+    )
+  );
+  INSERT INTO public.outbox_events (
+    id, workspace_id, aggregate_type, aggregate_id, event_type, payload
+  ) VALUES (
+    v_legacy_connection_outbox, v_workspace, 'source_event',
+    v_legacy_connection_source, 'connector.capture.queued',
+    jsonb_build_object(
+      'job_id', v_legacy_connection_job,
+      'artifact_id', v_legacy_connection_artifact
     )
   );
 
@@ -398,7 +512,8 @@ BEGIN
     v_secret, v_owner, v_connector_request
   );
   IF v_result->>'status' <> 'completed'
-     OR coalesce((v_result->'resultSummary'->>'sourceRevoked')::boolean, false) IS NOT TRUE THEN
+     OR coalesce((v_result->'resultSummary'->>'sourceRevoked')::boolean, false) IS NOT TRUE
+     OR (v_result->'resultSummary'->>'stoppedJobCount')::integer <> 2 THEN
     RAISE EXCEPTION 'connector revocation privacy request failed: %', v_result;
   END IF;
   IF NOT EXISTS (
@@ -417,14 +532,30 @@ BEGIN
     SELECT 1 FROM public.processing_jobs j
     WHERE j.id = v_connection_job AND j.status = 'dead_letter'
   ) OR NOT EXISTS (
+    SELECT 1 FROM public.processing_jobs j
+    WHERE j.id = v_legacy_connection_job AND j.status = 'dead_letter'
+  ) OR NOT EXISTS (
     SELECT 1 FROM public.outbox_events o
     WHERE o.id = v_connection_outbox AND o.published_at IS NOT NULL
+  ) OR NOT EXISTS (
+    SELECT 1 FROM public.outbox_events o
+    WHERE o.id = v_legacy_connection_outbox AND o.published_at IS NOT NULL
   ) OR NOT EXISTS (
     SELECT 1 FROM public.memory_records m
     WHERE m.id = v_connection_memory AND m.status = 'deleted'
   ) OR NOT EXISTS (
     SELECT 1 FROM public.memory_records m
     WHERE m.id = v_cross_project_memory AND m.status = 'deleted'
+  ) OR NOT EXISTS (
+    SELECT 1 FROM public.memory_records m
+    WHERE m.id = v_legacy_connection_memory AND m.status = 'deleted'
+  ) OR EXISTS (
+    SELECT 1 FROM public.artifact_chunks c
+    WHERE c.id = v_legacy_connection_chunk
+  ) OR EXISTS (
+    SELECT 1 FROM public.source_events s
+    WHERE s.id = v_legacy_connection_source
+      AND s.payload::text LIKE '%' || v_marker || '%'
   ) THEN
     RAISE EXCEPTION 'connector-derived jobs, outbox, or cross-project memory were not revoked';
   END IF;
@@ -579,11 +710,11 @@ BEGIN
     RAISE EXCEPTION 'privacy executor role boundary is not server-only';
   END IF;
   IF has_function_privilege(
-    'anon', 'public.api_export_project_privacy_bundle(text,uuid,uuid,uuid,integer,integer)', 'EXECUTE'
+    'anon', 'public.api_export_project_privacy_bundle(text,uuid,uuid,uuid,integer,integer,timestamptz)', 'EXECUTE'
   ) OR has_function_privilege(
-    'authenticated', 'public.api_export_project_privacy_bundle(text,uuid,uuid,uuid,integer,integer)', 'EXECUTE'
+    'authenticated', 'public.api_export_project_privacy_bundle(text,uuid,uuid,uuid,integer,integer,timestamptz)', 'EXECUTE'
   ) OR NOT has_function_privilege(
-    'service_role', 'public.api_export_project_privacy_bundle(text,uuid,uuid,uuid,integer,integer)', 'EXECUTE'
+    'service_role', 'public.api_export_project_privacy_bundle(text,uuid,uuid,uuid,integer,integer,timestamptz)', 'EXECUTE'
   ) THEN
     RAISE EXCEPTION 'privacy export role boundary is not server-only';
   END IF;

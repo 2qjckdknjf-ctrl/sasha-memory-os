@@ -1616,6 +1616,7 @@ export function App() {
       const targetProjectId = resolveExplicitWriteProjectId();
       type PrivacyExportPage = {
         format?: string;
+        snapshotAt?: string;
         counts?: {
           memories?: number;
           sourceEvents?: number;
@@ -1638,14 +1639,22 @@ export function App() {
         [key: string]: unknown;
       };
       let offset = 0;
+      let snapshotAt: string | undefined;
       let dump: PrivacyExportPage | null = null;
       for (;;) {
+        const snapshotQuery = snapshotAt
+          ? `&snapshot_at=${encodeURIComponent(snapshotAt)}`
+          : '';
         const page = await apiGet<PrivacyExportPage>(
-          `/v1/export/privacy?workspace_id=${WORKSPACE_ID}&project_id=${encodeURIComponent(targetProjectId)}&limit=500&offset=${offset}`,
+          `/v1/export/privacy?workspace_id=${WORKSPACE_ID}&project_id=${encodeURIComponent(targetProjectId)}&limit=500&offset=${offset}${snapshotQuery}`,
           subjectId,
           actor,
         );
         if (!dump) {
+          if (!page.snapshotAt) {
+            throw new Error('Privacy export did not provide a stable snapshot');
+          }
+          snapshotAt = page.snapshotAt;
           dump = {
             ...page,
             memories: [],
@@ -1654,6 +1663,8 @@ export function App() {
             connectorAccounts: [],
             privacyRequests: [],
           };
+        } else if (page.snapshotAt !== snapshotAt) {
+          throw new Error('Privacy export snapshot changed between pages');
         }
         dump.memories?.push(...(page.memories ?? []));
         dump.sourceEvents?.push(...(page.sourceEvents ?? []));

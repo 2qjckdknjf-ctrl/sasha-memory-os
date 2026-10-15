@@ -4722,6 +4722,11 @@ export function createApp(options?: {
     const limit = Math.min(Math.max(Number.isFinite(rawLimit) ? rawLimit : 500, 1), 500);
     const rawOffset = Number(c.req.query('offset') ?? '0');
     const offset = Math.max(Number.isFinite(rawOffset) ? Math.trunc(rawOffset) : 0, 0);
+    const rawSnapshotAt = c.req.query('snapshot_at');
+    const snapshotAt = rawSnapshotAt ? Date.parse(rawSnapshotAt) : undefined;
+    if (rawSnapshotAt && !Number.isFinite(snapshotAt)) {
+      return c.json({ error: 'invalid_snapshot_at' }, 400);
+    }
     const gw = c.get('gateway');
     if (!gw) {
       return c.json(
@@ -4737,6 +4742,7 @@ export function createApp(options?: {
           projectId,
           limit,
           offset,
+          snapshotAt: snapshotAt === undefined ? undefined : new Date(snapshotAt).toISOString(),
         }),
       );
     } catch (err) {

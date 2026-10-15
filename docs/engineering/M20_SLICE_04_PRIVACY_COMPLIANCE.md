@@ -9,8 +9,8 @@ Official pack: `m20-s04-v1`
 - `GET /v1/export/privacy`: owner-only, explicit-project portability bundle
   covering canonical/derived memories, provenance/evidence, source events,
   typed decision/task payloads, artifacts/chunks and non-secret connector
-  metadata. Stable offset pagination is consumed to completion by the Control
-  Center export action.
+  metadata. Offset pagination is pinned to the first page's `snapshotAt`
+  cutoff and consumed to completion by the Control Center export action.
 - `POST /v1/privacy/requests`: idempotent correction, retraction, memory deletion
   or connector-source revocation request.
 - `POST /v1/privacy/requests/:id/execute`: idempotent execution with a
@@ -44,10 +44,13 @@ stack, proves:
 5. privacy free text never survives in audit/ops state;
 6. retention preview is non-mutating and apply enforces every window;
 7. legacy targetless requests fail closed before mutation, correction audits
-   are redacted, retention removes orphan graph entities, arbitrary metadata
-   references do not trigger erasure, and operational retention cannot cross
-   the requested project boundary;
-8. privacy RPCs are denied to `anon`/`authenticated` and granted to
+   are redacted, authoritative corrections preserve effective project routing,
+   retention removes orphan graph entities, arbitrary metadata references do
+   not trigger erasure, and operational retention cannot cross the requested
+   project boundary;
+8. connector deletion resolves canonical and legacy payload account identity
+   and stops source-linked capture jobs/outbox before erasure;
+9. privacy RPCs are denied to `anon`/`authenticated` and granted to
    `service_role`.
 
 The TypeScript gate also freezes route names, retention windows, UI hygiene,

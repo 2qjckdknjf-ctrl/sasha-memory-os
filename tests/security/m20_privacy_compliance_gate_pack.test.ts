@@ -41,7 +41,11 @@ describe('M20.4 privacy and compliance gate', () => {
         sourceRevocationDeletesVaultReferences: true,
         graphProjectionRemovedOnDeletion: true,
         exportIsFullyPaginated: true,
+        exportUsesStableSnapshot: true,
         connectorRevocationIsWorkspaceWide: true,
+        legacyConnectorIdentityResolved: true,
+        connectorCaptureJobsStopped: true,
+        correctionPreservesEffectiveProject: true,
         legacyRequestsFailClosed: true,
         retentionIsProjectScoped: true,
         auditContainsMetadataOnly: true,
@@ -111,6 +115,9 @@ describe('M20.4 privacy and compliance gate', () => {
     expect(migration).toContain('api_execute_privacy_request');
     expect(migration).toContain('api_apply_retention_policy');
     expect(migration).toContain("'nextOffset'");
+    expect(migration).toContain("'snapshotAt'");
+    expect(migration).toContain("s.payload #>> '{source,account_id}'");
+    expect(migration).toContain('j.source_event_id = ANY(v_source_ids)');
     expect(migration).toContain('v_offset integer');
     expect(migration).toContain("reason = '[redacted after execution]'");
     expect(migration).toContain("reason = 'privacy correction redacted'");
@@ -137,6 +144,8 @@ describe('M20.4 privacy and compliance gate', () => {
     expect(sql).toContain('derived deletion did not complete');
     expect(sql).toContain('sensitive content leaked into operational audit state');
     expect(sql).toContain('cross-project memory were not revoked');
+    expect(sql).toContain('privacy correction lost effective project routing');
+    expect(sql).toContain('Legacy api_capture_connector_record rows');
     expect(sql).toContain('legacy request without a target unexpectedly executed');
     expect(sql).toContain('crossed the project boundary');
     expect(ephemeral).toContain('m20_privacy_compliance_cases.sql');

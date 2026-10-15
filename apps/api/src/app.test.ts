@@ -3576,8 +3576,9 @@ describe('memory api demo slice', () => {
       })),
     };
     const app = createApp({ gateway: gateway as any });
+    const snapshotAt = '2026-10-15T21:00:00.000Z';
     const response = await app.request(
-      `/v1/export/privacy?workspace_id=${workspaceId}&project_id=${memoryOsProjectId}&limit=999&offset=500`,
+      `/v1/export/privacy?workspace_id=${workspaceId}&project_id=${memoryOsProjectId}&limit=999&offset=500&snapshot_at=${encodeURIComponent(snapshotAt)}`,
       { headers: { 'x-subject-id': owner, 'x-actor-key': 'owner' } },
     );
 
@@ -3588,7 +3589,21 @@ describe('memory api demo slice', () => {
       projectId: memoryOsProjectId,
       limit: 500,
       offset: 500,
+      snapshotAt,
     });
+  });
+
+  it('rejects an invalid privacy export snapshot cursor', async () => {
+    const gateway = { exportPrivacyBundle: vi.fn() };
+    const app = createApp({ gateway: gateway as any });
+    const response = await app.request(
+      `/v1/export/privacy?workspace_id=${workspaceId}&project_id=${memoryOsProjectId}&snapshot_at=not-a-timestamp`,
+      { headers: { 'x-subject-id': owner, 'x-actor-key': 'owner' } },
+    );
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toEqual({ error: 'invalid_snapshot_at' });
+    expect(gateway.exportPrivacyBundle).not.toHaveBeenCalled();
   });
 
   it('requires explicit project_id for privacy requests', async () => {

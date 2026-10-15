@@ -634,6 +634,7 @@ export class SupabaseMemoryGateway {
     projectId: string;
     limit?: number;
     offset?: number;
+    snapshotAt?: string;
   }) {
     const { data, error } = await this.client.rpc('api_export_project_privacy_bundle', {
       p_secret: this.apiSecret,
@@ -642,11 +643,13 @@ export class SupabaseMemoryGateway {
       p_project_id: input.projectId,
       p_limit: input.limit ?? 500,
       p_offset: input.offset ?? 0,
+      p_snapshot_at: input.snapshotAt ?? null,
     });
     if (error) throw error;
     return data as {
       format: 'memory-os.privacy-export.v1';
       exportedAt: string;
+      snapshotAt: string;
       workspaceId: string;
       projectId: string;
       counts: {
