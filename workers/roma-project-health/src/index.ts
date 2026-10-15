@@ -727,12 +727,18 @@ function buildRomaQaFindingCandidates(input: {
   const blocked =
     blockedFromState.length > 0
       ? blockedFromState
-      : input.contextPack.activeBlockers.map((item) => item.text);
+      : safeProjectContextItemTexts(
+          input.contextPack,
+          input.contextPack.activeBlockers,
+        );
   const risksFromState = readStringArray(stateData.risks);
   const risks =
     risksFromState.length > 0
       ? risksFromState
-      : input.contextPack.unresolvedConflicts.map((item) => item.text);
+      : safeProjectContextItemTexts(
+          input.contextPack,
+          input.contextPack.unresolvedConflicts,
+        );
   const next = readStringArray(stateData.next);
   const taskRefs = toMemoryEvidenceRefs(input.context.tasks);
   const factRefs = toMemoryEvidenceRefs(input.context.facts);

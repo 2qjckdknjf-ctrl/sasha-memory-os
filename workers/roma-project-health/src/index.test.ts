@@ -66,6 +66,8 @@ function buildReleaseContext(
           'Production Edge v11 deployment is live.',
           'PR: https://github.com/2qjckdknjf-ctrl/sasha-memory-os/pull/103',
           `Merge SHA: ${mergeSha}`,
+          'Blockers:',
+          '- Private deployment credential detail must not be copied.',
           'Next: M18.3 ROMA integration.',
         ].join('\n'),
         status: 'verified',
@@ -95,7 +97,6 @@ function buildReleaseContext(
       updatedAt: '2026-10-15T14:35:00.000Z',
       state: {
         stage: 'm18-3',
-        blocked: ['Production promotion needs review.'],
         risks: ['Release evidence could become stale.'],
         next: ['Complete M18.3 ROMA integration.'],
       },
@@ -753,6 +754,11 @@ describe('runRomaProjectFindingsJob', () => {
     expect(releaseRisk?.text).toContain('Canonical status: candidate');
     expect(releaseRisk?.text).toContain('cannot silently become verified');
     expect(releaseRisk?.text).not.toContain('Private implementation notes');
+    for (const call of captureConnectorRecord.mock.calls) {
+      expect(call[0]?.text).not.toContain(
+        'Private deployment credential detail must not be copied.',
+      );
+    }
 
     projectContext.mockResolvedValueOnce(
       buildReleaseContext('aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'),
