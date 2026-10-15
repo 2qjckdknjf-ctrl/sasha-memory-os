@@ -382,9 +382,16 @@ function isPinned(hit: Hit): boolean {
   );
 }
 
-function rerankRrf(hits: Hit[], queryVector: number[]): Hit[] {
+function rerankRrf(
+  hits: Hit[],
+  queryVector: number[],
+  lexicalMatchIds: ReadonlySet<string> = new Set(),
+): Hit[] {
   if (!hits.length || !queryVector.length) {
     return [...hits].sort((a, b) => {
+      const aLexical = lexicalMatchIds.has(String(a.memory.id ?? ""));
+      const bLexical = lexicalMatchIds.has(String(b.memory.id ?? ""));
+      if (aLexical !== bLexical) return aLexical ? -1 : 1;
       if (isPinned(a) !== isPinned(b)) return isPinned(a) ? -1 : 1;
       return Number(b.score) - Number(a.score);
     });
@@ -416,10 +423,15 @@ function rerankRrf(hits: Hit[], queryVector: number[]): Hit[] {
     const id = String(hit.memory.id ?? "");
     return {
       ...hit,
-      score: (score.get(id) ?? 0) + (similarity.get(id) ?? 0) * 0.01,
+      score: (score.get(id) ?? 0) +
+        (similarity.get(id) ?? 0) * 0.01 +
+        (lexicalMatchIds.has(id) ? 1 : 0),
       reason: "hybrid:rpc+rrf",
     };
   }).sort((a, b) => {
+    const aLexical = lexicalMatchIds.has(String(a.memory.id ?? ""));
+    const bLexical = lexicalMatchIds.has(String(b.memory.id ?? ""));
+    if (aLexical !== bLexical) return aLexical ? -1 : 1;
     if (isPinned(a) !== isPinned(b)) return isPinned(a) ? -1 : 1;
     return Number(b.score) - Number(a.score);
   });
@@ -516,17 +528,17 @@ async function callTool(
       // Retrieval must remain available when the optional semantic provider is
       // slow. Capture/write embeddings intentionally have no query timeout so
       // a transient provider delay cannot persist a degraded fallback vector.
-      const embedded = await embedText(query, {
-        providerTimeoutMs: QUERY_EMBEDDING_PROVIDER_TIMEOUT_MS,
-      });
-      const queryVector = queryVectorForRetrieval(embedded);
-      const rawHits = await rpc(client, "api_search_memories_bounded", {
+      // Start the exact text lane before waiting on the optional embedding
+      // provider. This guarantees that a fresh unembedded write remains
+      // discoverable while keeping the extra bounded RPC off the critical
+      // provider wait path.
+      const lexicalHitsPromise = rpc(client, "api_search_memories_bounded", {
         p_secret: secret,
         p_subject_id: actor,
         p_query: query,
         p_project_id: project || null,
         p_include_history: Boolean(args.include_history),
-        p_query_embedding: queryVector,
+        p_query_embedding: null,
         p_recorded_after: args.recorded_after
           ? String(args.recorded_after)
           : null,
@@ -535,7 +547,52 @@ async function callTool(
           : null,
         p_limit: candidateLimit,
       });
-      const hits = (Array.isArray(rawHits) ? rawHits : []).map((value) => {
+      const embedded = await embedText(query, {
+        providerTimeoutMs: QUERY_EMBEDDING_PROVIDER_TIMEOUT_MS,
+      });
+      const queryVector = queryVectorForRetrieval(embedded);
+      const semanticHitsPromise = queryVector
+        ? rpc(client, "api_search_memories_bounded", {
+          p_secret: secret,
+          p_subject_id: actor,
+          p_query: query,
+          p_project_id: project || null,
+          p_include_history: Boolean(args.include_history),
+          p_query_embedding: queryVector,
+          p_recorded_after: args.recorded_after
+            ? String(args.recorded_after)
+            : null,
+          p_recorded_before: args.recorded_before
+            ? String(args.recorded_before)
+            : null,
+          p_limit: candidateLimit,
+        })
+        : Promise.resolve([]);
+      const [lexicalRawHits, semanticRawHits] = await Promise.all([
+        lexicalHitsPromise,
+        semanticHitsPromise,
+      ]);
+      const lexicalRows = Array.isArray(lexicalRawHits) ? lexicalRawHits : [];
+      const semanticRows = Array.isArray(semanticRawHits) ? semanticRawHits : [];
+      const lexicalMatchIds = new Set(
+        lexicalRows.map((value) => {
+          const row = value as Record<string, unknown>;
+          const memory = row.memory && typeof row.memory === "object"
+            ? row.memory as Record<string, unknown>
+            : {};
+          return String(memory.id ?? "");
+        }).filter(Boolean),
+      );
+      const uniqueRows = new Map<string, unknown>();
+      for (const value of [...semanticRows, ...lexicalRows]) {
+        const row = value as Record<string, unknown>;
+        const memory = row.memory && typeof row.memory === "object"
+          ? row.memory as Record<string, unknown>
+          : {};
+        const id = String(memory.id ?? "");
+        if (id && !uniqueRows.has(id)) uniqueRows.set(id, value);
+      }
+      const hits = [...uniqueRows.values()].map((value) => {
         const row = value as Record<string, unknown>;
         return {
           memory: normalizeMemory(row.memory),
@@ -547,7 +604,11 @@ async function callTool(
               : null,
         } satisfies Hit;
       });
-      const rankedCandidates = rerankRrf(hits, queryVector ?? []);
+      const rankedCandidates = rerankRrf(
+        hits,
+        queryVector ?? [],
+        lexicalMatchIds,
+      );
       const ranked = rankedCandidates.slice(0, searchLimit);
       if (retrievalMode === "graph") {
         if (!project) {
