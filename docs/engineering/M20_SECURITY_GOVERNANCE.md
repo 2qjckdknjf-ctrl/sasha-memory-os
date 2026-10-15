@@ -1,7 +1,7 @@
 # M20 security and repository governance
 
-Status: implementation slice. The role-boundary migration must pass ephemeral
-Supabase CI before production apply.
+Status: security foundation applied; canonical M20.1 release-gate closeout is in
+progress. See `M20_SLICE_01_SECURITY_RELEASE_GATE.md`.
 
 ## GitHub controls enabled on 2026-10-13
 
@@ -75,3 +75,8 @@ These exceptions do not authorize unresolved high/critical findings. Any
 CodeQL, dependency, secret-scanning, RLS leakage, or token exposure finding is
 a release blocker until resolved or explicitly proven false-positive with
 evidence.
+
+The M20.1 release gate adds exhaustive schema enumeration, a refreshed threat
+model, a trusted-main-only Auth hardening workflow, and a zero-P0/P1 rule. It
+does not mark the final GA gate complete until the production Auth setting and
+post-change advisors are verified.

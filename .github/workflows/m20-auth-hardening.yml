@@ -1,0 +1,54 @@
+name: M20 production Auth hardening
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  enable-leaked-password-protection:
+    runs-on: ubuntu-latest
+    env:
+      PROJECT_REF: vpxblcxsvlylqyldiuwr
+      SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+    steps:
+      - name: Require trusted main ref
+        shell: bash
+        run: |
+          if [[ "$GITHUB_REF" != 'refs/heads/main' ]]; then
+            echo 'This production workflow must be dispatched from main.' >&2
+            exit 1
+          fi
+
+      - name: Require server-side management credential
+        run: test -n "$SUPABASE_ACCESS_TOKEN"
+
+      - name: Enable and verify leaked-password protection
+        shell: bash
+        run: |
+          set -euo pipefail
+          task_tmp="$(mktemp -d)"
+          trap 'rm -rf "$task_tmp"' EXIT
+          chmod 700 "$task_tmp"
+
+          curl -fsS \
+            -H "Authorization: Bearer $SUPABASE_ACCESS_TOKEN" \
+            -o "$task_tmp/before.json" \
+            "https://api.supabase.com/v1/projects/$PROJECT_REF/config/auth"
+
+          if [[ "$(jq -r '.password_hibp_enabled // false' "$task_tmp/before.json")" != "true" ]]; then
+            curl -fsS -X PATCH \
+              -H "Authorization: Bearer $SUPABASE_ACCESS_TOKEN" \
+              -H 'Content-Type: application/json' \
+              --data '{"password_hibp_enabled":true}' \
+              -o "$task_tmp/update.json" \
+              "https://api.supabase.com/v1/projects/$PROJECT_REF/config/auth"
+          fi
+
+          curl -fsS \
+            -H "Authorization: Bearer $SUPABASE_ACCESS_TOKEN" \
+            -o "$task_tmp/after.json" \
+            "https://api.supabase.com/v1/projects/$PROJECT_REF/config/auth"
+          jq -e '.password_hibp_enabled == true' "$task_tmp/after.json" >/dev/null
+          echo 'auth_leaked_password_protection=PASS'
