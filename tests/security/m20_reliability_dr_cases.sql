@@ -47,11 +47,11 @@ BEGIN
       key_purpose = EXCLUDED.key_purpose,
       updated_at = now();
 
-  INSERT INTO connector_vault_blobs (vault_ref, ciphertext, updated_at)
-  VALUES (v_vault_ref, decode('bTIwLWRyaWxsLXRva2Vu', 'base64'), now())
-  ON CONFLICT (vault_ref) DO UPDATE
-  SET ciphertext = EXCLUDED.ciphertext,
-      updated_at = now();
+  IF NOT EXISTS (
+    SELECT 1 FROM connector_vault_blobs WHERE vault_ref = v_vault_ref
+  ) THEN
+    RAISE EXCEPTION 'AES-GCM ready-token fixture is missing';
+  END IF;
 
   INSERT INTO connector_cursors (
     account_id, stream, opaque_cursor, schema_version, updated_at
@@ -222,15 +222,12 @@ BEGIN
   v_oauth_state := v_oauth->>'state';
   v_recovery_vault_ref := format('vault:ci/connectors/github/%s', v_connection);
 
-  INSERT INTO connector_vault_blobs (vault_ref, ciphertext, updated_at)
-  VALUES (
-    v_recovery_vault_ref,
-    decode('bTIwLWRyaWxsLXRva2VuLXJvdGF0ZWQ=', 'base64'),
-    now()
-  )
-  ON CONFLICT (vault_ref) DO UPDATE
-  SET ciphertext = EXCLUDED.ciphertext,
-      updated_at = now();
+  IF NOT EXISTS (
+    SELECT 1 FROM connector_vault_blobs
+    WHERE vault_ref = v_recovery_vault_ref
+  ) THEN
+    RAISE EXCEPTION 'AES-GCM recovery-token fixture is missing';
+  END IF;
 
   v_result := app.api_oauth_complete_stub(
     v_secret,
@@ -256,9 +253,10 @@ BEGIN
     SELECT 1 FROM audit_log
     WHERE workspace_id = v_workspace
       AND actor_subject_id = v_owner
-      AND action = 'oauth.complete_stub'
+      AND action = 'oauth.complete'
       AND object_id = v_connection
       AND after_state->>'exchange_mode' = 'exchanged'
+      AND (after_state->>'tokens_in_vault')::boolean
   ) THEN
     RAISE EXCEPTION 'OAuth completion audit event is missing';
   END IF;
@@ -268,7 +266,10 @@ BEGIN
   );
   IF NOT EXISTS (
     SELECT 1 FROM connector_accounts
-    WHERE id = v_connection AND status = 'connected'
+    WHERE id = v_connection
+      AND status = 'connected'
+      AND metadata->>'oauth' = 'connected'
+      AND (metadata->>'tokens_in_vault')::boolean
   ) THEN
     RAISE EXCEPTION 'reconciler rejected restored OAuth vault material: %', v_result;
   END IF;

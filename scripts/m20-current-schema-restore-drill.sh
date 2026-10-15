@@ -108,7 +108,7 @@ if [[ "$source_inventory" != "$target_inventory" ]]; then
 fi
 
 psql "$target_url" -v ON_ERROR_STOP=1 -f tests/security/m20_security_role_boundary_cases.sql
-psql "$target_url" -v ON_ERROR_STOP=1 -f tests/security/m20_reliability_dr_cases.sql
+DB_URL="$target_url" ./scripts/m20-run-reliability-dr-cases.sh
 
 # Vault owns and protects its encrypted secret table, so logical drills never
 # copy secret material between databases. Prove the restored extension and app

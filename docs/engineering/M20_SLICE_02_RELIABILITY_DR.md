@@ -75,13 +75,17 @@ It proves:
   `api_oauth_complete_stub(..., exchange_mode = 'exchanged')`, state
   consumption, audit, readiness reconciliation, then worker claim.
 
-The slice also closes a production defect found by this gate: the provider
-broker already returned `exchanged` after a successful vault write, but the
-database completion function accepted only `stub` and `credentials_ready`.
-Migration `20261015210000_m20_oauth_reauthentication_boundary.sql` admits the
-actual terminal mode without accepting or persisting raw authorization codes or
-tokens. The guarded production-migration workflow pins its checksum, applies it
-after the M20 role boundary, and verifies the resulting function definition.
+The drill exercises the existing HTTP-exchange boundary from
+`20260811142000_oauth_http_exchange.sql`: a real `exchanged` completion records
+`oauth = connected`, `tokens_in_vault = true`, the `oauth.complete` audit action,
+and never persists the raw authorization code or token in the completion RPC.
+
+Before either the primary or restored database can claim recovery work,
+`scripts/m20-run-reliability-dr-cases.sh` seals two non-production token records
+with the same AES-256-GCM codec used by workers, reads the exact ciphertext back
+from `connector_vault_blobs`, decrypts and validates the complete record, then
+runs the transactional SQL drill. The fixtures are removed by a trap and no
+token or ciphertext is printed.
 
 ## Safety boundary and remaining blocker
 

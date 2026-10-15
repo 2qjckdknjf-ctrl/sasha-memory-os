@@ -45,7 +45,8 @@ psql "$DB_URL" -v ON_ERROR_STOP=1 -f tests/security/p0_effective_project_persona
 psql "$DB_URL" -v ON_ERROR_STOP=1 -f tests/security/p0_migration_upgrade_legacy_cases.sql
 psql "$DB_URL" -v ON_ERROR_STOP=1 -f tests/security/m15_runtime_recovery_cases.sql
 psql "$DB_URL" -v ON_ERROR_STOP=1 -f tests/security/m20_security_role_boundary_cases.sql
-psql "$DB_URL" -v ON_ERROR_STOP=1 -f tests/security/m20_reliability_dr_cases.sql
+DB_URL="$DB_URL" MEMORY_OS_API_SECRET="$API_SECRET" \
+  ./scripts/m20-run-reliability-dr-cases.sh
 psql "$DB_URL" -v ON_ERROR_STOP=1 -f tests/security/m17_slice_04_entity_graph_cases.sql
 psql "$DB_URL" -v ON_ERROR_STOP=1 -f tests/security/m17_slice_05_live_graph_cases.sql
 psql "$DB_URL" -v ON_ERROR_STOP=1 -f tests/security/m18_slice_02_context_acl_cases.sql

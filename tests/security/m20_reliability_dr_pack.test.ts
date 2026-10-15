@@ -12,19 +12,17 @@ describe('M20.2 reliability and DR release gate', () => {
     const ci = repoFile('scripts/ci-ephemeral-shared-memory-smoke.sh');
     const restore = repoFile('scripts/m20-current-schema-restore-drill.sh');
     const sql = repoFile('tests/security/m20_reliability_dr_cases.sql');
-    const oauthRecovery = repoFile(
-      'supabase/migrations/20261015210000_m20_oauth_reauthentication_boundary.sql',
+    const runner = repoFile('scripts/m20-run-reliability-dr-cases.sh');
+    const vaultFixture = repoFile('scripts/m20-vault-fixture.ts');
+    const oauthBoundary = repoFile(
+      'supabase/migrations/20260811142000_oauth_http_exchange.sql',
     );
-    const productionMigration = repoFile(
-      '.github/workflows/production-migration-apply.yml',
-    );
-    const postApply = repoFile('scripts/production-migration-post-apply.sql');
     const docs = repoFile('docs/engineering/M20_SLICE_02_RELIABILITY_DR.md');
     const current = JSON.parse(repoFile('docs/engineering/CURRENT_STATE.json'));
 
     expect(OFFICIAL_M20_RELIABILITY_DR_GATE_PACK.version).toBe('m20-s02-v1');
     expect(ci).toContain('m20-current-schema-restore-drill.sh');
-    expect(ci).toContain('m20_reliability_dr_cases.sql');
+    expect(ci).toContain('m20-run-reliability-dr-cases.sh');
     expect(restore).toContain('--schema=public');
     expect(restore).toContain('--schema=app');
     expect(restore).toContain('m20_security_role_boundary_cases.sql');
@@ -37,17 +35,20 @@ describe('M20.2 reliability and DR release gate', () => {
     expect(sql).toContain("'exchanged'");
     expect(sql).toContain('before bounded backoff elapsed');
     expect(sql).toContain('before dead-lettering');
+    expect(sql).toContain("action = 'oauth.complete'");
+    expect(sql).toContain("metadata->>'oauth' = 'connected'");
     expect(sql).toContain('reauth_required');
     expect(sql).toContain('ROLLBACK;');
-    expect(oauthRecovery).toContain(
+    expect(runner).toContain('m20_vault_fixture_read=pass');
+    expect(runner).toContain('m20_reliability_dr_cases.sql');
+    expect(runner).toContain("encode(ciphertext, 'base64')");
+    expect(vaultFixture).toContain('sealVaultRecord');
+    expect(vaultFixture).toContain('openVaultRecord');
+    expect(oauthBoundary).toContain(
       "v_mode NOT IN ('stub', 'credentials_ready', 'exchanged')",
     );
-    expect(productionMigration).toContain(
-      '20261015210000_m20_oauth_reauthentication_boundary.sql',
-    );
-    expect(postApply).toContain(
-      'M20 OAuth exchanged completion boundary is missing',
-    );
+    expect(oauthBoundary).toContain("THEN 'oauth.complete'");
+    expect(oauthBoundary).toContain("'tokens_in_vault', v_mode = 'exchanged'");
     expect(docs).toContain('15 Oct 2026 06:59:40 (+0000)');
     expect(docs).toContain('PITR is not enabled');
     expect(docs).toContain('0 buckets / 0 objects');
