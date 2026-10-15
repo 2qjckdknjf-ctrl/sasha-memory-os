@@ -5,7 +5,8 @@
 -- memory bodies, source payloads, request reasons, corrections and tokens are
 -- never copied into audit/telemetry state. Owner-bound portability snapshots
 -- temporarily contain the requested export payload, are denied to client
--- roles, expire after 15 minutes and are removed after the final page.
+-- roles, expire after 15 minutes, are removed after the final page and have an
+-- independent per-minute purge for abandoned exports.
 
 ALTER TABLE public.privacy_requests
   DROP CONSTRAINT IF EXISTS privacy_requests_status_check;
@@ -63,6 +64,38 @@ REVOKE ALL ON TABLE public.privacy_export_snapshots
   FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON TABLE public.privacy_export_snapshot_items
   FROM PUBLIC, anon, authenticated;
+
+CREATE EXTENSION IF NOT EXISTS pg_cron;
+
+CREATE OR REPLACE FUNCTION app.purge_expired_privacy_export_snapshots()
+RETURNS integer
+LANGUAGE plpgsql
+VOLATILE
+SECURITY DEFINER
+SET search_path = public, app
+AS $$
+DECLARE
+  v_deleted integer;
+BEGIN
+  DELETE FROM public.privacy_export_snapshots snapshot
+  WHERE snapshot.expires_at <= statement_timestamp();
+  GET DIAGNOSTICS v_deleted = ROW_COUNT;
+  RETURN v_deleted;
+END;
+$$;
+
+REVOKE ALL ON FUNCTION app.purge_expired_privacy_export_snapshots()
+  FROM PUBLIC, anon, authenticated;
+
+SELECT cron.unschedule(jobid)
+FROM cron.job
+WHERE jobname = 'memory-os-privacy-export-snapshot-purge';
+
+SELECT cron.schedule(
+  'memory-os-privacy-export-snapshot-purge',
+  '* * * * *',
+  'SELECT app.purge_expired_privacy_export_snapshots()'
+);
 
 CREATE OR REPLACE FUNCTION app.api_create_privacy_request_v2(
   p_secret text,
@@ -405,8 +438,7 @@ BEGIN
     RAISE EXCEPTION 'snapshot_at cannot be in the future' USING ERRCODE = '22023';
   END IF;
 
-  DELETE FROM public.privacy_export_snapshots snapshot
-  WHERE snapshot.expires_at <= statement_timestamp();
+  PERFORM app.purge_expired_privacy_export_snapshots();
 
   IF v_export_id IS NULL THEN
     v_export_id := gen_random_uuid();
@@ -1048,6 +1080,10 @@ BEGIN
         AND c.workspace_id = v_request.workspace_id;
     END IF;
 
+    -- A source is workspace provenance, even when its consumers are routed to
+    -- different projects. Erase every source/evidence consumer before the
+    -- shared source and artifacts are sanitized so no surviving memory is
+    -- left with broken provenance.
     SELECT coalesce(array_agg(DISTINCT memory_id), '{}'::uuid[])
     INTO v_affected_ids
     FROM (
@@ -1056,20 +1092,12 @@ BEGIN
       UNION
       SELECT m.id FROM public.memory_records m
       WHERE m.workspace_id = v_request.workspace_id
-        AND (
-          v_request.target_connector_account_id IS NOT NULL
-          OR app.effective_memory_project_id(m.id) = v_request.project_id
-        )
         AND m.source_event_id = ANY(v_source_ids)
       UNION
       SELECT me.memory_id FROM public.memory_evidence me
       JOIN public.memory_records m ON m.id = me.memory_id
       WHERE me.source_event_id = ANY(v_source_ids)
         AND m.workspace_id = v_request.workspace_id
-        AND (
-          v_request.target_connector_account_id IS NOT NULL
-          OR app.effective_memory_project_id(m.id) = v_request.project_id
-        )
     ) affected WHERE memory_id IS NOT NULL;
 
     -- Walk metadata derivations and newly discovered provenance to a fixed
@@ -1085,10 +1113,6 @@ BEGIN
         UNION
         SELECT m.id FROM public.memory_records m
         WHERE m.workspace_id = v_request.workspace_id
-          AND (
-            v_request.target_connector_account_id IS NOT NULL
-            OR app.effective_memory_project_id(m.id) = v_request.project_id
-          )
           AND (
             EXISTS (
               SELECT 1 FROM unnest(v_affected_ids) affected(id)
@@ -1131,20 +1155,12 @@ BEGIN
         UNION
         SELECT m.id FROM public.memory_records m
         WHERE m.workspace_id = v_request.workspace_id
-          AND (
-            v_request.target_connector_account_id IS NOT NULL
-            OR app.effective_memory_project_id(m.id) = v_request.project_id
-          )
           AND m.source_event_id = ANY(v_source_ids)
         UNION
         SELECT me.memory_id FROM public.memory_evidence me
         JOIN public.memory_records m ON m.id = me.memory_id
         WHERE me.source_event_id = ANY(v_source_ids)
           AND m.workspace_id = v_request.workspace_id
-          AND (
-            v_request.target_connector_account_id IS NOT NULL
-            OR app.effective_memory_project_id(m.id) = v_request.project_id
-          )
       ) provenance_expanded;
 
       EXIT WHEN v_previous_affected_count = cardinality(v_affected_ids)
@@ -1559,6 +1575,28 @@ BEGIN
     v_candidate_count := cardinality(v_candidate_ids);
     v_result := jsonb_set(
       v_result, '{candidateMemories}', to_jsonb(v_candidate_count), false
+    );
+
+    -- A worker may promote a quarantined artifact while retention is being
+    -- approved. Lock and re-evaluate it before removing chunks or provenance.
+    SELECT coalesce(array_agg(eligible.id), '{}'::uuid[])
+    INTO v_artifact_ids
+    FROM (
+      SELECT a.id
+      FROM public.artifacts a
+      WHERE a.workspace_id = p_workspace_id
+        AND a.project_id = p_project_id
+        AND a.metadata @> '{"quarantine": true}'::jsonb
+        AND a.created_at < p_as_of - interval '180 days'
+      FOR UPDATE OF a
+    ) eligible;
+    v_artifact_count := cardinality(v_artifact_ids);
+    SELECT coalesce(array_agg(DISTINCT a.source_event_id), '{}'::uuid[])
+    INTO v_artifact_source_ids
+    FROM public.artifacts a
+    WHERE a.id = ANY(v_artifact_ids) AND a.source_event_id IS NOT NULL;
+    v_result := jsonb_set(
+      v_result, '{quarantineArtifacts}', to_jsonb(v_artifact_count), false
     );
 
     SELECT coalesce(array_agg(DISTINCT entity_id), '{}'::uuid[])

@@ -14,8 +14,9 @@ Official pack: `m20-s04-v1`
   immutable, owner/project-bound row-wise materialized snapshot identified by
   `exportId` and `snapshotAt`. No whole-project JSON aggregate is built: each
   response aggregates at most the requested page. The snapshot expires after
-  15 minutes and is removed after the final page. The Control Center consumes
-  it to completion.
+  15 minutes, is removed after the final page, and an independent per-minute
+  database job physically purges abandoned snapshots. The Control Center
+  consumes it to completion.
 - `POST /v1/privacy/requests`: idempotent correction, retraction, memory deletion
   or connector-source revocation request.
 - `POST /v1/privacy/requests/:id/execute`: idempotent execution with a
@@ -34,7 +35,9 @@ tombstones for referential integrity while removing content-bearing evidence,
 revisions, chunks, embeddings, graph projections, conflict/personalization
 records and typed task/decision payloads. Connector-source deletion additionally
 revokes the workspace-wide connection, removes vault references/payloads and
-cursors, and erases records derived from that account in every project.
+cursors, and erases records derived from that account in every project. A
+memory-targeted deletion likewise follows shared source/evidence consumers
+across the owner workspace before sanitizing their common provenance.
 
 ## Mandatory acceptance
 
@@ -53,7 +56,8 @@ stack, proves:
 5. privacy free text never survives in audit/ops state;
 6. retention preview is non-mutating; apply expires only quarantined artifacts,
    preserves processed provenance, redacts shared entities that must remain,
-   and locks/revalidates candidate memories before destructive mutation;
+   and locks/revalidates candidate memories plus quarantined artifacts before
+   destructive mutation;
 7. legacy targetless requests fail closed before mutation, correction audits
    are redacted, authoritative corrections preserve effective project routing,
    retention removes orphan graph entities, arbitrary metadata references do
@@ -64,7 +68,9 @@ stack, proves:
 9. privacy RPCs are denied to `anon`/`authenticated` and granted to
    `service_role`; transient export snapshots are not directly readable by
    client roles and are owner/workspace/project-bound;
-10. future retention cutoffs fail closed without mutation.
+10. future retention cutoffs fail closed without mutation;
+11. the scheduled snapshot purge removes abandoned export bodies independently
+    of later export traffic.
 
 The TypeScript gate also freezes route names, retention windows, UI hygiene,
 schema validation, CI wiring, DPIA/data-map freshness and the exact seven-tool

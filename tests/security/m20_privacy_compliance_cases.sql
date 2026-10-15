@@ -60,6 +60,8 @@ DECLARE
   v_routed_export_artifact constant uuid := '99999999-0000-4000-8000-000000000446';
   v_routed_export_chunk constant uuid := '99999999-0000-4000-8000-000000000447';
   v_routed_export_memory constant uuid := '99999999-0000-4000-8000-000000000448';
+  v_shared_source_memory constant uuid := '99999999-0000-4000-8000-000000000449';
+  v_expired_export constant uuid := '99999999-0000-4000-8000-000000000450';
   v_marker constant text := 'M20_PRIVACY_SECRET_MARKER_6f9fd9';
   v_vault_ref constant text := 'vault:test/m20/privacy-connector';
   v_created jsonb;
@@ -126,6 +128,11 @@ BEGIN
       v_unaffected_memory, v_workspace, v_project, 'fact',
       'Unaffected graph owner', 'Must preserve its entity link', 'active',
       'internal', NULL, v_owner, jsonb_build_object('relatedMemoryId', v_primary)
+    ),
+    (
+      v_shared_source_memory, v_workspace, v_other_project, 'fact',
+      'Cross-project source consumer', 'Shares primary source provenance',
+      'active', 'internal', v_source, v_owner, '{}'::jsonb
     );
   INSERT INTO public.memory_evidence (
     memory_id, source_event_id, workspace_id, evidence_span
@@ -263,6 +270,34 @@ BEGIN
      ))) THEN
     RAISE EXCEPTION 'privacy export omitted source, primary, or derived data: %', v_export;
   END IF;
+  INSERT INTO public.privacy_export_snapshots (
+    id, workspace_id, project_id, subject_id, snapshot_at, manifest,
+    created_at, expires_at
+  ) VALUES (
+    v_expired_export, v_workspace, v_project, v_owner,
+    statement_timestamp() - interval '20 minutes', '{}'::jsonb,
+    statement_timestamp() - interval '20 minutes',
+    statement_timestamp() - interval '5 minutes'
+  );
+  INSERT INTO public.privacy_export_snapshot_items (
+    snapshot_id, item_type, item_id, position, payload
+  ) VALUES (
+    v_expired_export, 'memory', v_primary, 1,
+    jsonb_build_object('body', v_marker)
+  );
+  PERFORM app.purge_expired_privacy_export_snapshots();
+  IF EXISTS (
+    SELECT 1 FROM public.privacy_export_snapshots WHERE id = v_expired_export
+  ) OR EXISTS (
+    SELECT 1 FROM public.privacy_export_snapshot_items
+    WHERE snapshot_id = v_expired_export
+  ) OR NOT EXISTS (
+    SELECT 1 FROM cron.job
+    WHERE jobname = 'memory-os-privacy-export-snapshot-purge'
+      AND schedule = '* * * * *'
+  ) THEN
+    RAISE EXCEPTION 'expired export snapshot purge is not independently scheduled';
+  END IF;
   -- The acceptance body is one SQL statement, so use its stable start time to
   -- model the snapshot returned by the first HTTP/RPC request.
   v_snapshot_at := statement_timestamp();
@@ -342,7 +377,7 @@ BEGIN
   v_request := (v_created->>'id')::uuid;
   v_result := public.api_execute_privacy_request(v_secret, v_owner, v_request);
   IF v_result->>'status' <> 'completed'
-     OR (v_result->'resultSummary'->>'affectedMemoryCount')::integer <> 3 THEN
+     OR (v_result->'resultSummary'->>'affectedMemoryCount')::integer <> 4 THEN
     RAISE EXCEPTION 'derived deletion did not complete: %', v_result;
   END IF;
   v_result := public.api_execute_privacy_request(v_secret, v_owner, v_request);
@@ -350,13 +385,15 @@ BEGIN
     RAISE EXCEPTION 'privacy execution replay was not idempotent: %', v_result;
   END IF;
   IF (SELECT count(*) FROM public.memory_records m
-      WHERE m.id IN (v_primary, v_derived, v_third_generation)
+      WHERE m.id IN (
+        v_primary, v_derived, v_third_generation, v_shared_source_memory
+      )
         AND m.status = 'deleted'
         AND m.content = '[deleted by privacy request]'
         AND m.embedding IS NULL
         AND m.embedding_vector IS NULL
-        AND m.embedding_vector_hq IS NULL) <> 3 THEN
-    RAISE EXCEPTION 'primary or recursive derived memory retained content/embedding';
+        AND m.embedding_vector_hq IS NULL) <> 4 THEN
+    RAISE EXCEPTION 'workspace provenance consumer retained content/embedding';
   END IF;
   IF NOT EXISTS (
     SELECT 1 FROM public.memory_records m

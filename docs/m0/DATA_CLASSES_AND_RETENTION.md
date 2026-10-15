@@ -22,7 +22,7 @@ M20.4 makes the policy executable rather than documentary only.
 | D — Connector secrets | OAuth access/refresh, cursors | Vault/KMS plus Postgres refs | Service/owner ops only; source revocation removes vault payloads, refs and cursors |
 | E — Ops / audit | privacy requests, outbox, jobs, audit | Supabase Postgres | Owner ops; bodies/reasons/tokens are excluded or redacted |
 | F — Embeddings / graph | vectors, entities, aliases, edges | Supabase Postgres + pgvector | Same ACL as parent memory; deletion clears vectors and removes graph projection |
-| G — Transient portability snapshot | Row-wise project export items plus a small manifest | Supabase Postgres, service-only tables | Bound to owner/workspace/project, inaccessible after 15 minutes, removed after the final page or on the next export cleanup |
+| G — Transient portability snapshot | Row-wise project export items plus a small manifest | Supabase Postgres, service-only tables | Bound to owner/workspace/project, removed after the final page, and independently purged every minute once expired |
 
 Sensitivity labels are `public`, `internal`, `personal`, `confidential`, and
 `restricted`. RLS and RPC authorization enforce the effective project and
@@ -43,7 +43,7 @@ and defaults to `dry_run=true`. Policy version: `m20-s04-v1`.
 | OAuth vault secrets | Until connection revoke; source-account privacy deletion removes KMS/local vault payloads, refs and cursors |
 | Audit log | 365 days; privacy execution also redacts historic snapshots tied to erased objects |
 | Raw chat transcripts | Not captured by default; only explicit capture or selected connector scopes |
-| Transient portability snapshots | 15 minutes maximum logical lifetime; final-page completion deletes immediately and each new export purges expired snapshots |
+| Transient portability snapshots | 15 minutes maximum lifetime; final-page completion deletes immediately and an independent per-minute database job purges abandoned snapshots |
 
 The apply path records counts and identifiers only. It never copies memory
 bodies, source payloads, request reasons, correction text, credentials, or

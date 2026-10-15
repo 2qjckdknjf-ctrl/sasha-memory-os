@@ -36,6 +36,7 @@ describe('M20.4 privacy and compliance gate', () => {
         derivedMemoriesIncluded: true,
         typedMemoryPayloadsExported: true,
         recursiveDerivedErasure: true,
+        sharedSourceConsumersErasedWorkspaceWide: true,
         unaffectedGraphLinksPreserved: true,
         derivationMetadataIsAllowlisted: true,
         sourceRevocationDeletesVaultReferences: true,
@@ -46,6 +47,7 @@ describe('M20.4 privacy and compliance gate', () => {
         exportUsesMaterializedSnapshot: true,
         exportSnapshotItemsAreRowBounded: true,
         exportSnapshotsAreOwnerBoundAndEphemeral: true,
+        exportSnapshotsHaveIndependentScheduledPurge: true,
         connectorRevocationIsWorkspaceWide: true,
         legacyConnectorIdentityResolved: true,
         connectorCaptureJobsStopped: true,
@@ -53,6 +55,7 @@ describe('M20.4 privacy and compliance gate', () => {
         legacyRequestsFailClosed: true,
         futureRetentionCutoffsRejected: true,
         retentionLocksCandidatesBeforeMutation: true,
+        retentionLocksArtifactsBeforeMutation: true,
         retentionOnlyExpiresQuarantinedArtifacts: true,
         retentionRedactsSharedEntities: true,
         retentionIsProjectScoped: true,
@@ -127,9 +130,12 @@ describe('M20.4 privacy and compliance gate', () => {
     expect(migration).toContain("'exportId'");
     expect(migration).toContain('privacy_export_snapshots');
     expect(migration).toContain('privacy_export_snapshot_items');
+    expect(migration).toContain('purge_expired_privacy_export_snapshots');
+    expect(migration).toContain('memory-os-privacy-export-snapshot-purge');
     expect(migration).toContain('source_event_in_project_export_at');
     expect(migration).toContain('as_of must not be null or in the future');
     expect(migration).toContain('FOR UPDATE OF m');
+    expect(migration).toContain('FOR UPDATE OF a');
     expect(migration).toContain("s.payload #>> '{source,account_id}'");
     expect(migration).toContain('j.source_event_id = ANY(v_source_ids)');
     expect(migration).toContain(`a.metadata @> '{"quarantine": true}'::jsonb`);
@@ -167,6 +173,8 @@ describe('M20.4 privacy and compliance gate', () => {
     expect(sql).toContain('crossed the project boundary');
     expect(sql).toContain('mutated after export snapshot');
     expect(sql).toContain('future retention cutoff mutated data');
+    expect(sql).toContain('expired export snapshot purge is not independently scheduled');
+    expect(sql).toContain('workspace provenance consumer retained content/embedding');
     expect(ephemeral).toContain('m20_privacy_compliance_cases.sql');
     expect(dataMap).toContain('POST /v1/privacy/retention/run');
     expect(dpia).toContain('V1 GA technical review refreshed 2026-10-15');

@@ -28,7 +28,8 @@ The authoritative data map and enforced retention windows are in
 3. API secret, Supabase service role and GitHub deployment credentials.
 4. Audit, outbox and job metadata, which can reveal activity even without bodies.
 5. Actor/session bindings for owner, ChatGPT, Cursor and ROMA.
-6. Export bundles and privacy-request free text while processed in memory.
+6. Export bundles and privacy-request free text, including service-only
+   row-wise export snapshots retained for no more than 15 minutes.
 
 ## Threats and landed controls
 
@@ -42,18 +43,18 @@ The authoritative data map and enforced retention windows are in
 | T6 | Retry, stale job, or outbox duplication | Idempotent capture, advisory locking, bounded retry/dead-letter/replay and restore drills |
 | T7 | AI-provider transfer | External embedding/transcription is optional, bounded and documented; local fallback exists |
 | T8 | Wrong Supabase/project routing | Dedicated project ref, immutable project IDs, fail-closed routing and no default fallback |
-| T9 | Incomplete erasure through derived data | M20.4 deletes evidence/revisions/chunks, clears vectors, removes graph projections and sanitizes source/artifact/audit snapshots |
-| T10 | Sensitive privacy details in ops UI/logs | Strict operational allowlist; Privacy history does not render reasons/correction text; audit stores counts/IDs only |
+| T9 | Incomplete erasure through derived data | M20.4 deletes evidence/revisions/chunks across workspace consumers of shared provenance, clears vectors, removes graph projections and sanitizes source/artifact/audit snapshots |
+| T10 | Sensitive privacy details in ops UI/logs or abandoned exports | Strict operational allowlist; Privacy history does not render reasons/correction text; audit stores counts/IDs only; export rows are owner-bound and independently purged after 15 minutes |
 
 ## Rights implementation
 
 | Right | Live contract |
 |---|---|
-| Access / portability | Owner-only fully paginated `GET /v1/export/privacy`, pinned to a stable `snapshotAt` cutoff and including provenance and connector-derived records |
+| Access / portability | Owner-only fully paginated `GET /v1/export/privacy`, pinned to an immutable row-wise `exportId`/`snapshotAt` snapshot and including routed provenance and connector-derived records |
 | Correction | Idempotent privacy request plus owner execution; prior memory becomes superseded |
 | Retraction | Owner execution marks the target retracted with metadata-only audit |
-| Erasure | Target memory and derived data tombstoned; source-account request also resolves legacy payload identity, revokes the workspace-wide connector, vault, cursor, source-linked jobs and outbox, and erases its derived records across projects |
-| Retention | Owner dry-run/apply route implementing the published 30/90/180/365-day windows; only still-quarantined artifacts expire, while shared entities are retained in redacted form |
+| Erasure | Target memory and all workspace consumers/derivatives of its shared source are tombstoned before provenance is sanitized; source-account request also resolves legacy payload identity, revokes the workspace-wide connector, vault, cursor, source-linked jobs and outbox, and erases its derived records across projects |
+| Retention | Owner dry-run/apply route implementing the published 30/90/180/365-day windows; candidate memories and still-quarantined artifacts are locked and revalidated before expiry, while shared entities are retained in redacted form |
 
 ## Residual risks and decisions
 
