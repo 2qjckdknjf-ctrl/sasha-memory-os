@@ -335,6 +335,33 @@ describe('M18.2 project context pack', () => {
     expect(pack.activeBlockers).toEqual([]);
   });
 
+  it('stops blocker parsing at every supported next-work label', () => {
+    for (const [index, label] of [
+      'Next allowed slice',
+      'Next slice',
+    ].entries()) {
+      const pack = buildProjectContextPack(
+        {
+          projectId,
+          decisions: [
+            decision({
+              id: `bounded-blockers-${index}`,
+              title: 'M18.2 live pass',
+              content: `Blockers:\n- provider consent\n${label}: M18.3_ROMA_INTEGRATION`,
+              recordedAt: '2026-10-13T15:59:00.000Z',
+            }),
+          ],
+        },
+        { projectId },
+      );
+
+      expect(pack.activeBlockers.map((item) => item.text)).toEqual([
+        'provider consent',
+      ]);
+      expect(pack.nextWork[0]?.text).toBe('M18.3_ROMA_INTEGRATION');
+    }
+  });
+
   it('matches milestone markers only at M-digit token boundaries', () => {
     const pack = buildProjectContextPack(
       {

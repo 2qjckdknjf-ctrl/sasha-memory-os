@@ -344,6 +344,40 @@ describe("Edge project context pack", () => {
     expect(result).toEqual(buildProjectContextPack(raw, options));
   });
 
+  it("matches shared blocker boundaries for every next-work label", () => {
+    for (const [index, label] of [
+      "Next allowed slice",
+      "Next slice",
+    ].entries()) {
+      const raw = {
+        projectId,
+        decisions: [
+          {
+            ...memory(
+              `bounded-blockers-${index}`,
+              "M18.2 live pass",
+              "2026-10-13T15:59:00Z",
+            ),
+            content: `Blockers:\n- provider consent\n${label}: M18.3_ROMA_INTEGRATION`,
+          },
+        ],
+        tasks: [],
+        facts: [],
+      };
+      const options = {
+        projectId,
+        now: new Date("2026-10-13T16:00:00Z"),
+      };
+      const result = buildEdgeProjectContextPack(raw, options);
+
+      expect(result.activeBlockers.map((item) => item.text)).toEqual([
+        "provider consent",
+      ]);
+      expect(result.nextWork[0]?.text).toBe("M18.3_ROMA_INTEGRATION");
+      expect(result).toEqual(buildProjectContextPack(raw, options));
+    }
+  });
+
   it("matches shared M-digit milestone token boundaries", () => {
     const raw = {
       projectId,

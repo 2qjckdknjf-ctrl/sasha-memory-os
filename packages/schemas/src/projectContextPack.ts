@@ -299,6 +299,8 @@ function blockersFromContent(content: string): string[] {
     '\n\nverification',
     '\n\nrepository',
     '\nnext canonical slice:',
+    '\nnext allowed slice:',
+    '\nnext slice:',
   ]) {
     const at = lower.indexOf(marker, start);
     if (at >= 0 && at < end) end = at;
