@@ -228,3 +228,51 @@ GRANT EXECUTE ON FUNCTION app.api_capture_text(
 GRANT EXECUTE ON FUNCTION public.api_capture_text(
   text, uuid, uuid, uuid, text, text, text, text, boolean, text, text
 ) TO service_role;
+
+-- Bound Edge retrieval responses without changing the established ranking or
+-- ACL function. The inner RPC remains authoritative; this wrapper only keeps
+-- the highest-ranked rows required by Recall@10 and the MCP context pack.
+CREATE OR REPLACE FUNCTION public.api_search_memories_bounded(
+  p_secret text,
+  p_subject_id uuid,
+  p_query text,
+  p_project_id uuid DEFAULT NULL,
+  p_include_history boolean DEFAULT false,
+  p_query_embedding jsonb DEFAULT NULL,
+  p_recorded_after timestamptz DEFAULT NULL,
+  p_recorded_before timestamptz DEFAULT NULL,
+  p_limit integer DEFAULT 20
+)
+RETURNS jsonb
+LANGUAGE sql
+VOLATILE
+SECURITY DEFINER
+SET search_path = public, app, extensions
+AS $$
+  SELECT COALESCE(
+    (
+      SELECT jsonb_agg(item.value ORDER BY item.ordinality)
+      FROM jsonb_array_elements(
+        app.api_search_memories(
+          p_secret,
+          p_subject_id,
+          p_query,
+          p_project_id,
+          p_include_history,
+          p_query_embedding,
+          p_recorded_after,
+          p_recorded_before
+        )
+      ) WITH ORDINALITY AS item(value, ordinality)
+      WHERE item.ordinality <= LEAST(GREATEST(COALESCE(p_limit, 20), 1), 50)
+    ),
+    '[]'::jsonb
+  );
+$$;
+
+REVOKE ALL ON FUNCTION public.api_search_memories_bounded(
+  text, uuid, text, uuid, boolean, jsonb, timestamptz, timestamptz, integer
+) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.api_search_memories_bounded(
+  text, uuid, text, uuid, boolean, jsonb, timestamptz, timestamptz, integer
+) TO service_role;

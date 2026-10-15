@@ -508,6 +508,10 @@ async function callTool(
       );
       const query = String(args.query ?? "").trim();
       if (!query) throw new Error("query is required");
+      const searchLimit = Math.min(
+        Math.max(Math.trunc(Number(args.limit ?? 20)) || 20, 1),
+        50,
+      );
       // Retrieval must remain available when the optional semantic provider is
       // slow. Capture/write embeddings intentionally have no query timeout so
       // a transient provider delay cannot persist a degraded fallback vector.
@@ -515,7 +519,7 @@ async function callTool(
         providerTimeoutMs: QUERY_EMBEDDING_PROVIDER_TIMEOUT_MS,
       });
       const queryVector = queryVectorForRetrieval(embedded);
-      const rawHits = await rpc(client, "api_search_memories", {
+      const rawHits = await rpc(client, "api_search_memories_bounded", {
         p_secret: secret,
         p_subject_id: actor,
         p_query: query,
@@ -528,6 +532,7 @@ async function callTool(
         p_recorded_before: args.recorded_before
           ? String(args.recorded_before)
           : null,
+        p_limit: searchLimit,
       });
       const hits = (Array.isArray(rawHits) ? rawHits : []).map((value) => {
         const row = value as Record<string, unknown>;

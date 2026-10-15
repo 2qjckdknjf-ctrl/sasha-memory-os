@@ -46,6 +46,10 @@ Official pack: `m20-s03-v1`
   The request degrades to the same ACL-scoped structured/text search instead of
   widening SQL candidates with incompatible hash-vector matches; later requests
   retry the semantic provider normally.
+- Edge search uses a service-role-only bounded wrapper around the authoritative
+  ACL/ranking RPC. It returns 20 hits by default and accepts an explicit `limit`
+  from 1 to 50, preserving Recall@10 while preventing unbounded memory bodies
+  and vectors from crossing the database/Edge boundary.
 
 ## Idempotency hardening
 
