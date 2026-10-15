@@ -53,11 +53,40 @@ pg_dump "$DB_URL" \
 
 createdb --maintenance-db="$DB_URL" --template=template0 "$target_db"
 
-# The standard public schema already exists in template0. Exclude only its
-# schema-creation TOC row; all tables, functions, policies, grants, and data
-# remain in the restore list.
+# Schema-filtered dumps do not include extension definitions or their
+# dependencies. Recreate only the extensions used by the Memory OS schemas,
+# preserving the source schema for relocatable extensions. Optional
+# extensions are selected from the source catalog, so this remains portable
+# across local and hosted Supabase profiles.
+psql "$DB_URL" -X -A -t -v ON_ERROR_STOP=1 -c "
+  WITH required_extensions AS (
+    SELECT e.extname, e.extrelocatable, n.nspname
+    FROM pg_extension e
+    JOIN pg_namespace n ON n.oid = e.extnamespace
+    WHERE e.extname IN ('pgcrypto', 'uuid-ossp', 'vector', 'supabase_vault')
+  ), statements AS (
+    SELECT 1 AS statement_order, nspname AS sort_key,
+           format('CREATE SCHEMA IF NOT EXISTS %I;', nspname) AS statement
+    FROM required_extensions
+    WHERE nspname NOT IN ('pg_catalog', 'public')
+    UNION
+    SELECT 2, extname,
+           format(
+             'CREATE EXTENSION IF NOT EXISTS %I%s;',
+             extname,
+             CASE WHEN extrelocatable THEN format(' WITH SCHEMA %I', nspname) ELSE '' END
+           )
+    FROM required_extensions
+  )
+  SELECT statement FROM statements ORDER BY statement_order, sort_key;
+" > "$task_tmp/extensions.sql"
+psql "$target_url" -X -v ON_ERROR_STOP=1 -f "$task_tmp/extensions.sql"
+
+# The standard public schema exists in template0 and Supabase Vault owns the
+# vault schema. Exclude those schema-creation TOC rows; all application tables,
+# functions, policies, grants, and data remain in the restore list.
 pg_restore --list "$task_tmp/current.dump" > "$task_tmp/restore.list"
-awk '!/ SCHEMA - public /' "$task_tmp/restore.list" > "$task_tmp/restore.filtered.list"
+awk '!/ SCHEMA - (public|vault) /' "$task_tmp/restore.list" > "$task_tmp/restore.filtered.list"
 
 pg_restore \
   --exit-on-error \
