@@ -308,7 +308,30 @@ function hasExplicitMergedMarker(content: string): boolean {
 
 function mergeShaFromContent(content: string): string | null {
   for (const line of content.slice(0, MAX_PARSED_CONTENT_CHARS).split("\n")) {
-    const normalized = line.trim().toLowerCase();
+    let normalized = line.trim().toLowerCase();
+    if (
+      ["-", "*", "+", "•", "–", "—"].includes(normalized[0] ?? "") &&
+      normalized[1] === " "
+    ) {
+      normalized = normalized.slice(2).trimStart();
+    } else {
+      let cursor = 0;
+      while (
+        cursor < normalized.length &&
+        cursor < 9 &&
+        normalized[cursor] >= "0" &&
+        normalized[cursor] <= "9"
+      ) {
+        cursor += 1;
+      }
+      if (
+        cursor > 0 &&
+        [".", ")"].includes(normalized[cursor] ?? "") &&
+        normalized[cursor + 1] === " "
+      ) {
+        normalized = normalized.slice(cursor + 2).trimStart();
+      }
+    }
     const marker = "merge sha:";
     if (!normalized.startsWith(marker)) continue;
     const value = normalized.slice(marker.length).trim();
@@ -688,7 +711,7 @@ export function buildEdgeProjectContextPack(
 
   let canonicalLimit = 6;
   let blockerLimit = 6;
-  let mergeLimit = 5;
+  let mergeLimit = Math.min(5, originalMergeCount);
   let conflictLimit = 4;
   let nextLimit = 4;
   let handoffItemLimit = 4;
@@ -701,6 +724,7 @@ export function buildEdgeProjectContextPack(
   let includeCurrentMilestone = true;
   let includeLatestHandoff = true;
   const minimumCanonicalLimit = canonicalSources.length > 0 ? 1 : 0;
+  const minimumMergeLimit = originalMergeCount > 0 ? 1 : 0;
   const minimumConflictLimit = stateConflicts.length > 0 ? 1 : 0;
 
   const create = () => {
@@ -932,7 +956,7 @@ export function buildEdgeProjectContextPack(
   let truncated = false;
   while (pack.budget.estimatedTokens > maxTokens) {
     truncated = true;
-    if (mergeLimit > 0) mergeLimit -= 1;
+    if (mergeLimit > minimumMergeLimit) mergeLimit -= 1;
     else if (summaryChars > 80) summaryChars -= 40;
     else if (canonicalLimit > minimumCanonicalLimit) canonicalLimit -= 1;
     else if (blockerLimit > 1) blockerLimit -= 1;

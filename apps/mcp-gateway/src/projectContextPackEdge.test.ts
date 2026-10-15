@@ -15,7 +15,7 @@ function memory(id: string, title: string, recordedAt: string) {
     title,
     content:
       "Merged: https://github.com/2qjckdknjf-ctrl/sasha-memory-os/pull/99\n" +
-      "Merge SHA: 9d7e9216a5567455cf7dd6b9a8bec62dfb5739eb\n" +
+      "- Merge SHA: 9d7e9216a5567455cf7dd6b9a8bec62dfb5739eb\n" +
       "Known external blockers remain:\n- OAuth consent absent\n" +
       "Next canonical slice: M18.2_PROJECT_CONTEXT_PACK",
     status: "verified",
@@ -583,7 +583,7 @@ describe("Edge project context pack", () => {
     expect(result).toEqual(buildProjectContextPack(raw, options));
   });
 
-  it("matches shared canonical retention at the minimum token budget", () => {
+  it("matches shared canonical and latest-merge retention at minimum budget", () => {
     const decisions = Array.from({ length: 3 }, (_, index) => ({
       ...memory(
         `merge-decision-${index}`,
@@ -605,7 +605,7 @@ describe("Edge project context pack", () => {
 
     expect(result.budget.truncated).toBe(true);
     expect(result.canonicalDecisions.length).toBeGreaterThanOrEqual(1);
-    expect(result.recentMerges.length).toBeLessThan(3);
+    expect(result.recentMerges).toHaveLength(1);
     expect(result).toEqual(buildProjectContextPack(raw, options));
   });
 
@@ -744,21 +744,54 @@ describe("Edge project context pack", () => {
             "Pre-merge SHA 2222222222222222222222222222222222222222\n" +
             "PR: https://github.com/example/repo/pull/105",
         },
+        {
+          ...memory(
+            "plus-list-merge",
+            "Completed PR #106",
+            "2026-10-13T15:52:00Z",
+          ),
+          content:
+            "+ Merge SHA: 3333333333333333333333333333333333333333\n" +
+            "PR: https://github.com/example/repo/pull/106",
+        },
+        {
+          ...memory(
+            "ordered-list-merge",
+            "Completed PR #107",
+            "2026-10-13T15:51:00Z",
+          ),
+          content:
+            "1. Merge SHA: 4444444444444444444444444444444444444444\n" +
+            "PR: https://github.com/example/repo/pull/107",
+        },
       ],
       tasks: [],
       facts: [],
     };
     const options = {
       projectId,
+      maxTokens: 8000,
       now: new Date("2026-10-13T16:00:00Z"),
     };
     const result = buildEdgeProjectContextPack(raw, options);
 
-    expect(result.recentMerges).toHaveLength(1);
-    expect(result.recentMerges[0]).toMatchObject({
-      pullRequestUrl: "https://github.com/example/repo/pull/100",
-      mergeSha: null,
-    });
+    expect(result.recentMerges).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          pullRequestUrl: "https://github.com/example/repo/pull/100",
+          mergeSha: null,
+        }),
+        expect.objectContaining({
+          pullRequestUrl: "https://github.com/example/repo/pull/106",
+          mergeSha: "3333333333333333333333333333333333333333",
+        }),
+        expect.objectContaining({
+          pullRequestUrl: "https://github.com/example/repo/pull/107",
+          mergeSha: "4444444444444444444444444444444444444444",
+        }),
+      ]),
+    );
+    expect(result.recentMerges).toHaveLength(3);
     expect(result).toEqual(buildProjectContextPack(raw, options));
   });
 });

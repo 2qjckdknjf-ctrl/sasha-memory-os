@@ -34,7 +34,7 @@ describe('M18.2 project context pack', () => {
             id: 'm18-1',
             title: 'M18.1 CURSOR BOOTSTRAP LIVE PASS — PR #99',
             content:
-              'PR: https://github.com/example/repo/pull/99\nMerge SHA: 1111111111111111111111111111111111111111\n\nKnown external blockers remain: provider consent; Apple device E2E.\n\nNext canonical slice: M18.2_PROJECT_CONTEXT_PACK.',
+              'PR: https://github.com/example/repo/pull/99\n- Merge SHA: 1111111111111111111111111111111111111111\n\nKnown external blockers remain: provider consent; Apple device E2E.\n\nNext canonical slice: M18.2_PROJECT_CONTEXT_PACK.',
             recordedAt: '2026-10-13T15:55:32.000Z',
           }),
           decision({
@@ -545,7 +545,7 @@ describe('M18.2 project context pack', () => {
     expect(pack.budget.truncated).toBe(true);
   });
 
-  it('preserves a canonical decision before merge metadata at minimum budget', () => {
+  it('preserves a canonical decision and latest merge at minimum budget', () => {
     const decisions = Array.from({ length: 3 }, (_, index) =>
       decision({
         id: `merge-decision-${index}`,
@@ -565,7 +565,7 @@ describe('M18.2 project context pack', () => {
     expect(pack.budget.truncated).toBe(true);
     expect(pack.budget.estimatedTokens).toBeLessThanOrEqual(768);
     expect(pack.canonicalDecisions.length).toBeGreaterThanOrEqual(1);
-    expect(pack.recentMerges.length).toBeLessThan(3);
+    expect(pack.recentMerges).toHaveLength(1);
   });
 
   it('compresses required goal, milestone and citation fields at minimum budget', () => {
@@ -703,16 +703,44 @@ describe('M18.2 project context pack', () => {
               'PR: https://github.com/example/repo/pull/105',
             recordedAt: '2026-10-13T15:53:00.000Z',
           }),
+          decision({
+            id: 'plus-list-merge',
+            title: 'Completed PR #106',
+            content:
+              '+ Merge SHA: 3333333333333333333333333333333333333333\n' +
+              'PR: https://github.com/example/repo/pull/106',
+            recordedAt: '2026-10-13T15:52:00.000Z',
+          }),
+          decision({
+            id: 'ordered-list-merge',
+            title: 'Completed PR #107',
+            content:
+              '1. Merge SHA: 4444444444444444444444444444444444444444\n' +
+              'PR: https://github.com/example/repo/pull/107',
+            recordedAt: '2026-10-13T15:51:00.000Z',
+          }),
         ],
       },
-      { projectId },
+      { projectId, maxTokens: 8000 },
     );
 
-    expect(pack.recentMerges).toHaveLength(1);
-    expect(pack.recentMerges[0]).toMatchObject({
-      pullRequestUrl: 'https://github.com/example/repo/pull/100',
-      mergeSha: null,
-    });
+    expect(pack.recentMerges).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          pullRequestUrl: 'https://github.com/example/repo/pull/100',
+          mergeSha: null,
+        }),
+        expect.objectContaining({
+          pullRequestUrl: 'https://github.com/example/repo/pull/106',
+          mergeSha: '3333333333333333333333333333333333333333',
+        }),
+        expect.objectContaining({
+          pullRequestUrl: 'https://github.com/example/repo/pull/107',
+          mergeSha: '4444444444444444444444444444444444444444',
+        }),
+      ]),
+    );
+    expect(pack.recentMerges).toHaveLength(3);
   });
 
   it('enforces a bounded response and fails closed on cross-project sources', () => {
