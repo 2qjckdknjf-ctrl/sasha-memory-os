@@ -369,11 +369,26 @@ export type PrivacyRequestRecord = {
   actorSubjectId?: string | null;
   actor?: ActorMeta | null;
   requestType: 'deletion' | 'correction' | 'retraction';
-  status: 'submitted';
+  status: 'submitted' | 'processing' | 'completed' | 'failed';
   targetMemoryId?: string | null;
+  targetConnectorAccountId?: string | null;
   reason: string;
   correctionText?: string | null;
   createdAt: string;
+  completedAt?: string | null;
+  resultSummary?: Record<string, unknown>;
+  failureCode?: string | null;
+};
+
+export type RetentionPolicyResult = {
+  policyVersion: string;
+  asOf: string;
+  dryRun: boolean;
+  candidateMemories: number;
+  quarantineArtifacts: number;
+  publishedOutboxEvents: number;
+  deadLetterJobs: number;
+  auditEvents: number;
 };
 
 export type GovernanceOverview = {

@@ -65,6 +65,7 @@ import {
   createDecisionSchema,
   createHandoffSchema,
   createPrivacyRequestSchema,
+  executePrivacyRequestSchema,
   githubAppConnectionMetadata,
   githubAppInstallationId,
   githubAppReconcileRequestSchema,
@@ -77,6 +78,7 @@ import {
   oauthCompleteSchema,
   oauthStartSchema,
   replayConnectorJobSchema,
+  runRetentionPolicySchema,
   routingCorrectionRequestSchema,
   resolveProjectContextMaxTokens,
   resyncConnectionSchema,
@@ -4709,6 +4711,38 @@ export function createApp(options?: {
     });
   });
 
+  /** Owner data-portability bundle: memories plus derived/source evidence. */
+  app.get('/v1/export/privacy', async (c) => {
+    const authz = c.get('authz');
+    if (!authz.isOwner) return c.json({ error: 'forbidden' }, 403);
+    const workspaceId = c.req.query('workspace_id') ?? seedWorkspace;
+    const projectId = c.req.query('project_id') ?? undefined;
+    if (!projectId) return missingProjectExportResponse(c);
+    const rawLimit = Number(c.req.query('limit') ?? '500');
+    const limit = Math.min(Math.max(Number.isFinite(rawLimit) ? rawLimit : 500, 1), 500);
+    const gw = c.get('gateway');
+    if (!gw) {
+      return c.json(
+        { error: 'privacy export requires the Supabase backend' },
+        501,
+      );
+    }
+    try {
+      return c.json(
+        await gw.exportPrivacyBundle({
+          subjectId: authz.subjectId,
+          workspaceId,
+          projectId,
+          limit,
+        }),
+      );
+    } catch (err) {
+      if (isForbiddenError(err)) return c.json({ error: 'forbidden' }, 403);
+      if (isNotFoundError(err)) return c.json({ error: 'project_not_found' }, 404);
+      return c.json({ error: (err as Error).message }, 500);
+    }
+  });
+
   app.get('/v1/privacy/requests', async (c) => {
     const authz = c.get('authz');
     if (!authz.isOwner) return c.json({ error: 'forbidden' }, 403);
@@ -4754,6 +4788,7 @@ export function createApp(options?: {
           projectId: body.project_id ?? null,
           requestType: body.request_type,
           targetMemoryId: body.target_memory_id ?? null,
+          targetConnectorAccountId: body.target_connector_account_id ?? null,
           reason: body.reason,
           correctionText: body.correction_text ?? null,
           idempotencyKey: body.idempotency_key,
@@ -4782,6 +4817,56 @@ export function createApp(options?: {
       },
       201,
     );
+  });
+
+  app.post('/v1/privacy/requests/:id/execute', async (c) => {
+    const body = executePrivacyRequestSchema.parse(await c.req.json());
+    const authz = c.get('authz');
+    if (!authz.isOwner || authz.subjectId !== body.actor_subject_id) {
+      return c.json({ error: 'forbidden' }, 403);
+    }
+    const gw = c.get('gateway');
+    if (!gw) {
+      return c.json({ error: 'privacy execution requires the Supabase backend' }, 501);
+    }
+    try {
+      return c.json(
+        await gw.executePrivacyRequest({
+          subjectId: body.actor_subject_id,
+          requestId: c.req.param('id'),
+        }),
+      );
+    } catch (err) {
+      if (isForbiddenError(err)) return c.json({ error: 'forbidden' }, 403);
+      if (isNotFoundError(err)) return c.json({ error: 'privacy_request_not_found' }, 404);
+      return c.json({ error: (err as Error).message }, 500);
+    }
+  });
+
+  app.post('/v1/privacy/retention/run', async (c) => {
+    const body = runRetentionPolicySchema.parse(await c.req.json());
+    const authz = c.get('authz');
+    if (!authz.isOwner || authz.subjectId !== body.actor_subject_id) {
+      return c.json({ error: 'forbidden' }, 403);
+    }
+    const gw = c.get('gateway');
+    if (!gw) {
+      return c.json({ error: 'retention requires the Supabase backend' }, 501);
+    }
+    try {
+      return c.json(
+        await gw.runRetentionPolicy({
+          subjectId: body.actor_subject_id,
+          workspaceId: body.workspace_id,
+          projectId: body.project_id,
+          asOf: body.as_of ?? null,
+          dryRun: body.dry_run,
+        }),
+      );
+    } catch (err) {
+      if (isForbiddenError(err)) return c.json({ error: 'forbidden' }, 403);
+      return c.json({ error: (err as Error).message }, 500);
+    }
   });
 
   app.get('/v1/memories/:id', async (c) => {

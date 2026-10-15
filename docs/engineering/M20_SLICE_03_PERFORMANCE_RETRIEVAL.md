@@ -1,6 +1,9 @@
 # M20 Slice 03 — performance and retrieval quality gate
 
-Status: implementation and mandatory CI acceptance in progress.
+Status: **production PASS 2026-10-15**. PRs `#115`–`#117`, trusted-main CI
+and CodeQL are green; exact seven-tool live MCP read-after-write passed with
+steady-state p95 `1750 ms`. Memory OS receipt:
+`1e618a29-8ba6-4da4-871a-d6530863cf2a`.
 
 Official pack: `m20-s03-v1`
 

@@ -8,6 +8,7 @@ import {
   type Actor,
   type BackendMode,
   type PrivacyRequestRecord,
+  type RetentionPolicyResult,
 } from './controlCenter';
 
 type Props = {
@@ -54,14 +55,19 @@ export function PrivacyPage({
   const [requests, setRequests] = useState<PrivacyRequestRecord[]>([]);
   const [loading, setLoading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [executingId, setExecutingId] = useState<string | null>(null);
+  const [retentionRunning, setRetentionRunning] = useState(false);
+  const [retentionResult, setRetentionResult] = useState<RetentionPolicyResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [requestType, setRequestType] =
     useState<PrivacyRequestRecord['requestType']>('deletion');
   const [targetMemoryId, setTargetMemoryId] = useState('');
+  const [targetConnectorAccountId, setTargetConnectorAccountId] = useState('');
   const [reason, setReason] = useState('');
   const [correctionText, setCorrectionText] = useState('');
 
-  let exportHint = 'Экспорт использует существующий endpoint GET /v1/export/memories.';
+  let exportHint =
+    'Полный privacy-экспорт включает память, происхождение, evidence, исходные события и артефакты.';
   if (!isOwner) {
     exportHint =
       'Экспорт доступен только владельцу. Переключение акторов для demo по-прежнему остаётся на /ops.';
@@ -127,6 +133,7 @@ export function PrivacyPage({
           actor_subject_id: subjectId,
           request_type: requestType,
           target_memory_id: targetMemoryId.trim() || undefined,
+          target_connector_account_id: targetConnectorAccountId.trim() || undefined,
           reason,
           correction_text:
             requestType === 'correction' ? correctionText.trim() || undefined : undefined,
@@ -137,6 +144,7 @@ export function PrivacyPage({
       setRequests((current) => [created, ...current.filter((item) => item.id !== created.id)]);
       setReason('');
       setTargetMemoryId('');
+      setTargetConnectorAccountId('');
       setCorrectionText('');
       setRequestType('deletion');
     } catch (submitError) {
@@ -146,14 +154,79 @@ export function PrivacyPage({
     }
   }
 
+  async function executeRequest(request: PrivacyRequestRecord) {
+    setExecutingId(request.id);
+    setError(null);
+    try {
+      const result = await apiPost<{
+        id: string;
+        status: 'completed';
+        completedAt: string;
+        resultSummary: Record<string, unknown>;
+      }>(
+        `/v1/privacy/requests/${request.id}/execute`,
+        subjectId,
+        { actor_subject_id: subjectId },
+        actor,
+      );
+      setRequests((current) =>
+        current.map((item) =>
+          item.id === request.id
+            ? {
+                ...item,
+                status: result.status,
+                completedAt: result.completedAt,
+                resultSummary: result.resultSummary,
+                failureCode: null,
+              }
+            : item,
+        ),
+      );
+    } catch (executeError) {
+      setError((executeError as Error).message);
+    } finally {
+      setExecutingId(null);
+    }
+  }
+
+  async function runRetention(dryRun: boolean) {
+    if (!requestAvailable || !projectId) return;
+    if (
+      !dryRun &&
+      !window.confirm('Применить retention policy к просроченным данным этого проекта?')
+    ) {
+      return;
+    }
+    setRetentionRunning(true);
+    setError(null);
+    try {
+      const result = await apiPost<RetentionPolicyResult>(
+        '/v1/privacy/retention/run',
+        subjectId,
+        {
+          workspace_id: WORKSPACE_ID,
+          project_id: projectId,
+          actor_subject_id: subjectId,
+          dry_run: dryRun,
+        },
+        actor,
+      );
+      setRetentionResult(result);
+    } catch (retentionError) {
+      setError((retentionError as Error).message);
+    } finally {
+      setRetentionRunning(false);
+    }
+  }
+
   return (
     <section className="page">
       <header className="page-header">
         <p className="eyebrow">Приватность</p>
         <h1>Экспорт, удаление и корректировка памяти</h1>
         <p className="lede">
-          Экран показывает только реальные privacy flows текущего билда: существующий экспорт и
-          честные ограничения там, где API ещё нет.
+          Владелец может выгрузить полный контур данных, исполнить удаление/корректировку
+          и безопасно применить retention policy в явном project scope.
         </p>
       </header>
 
@@ -241,6 +314,17 @@ export function PrivacyPage({
                 placeholder="Опционально: UUID записи"
               />
             </label>
+            {requestType === 'deletion' ? (
+              <label>
+                ID connector account
+                <input
+                  value={targetConnectorAccountId}
+                  disabled={!requestAvailable || submitting}
+                  onChange={(event) => setTargetConnectorAccountId(event.target.value)}
+                  placeholder="Опционально: UUID источника для отзыва"
+                />
+              </label>
+            ) : null}
             <label>
               Причина
               <textarea
@@ -266,7 +350,16 @@ export function PrivacyPage({
             <div className="actions">
               <button
                 type="submit"
-                disabled={!requestAvailable || submitting || reason.trim().length === 0}
+                disabled={
+                  !requestAvailable ||
+                  submitting ||
+                  reason.trim().length === 0 ||
+                  (requestType !== 'deletion' && targetMemoryId.trim().length === 0) ||
+                  (requestType === 'deletion' &&
+                    targetMemoryId.trim().length === 0 &&
+                    targetConnectorAccountId.trim().length === 0) ||
+                  (requestType === 'correction' && correctionText.trim().length === 0)
+                }
               >
                 {submitting ? 'Отправляю…' : 'Отправить privacy request'}
               </button>
@@ -313,9 +406,27 @@ export function PrivacyPage({
                       {request.actor?.displayName ?? 'Owner'}
                       {request.targetMemoryId ? ` · memory ${request.targetMemoryId.slice(0, 8)}…` : ''}
                     </span>
-                    <p>{request.reason}</p>
-                    {request.correctionText ? (
-                      <pre className="preformatted">{request.correctionText}</pre>
+                    {request.targetConnectorAccountId ? (
+                      <span className="hint">
+                        connector {request.targetConnectorAccountId.slice(0, 8)}…
+                      </span>
+                    ) : null}
+                    <span className="hint">
+                      Чувствительные детали запроса не выводятся в operational view.
+                    </span>
+                    {request.resultSummary ? (
+                      <pre className="preformatted">
+                        {JSON.stringify(request.resultSummary, null, 2)}
+                      </pre>
+                    ) : null}
+                    {request.status === 'submitted' ? (
+                      <button
+                        type="button"
+                        disabled={executingId !== null}
+                        onClick={() => void executeRequest(request)}
+                      >
+                        {executingId === request.id ? 'Исполняю…' : 'Исполнить запрос'}
+                      </button>
                     ) : null}
                   </article>
                 </li>
@@ -324,6 +435,33 @@ export function PrivacyPage({
           )}
         </section>
       </div>
+
+      <section className="panel">
+        <h2>Retention policy</h2>
+        <p className="hint">
+          Preview показывает число просроченных объектов без изменений. Apply
+          удаляет или обезличивает их по политике m20-s04-v1.
+        </p>
+        <div className="actions">
+          <button
+            type="button"
+            disabled={!requestAvailable || retentionRunning}
+            onClick={() => void runRetention(true)}
+          >
+            {retentionRunning ? 'Выполняю…' : 'Показать preview'}
+          </button>
+          <button
+            type="button"
+            disabled={!requestAvailable || retentionRunning}
+            onClick={() => void runRetention(false)}
+          >
+            Применить retention policy
+          </button>
+        </div>
+        {retentionResult ? (
+          <pre className="preformatted">{JSON.stringify(retentionResult, null, 2)}</pre>
+        ) : null}
+      </section>
     </section>
   );
 }

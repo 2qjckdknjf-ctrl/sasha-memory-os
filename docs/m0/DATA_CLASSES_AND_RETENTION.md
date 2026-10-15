@@ -1,51 +1,61 @@
-# Data classes, region, retention (RG0)
+# Data classes, region, retention
 
-Status: **owner accepted 2026-08-12** — see [OWNER_ACCEPT_2026-08-12.md](./OWNER_ACCEPT_2026-08-12.md).
+Status: **V1 GA policy, refreshed 2026-10-15**. The original owner acceptance
+is recorded in [OWNER_ACCEPT_2026-08-12.md](./OWNER_ACCEPT_2026-08-12.md);
+M20.4 makes the policy executable rather than documentary only.
 
 ## Region / residency
 
 | Item | Decision |
 |---|---|
-| Primary region | `eu-central-1` (Frankfurt) — live project `sasha-memory-os` |
-| Rationale | EU residency preference from baseline; single region for V1 alpha |
-| Separate EU-only residency product | Out of V1; revisit if legal requires stricter isolation |
+| Primary region | `eu-central-1` (Frankfurt), live Supabase project `sasha-memory-os` |
+| Scope | One owner workspace with explicit project boundaries |
+| EU-only product promise | Not made: optional external AI providers can process data outside the primary region |
 
-## Data classes
+## Data map
 
-| Class | Examples | Storage | Default ACL |
+| Class | Examples | Authoritative storage | Access / deletion behavior |
 |---|---|---|---|
-| **A — Identity / ACL** | subjects, memberships, auth binds | Postgres (`app`/public via RPCs) | Owner + membership |
-| **B — Canonical memory** | facts, decisions, preferences, project state | `memory_records` + evidence | Project ACL + sensitivity |
-| **C — Capture / quarantine** | raw text/doc/link artifacts, checksums, chunks | artifacts + storage paths | Workspace write actors |
-| **D — Connector secrets** | OAuth access/refresh | Vault (`supabase` ciphertext or `supabase_vault` KMS) — **refs only in Postgres** | Service / owner ops |
-| **E — Ops / audit** | outbox, processing jobs, audit events | Postgres | Owner ops + service |
-| **F — Embeddings** | `embedding` jsonb + `embedding_vector` / `_hq` | Postgres + pgvector | Same as parent memory |
+| A — Identity / ACL | subjects, memberships, auth binds | Supabase Postgres | Owner/membership controls; not included in project export |
+| B — Canonical memory | facts, decisions, tasks, project state, provenance/evidence | `memory_records` and typed/evidence tables | Project ACL; deletion tombstones bodies and removes derived evidence/graph projections |
+| C — Capture / quarantine | source events, artifacts, chunks, checksums, storage refs | Supabase Postgres; archived object store only when configured | Exported with provenance; deletion removes chunks and sanitizes payloads/storage refs |
+| D — Connector secrets | OAuth access/refresh, cursors | Vault/KMS plus Postgres refs | Service/owner ops only; source revocation removes vault payloads, refs and cursors |
+| E — Ops / audit | privacy requests, outbox, jobs, audit | Supabase Postgres | Owner ops; bodies/reasons/tokens are excluded or redacted |
+| F — Embeddings / graph | vectors, entities, aliases, edges | Supabase Postgres + pgvector | Same ACL as parent memory; deletion clears vectors and removes graph projection |
 
-Sensitivity labels (existing): `public` | `internal` | `confidential` | `restricted` (enforced via ACL helpers / RLS matrix).
+Sensitivity labels are `public`, `internal`, `personal`, `confidential`, and
+`restricted`. RLS and RPC authorization enforce the effective project and
+sensitivity boundary.
 
-## Retention (V1 alpha defaults)
+## Enforced V1 retention
 
-| Data | Retention | Notes |
-|---|---|---|
-| Active / verified memories | Indefinite until owner retract/delete | Superseded stay for provenance |
-| Candidate memories | 90 days without review → consolidation/dead-letter pressure | Workers + outbox stale jobs |
-| Quarantine artifacts (raw capture) | 180 days | Checksum + evidence may outlive raw blob |
-| Outbox published events | 30 days after `published_at` | Ops recovery window |
-| Dead-letter jobs | 90 days | Manual ack / purge |
-| OAuth vault secrets | Until connection revoke | Revoke deletes vault ref payload |
-| Audit log | 365 days | Baseline compliance floor |
-| Raw chat transcripts as memory | **Not default** | Only explicit capture / connector scopes |
+`POST /v1/privacy/retention/run` is owner-only, requires an explicit project,
+and defaults to `dry_run=true`. Policy version: `m20-s04-v1`.
 
-## Pilot volumes (alpha)
-
-| Source | Scope |
+| Data | Retention / action |
 |---|---|
-| Manual / Web / MCP capture | Owner + ChatGPT demo subjects |
-| GitHub / Gmail / Drive / Calendar | Connected accounts only; selected labels/files preferred over full mailbox |
-| Golden retrieval | 200 ACL-aware cases (landed) |
+| Active / verified memories | Indefinite until owner correction, retraction, or deletion |
+| Candidate memories | 90 days, then body/metadata/vector tombstone and derived-record cleanup |
+| Quarantine artifacts | 180 days, then chunks, storage refs, checksums, metadata and related source payloads are sanitized |
+| Published outbox events | 30 days after `published_at`, then deleted |
+| Dead-letter jobs | 90 days after last update, then deleted |
+| OAuth vault secrets | Until connection revoke; source-account privacy deletion removes KMS/local vault payloads, refs and cursors |
+| Audit log | 365 days; privacy execution also redacts historic snapshots tied to erased objects |
+| Raw chat transcripts | Not captured by default; only explicit capture or selected connector scopes |
 
-## Owner accept
+The apply path records counts and identifiers only. It never copies memory
+bodies, source payloads, request reasons, correction text, credentials, or
+export payloads into audit/operational telemetry.
 
-- [x] Region `eu-central-1` accepted for V1 alpha/prod path  
-- [x] Data classes A–F accepted  
-- [x] Retention table accepted (or amended in ADR)
+## Rights and operational surfaces
+
+- Portability: `GET /v1/export/privacy` returns bounded project memories,
+  provenance/evidence, source events, artifacts/chunks, connector metadata and
+  the retention policy. It never returns connector secrets or vault refs.
+- Request: `POST /v1/privacy/requests` creates an idempotent owner request.
+- Execution: `POST /v1/privacy/requests/:id/execute` performs correction,
+  retraction, memory deletion, or connector-source revocation.
+- Retention: `POST /v1/privacy/retention/run` previews or applies the policy.
+
+All four surfaces fail closed without owner authority and explicit project
+scope. Database RPCs are executable by `service_role` only.

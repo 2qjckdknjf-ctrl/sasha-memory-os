@@ -39,6 +39,8 @@ import {
   OFFICIAL_M19_CONTROL_CENTER_GOVERNANCE_PACK_VERSION,
   OFFICIAL_M20_SECURITY_RELEASE_GATE_PACK_VERSION,
   OFFICIAL_M20_RELIABILITY_DR_GATE_PACK_VERSION,
+  OFFICIAL_M20_PERFORMANCE_RETRIEVAL_GATE_PACK_VERSION,
+  OFFICIAL_M20_PRIVACY_COMPLIANCE_GATE_PACK_VERSION,
 } from '@memory-os/schemas';
 
 const WORKSPACE_ROOT = resolve(import.meta.dirname, '../../..');
@@ -49,9 +51,9 @@ export const CURRENT_STATE_PATH = resolve(
 
 export const OFFICIAL_M14_1_BASELINE_MANIFEST_VERSION = 'm14.1-v1' as const;
 export const CURRENT_OPERATIONAL_MILESTONE =
-  'm19-control-center-governance-live-pass' as const;
+  'm20-performance-retrieval-live-pass' as const;
 export const CURRENT_NEXT_SLICE =
-  'M20_PRODUCTION_GA_CLOSURE' as const;
+  'M20.4_PRIVACY_COMPLIANCE' as const;
 
 export type CurrentStateManifest = {
   manifestVersion: string;
@@ -109,6 +111,8 @@ export type CurrentStateManifest = {
     m19ControlCenterGovernance: string;
     m20SecurityReleaseGate: string;
     m20ReliabilityDr: string;
+    m20PerformanceRetrieval: string;
+    m20PrivacyCompliance: string;
   };
   deployments: {
     flyApi: {
@@ -229,6 +233,22 @@ export type CurrentStateManifest = {
     browserLocalFallbackAbsent: boolean;
     browserSecretServerOnly: boolean;
     pullRequestCredentialJobSkipped: boolean;
+    readAfterWrite: boolean;
+  };
+  m20PerformanceRetrievalLiveReceipt: {
+    packVersion: string;
+    memoryId: string;
+    pullRequests: number[];
+    mergeShas: string[];
+    trustedMainCiRun: number;
+    trustedMainCodeqlRun: number;
+    edgeFunctionVersion: number;
+    edgeFunctionSha256: string;
+    toolCount: number;
+    frozenRetrievalCases: number;
+    recallAt10: number;
+    aclLeakageCases: number;
+    steadyStateP95Ms: number;
     readAfterWrite: boolean;
   };
   projectRouting: {
@@ -380,10 +400,10 @@ export function validateCurrentStateDrift(
     });
   }
 
-  if (manifest.completedThrough !== 'M19') {
+  if (manifest.completedThrough !== 'M20.3') {
     findings.push({
       code: 'completed-through',
-      message: `expected contractPacks completedThrough M19, got ${manifest.completedThrough}`,
+      message: `expected contractPacks completedThrough M20.3, got ${manifest.completedThrough}`,
     });
   }
 
@@ -534,6 +554,35 @@ export function validateCurrentStateDrift(
     });
   }
 
+  const performanceReceipt = manifest.m20PerformanceRetrievalLiveReceipt;
+  if (
+    !performanceReceipt ||
+    performanceReceipt.packVersion !==
+      OFFICIAL_M20_PERFORMANCE_RETRIEVAL_GATE_PACK_VERSION ||
+    performanceReceipt.memoryId !==
+      '1e618a29-8ba6-4da4-871a-d6530863cf2a' ||
+    performanceReceipt.pullRequests.join(',') !== '115,116,117' ||
+    performanceReceipt.mergeShas.at(-1) !==
+      '63b643a0b2fe5aed7638c9258bf531e369f4ebb9' ||
+    performanceReceipt.trustedMainCiRun !== 38806721335 ||
+    performanceReceipt.trustedMainCodeqlRun !== 38806721891 ||
+    performanceReceipt.edgeFunctionVersion !== 17 ||
+    performanceReceipt.edgeFunctionSha256 !==
+      '42e3aba738be54bc557cc5fb8cd156f7d3c4920ddc479418c015b31381e28a4a' ||
+    performanceReceipt.toolCount !== 7 ||
+    performanceReceipt.frozenRetrievalCases !== 200 ||
+    performanceReceipt.recallAt10 < 0.95 ||
+    performanceReceipt.aclLeakageCases !== 0 ||
+    performanceReceipt.steadyStateP95Ms > 2000 ||
+    performanceReceipt.readAfterWrite !== true
+  ) {
+    findings.push({
+      code: 'm20-performance-retrieval-live-receipt',
+      message:
+        'M20.3 live receipt must preserve PR/main, seven-tool, Recall@10, ACL, latency and read-after-write evidence',
+    });
+  }
+
   if (manifest.canonicalProjectId !== '44444444-4444-4444-8444-444444444402') {
     findings.push({
       code: 'canonical-project-id',
@@ -582,6 +631,10 @@ export function validateCurrentStateDrift(
       m20SecurityReleaseGate:
         OFFICIAL_M20_SECURITY_RELEASE_GATE_PACK_VERSION,
       m20ReliabilityDr: OFFICIAL_M20_RELIABILITY_DR_GATE_PACK_VERSION,
+      m20PerformanceRetrieval:
+        OFFICIAL_M20_PERFORMANCE_RETRIEVAL_GATE_PACK_VERSION,
+      m20PrivacyCompliance:
+        OFFICIAL_M20_PRIVACY_COMPLIANCE_GATE_PACK_VERSION,
     };
 
   for (const [key, expected] of Object.entries(expectedPacks) as Array<

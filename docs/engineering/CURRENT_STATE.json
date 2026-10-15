@@ -1,27 +1,27 @@
 {
   "manifestVersion": "m14.1-v1",
   "schemaVersion": "1.2",
-  "generatedAt": "2026-10-15T19:30:00Z",
+  "generatedAt": "2026-10-15T21:22:58Z",
   "repository": "2qjckdknjf-ctrl/sasha-memory-os",
   "canonicalProjectId": "44444444-4444-4444-8444-444444444402",
   "aistroykaProjectId": "44444444-4444-4444-8444-444444444401",
   "hiairProjectId": "44444444-4444-4444-8444-444444444403",
   "canonicalWorkspaceId": "11111111-1111-4111-8111-111111111111",
-  "reconciledAgainstMainSha": "b3b406181f107b0736d53ddfc20963503b03062e",
-  "contractPacksCompletedThrough": "M19",
-  "liveOperationalMilestone": "M19_CONTROL_CENTER_GOVERNANCE_LIVE_PASS",
-  "nextAllowedSlice": "M20_PRODUCTION_GA_CLOSURE",
-  "currentMilestone": "m19-control-center-governance-live-pass",
-  "completedThrough": "M19",
-  "nextSlice": "M20_PRODUCTION_GA_CLOSURE",
+  "reconciledAgainstMainSha": "63b643a0b2fe5aed7638c9258bf531e369f4ebb9",
+  "contractPacksCompletedThrough": "M20.3",
+  "liveOperationalMilestone": "M20_PERFORMANCE_RETRIEVAL_LIVE_PASS",
+  "nextAllowedSlice": "M20.4_PRIVACY_COMPLIANCE",
+  "currentMilestone": "m20-performance-retrieval-live-pass",
+  "completedThrough": "M20.3",
+  "nextSlice": "M20.4_PRIVACY_COMPLIANCE",
   "frozenSlices": [],
   "canonicalPlanMemoryTitle": "SASHA MEMORY OS — CANONICAL COMPLETION PLAN TO 100% — 2026-08-21",
   "supabase": {
     "projectName": "sasha-memory-os",
     "projectRef": "vpxblcxsvlylqyldiuwr",
     "region": "eu-central-1",
-    "latestMigration": "20261015220000_m20_capture_idempotency_scope_guard.sql",
-    "migrationCount": 77
+    "latestMigration": "20261015230000_m20_privacy_compliance_operations.sql",
+    "migrationCount": 78
   },
   "officialPacks": {
     "m14Slo": "m14-s01-v1",
@@ -61,6 +61,7 @@
     "m20SecurityReleaseGate": "m20-s01-v1",
     "m20ReliabilityDr": "m20-s02-v1",
     "m20PerformanceRetrieval": "m20-s03-v1",
+    "m20PrivacyCompliance": "m20-s04-v1",
     "p0ProjectIdentity": "p0-project-identity-v1"
   },
   "deployments": {
@@ -291,6 +292,35 @@
       "absoluteAuthDbConnections": 1
     }
   },
+  "m20PerformanceRetrievalLiveReceipt": {
+    "packVersion": "m20-s03-v1",
+    "memoryId": "1e618a29-8ba6-4da4-871a-d6530863cf2a",
+    "verifiedAt": "2026-10-15T20:45:00Z",
+    "pullRequests": [115, 116, 117],
+    "mergeShas": [
+      "6ebd433fe34371a3b6b2767d360b223f094f7b5a",
+      "dd55feaa78a445315fd7131e50a361427df73e55",
+      "63b643a0b2fe5aed7638c9258bf531e369f4ebb9"
+    ],
+    "trustedMainCiRun": 38806721335,
+    "trustedMainCodeqlRun": 38806721891,
+    "edgeFunctionVersion": 17,
+    "edgeFunctionSha256": "42e3aba738be54bc557cc5fb8cd156f7d3c4920ddc479418c015b31381e28a4a",
+    "toolCount": 7,
+    "frozenRetrievalCases": 200,
+    "recallAt10": 1,
+    "aclLeakageCases": 0,
+    "steadyStateP95Ms": 1750,
+    "readAfterWrite": true,
+    "securityAdvisors": {
+      "rlsEnabledNoPolicy": 2,
+      "extensionInPublic": 1,
+      "leakedPasswordProtectionDisabled": 0
+    },
+    "performanceAdvisors": {
+      "unindexedForeignKeys": 75
+    }
+  },
   "projectRouting": {
     "allowMemoryOsDefaultProjectIdFallback": false,
     "allowAistroykaFallback": false,
@@ -347,6 +377,8 @@
     "m20ReliabilityDrSql": "tests/security/m20_reliability_dr_cases.sql",
     "m20PerformanceRetrievalPack": "tests/security/m20_performance_retrieval_gate_pack.test.ts",
     "m20PerformanceRoutingDedupeSql": "tests/security/m20_performance_routing_dedupe_cases.sql",
+    "m20PrivacyCompliancePack": "tests/security/m20_privacy_compliance_gate_pack.test.ts",
+    "m20PrivacyComplianceSql": "tests/security/m20_privacy_compliance_cases.sql",
     "m20FrozenRetrievalEval": "tests/eval/golden_retrieval.test.ts",
     "m20M13RegressionEval": "tests/eval/m20_m13_regression.test.ts"
   },

@@ -1614,8 +1614,11 @@ export function App() {
         return;
       }
       const targetProjectId = resolveExplicitWriteProjectId();
-      const dump = await apiGet<{ format?: string; count?: number }>(
-        `/v1/export/memories?workspace_id=${WORKSPACE_ID}&project_id=${encodeURIComponent(targetProjectId)}&limit=200`,
+      const dump = await apiGet<{
+        format?: string;
+        counts?: { memories?: number; sourceEvents?: number; artifacts?: number };
+      }>(
+        `/v1/export/privacy?workspace_id=${WORKSPACE_ID}&project_id=${encodeURIComponent(targetProjectId)}&limit=500`,
         subjectId,
         actor,
       );
@@ -1625,10 +1628,12 @@ export function App() {
       const url = URL.createObjectURL(blob);
       const anchor = document.createElement('a');
       anchor.href = url;
-      anchor.download = `memory-os-export-${new Date().toISOString().slice(0, 10)}.json`;
+      anchor.download = `memory-os-privacy-export-${new Date().toISOString().slice(0, 10)}.json`;
       anchor.click();
       URL.revokeObjectURL(url);
-      setLastCapture(`exported memories format=${dump.format ?? '?'} count=${dump.count ?? 0}`);
+      setLastCapture(
+        `privacy export format=${dump.format ?? '?'} memories=${dump.counts?.memories ?? 0} sources=${dump.counts?.sourceEvents ?? 0} artifacts=${dump.counts?.artifacts ?? 0}`,
+      );
     } catch (err) {
       setError((err as Error).message);
     }

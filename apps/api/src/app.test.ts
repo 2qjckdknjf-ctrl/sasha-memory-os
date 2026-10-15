@@ -3491,6 +3491,7 @@ describe('memory api demo slice', () => {
         project_id: projectId,
         actor_subject_id: ownerId,
         request_type: 'correction',
+        target_memory_id: '99999999-0000-4000-8000-000000000499',
         reason: 'The date should be corrected.',
         correction_text: 'Use the updated date from the signed brief.',
         idempotency_key: 'privacy-request-1',
@@ -3513,6 +3514,54 @@ describe('memory api demo slice', () => {
     expect(body.requests[0].correctionText).toContain('updated date');
   });
 
+  it('keeps privacy execution, full export, and retention owner-only and Supabase-backed', async () => {
+    const app = createApp({});
+    const requestId = '99999999-0000-4000-8000-000000000498';
+
+    const ownerExport = await app.request(
+      `/v1/export/privacy?workspace_id=${workspaceId}&project_id=${memoryOsProjectId}`,
+      {
+        headers: { 'x-subject-id': owner, 'x-actor-key': 'owner' },
+      },
+    );
+    expect(ownerExport.status).toBe(501);
+
+    const nonOwnerExport = await app.request(
+      `/v1/export/privacy?workspace_id=${workspaceId}&project_id=${memoryOsProjectId}`,
+      {
+        headers: { 'x-subject-id': chatgpt, 'x-actor-key': 'chatgpt' },
+      },
+    );
+    expect(nonOwnerExport.status).toBe(403);
+
+    const execute = await app.request(`/v1/privacy/requests/${requestId}/execute`, {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'x-subject-id': owner,
+        'x-actor-key': 'owner',
+      },
+      body: JSON.stringify({ actor_subject_id: owner }),
+    });
+    expect(execute.status).toBe(501);
+
+    const retention = await app.request('/v1/privacy/retention/run', {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'x-subject-id': owner,
+        'x-actor-key': 'owner',
+      },
+      body: JSON.stringify({
+        workspace_id: workspaceId,
+        project_id: memoryOsProjectId,
+        actor_subject_id: owner,
+        dry_run: true,
+      }),
+    });
+    expect(retention.status).toBe(501);
+  });
+
   it('requires explicit project_id for privacy requests', async () => {
     const app = createApp({});
     const ownerId = '33333333-3333-4333-8333-333333333301';
@@ -3527,6 +3576,7 @@ describe('memory api demo slice', () => {
         workspace_id: workspaceId,
         actor_subject_id: ownerId,
         request_type: 'deletion',
+        target_memory_id: '99999999-0000-4000-8000-000000000497',
         reason: 'Project scope must be explicit.',
         idempotency_key: 'privacy-request-no-project-1',
       }),

@@ -1,0 +1,52 @@
+# M20.4 — privacy and compliance operations
+
+Status: implementation complete; production acceptance is required after merge.
+
+Official pack: `m20-s04-v1`
+
+## Delivered surfaces
+
+- `GET /v1/export/privacy`: owner-only, explicit-project portability bundle
+  covering canonical/derived memories, provenance/evidence, source events,
+  artifacts/chunks and non-secret connector metadata.
+- `POST /v1/privacy/requests`: idempotent correction, retraction, memory deletion
+  or connector-source revocation request.
+- `POST /v1/privacy/requests/:id/execute`: idempotent execution with a
+  metadata-only result.
+- `POST /v1/privacy/retention/run`: dry-run by default; apply enforces the
+  accepted 30/90/180/365-day windows.
+- Control Center Privacy UI: full export, target selection, explicit execution,
+  and retention preview/apply. Sensitive request text is deliberately absent
+  from its operational history.
+
+Migration `20261015230000_m20_privacy_compliance_operations.sql` preserves
+tombstones for referential integrity while removing content-bearing evidence,
+revisions, chunks, embeddings, graph projections, conflict/personalization
+records and typed task/decision payloads. Connector-source deletion additionally
+revokes the connection and removes vault references/payloads and cursors.
+
+## Mandatory acceptance
+
+`tests/security/m20_privacy_compliance_cases.sql`, wired into the ephemeral CI
+stack, proves:
+
+1. export includes primary and derived records plus raw provenance;
+2. deletion removes both primary and derived bodies/evidence/graph projections;
+3. connector revocation deletes vault/cursor state and stops queued work;
+4. execution replay is idempotent;
+5. privacy free text never survives in audit/ops state;
+6. retention preview is non-mutating and apply enforces every window;
+7. privacy RPCs are denied to `anon`/`authenticated` and granted to
+   `service_role`.
+
+The TypeScript gate also freezes route names, retention windows, UI hygiene,
+schema validation, CI wiring, DPIA/data-map freshness and the exact seven-tool
+MCP invariant.
+
+## Production closeout
+
+After merge and green trusted-main CI: apply the migration to the dedicated
+Supabase project, exercise export/request/execute/retention-preview against the
+canonical project without printing bodies, rerun security/performance advisors,
+and store a Memory OS milestone with read-after-write evidence. M20.4 is not
+reported live-complete before those checks pass.
