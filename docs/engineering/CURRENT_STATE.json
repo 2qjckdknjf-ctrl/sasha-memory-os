@@ -58,6 +58,7 @@
     "m18RomaIntegration": "m18-s03-v1",
     "m18ChatgptWriteback": "m18-s04-v1",
     "m19ControlCenterGovernance": "m19-s01-v1",
+    "m20SecurityReleaseGate": "m20-s01-v1",
     "p0ProjectIdentity": "p0-project-identity-v1"
   },
   "deployments": {
@@ -70,6 +71,7 @@
     "edgeFunctions": ["memory-mcp", "worker-ticks"],
     "githubActions": [
       "ci.yml",
+      "m20-auth-hardening.yml",
       "node-workers.yml",
       "oauth-consent-pages.yml",
       "worker-ticks.yml",
@@ -337,7 +339,8 @@
     "m18ChatgptWritebackPack": "tests/security/m18_slice_04_pack.test.ts",
     "m18ChatgptWritebackSql": "tests/security/m18_slice_04_chatgpt_writeback_cases.sql",
     "m19ControlCenterGovernancePack": "tests/security/m19_control_center_governance_pack.test.ts",
-    "m19ControlCenterGovernanceSql": "tests/security/m19_control_center_governance_cases.sql"
+    "m19ControlCenterGovernanceSql": "tests/security/m19_control_center_governance_cases.sql",
+    "m20SecurityReleaseGatePack": "tests/security/m20_security_release_gate_pack.test.ts"
   },
   "openPrPolicy": {
     "staleDraftPr16": {

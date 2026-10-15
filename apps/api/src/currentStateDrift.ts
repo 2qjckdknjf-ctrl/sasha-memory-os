@@ -37,6 +37,7 @@ import {
   OFFICIAL_M18_ROMA_INTEGRATION_PACK_VERSION,
   OFFICIAL_M18_CHATGPT_WRITEBACK_PACK_VERSION,
   OFFICIAL_M19_CONTROL_CENTER_GOVERNANCE_PACK_VERSION,
+  OFFICIAL_M20_SECURITY_RELEASE_GATE_PACK_VERSION,
 } from '@memory-os/schemas';
 
 const WORKSPACE_ROOT = resolve(import.meta.dirname, '../../..');
@@ -105,6 +106,7 @@ export type CurrentStateManifest = {
     m18RomaIntegration: string;
     m18ChatgptWriteback: string;
     m19ControlCenterGovernance: string;
+    m20SecurityReleaseGate: string;
   };
   deployments: {
     flyApi: {
@@ -575,6 +577,8 @@ export function validateCurrentStateDrift(
       m18ChatgptWriteback: OFFICIAL_M18_CHATGPT_WRITEBACK_PACK_VERSION,
       m19ControlCenterGovernance:
         OFFICIAL_M19_CONTROL_CENTER_GOVERNANCE_PACK_VERSION,
+      m20SecurityReleaseGate:
+        OFFICIAL_M20_SECURITY_RELEASE_GATE_PACK_VERSION,
     };
 
   for (const [key, expected] of Object.entries(expectedPacks) as Array<
