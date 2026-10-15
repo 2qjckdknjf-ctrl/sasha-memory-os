@@ -25,6 +25,7 @@ Pack: `m18-s03-v1`
 - Tests prove context-pack consumption, stable dedupe, revision changes when the merge SHA changes, PR/commit/deployment references, audit metadata, and candidate-only read-after-write enforcement.
 - The production worker treats an unset or whitespace-only optional `MEMORY_OS_ROMA_SUBJECT_ID` as the canonical ROMA service subject instead of passing an empty UUID to privileged RPCs.
 - Structured Supabase failures preserve their bounded message and code in worker diagnostics; they must never collapse to `[object Object]`.
+- Migration `20261015180000_m18_roma_canonical_project_acl.sql` grants ROMA only the canonical project's internal memory read/write plus project, project-state, and handoff read capabilities required by the existing worker. It adds no handoff write, workspace-wide, or personal-data access.
 - After merge, run one real canonical-project ROMA job against production, verify the resulting memory is candidate and project-scoped, and record a Memory OS milestone with read-after-write.
 
 Implementation does not advance `completedThrough` beyond M18.2 until the production acceptance above passes.
