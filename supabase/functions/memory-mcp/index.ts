@@ -327,7 +327,7 @@ async function embedText(
       const vector = payload.data?.[0]?.embedding ?? [];
       return vector.length
         ? { vector, engine: "openai" }
-        : { vector: hashEmbed(text, 32), engine: "stub-hash" };
+        : { vector: hashEmbed(text, 32), engine: "stub-hash-fallback" };
     } catch {
       return { vector: hashEmbed(text, 32), engine: "stub-hash-fallback" };
     }

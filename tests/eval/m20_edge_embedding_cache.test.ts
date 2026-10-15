@@ -69,4 +69,32 @@ describe('M20.3 Edge query embedding cache', () => {
     expect(fallback).toHaveBeenCalledTimes(2);
     expect(cache.size()).toBe(0);
   });
+
+  it('does not let an expired fallback delete a newer successful load', async () => {
+    let now = 1_000;
+    let resolveFallback: ((value: { vector: number[]; engine: string }) => void) | undefined;
+    const cache = createQueryEmbeddingCache({
+      ttlMs: 10,
+      now: () => now,
+      cacheable: (value) => value.engine === 'openai',
+    });
+    const oldLoad = cache.getOrLoad(
+      'same-key',
+      () =>
+        new Promise((resolve) => {
+          resolveFallback = resolve;
+        }),
+    );
+
+    now += 11;
+    const freshLoader = vi.fn(async () => ({ vector: [2], engine: 'openai' }));
+    const freshLoad = await cache.getOrLoad('same-key', freshLoader);
+    resolveFallback?.({ vector: [1], engine: 'stub-hash-fallback' });
+    await oldLoad;
+    const reused = await cache.getOrLoad('same-key', freshLoader);
+
+    expect(freshLoad).toEqual({ vector: [2], engine: 'openai' });
+    expect(reused).toEqual(freshLoad);
+    expect(freshLoader).toHaveBeenCalledTimes(1);
+  });
 });

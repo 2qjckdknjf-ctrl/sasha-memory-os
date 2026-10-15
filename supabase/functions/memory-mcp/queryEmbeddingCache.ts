@@ -75,7 +75,10 @@ export function createQueryEmbeddingCache(input?: {
       }
       try {
         const resolved = await value;
-        if (!cacheable(resolved)) entries.delete(key);
+        if (!cacheable(resolved)) {
+          const entry = entries.get(key);
+          if (entry?.value === value) entries.delete(key);
+        }
         return resolved;
       } catch (error) {
         const entry = entries.get(key);
