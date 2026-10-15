@@ -310,10 +310,27 @@ function mergeShaFromContent(content: string): string | null {
   for (const line of content.slice(0, MAX_PARSED_CONTENT_CHARS).split("\n")) {
     let normalized = line.trim().toLowerCase();
     if (
-      ["-", "*", "•", "–", "—"].includes(normalized[0] ?? "") &&
+      ["-", "*", "+", "•", "–", "—"].includes(normalized[0] ?? "") &&
       normalized[1] === " "
     ) {
       normalized = normalized.slice(2).trimStart();
+    } else {
+      let cursor = 0;
+      while (
+        cursor < normalized.length &&
+        cursor < 9 &&
+        normalized[cursor] >= "0" &&
+        normalized[cursor] <= "9"
+      ) {
+        cursor += 1;
+      }
+      if (
+        cursor > 0 &&
+        [".", ")"].includes(normalized[cursor] ?? "") &&
+        normalized[cursor + 1] === " "
+      ) {
+        normalized = normalized.slice(cursor + 2).trimStart();
+      }
     }
     const marker = "merge sha:";
     if (!normalized.startsWith(marker)) continue;

@@ -703,16 +703,44 @@ describe('M18.2 project context pack', () => {
               'PR: https://github.com/example/repo/pull/105',
             recordedAt: '2026-10-13T15:53:00.000Z',
           }),
+          decision({
+            id: 'plus-list-merge',
+            title: 'Completed PR #106',
+            content:
+              '+ Merge SHA: 3333333333333333333333333333333333333333\n' +
+              'PR: https://github.com/example/repo/pull/106',
+            recordedAt: '2026-10-13T15:52:00.000Z',
+          }),
+          decision({
+            id: 'ordered-list-merge',
+            title: 'Completed PR #107',
+            content:
+              '1. Merge SHA: 4444444444444444444444444444444444444444\n' +
+              'PR: https://github.com/example/repo/pull/107',
+            recordedAt: '2026-10-13T15:51:00.000Z',
+          }),
         ],
       },
-      { projectId },
+      { projectId, maxTokens: 8000 },
     );
 
-    expect(pack.recentMerges).toHaveLength(1);
-    expect(pack.recentMerges[0]).toMatchObject({
-      pullRequestUrl: 'https://github.com/example/repo/pull/100',
-      mergeSha: null,
-    });
+    expect(pack.recentMerges).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          pullRequestUrl: 'https://github.com/example/repo/pull/100',
+          mergeSha: null,
+        }),
+        expect.objectContaining({
+          pullRequestUrl: 'https://github.com/example/repo/pull/106',
+          mergeSha: '3333333333333333333333333333333333333333',
+        }),
+        expect.objectContaining({
+          pullRequestUrl: 'https://github.com/example/repo/pull/107',
+          mergeSha: '4444444444444444444444444444444444444444',
+        }),
+      ]),
+    );
+    expect(pack.recentMerges).toHaveLength(3);
   });
 
   it('enforces a bounded response and fails closed on cross-project sources', () => {
