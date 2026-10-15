@@ -85,8 +85,18 @@ describe('M18.4 ChatGPT automatic writeback pack', () => {
         memoryId: 'b664431d-7e33-49f3-bd3b-27dbb24150f0',
         acceptanceMemoryId: '5375c33d-1a98-47af-9554-d9b90c6449aa',
         implementationPullRequest: 108,
+        prCiRun: 38768894752,
+        prCodeqlRun: 38768886451,
+        mainCiRun: 38769327729,
+        mainCodeqlRun: 38769327681,
+        migration: '20261015190000_m18_chatgpt_automatic_writeback.sql',
+        productionMigrationRecord:
+          '20261015164907_m18_chatgpt_automatic_writeback',
         edgeFunctionVersion: 12,
+        edgeFunctionSha256:
+          '6ac58816f4a6b1fd19383fa1aab2244d353d208e9aeacbe76985f35a253dedbc',
         toolCount: 7,
+        acceptanceKey: 'm18-s04-live-20261015T165036Z-14827',
         created: true,
         deduplicated: true,
         conflictReviewRequired: true,

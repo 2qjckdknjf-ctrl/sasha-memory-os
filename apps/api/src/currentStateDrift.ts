@@ -412,10 +412,20 @@ export function validateCurrentStateDrift(
     writebackReceipt.implementationPullRequest !== 108 ||
     writebackReceipt.mergeSha !==
       '8b07131c87e0cd2968c0c679c487a477bafc3bf4' ||
+    writebackReceipt.prCiRun !== 38768894752 ||
+    writebackReceipt.prCodeqlRun !== 38768886451 ||
     writebackReceipt.mainCiRun !== 38769327729 ||
     writebackReceipt.mainCodeqlRun !== 38769327681 ||
+    writebackReceipt.migration !==
+      '20261015190000_m18_chatgpt_automatic_writeback.sql' ||
+    writebackReceipt.productionMigrationRecord !==
+      '20261015164907_m18_chatgpt_automatic_writeback' ||
     writebackReceipt.edgeFunctionVersion !== 12 ||
+    writebackReceipt.edgeFunctionSha256 !==
+      '6ac58816f4a6b1fd19383fa1aab2244d353d208e9aeacbe76985f35a253dedbc' ||
     writebackReceipt.toolCount !== 7 ||
+    writebackReceipt.acceptanceKey !==
+      'm18-s04-live-20261015T165036Z-14827' ||
     writebackReceipt.created !== true ||
     writebackReceipt.deduplicated !== true ||
     writebackReceipt.conflictReviewRequired !== true ||
