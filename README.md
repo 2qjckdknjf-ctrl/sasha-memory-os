@@ -20,15 +20,16 @@
 
 **Dedicated Supabase live** — project `sasha-memory-os` (`vpxblcxsvlylqyldiuwr`, `eu-central-1`). Details: [docs/engineering/SUPABASE.md](docs/engineering/SUPABASE.md).
 
-Machine-readable snapshot: [docs/engineering/CURRENT_STATE.json](docs/engineering/CURRENT_STATE.json) (`m14.1-v1` schema, reconciled 2026-10-13).
+Machine-readable snapshot: [docs/engineering/CURRENT_STATE.json](docs/engineering/CURRENT_STATE.json) (`m14.1-v1` schema, reconciled 2026-10-15).
 
-- **Live operational milestone:** `M20_SECURITY_GOVERNANCE`; M17.6 graph/hybrid fusion + frozen evals is the active delivery slice
-- **Contract packs completed through:** M17.6 (`m17-s06-v1`, evidence-aware graph/hybrid fusion)
+- **Live operational milestone:** `M18_PROJECT_CONTEXT_PACK_LIVE_PASS`; M18.3 ROMA integration is the next delivery slice
+- **Contract packs completed through:** M18.2 (`m18-s02-v1`, bounded explicit-project context with citations/provenance)
 - **Canonical Memory OS project UUID:** `44444444-4444-4444-8444-444444444402`
 - **M6 ChatGPT Mode A PASS (2026-08-15):** ChatGPT-only; does not close shared-memory E2E
 - **Bidirectional ChatGPT↔Cursor E2E PASS (2026-10-13):** real-session receipts, explicit project isolation, actor attribution verified
 - **M17.5 production PASS:** explicit-project entity search, evidence inspector and bounded 2-hop traversal are live
-- **M17.6 implementation:** explicit graph search mode for HTTP + the existing seven-tool Edge MCP profile; production Edge deployment follows merge and green CI
+- **M17.6 production PASS:** explicit graph search mode for HTTP + the seven-tool Edge MCP profile
+- **M18.2 production PASS:** Edge v11, exact seven-tool discovery, bounded 1,800-token context and cross-project/handoff ACL live checks
 - Core path live: WP-01…08 RPCs, vault OAuth, hybrid RRF retrieval, embeddings, consolidation/outbox/jobs, MCP, Control Center
 - M10–M13 foundations merged (Drive/Gmail/Calendar policies, ROMA project-health, bounded agentic retrieval / consolidation / ranking)
 - Apple: companion-required personal-source contracts complete; live device E2E still blocked
