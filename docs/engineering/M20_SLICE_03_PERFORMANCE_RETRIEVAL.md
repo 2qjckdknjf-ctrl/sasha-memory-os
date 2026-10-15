@@ -34,11 +34,13 @@ Official pack: `m20-s03-v1`
   or fallback loads are evicted and retried. Cache keys are SHA-256 digests, not
   query text. This removes repeated provider latency without changing ranking
   weights, persisting queries, or logging payloads.
-- Every external query-embedding request has a 700 ms fail-closed latency
+- Every external read-only query-embedding request has a 700 ms fail-closed latency
   budget. A slow, empty, or failed provider response falls back to the existing
   deterministic local vector while the database preserves ACL-scoped
   structured/text retrieval. Transient fallbacks are not cached, so a later
-  request may recover semantic ranking without a deployment.
+  request may recover semantic ranking without a deployment. Capture/write
+  embeddings are not subject to this query budget and cannot persist a degraded
+  vector merely because a read-path latency guard fired.
 
 ## Idempotency hardening
 

@@ -293,6 +293,7 @@ function hashEmbed(text: string, dimensions = 32): number[] {
 
 async function embedText(
   text: string,
+  options: { providerTimeoutMs?: number } = {},
 ): Promise<{ vector: number[]; engine: string }> {
   const apiKey = Deno.env.get("MEMORY_OS_OPENAI_API_KEY")?.trim() ??
     Deno.env.get("OPENAI_API_KEY")?.trim();
@@ -311,18 +312,18 @@ async function embedText(
   return await QUERY_EMBEDDING_CACHE.getOrLoad(cacheKey, async () => {
     if (!apiKey) return { vector: hashEmbed(text, 32), engine: "stub-hash" };
     try {
-      const res = await fetch("https://api.openai.com/v1/embeddings", {
+      const request: RequestInit = {
         method: "POST",
         headers: {
           authorization: `Bearer ${apiKey}`,
           "content-type": "application/json",
         },
         body: JSON.stringify({ model, input: [text], dimensions: dims }),
-        // Retrieval must remain available when the optional semantic provider
-        // is slow. The database still applies ACL-scoped structured/text
-        // ranking to the deterministic local fallback vector.
-        signal: AbortSignal.timeout(QUERY_EMBEDDING_PROVIDER_TIMEOUT_MS),
-      });
+      };
+      if (options.providerTimeoutMs !== undefined) {
+        request.signal = AbortSignal.timeout(options.providerTimeoutMs);
+      }
+      const res = await fetch("https://api.openai.com/v1/embeddings", request);
       if (!res.ok) {
         return { vector: hashEmbed(text, 32), engine: "stub-hash-fallback" };
       }
@@ -500,7 +501,12 @@ async function callTool(
       );
       const query = String(args.query ?? "").trim();
       if (!query) throw new Error("query is required");
-      const embedded = await embedText(query);
+      // Retrieval must remain available when the optional semantic provider is
+      // slow. Capture/write embeddings intentionally have no query timeout so
+      // a transient provider delay cannot persist a degraded fallback vector.
+      const embedded = await embedText(query, {
+        providerTimeoutMs: QUERY_EMBEDDING_PROVIDER_TIMEOUT_MS,
+      });
       const rawHits = await rpc(client, "api_search_memories", {
         p_secret: secret,
         p_subject_id: actor,

@@ -66,8 +66,10 @@ describe('M20.3 performance and retrieval gate', () => {
     expect(edgeMcp).toContain('QUERY_EMBEDDING_CACHE.getOrLoad');
     expect(edgeMcp).toContain('QUERY_EMBEDDING_PROVIDER_TIMEOUT_MS = 700');
     expect(edgeMcp).toContain(
-      'signal: AbortSignal.timeout(QUERY_EMBEDDING_PROVIDER_TIMEOUT_MS)',
+      'providerTimeoutMs: QUERY_EMBEDDING_PROVIDER_TIMEOUT_MS',
     );
+    expect(edgeMcp).toContain('request.signal = AbortSignal.timeout(options.providerTimeoutMs)');
+    expect(edgeMcp).toContain('const embedded = await embedText(`${title}\\n${text}`)');
     expect(edgeEmbeddingCache).toContain('maxEntries ?? 128');
     expect(edgeEmbeddingCache).toContain('ttlMs ?? 5 * 60_000');
     expect(docs).toContain('Recall@10 `1.0`');
