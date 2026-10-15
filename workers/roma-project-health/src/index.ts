@@ -403,14 +403,61 @@ function releaseEvidenceRefs(pack: ProjectContextPack): QaFindingEvidenceRef[] {
     });
   }
   const seen = new Set<string>();
-  return refs
-    .filter((ref) => {
-      const key = `${ref.releaseType ?? ''}:${ref.value ?? ''}`;
-      if (!ref.value || seen.has(key)) return false;
-      seen.add(key);
-      return true;
-    })
-    .slice(0, 6);
+  const uniqueRefs = refs.filter((ref) => {
+    const key = `${ref.releaseType ?? ''}:${ref.value ?? ''}`;
+    if (!ref.value || seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+  const deploymentRef = uniqueRefs.find(
+    (ref) => ref.releaseType === 'deployment',
+  );
+  if (!deploymentRef) return uniqueRefs.slice(0, 6);
+  return [
+    ...uniqueRefs.filter((ref) => ref !== deploymentRef).slice(0, 5),
+    deploymentRef,
+  ];
+}
+
+function projectContextCitationEvidenceRefs(
+  pack: ProjectContextPack,
+  citationIds: string[],
+  field: string,
+  structuredTitles: string[] = [],
+): QaFindingEvidenceRef[] {
+  const citationById = new Map(pack.citations.map((citation) => [citation.id, citation]));
+  const refs: QaFindingEvidenceRef[] = [];
+  for (const citationId of citationIds) {
+    const citation = citationById.get(citationId);
+    if (!citation) continue;
+    if (citation.kind === 'memory') {
+      refs.push({
+        kind: 'memory',
+        memoryId: citation.sourceId,
+        title: citation.title ?? undefined,
+        field,
+      });
+    } else if (citation.kind === 'handoff') {
+      refs.push({
+        kind: 'handoff',
+        handoffId: citation.sourceId,
+        createdAt: citation.recordedAt,
+        field,
+      });
+    } else {
+      const titles = structuredTitles.length > 0
+        ? structuredTitles
+        : citation.title
+          ? [citation.title]
+          : [];
+      refs.push({
+        kind: 'project_state',
+        field,
+        titles: titles.slice(0, 3).map((title) => truncateText(title, 120)),
+      });
+    }
+  }
+  return refs;
 }
 
 function projectContextItemEvidenceRefs(
@@ -418,36 +465,14 @@ function projectContextItemEvidenceRefs(
   items: ProjectContextPack['activeBlockers'],
   field: string,
 ): QaFindingEvidenceRef[] {
-  const citationById = new Map(pack.citations.map((citation) => [citation.id, citation]));
-  const refs: QaFindingEvidenceRef[] = [];
-  for (const item of items.slice(0, 3)) {
-    for (const citationId of item.citations) {
-      const citation = citationById.get(citationId);
-      if (!citation) continue;
-      if (citation.kind === 'memory') {
-        refs.push({
-          kind: 'memory',
-          memoryId: citation.sourceId,
-          title: citation.title ?? undefined,
-          field,
-        });
-      } else if (citation.kind === 'handoff') {
-        refs.push({
-          kind: 'handoff',
-          handoffId: citation.sourceId,
-          createdAt: citation.recordedAt,
-          field,
-        });
-      } else {
-        refs.push({
-          kind: 'project_state',
-          field,
-          titles: [truncateText(item.text, 120)],
-        });
-      }
-    }
-  }
-  return refs;
+  return items.slice(0, 3).flatMap((item) =>
+    projectContextCitationEvidenceRefs(
+      pack,
+      item.citations,
+      field,
+      [item.text],
+    ),
+  );
 }
 
 function safeProjectContextItemText(
@@ -761,6 +786,11 @@ function buildRomaQaFindingCandidates(input: {
     'unresolvedConflicts',
   );
   const releaseRefs = releaseEvidenceRefs(input.contextPack);
+  const freshnessRefs = projectContextCitationEvidenceRefs(
+    input.contextPack,
+    input.contextPack.sourceFreshness.citations,
+    'sourceFreshness',
+  );
   const candidates: QaFindingCandidate[] = [];
 
   if (blocked.length > 0) {
@@ -891,10 +921,7 @@ function buildRomaQaFindingCandidates(input: {
     });
   }
 
-  if (
-    input.contextPack.sourceFreshness.status === 'stale' &&
-    candidates.length < 3
-  ) {
+  if (input.contextPack.sourceFreshness.status === 'stale') {
     candidates.push({
       key: 'stale-release-context',
       title: 'Release context is stale',
@@ -903,11 +930,18 @@ function buildRomaQaFindingCandidates(input: {
       severity: 'high',
       status: 'open',
       ...findingPolicy('release_risk'),
-      evidenceRefs: releaseRefs,
+      evidenceRefs: [...releaseRefs, ...freshnessRefs],
     });
   }
 
-  return candidates.slice(0, 3);
+  const severityRank: Record<FindingSeverity, number> = {
+    high: 0,
+    medium: 1,
+    low: 2,
+  };
+  return candidates
+    .sort((left, right) => severityRank[left.severity] - severityRank[right.severity])
+    .slice(0, 3);
 }
 
 function buildRomaQaFindingMemory(input: {

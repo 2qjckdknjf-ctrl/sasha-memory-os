@@ -81,6 +81,32 @@ function buildReleaseContext(
         recordedAt: '2026-10-15T14:33:14.000Z',
         sourceEventId: 'event-m18-2',
       },
+      {
+        id: 'milestone-m18-1',
+        projectId,
+        title: 'M18.1 CURSOR BOOTSTRAP MERGED — PR #102',
+        content: [
+          'PR: https://github.com/2qjckdknjf-ctrl/sasha-memory-os/pull/102',
+          'Merge SHA: 2222222222222222222222222222222222222222',
+        ].join('\n'),
+        status: 'verified',
+        memoryType: 'decision',
+        recordedAt: '2026-10-14T14:33:14.000Z',
+        sourceEventId: 'event-m18-1',
+      },
+      {
+        id: 'milestone-m17-6',
+        projectId,
+        title: 'M17.6 GRAPH FUSION MERGED — PR #101',
+        content: [
+          'PR: https://github.com/2qjckdknjf-ctrl/sasha-memory-os/pull/101',
+          'Merge SHA: 1111111111111111111111111111111111111111',
+        ].join('\n'),
+        status: 'verified',
+        memoryType: 'decision',
+        recordedAt: '2026-10-13T14:33:14.000Z',
+        sourceEventId: 'event-m17-6',
+      },
     ],
     tasks: [
       {
@@ -756,6 +782,7 @@ describe('runRomaProjectFindingsJob', () => {
         }),
       ]),
     );
+    expect(releaseRisk?.metadata?.release_refs).toHaveLength(6);
     expect(releaseRisk?.externalVersion).toMatch(/^[a-f0-9]{24}$/);
     expect(releaseRisk?.text).toContain('Canonical status: candidate');
     expect(releaseRisk?.text).toContain('cannot silently become verified');
@@ -803,6 +830,86 @@ describe('runRomaProjectFindingsJob', () => {
       expect.arrayContaining([
         expect.objectContaining({ releaseType: 'deployment' }),
       ]),
+    );
+  });
+
+  it('prioritizes stale release risk and attaches freshness evidence', async () => {
+    const captureConnectorRecord = vi.fn(async (input: Record<string, any>) => ({
+      eventId: `source-${input.metadata.finding_key}`,
+      process: { memoryId: `memory-${input.metadata.finding_key}` },
+    }));
+    const gateway = {
+      listProjects: vi.fn(async () => [
+        {
+          id: projectId,
+          slug: 'aistroyka',
+          name: 'AISTROYKA',
+          status: 'active',
+        },
+      ]),
+      projectContext: vi.fn(async () => ({
+        projectId,
+        decisions: [],
+        tasks: [],
+        facts: [
+          {
+            id: 'fact-old-signal',
+            projectId,
+            title: 'Last known QA signal',
+            content: 'Private stale fact body must not be copied.',
+            status: 'verified',
+            memoryType: 'fact',
+            recordedAt: '2020-01-02T00:00:00.000Z',
+          },
+        ],
+        state: {
+          id: 'state-old',
+          projectId,
+          version: 1,
+          summary: '',
+          updatedAt: '2020-01-01T00:00:00.000Z',
+          state: {},
+        },
+        latestHandoff: null,
+      })),
+      captureConnectorRecord,
+      getMemory: candidateGetMemory(),
+      appendAuditEvent: vi.fn(async ({ afterState }: Record<string, any>) => ({
+        id: `audit-${afterState.findingKey}`,
+      })),
+      completeRomaProjectFindings: vi.fn(async () => ({
+        jobId: 'job-findings-stale',
+        status: 'succeeded',
+      })),
+    };
+
+    const result = await runRomaProjectFindingsJob({
+      gateway: gateway as any,
+      job: buildFindingsJob({ jobId: 'job-findings-stale' }),
+      romaSubjectId: roma,
+    });
+
+    expect(result.findings).toHaveLength(3);
+    expect(result.findings[0]).toMatchObject({
+      findingKey: 'stale-release-context',
+      severity: 'high',
+    });
+    const staleInput = captureConnectorRecord.mock.calls
+      .map((call) => call[0] as Record<string, any>)
+      .find((input) => input.metadata?.finding_key === 'stale-release-context');
+    expect(staleInput?.metadata?.release_refs).toEqual([]);
+    expect(staleInput?.metadata?.evidence_refs).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          kind: 'memory',
+          memoryId: 'fact-old-signal',
+          title: 'Last known QA signal',
+          field: 'sourceFreshness',
+        }),
+      ]),
+    );
+    expect(staleInput?.text).not.toContain(
+      'Private stale fact body must not be copied.',
     );
   });
 
