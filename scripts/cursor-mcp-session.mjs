@@ -245,6 +245,7 @@ function compactProjectContext(value) {
     return {
       projectId: result.projectId ?? projectId,
       packVersion: result.packVersion,
+      generatedAt: result.generatedAt ?? null,
       currentGoal: result.currentGoal ?? null,
       canonicalDecisions: result.canonicalDecisions ?? [],
       currentMilestone: result.currentMilestone ?? null,

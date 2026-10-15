@@ -41,6 +41,7 @@ describe('M18.2 project context pack', () => {
     expect(mcp).toContain('buildProjectContextPack');
     expect(edge).toContain('buildEdgeProjectContextPack');
     expect(cursor).toContain("result.packVersion === 'm18-s02-v1'");
+    expect(cursor).toContain('generatedAt: result.generatedAt ?? null');
     expect(cursor).toContain('canonicalDecisions: result.canonicalDecisions ?? []');
     expect(cursor).toContain('provenance: result.provenance ?? null');
     expect(aclMigration).toContain("'project_state',");
