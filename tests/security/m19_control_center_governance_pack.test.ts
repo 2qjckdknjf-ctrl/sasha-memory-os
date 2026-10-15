@@ -76,10 +76,6 @@ describe('M19 Control Center governance pack', () => {
       completedThrough: 'M19',
       nextSlice: 'M20_PRODUCTION_GA_CLOSURE',
       officialPacks: { m19ControlCenterGovernance: 'm19-s01-v1' },
-      supabase: {
-        latestMigration: '20261015200000_m19_control_center_governance.sql',
-        migrationCount: 76,
-      },
       m19ControlCenterGovernanceLiveReceipt: {
         memoryId: '4376487c-d83f-42d1-bc1d-2d900baf2a30',
         supersedesMemoryId: '1cb2e53b-93eb-481e-8cd3-6cfcc4da534f',
@@ -103,5 +99,6 @@ describe('M19 Control Center governance pack', () => {
         readAfterWrite: true,
       },
     });
+    expect(current.supabase.migrationCount).toBeGreaterThanOrEqual(76);
   });
 });

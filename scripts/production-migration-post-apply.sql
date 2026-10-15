@@ -63,6 +63,7 @@ BEGIN
   ) THEN
     RAISE EXCEPTION 'M20 sanitizer search_path hardening is missing';
   END IF;
+
 END;
 $$;
 
