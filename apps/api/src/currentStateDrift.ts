@@ -46,9 +46,9 @@ export const CURRENT_STATE_PATH = resolve(
 
 export const OFFICIAL_M14_1_BASELINE_MANIFEST_VERSION = 'm14.1-v1' as const;
 export const CURRENT_OPERATIONAL_MILESTONE =
-  'm18-roma-integration-live-pass' as const;
+  'm18-chatgpt-writeback-live-pass' as const;
 export const CURRENT_NEXT_SLICE =
-  'M18.4_CHATGPT_AUTOMATIC_WRITEBACK_POLICY' as const;
+  'M19_CONTROL_CENTER_GOVERNANCE_COMPLETION' as const;
 
 export type CurrentStateManifest = {
   manifestVersion: string;
@@ -162,6 +162,36 @@ export type CurrentStateManifest = {
     workspaceWideRomaAclCount: number;
     handoffWriteGranted: boolean;
     readAfterWrite: boolean;
+  };
+  m18ChatgptWritebackLiveReceipt: {
+    packVersion: string;
+    memoryId: string;
+    acceptanceMemoryId: string;
+    verifiedAt: string;
+    implementationPullRequest: number;
+    mergeSha: string;
+    prCiRun: number;
+    prCodeqlRun: number;
+    mainCiRun: number;
+    mainCodeqlRun: number;
+    migration: string;
+    productionMigrationRecord: string;
+    edgeFunctionVersion: number;
+    edgeFunctionSha256: string;
+    toolCount: number;
+    acceptanceKey: string;
+    created: boolean;
+    deduplicated: boolean;
+    conflictReviewRequired: boolean;
+    conflictWritePerformed: boolean;
+    readAfterWrite: boolean;
+    searchReadAfterWrite: boolean;
+    persistedProvenanceReturned: boolean;
+    auditOutcomeCount: number;
+    crossClientExitGate: boolean;
+    sameCanonicalStateActors: string[];
+    sameCanonicalStateMemoryId: string;
+    freshnessSlaPassed: boolean;
   };
   projectRouting: {
     allowMemoryOsDefaultProjectIdFallback: boolean;
@@ -312,10 +342,10 @@ export function validateCurrentStateDrift(
     });
   }
 
-  if (manifest.completedThrough !== 'M18.3') {
+  if (manifest.completedThrough !== 'M18.4') {
     findings.push({
       code: 'completed-through',
-      message: `expected contractPacks completedThrough M18.3, got ${manifest.completedThrough}`,
+      message: `expected contractPacks completedThrough M18.4, got ${manifest.completedThrough}`,
     });
   }
 
@@ -369,6 +399,53 @@ export function validateCurrentStateDrift(
       code: 'm18-roma-integration-live-receipt',
       message:
         'M18.3 live receipt must preserve the verified candidate-only ROMA job, audit, budget, least-privilege ACL and read-after-write evidence',
+    });
+  }
+
+  const writebackReceipt = manifest.m18ChatgptWritebackLiveReceipt;
+  if (
+    !writebackReceipt ||
+    writebackReceipt.packVersion !== OFFICIAL_M18_CHATGPT_WRITEBACK_PACK_VERSION ||
+    writebackReceipt.memoryId !== 'b664431d-7e33-49f3-bd3b-27dbb24150f0' ||
+    writebackReceipt.acceptanceMemoryId !==
+      '5375c33d-1a98-47af-9554-d9b90c6449aa' ||
+    writebackReceipt.implementationPullRequest !== 108 ||
+    writebackReceipt.mergeSha !==
+      '8b07131c87e0cd2968c0c679c487a477bafc3bf4' ||
+    writebackReceipt.prCiRun !== 38768894752 ||
+    writebackReceipt.prCodeqlRun !== 38768886451 ||
+    writebackReceipt.mainCiRun !== 38769327729 ||
+    writebackReceipt.mainCodeqlRun !== 38769327681 ||
+    writebackReceipt.migration !==
+      '20261015190000_m18_chatgpt_automatic_writeback.sql' ||
+    writebackReceipt.productionMigrationRecord !==
+      '20261015164907_m18_chatgpt_automatic_writeback' ||
+    writebackReceipt.edgeFunctionVersion !== 12 ||
+    writebackReceipt.edgeFunctionSha256 !==
+      '6ac58816f4a6b1fd19383fa1aab2244d353d208e9aeacbe76985f35a253dedbc' ||
+    writebackReceipt.toolCount !== 7 ||
+    writebackReceipt.acceptanceKey !==
+      'm18-s04-live-20261015T165036Z-14827' ||
+    writebackReceipt.created !== true ||
+    writebackReceipt.deduplicated !== true ||
+    writebackReceipt.conflictReviewRequired !== true ||
+    writebackReceipt.conflictWritePerformed !== false ||
+    writebackReceipt.readAfterWrite !== true ||
+    writebackReceipt.searchReadAfterWrite !== true ||
+    writebackReceipt.persistedProvenanceReturned !== true ||
+    writebackReceipt.auditOutcomeCount !== 3 ||
+    writebackReceipt.crossClientExitGate !== true ||
+    !Array.isArray(writebackReceipt.sameCanonicalStateActors) ||
+    writebackReceipt.sameCanonicalStateActors.join(',') !==
+      'chatgpt,cursor,roma' ||
+    writebackReceipt.sameCanonicalStateMemoryId !==
+      writebackReceipt.acceptanceMemoryId ||
+    writebackReceipt.freshnessSlaPassed !== true
+  ) {
+    findings.push({
+      code: 'm18-chatgpt-writeback-live-receipt',
+      message:
+        'M18.4 live receipt must preserve the seven-tool policy, create/dedupe/conflict/read-after-write proof and the ChatGPT/Cursor/ROMA same-state exit gate',
     });
   }
 
