@@ -34,7 +34,10 @@ inventory_sql="select jsonb_build_object(
   'processingJobs', (select count(*) from public.processing_jobs),
   'outboxEvents', (select count(*) from public.outbox_events),
   'memoryIdChecksum', (select md5(coalesce(string_agg(id::text, ',' order by id), '')) from public.memory_records),
-  'evidenceIdChecksum', (select md5(coalesce(string_agg(id::text, ',' order by id), '')) from public.memory_evidence)
+  'evidenceIdChecksum', (select md5(coalesce(string_agg(
+    memory_id::text || ':' || source_event_id::text,
+    ',' order by memory_id, source_event_id
+  ), '')) from public.memory_evidence)
 )::text;"
 
 source_inventory="$(psql "$DB_URL" -X -A -t -v ON_ERROR_STOP=1 -c "$inventory_sql")"
