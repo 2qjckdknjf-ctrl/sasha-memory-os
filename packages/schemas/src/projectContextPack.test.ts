@@ -34,7 +34,7 @@ describe('M18.2 project context pack', () => {
             id: 'm18-1',
             title: 'M18.1 CURSOR BOOTSTRAP LIVE PASS — PR #99',
             content:
-              'PR: https://github.com/example/repo/pull/99\nMerge SHA: 1111111111111111111111111111111111111111\n\nKnown external blockers remain: provider consent; Apple device E2E.\n\nNext canonical slice: M18.2_PROJECT_CONTEXT_PACK.',
+              'PR: https://github.com/example/repo/pull/99\n- Merge SHA: 1111111111111111111111111111111111111111\n\nKnown external blockers remain: provider consent; Apple device E2E.\n\nNext canonical slice: M18.2_PROJECT_CONTEXT_PACK.',
             recordedAt: '2026-10-13T15:55:32.000Z',
           }),
           decision({
@@ -545,7 +545,7 @@ describe('M18.2 project context pack', () => {
     expect(pack.budget.truncated).toBe(true);
   });
 
-  it('preserves a canonical decision before merge metadata at minimum budget', () => {
+  it('preserves a canonical decision and latest merge at minimum budget', () => {
     const decisions = Array.from({ length: 3 }, (_, index) =>
       decision({
         id: `merge-decision-${index}`,
@@ -565,7 +565,7 @@ describe('M18.2 project context pack', () => {
     expect(pack.budget.truncated).toBe(true);
     expect(pack.budget.estimatedTokens).toBeLessThanOrEqual(768);
     expect(pack.canonicalDecisions.length).toBeGreaterThanOrEqual(1);
-    expect(pack.recentMerges.length).toBeLessThan(3);
+    expect(pack.recentMerges).toHaveLength(1);
   });
 
   it('compresses required goal, milestone and citation fields at minimum budget', () => {

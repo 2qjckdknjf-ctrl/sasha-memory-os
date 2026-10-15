@@ -15,7 +15,7 @@ function memory(id: string, title: string, recordedAt: string) {
     title,
     content:
       "Merged: https://github.com/2qjckdknjf-ctrl/sasha-memory-os/pull/99\n" +
-      "Merge SHA: 9d7e9216a5567455cf7dd6b9a8bec62dfb5739eb\n" +
+      "- Merge SHA: 9d7e9216a5567455cf7dd6b9a8bec62dfb5739eb\n" +
       "Known external blockers remain:\n- OAuth consent absent\n" +
       "Next canonical slice: M18.2_PROJECT_CONTEXT_PACK",
     status: "verified",
@@ -583,7 +583,7 @@ describe("Edge project context pack", () => {
     expect(result).toEqual(buildProjectContextPack(raw, options));
   });
 
-  it("matches shared canonical retention at the minimum token budget", () => {
+  it("matches shared canonical and latest-merge retention at minimum budget", () => {
     const decisions = Array.from({ length: 3 }, (_, index) => ({
       ...memory(
         `merge-decision-${index}`,
@@ -605,7 +605,7 @@ describe("Edge project context pack", () => {
 
     expect(result.budget.truncated).toBe(true);
     expect(result.canonicalDecisions.length).toBeGreaterThanOrEqual(1);
-    expect(result.recentMerges.length).toBeLessThan(3);
+    expect(result.recentMerges).toHaveLength(1);
     expect(result).toEqual(buildProjectContextPack(raw, options));
   });
 
