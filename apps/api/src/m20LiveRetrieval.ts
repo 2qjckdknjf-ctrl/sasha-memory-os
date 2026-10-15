@@ -1,4 +1,5 @@
-import { OFFICIAL_M20_PERFORMANCE_RETRIEVAL_GATE_PACK } from '@memory-os/schemas';
+const LIVE_READ_ONLY_SAMPLES = 12;
+const HYBRID_P95_THRESHOLD_MS = 2_000;
 
 type LiveRetrievalClient = {
   request(
@@ -48,8 +49,7 @@ export async function runM20LiveReadOnlyRetrieval(input: {
   concurrency?: number;
   timeoutMs?: number;
 }): Promise<M20LiveRetrievalReport> {
-  const thresholds = OFFICIAL_M20_PERFORMANCE_RETRIEVAL_GATE_PACK.thresholds;
-  const samples = input.samples ?? thresholds.liveReadOnlySamples;
+  const samples = input.samples ?? LIVE_READ_ONLY_SAMPLES;
   const concurrency = input.concurrency ?? 3;
   const timeoutMs = input.timeoutMs ?? 4_000;
   if (!input.baseUrl.trim() || !input.apiSecret.trim() || !input.projectId.trim()) {
@@ -112,12 +112,12 @@ export async function runM20LiveReadOnlyRetrieval(input: {
   const ok =
     failed === 0 &&
     durations.length === samples &&
-    p95Ms <= thresholds.hybridP95Ms;
+    p95Ms <= HYBRID_P95_THRESHOLD_MS;
   return {
     samples: durations.length,
     failed,
     p95Ms,
-    thresholdMs: thresholds.hybridP95Ms,
+    thresholdMs: HYBRID_P95_THRESHOLD_MS,
     ok,
   };
 }
