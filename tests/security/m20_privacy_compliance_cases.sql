@@ -30,6 +30,7 @@ DECLARE
   v_cross_project_memory constant uuid := '99999999-0000-4000-8000-000000000416';
   v_correction_memory constant uuid := '99999999-0000-4000-8000-000000000417';
   v_legacy_request constant uuid := '99999999-0000-4000-8000-000000000418';
+  v_third_generation constant uuid := '99999999-0000-4000-8000-000000000419';
   v_retention_memory constant uuid := '99999999-0000-4000-8000-000000000420';
   v_retention_source constant uuid := '99999999-0000-4000-8000-000000000421';
   v_retention_artifact constant uuid := '99999999-0000-4000-8000-000000000422';
@@ -38,6 +39,8 @@ DECLARE
   v_retention_job constant uuid := '99999999-0000-4000-8000-000000000425';
   v_retention_audit constant uuid := '99999999-0000-4000-8000-000000000426';
   v_retention_entity constant uuid := '99999999-0000-4000-8000-000000000427';
+  v_task_memory constant uuid := '99999999-0000-4000-8000-000000000428';
+  v_unaffected_memory constant uuid := '99999999-0000-4000-8000-000000000429';
   v_marker constant text := 'M20_PRIVACY_SECRET_MARKER_6f9fd9';
   v_vault_ref constant text := 'vault:test/m20/privacy-connector';
   v_created jsonb;
@@ -83,6 +86,21 @@ BEGIN
       v_derived, v_workspace, v_project, 'decision', 'Derived ' || v_marker,
       'Derived from ' || v_marker, 'verified', 'confidential', v_source,
       v_owner, jsonb_build_object('derivedFromMemoryId', v_primary, 'body', v_marker)
+    ),
+    (
+      v_third_generation, v_workspace, v_project, 'fact', 'Third generation',
+      'Third generation derived content', 'active', 'internal', NULL, v_owner,
+      jsonb_build_object('derivedFromMemoryId', v_derived)
+    ),
+    (
+      v_task_memory, v_workspace, v_project, 'task', 'Export typed task',
+      'Task portability fixture', 'active', 'internal', NULL, v_owner,
+      '{}'::jsonb
+    ),
+    (
+      v_unaffected_memory, v_workspace, v_project, 'fact',
+      'Unaffected graph owner', 'Must preserve its entity link', 'active',
+      'internal', NULL, v_owner, '{}'::jsonb
     );
   INSERT INTO public.memory_evidence (
     memory_id, source_event_id, workspace_id, evidence_span
@@ -93,6 +111,13 @@ BEGIN
     memory_id, workspace_id, rationale, alternatives, decision_maker
   ) VALUES (
     v_derived, v_workspace, v_marker, jsonb_build_array(v_marker), v_marker
+  );
+  INSERT INTO public.tasks (
+    memory_id, workspace_id, owner_subject_id, task_status, priority, due_at,
+    dependencies
+  ) VALUES (
+    v_task_memory, v_workspace, v_owner, 'in_progress', 'high',
+    now() + interval '7 days', ARRAY[v_primary]
   );
   INSERT INTO public.entities (
     id, workspace_id, project_id, stable_id, entity_class, canonical_name,
@@ -127,7 +152,8 @@ BEGIN
     workspace_id, project_id, memory_id, entity_id, role, source_ref
   ) VALUES
     (v_workspace, v_project, v_primary, v_entity_left, 'subject', 'privacy-fixture'),
-    (v_workspace, v_project, v_derived, v_entity_right, 'project_context', 'privacy-fixture');
+    (v_workspace, v_project, v_derived, v_entity_right, 'project_context', 'privacy-fixture'),
+    (v_workspace, v_project, v_unaffected_memory, v_entity_left, 'subject', 'unaffected-fixture');
   INSERT INTO public.audit_log (
     id, workspace_id, actor_subject_id, action, object_type, object_id,
     reason, before_state, after_state
@@ -142,7 +168,14 @@ BEGIN
   IF v_export->>'format' <> 'memory-os.privacy-export.v1'
      OR v_export::text NOT LIKE '%' || v_marker || '%'
      OR NOT (v_export->'memories' @> jsonb_build_array(jsonb_build_object('id', v_primary)))
-     OR NOT (v_export->'memories' @> jsonb_build_array(jsonb_build_object('id', v_derived))) THEN
+     OR NOT (v_export->'memories' @> jsonb_build_array(jsonb_build_object(
+       'id', v_derived, 'decision', jsonb_build_object('rationale', v_marker)
+     )))
+     OR NOT (v_export->'memories' @> jsonb_build_array(jsonb_build_object(
+       'id', v_task_memory, 'task', jsonb_build_object(
+         'status', 'in_progress', 'priority', 'high'
+       )
+     ))) THEN
     RAISE EXCEPTION 'privacy export omitted source, primary, or derived data: %', v_export;
   END IF;
   v_export := public.api_export_project_privacy_bundle(
@@ -173,7 +206,7 @@ BEGIN
   v_request := (v_created->>'id')::uuid;
   v_result := public.api_execute_privacy_request(v_secret, v_owner, v_request);
   IF v_result->>'status' <> 'completed'
-     OR (v_result->'resultSummary'->>'affectedMemoryCount')::integer <> 2 THEN
+     OR (v_result->'resultSummary'->>'affectedMemoryCount')::integer <> 3 THEN
     RAISE EXCEPTION 'derived deletion did not complete: %', v_result;
   END IF;
   v_result := public.api_execute_privacy_request(v_secret, v_owner, v_request);
@@ -181,19 +214,30 @@ BEGIN
     RAISE EXCEPTION 'privacy execution replay was not idempotent: %', v_result;
   END IF;
   IF (SELECT count(*) FROM public.memory_records m
-      WHERE m.id IN (v_primary, v_derived)
+      WHERE m.id IN (v_primary, v_derived, v_third_generation)
         AND m.status = 'deleted'
         AND m.content = '[deleted by privacy request]'
         AND m.embedding IS NULL
         AND m.embedding_vector IS NULL
-        AND m.embedding_vector_hq IS NULL) <> 2 THEN
-    RAISE EXCEPTION 'primary or derived memory retained content/embedding';
+        AND m.embedding_vector_hq IS NULL) <> 3 THEN
+    RAISE EXCEPTION 'primary or recursive derived memory retained content/embedding';
   END IF;
   IF EXISTS (SELECT 1 FROM public.memory_evidence WHERE memory_id IN (v_primary, v_derived))
      OR EXISTS (SELECT 1 FROM public.artifact_chunks WHERE artifact_id = v_artifact)
-     OR EXISTS (SELECT 1 FROM public.entities WHERE id IN (v_entity_left, v_entity_right))
+     OR EXISTS (SELECT 1 FROM public.entities WHERE id = v_entity_right)
+     OR NOT EXISTS (
+       SELECT 1 FROM public.entities e
+       WHERE e.id = v_entity_left
+         AND e.canonical_name = 'Redacted shared entity'
+         AND e.source_event_id IS NULL
+         AND e.created_from_memory_id IS NULL
+     )
+     OR NOT EXISTS (
+       SELECT 1 FROM public.memory_entities me
+       WHERE me.memory_id = v_unaffected_memory AND me.entity_id = v_entity_left
+     )
      OR EXISTS (SELECT 1 FROM public.entity_edges WHERE id = v_edge) THEN
-    RAISE EXCEPTION 'derived evidence, artifact chunks, or graph projection survived deletion';
+    RAISE EXCEPTION 'derived evidence/artifacts survived or unrelated graph ownership was lost';
   END IF;
   IF EXISTS (
     SELECT 1 FROM public.source_events s

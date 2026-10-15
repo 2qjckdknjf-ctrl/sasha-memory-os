@@ -15,9 +15,10 @@ Route: `GET /v1/export/privacy`
 
 The M20.4 route supersedes the narrower legacy `GET /v1/export/memories`
 surface. Invocation requires an explicit `project_id`, includes
-connector-derived provenance, and writes metadata-only audit counts. Responses
-use deterministic offset pagination; the Control Center follows `nextOffset`
-until `hasMore=false` and downloads one complete portability bundle.
+connector-derived provenance and typed decision/task fields, and writes
+metadata-only audit counts. Responses use deterministic offset pagination; the
+Control Center follows `nextOffset` until `hasMore=false` and downloads one
+complete portability bundle.
 
 ## Deletion / forget SLA
 

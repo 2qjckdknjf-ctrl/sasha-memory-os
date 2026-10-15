@@ -34,6 +34,9 @@ describe('M20.4 privacy and compliance gate', () => {
         ownerOnly: true,
         explicitProjectRequired: true,
         derivedMemoriesIncluded: true,
+        typedMemoryPayloadsExported: true,
+        recursiveDerivedErasure: true,
+        unaffectedGraphLinksPreserved: true,
         sourceRevocationDeletesVaultReferences: true,
         graphProjectionRemovedOnDeletion: true,
         exportIsFullyPaginated: true,
@@ -109,6 +112,9 @@ describe('M20.4 privacy and compliance gate', () => {
     expect(migration).toContain('v_offset integer');
     expect(migration).toContain("reason = '[redacted after execution]'");
     expect(migration).toContain("reason = 'privacy correction redacted'");
+    expect(migration).toContain('v_previous_affected_count');
+    expect(migration).toContain("'decision'");
+    expect(migration).toContain("'task'");
     expect(migration).toContain('DELETE FROM public.artifact_chunks');
     expect(migration).toContain('embedding_vector_hq = NULL');
     expect(migration).toContain('DELETE FROM public.entity_edges');

@@ -8,8 +8,9 @@ Official pack: `m20-s04-v1`
 
 - `GET /v1/export/privacy`: owner-only, explicit-project portability bundle
   covering canonical/derived memories, provenance/evidence, source events,
-  artifacts/chunks and non-secret connector metadata. Stable offset pagination
-  is consumed to completion by the Control Center export action.
+  typed decision/task payloads, artifacts/chunks and non-secret connector
+  metadata. Stable offset pagination is consumed to completion by the Control
+  Center export action.
 - `POST /v1/privacy/requests`: idempotent correction, retraction, memory deletion
   or connector-source revocation request.
 - `POST /v1/privacy/requests/:id/execute`: idempotent execution with a
@@ -33,7 +34,9 @@ cursors, and erases records derived from that account in every project.
 stack, proves:
 
 1. paginated export includes every primary and derived record plus raw provenance;
-2. deletion removes both primary and derived bodies/evidence/graph projections;
+2. deletion follows multi-generation derivation chains and removes their
+   bodies/evidence/graph projections without deleting graph links owned by
+   unaffected memories;
 3. connector revocation deletes vault/cursor state, stops queued work and
    reaches connector-derived records across project boundaries;
 4. execution replay is idempotent;

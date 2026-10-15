@@ -352,7 +352,7 @@ BEGIN
       'auditDays', 365
     ),
     'memories', coalesce((
-      SELECT jsonb_agg(jsonb_build_object(
+      SELECT jsonb_agg(jsonb_strip_nulls(jsonb_build_object(
         'id', m.id,
         'workspaceId', m.workspace_id,
         'projectId', app.effective_memory_project_id(m.id),
@@ -384,8 +384,27 @@ BEGIN
             'span', me.evidence_span
           ) ORDER BY me.source_event_id)
           FROM public.memory_evidence me WHERE me.memory_id = m.id
-        ), '[]'::jsonb)
-      ) ORDER BY m.recorded_at DESC)
+        ), '[]'::jsonb),
+        'decision', (
+          SELECT jsonb_build_object(
+            'rationale', d.rationale,
+            'alternatives', d.alternatives,
+            'decisionMaker', d.decision_maker,
+            'effectiveAt', d.effective_at
+          )
+          FROM public.decisions d WHERE d.memory_id = m.id
+        ),
+        'task', (
+          SELECT jsonb_build_object(
+            'ownerSubjectId', t.owner_subject_id,
+            'status', t.task_status,
+            'priority', t.priority,
+            'dueAt', t.due_at,
+            'dependencies', t.dependencies
+          )
+          FROM public.tasks t WHERE t.memory_id = m.id
+        )
+      )) ORDER BY m.recorded_at DESC)
       FROM (
         SELECT * FROM public.memory_records candidate
         WHERE candidate.workspace_id = p_workspace_id
@@ -561,6 +580,8 @@ DECLARE
   v_graph_count integer := 0;
   v_vault_count integer := 0;
   v_stopped_job_count integer := 0;
+  v_previous_affected_count integer := -1;
+  v_previous_source_count integer := -1;
 BEGIN
   PERFORM app.assert_api_secret(p_secret);
   PERFORM app.with_subject(p_subject_id);
@@ -764,36 +785,67 @@ BEGIN
         )
     ) affected WHERE memory_id IS NOT NULL;
 
-    -- One bounded metadata expansion covers consolidations/corrections that
-    -- cite an affected memory id without a direct evidence row.
-    SELECT coalesce(array_agg(DISTINCT memory_id), '{}'::uuid[])
-    INTO v_affected_ids
-    FROM (
-      SELECT unnest(v_affected_ids) AS memory_id
-      UNION
-      SELECT m.id FROM public.memory_records m
-      WHERE m.workspace_id = v_request.workspace_id
-        AND (
-          v_request.target_connector_account_id IS NOT NULL
-          OR app.effective_memory_project_id(m.id) = v_request.project_id
-        )
-        AND EXISTS (
-          SELECT 1 FROM unnest(v_affected_ids) affected(id)
-          WHERE m.metadata::text LIKE '%' || affected.id::text || '%'
-        )
-    ) expanded;
+    -- Walk metadata derivations and newly discovered provenance to a fixed
+    -- point. A single pass misses chains such as A -> B -> C.
+    LOOP
+      v_previous_affected_count := cardinality(v_affected_ids);
+      v_previous_source_count := cardinality(v_source_ids);
 
-    SELECT coalesce(array_agg(DISTINCT source_id), '{}'::uuid[])
-    INTO v_source_ids
-    FROM (
-      SELECT unnest(v_source_ids) AS source_id
-      UNION
-      SELECT m.source_event_id FROM public.memory_records m
-      WHERE m.id = ANY(v_affected_ids) AND m.source_event_id IS NOT NULL
-      UNION
-      SELECT me.source_event_id FROM public.memory_evidence me
-      WHERE me.memory_id = ANY(v_affected_ids)
-    ) expanded_sources;
+      SELECT coalesce(array_agg(DISTINCT memory_id), '{}'::uuid[])
+      INTO v_affected_ids
+      FROM (
+        SELECT unnest(v_affected_ids) AS memory_id
+        UNION
+        SELECT m.id FROM public.memory_records m
+        WHERE m.workspace_id = v_request.workspace_id
+          AND (
+            v_request.target_connector_account_id IS NOT NULL
+            OR app.effective_memory_project_id(m.id) = v_request.project_id
+          )
+          AND EXISTS (
+            SELECT 1 FROM unnest(v_affected_ids) affected(id)
+            WHERE m.metadata::text LIKE '%' || affected.id::text || '%'
+          )
+      ) expanded;
+
+      SELECT coalesce(array_agg(DISTINCT source_id), '{}'::uuid[])
+      INTO v_source_ids
+      FROM (
+        SELECT unnest(v_source_ids) AS source_id
+        UNION
+        SELECT m.source_event_id FROM public.memory_records m
+        WHERE m.id = ANY(v_affected_ids) AND m.source_event_id IS NOT NULL
+        UNION
+        SELECT me.source_event_id FROM public.memory_evidence me
+        WHERE me.memory_id = ANY(v_affected_ids)
+      ) expanded_sources;
+
+      SELECT coalesce(array_agg(DISTINCT memory_id), '{}'::uuid[])
+      INTO v_affected_ids
+      FROM (
+        SELECT unnest(v_affected_ids) AS memory_id
+        UNION
+        SELECT m.id FROM public.memory_records m
+        WHERE m.workspace_id = v_request.workspace_id
+          AND (
+            v_request.target_connector_account_id IS NOT NULL
+            OR app.effective_memory_project_id(m.id) = v_request.project_id
+          )
+          AND m.source_event_id = ANY(v_source_ids)
+        UNION
+        SELECT me.memory_id FROM public.memory_evidence me
+        JOIN public.memory_records m ON m.id = me.memory_id
+        WHERE me.source_event_id = ANY(v_source_ids)
+          AND m.workspace_id = v_request.workspace_id
+          AND (
+            v_request.target_connector_account_id IS NOT NULL
+            OR app.effective_memory_project_id(m.id) = v_request.project_id
+          )
+      ) provenance_expanded;
+
+      EXIT WHEN v_previous_affected_count = cardinality(v_affected_ids)
+        AND v_previous_source_count = cardinality(v_source_ids);
+    END LOOP;
 
     SELECT coalesce(array_agg(DISTINCT entity_id), '{}'::uuid[])
     INTO v_entity_ids
@@ -808,17 +860,33 @@ BEGIN
 
     DELETE FROM public.entity_edges e
     WHERE e.memory_id = ANY(v_affected_ids)
-       OR e.source_event_id = ANY(v_source_ids)
-       OR e.from_entity_id = ANY(v_entity_ids)
-       OR e.to_entity_id = ANY(v_entity_ids);
+       OR e.source_event_id = ANY(v_source_ids);
     GET DIAGNOSTICS v_graph_count = ROW_COUNT;
     DELETE FROM public.entity_aliases a
     WHERE a.memory_id = ANY(v_affected_ids)
-       OR a.source_event_id = ANY(v_source_ids)
-       OR a.entity_id = ANY(v_entity_ids);
+       OR a.source_event_id = ANY(v_source_ids);
     DELETE FROM public.memory_entities me
-    WHERE me.memory_id = ANY(v_affected_ids)
-       OR me.entity_id = ANY(v_entity_ids);
+    WHERE me.memory_id = ANY(v_affected_ids);
+    UPDATE public.entities e
+    SET canonical_name = 'Redacted shared entity',
+        status = 'archived',
+        confidence = 0,
+        source_event_id = NULL,
+        created_from_memory_id = NULL,
+        source_ref = 'privacy-redacted:' || e.id::text,
+        metadata = jsonb_build_object(
+          'privacySourceRemoved', true,
+          'privacyRequestId', v_request.id
+        ),
+        updated_at = now()
+    WHERE e.id = ANY(v_entity_ids)
+      AND (
+        e.source_event_id = ANY(v_source_ids)
+        OR e.created_from_memory_id = ANY(v_affected_ids)
+      )
+      AND EXISTS (
+        SELECT 1 FROM public.memory_entities me WHERE me.entity_id = e.id
+      );
     DELETE FROM public.entities e
     WHERE e.id = ANY(v_entity_ids)
       AND NOT EXISTS (SELECT 1 FROM public.memory_entities me WHERE me.entity_id = e.id);
