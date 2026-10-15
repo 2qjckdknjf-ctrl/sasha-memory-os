@@ -47,9 +47,9 @@ export const CURRENT_STATE_PATH = resolve(
 
 export const OFFICIAL_M14_1_BASELINE_MANIFEST_VERSION = 'm14.1-v1' as const;
 export const CURRENT_OPERATIONAL_MILESTONE =
-  'm18-chatgpt-writeback-live-pass' as const;
+  'm19-control-center-governance-live-pass' as const;
 export const CURRENT_NEXT_SLICE =
-  'M19_CONTROL_CENTER_GOVERNANCE_COMPLETION' as const;
+  'M20_PRODUCTION_GA_CLOSURE' as const;
 
 export type CurrentStateManifest = {
   manifestVersion: string;
@@ -194,6 +194,38 @@ export type CurrentStateManifest = {
     sameCanonicalStateActors: string[];
     sameCanonicalStateMemoryId: string;
     freshnessSlaPassed: boolean;
+  };
+  m19ControlCenterGovernanceLiveReceipt: {
+    packVersion: string;
+    memoryId: string;
+    supersedesMemoryId: string;
+    verifiedAt: string;
+    implementationPullRequest: number;
+    securityGatePullRequest: number;
+    receiptPullRequest: number;
+    implementationMergeSha: string;
+    securityGateMergeSha: string;
+    implementationPrCiRun: number;
+    implementationMainCiRun: number;
+    implementationMainCodeqlRun: number;
+    trustedMainCiRun: number;
+    trustedMainCodeqlRun: number;
+    liveBrowserJob: number;
+    workerReconciliationRun: number;
+    migration: string;
+    productionMigrationRecord: string;
+    ownerReadsPassed: boolean;
+    nonOwnerDenied: boolean;
+    clientRpcExecuteDenied: boolean;
+    opaqueCursorRedacted: boolean;
+    jobPayloadRedacted: boolean;
+    crossWorkspaceRoutingRejected: boolean;
+    probeRecordsRemoved: boolean;
+    browserProductionMetricsRendered: boolean;
+    browserLocalFallbackAbsent: boolean;
+    browserSecretServerOnly: boolean;
+    pullRequestCredentialJobSkipped: boolean;
+    readAfterWrite: boolean;
   };
   projectRouting: {
     allowMemoryOsDefaultProjectIdFallback: boolean;
@@ -344,10 +376,10 @@ export function validateCurrentStateDrift(
     });
   }
 
-  if (manifest.completedThrough !== 'M18.4') {
+  if (manifest.completedThrough !== 'M19') {
     findings.push({
       code: 'completed-through',
-      message: `expected contractPacks completedThrough M18.4, got ${manifest.completedThrough}`,
+      message: `expected contractPacks completedThrough M19, got ${manifest.completedThrough}`,
     });
   }
 
@@ -448,6 +480,53 @@ export function validateCurrentStateDrift(
       code: 'm18-chatgpt-writeback-live-receipt',
       message:
         'M18.4 live receipt must preserve the seven-tool policy, create/dedupe/conflict/read-after-write proof and the ChatGPT/Cursor/ROMA same-state exit gate',
+    });
+  }
+
+  const controlCenterReceipt = manifest.m19ControlCenterGovernanceLiveReceipt;
+  if (
+    !controlCenterReceipt ||
+    controlCenterReceipt.packVersion !==
+      OFFICIAL_M19_CONTROL_CENTER_GOVERNANCE_PACK_VERSION ||
+    controlCenterReceipt.memoryId !==
+      '4376487c-d83f-42d1-bc1d-2d900baf2a30' ||
+    controlCenterReceipt.supersedesMemoryId !==
+      '1cb2e53b-93eb-481e-8cd3-6cfcc4da534f' ||
+    controlCenterReceipt.implementationPullRequest !== 110 ||
+    controlCenterReceipt.securityGatePullRequest !== 111 ||
+    controlCenterReceipt.receiptPullRequest !== 112 ||
+    controlCenterReceipt.implementationMergeSha !==
+      '965050bcf981e2e9b86a81d0c79e8bc6d2620b23' ||
+    controlCenterReceipt.securityGateMergeSha !==
+      'a873471b345e07c6ebad75cd7b77ec768f31955c' ||
+    controlCenterReceipt.implementationPrCiRun !== 38776809143 ||
+    controlCenterReceipt.implementationMainCiRun !== 38777226702 ||
+    controlCenterReceipt.implementationMainCodeqlRun !== 38777226855 ||
+    controlCenterReceipt.trustedMainCiRun !== 38780909955 ||
+    controlCenterReceipt.trustedMainCodeqlRun !== 38780908745 ||
+    controlCenterReceipt.liveBrowserJob !== 116581233306 ||
+    controlCenterReceipt.workerReconciliationRun !== 38779484728 ||
+    controlCenterReceipt.migration !==
+      '20261015200000_m19_control_center_governance.sql' ||
+    controlCenterReceipt.productionMigrationRecord !==
+      '20261015172818_m19_control_center_governance' ||
+    controlCenterReceipt.ownerReadsPassed !== true ||
+    controlCenterReceipt.nonOwnerDenied !== true ||
+    controlCenterReceipt.clientRpcExecuteDenied !== true ||
+    controlCenterReceipt.opaqueCursorRedacted !== true ||
+    controlCenterReceipt.jobPayloadRedacted !== true ||
+    controlCenterReceipt.crossWorkspaceRoutingRejected !== true ||
+    controlCenterReceipt.probeRecordsRemoved !== true ||
+    controlCenterReceipt.browserProductionMetricsRendered !== true ||
+    controlCenterReceipt.browserLocalFallbackAbsent !== true ||
+    controlCenterReceipt.browserSecretServerOnly !== true ||
+    controlCenterReceipt.pullRequestCredentialJobSkipped !== true ||
+    controlCenterReceipt.readAfterWrite !== true
+  ) {
+    findings.push({
+      code: 'm19-control-center-governance-live-receipt',
+      message:
+        'M19 live receipt must preserve trusted-main execution, server-only browser auth, owner/non-owner, redaction, workspace isolation and read-after-write evidence',
     });
   }
 

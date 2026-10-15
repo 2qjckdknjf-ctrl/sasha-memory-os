@@ -47,9 +47,11 @@ The owner can understand and control Sasha Memory OS without direct database acc
 - A reversible production probe rejected a project from another workspace and removed both temporary records.
 - Direct production RPC checks verified owner reads, non-owner denial, role grants, response redaction, and cross-workspace routing rejection.
 - The first browser run (`38778955603` / job `116574576759`) is explicitly **not release evidence**: it ran against pull-request code and exposed the API secret through a `VITE_*` variable. Review rejected that design.
-- The corrected gate runs only on a trusted `push` to `main` and injects the API secret in the Vite development proxy, never into browser JavaScript. Its production browser receipt must be recorded after this change merges and the main workflow passes.
-- Preliminary Memory OS receipt `1cb2e53b-93eb-481e-8cd3-6cfcc4da534f` was read back, but must be superseded by a corrected receipt after the trusted-main gate passes.
+- The corrected gate runs only on a trusted `push` to `main` and injects the API secret in the Vite development proxy, never into browser JavaScript.
+- Security-gate PR `#111` merged as `a873471b345e07c6ebad75cd7b77ec768f31955c`; PR checks passed with `live-control-center-e2e` intentionally skipped.
+- Trusted main CI `38780909955` passed all jobs. Its production `live-control-center-e2e` job `116581233306` passed owner `200`, Cursor `403`, missing-secret `401`, bounded/redacted jobs, and real governance metrics in headless Chrome with no local fallback. Main CodeQL `38780908745` also passed.
+- Superseding Memory OS receipt `4376487c-d83f-42d1-bc1d-2d900baf2a30` was read back successfully and explicitly rejects the preliminary browser run as release evidence.
 
 Operational facts exposed by the completed surface are intentionally not hidden: five connectors require OAuth reauthorization, one is revoked, four old jobs remain failed, 142 August connector jobs are dead-lettered, and five non-terminal capture/notification outbox events have no downstream publisher policy yet. The worker cycle `38779484728` passed without unsafe replay; these items move to M20/external-provider closure rather than being misreported as healthy.
 
-Current status: **IMPLEMENTED / FINAL TRUSTED-MAIN LIVE GATE PENDING**. The canonical next slice remains M19 until the corrected receipt is committed.
+Current status: **COMPLETE / TRUSTED-MAIN LIVE PASS**. Next canonical slice: M20 production/GA closure.
