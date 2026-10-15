@@ -46,6 +46,8 @@ Supabase CI environment after all repository migrations and security cases:
    excluded because secret material is recovered by Supabase physical backup,
    not exported by an application-level logical drill;
 2. restore it into a fresh isolated database on the runner;
+   Supabase-owned extension definitions and platform default ACLs are recreated
+   by destination bootstrap, while Memory OS object grants remain in the dump;
 3. compare metadata-only row/ID checksums, table/RLS counts, and RPC counts;
 4. rerun the exhaustive M20.1 RLS/ACL matrix on the restored copy;
 5. run the M20.2 worker and connector recovery drill on the restored copy;

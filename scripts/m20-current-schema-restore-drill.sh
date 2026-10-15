@@ -84,10 +84,15 @@ psql "$DB_URL" -X -A -t -v ON_ERROR_STOP=1 -c "
 psql "$target_url" -X -v ON_ERROR_STOP=1 -f "$task_tmp/extensions.sql"
 
 # The standard public schema exists in template0 and Supabase Vault owns the
-# vault schema. Exclude those schema-creation TOC rows; all application tables,
-# functions, policies, grants, and data remain in the restore list.
+# vault schema. Supabase also owns platform-level default ACLs that an ordinary
+# database owner cannot impersonate during a logical restore; extension/bootstrap
+# provisioning recreates those defaults. Exclude only those platform-owned TOC
+# rows. All Memory OS object ACLs, tables, functions, policies, and data remain.
 pg_restore --list "$task_tmp/current.dump" > "$task_tmp/restore.list"
-awk '!/ SCHEMA - (public|vault) /' "$task_tmp/restore.list" > "$task_tmp/restore.filtered.list"
+awk '
+  !/ SCHEMA - (public|vault) / &&
+  !/ DEFAULT ACL .* supabase_admin$/
+' "$task_tmp/restore.list" > "$task_tmp/restore.filtered.list"
 
 pg_restore \
   --exit-on-error \
