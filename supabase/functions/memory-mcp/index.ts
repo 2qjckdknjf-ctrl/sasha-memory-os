@@ -36,6 +36,7 @@ const SEARCH_RANKING_WEIGHTS_VERSION = "m13-s06-v1";
 const QUERY_EMBEDDING_CACHE = createQueryEmbeddingCache({
   cacheable: (value) => value.engine === "openai" || value.engine === "stub-hash",
 });
+const QUERY_EMBEDDING_PROVIDER_TIMEOUT_MS = 700;
 
 const READ_ONLY = new Set(["memory.search", "memory.get", "context.project"]);
 const tools = EDGE_TOOL_DEFS.map((tool) => ({
@@ -317,6 +318,10 @@ async function embedText(
           "content-type": "application/json",
         },
         body: JSON.stringify({ model, input: [text], dimensions: dims }),
+        // Retrieval must remain available when the optional semantic provider
+        // is slow. The database still applies ACL-scoped structured/text
+        // ranking to the deterministic local fallback vector.
+        signal: AbortSignal.timeout(QUERY_EMBEDDING_PROVIDER_TIMEOUT_MS),
       });
       if (!res.ok) {
         return { vector: hashEmbed(text, 32), engine: "stub-hash-fallback" };
