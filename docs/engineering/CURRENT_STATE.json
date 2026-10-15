@@ -1,13 +1,13 @@
 {
   "manifestVersion": "m14.1-v1",
   "schemaVersion": "1.2",
-  "generatedAt": "2026-10-15T17:15:00Z",
+  "generatedAt": "2026-10-15T17:43:00Z",
   "repository": "2qjckdknjf-ctrl/sasha-memory-os",
   "canonicalProjectId": "44444444-4444-4444-8444-444444444402",
   "aistroykaProjectId": "44444444-4444-4444-8444-444444444401",
   "hiairProjectId": "44444444-4444-4444-8444-444444444403",
   "canonicalWorkspaceId": "11111111-1111-4111-8111-111111111111",
-  "reconciledAgainstMainSha": "4de4b6f6c8a25562e2ed3591b577a127ba3c21be",
+  "reconciledAgainstMainSha": "965050bcf981e2e9b86a81d0c79e8bc6d2620b23",
   "contractPacksCompletedThrough": "M18.4",
   "liveOperationalMilestone": "M18_CHATGPT_AUTOMATIC_WRITEBACK_LIVE_PASS",
   "nextAllowedSlice": "M19_CONTROL_CENTER_GOVERNANCE_COMPLETION",
@@ -242,6 +242,7 @@
     "runtimeRecovery": "PASS",
     "terminalOutboxReconciled": 146,
     "terminalOutboxPending": 0,
+    "nonTerminalOutboxPending": 5,
     "readyConnectors": 0,
     "blocker": "Real GitHub/Google OAuth provider credentials and user consent are required for live connector E2E."
   },
@@ -296,7 +297,12 @@
     {
       "id": "m15-live-e2e-credentials",
       "severity": "M15",
-      "summary": "Runtime recovery passed and the outbox backlog is zero; live connector E2E remains blocked only by missing real provider OAuth credentials/consent."
+      "summary": "Runtime recovery passed and the terminal capture/ingest outbox backlog is zero; live connector E2E remains blocked by missing real provider OAuth credentials/consent."
+    },
+    {
+      "id": "nonterminal-outbox-consumer",
+      "severity": "M20",
+      "summary": "Five connector capture / ROMA notification outbox events are pending because no downstream publisher policy is configured; terminal capture/ingest reconciliation remains at zero and arbitrary events are not falsely acknowledged."
     },
     {
       "id": "supabase-leaked-password-protection",
