@@ -44,8 +44,8 @@ export const CURRENT_STATE_PATH = resolve(
 
 export const OFFICIAL_M14_1_BASELINE_MANIFEST_VERSION = 'm14.1-v1' as const;
 export const CURRENT_OPERATIONAL_MILESTONE =
-  'm18-cursor-bootstrap-contract' as const;
-export const CURRENT_NEXT_SLICE = 'M18.2_PROJECT_CONTEXT_PACK' as const;
+  'm18-project-context-live-pass' as const;
+export const CURRENT_NEXT_SLICE = 'M18.3_ROMA_INTEGRATION' as const;
 
 export type CurrentStateManifest = {
   manifestVersion: string;
@@ -116,6 +116,22 @@ export type CurrentStateManifest = {
     passedAt: string;
     toolCount: number;
     transport: string;
+  };
+  m18ProjectContextLiveReceipt: {
+    packVersion: string;
+    memoryId: string;
+    verifiedAt: string;
+    pullRequests: number[];
+    mergeShas: string[];
+    migration: string;
+    edgeFunctionVersion: number;
+    edgeFunctionSha256: string;
+    toolCount: number;
+    maxTokens: number;
+    estimatedTokens: number;
+    canonicalProjectNoFallback: boolean;
+    aistroykaNoFallback: boolean;
+    sourceSpecificHandoffAcl: boolean;
   };
   projectRouting: {
     allowMemoryOsDefaultProjectIdFallback: boolean;
@@ -266,10 +282,10 @@ export function validateCurrentStateDrift(
     });
   }
 
-  if (manifest.completedThrough !== 'M18.1') {
+  if (manifest.completedThrough !== 'M18.2') {
     findings.push({
       code: 'completed-through',
-      message: `expected contractPacks completedThrough M18.1, got ${manifest.completedThrough}`,
+      message: `expected contractPacks completedThrough M18.2, got ${manifest.completedThrough}`,
     });
   }
 
@@ -277,6 +293,25 @@ export function validateCurrentStateDrift(
     findings.push({
       code: 'next-slice',
       message: `expected nextSlice ${CURRENT_NEXT_SLICE}, got ${manifest.nextSlice}`,
+    });
+  }
+
+  const contextReceipt = manifest.m18ProjectContextLiveReceipt;
+  if (
+    !contextReceipt ||
+    contextReceipt.packVersion !== OFFICIAL_M18_PROJECT_CONTEXT_PACK_VERSION ||
+    contextReceipt.memoryId !== '9ac3fb2e-95de-42aa-aa34-e9954dc0228c' ||
+    contextReceipt.edgeFunctionVersion !== 11 ||
+    contextReceipt.toolCount !== 7 ||
+    contextReceipt.maxTokens !== 1800 ||
+    contextReceipt.estimatedTokens > contextReceipt.maxTokens ||
+    contextReceipt.canonicalProjectNoFallback !== true ||
+    contextReceipt.aistroykaNoFallback !== true ||
+    contextReceipt.sourceSpecificHandoffAcl !== true
+  ) {
+    findings.push({
+      code: 'm18-project-context-live-receipt',
+      message: 'M18.2 live receipt must preserve the verified pack, Edge v11, seven-tool, bounded-budget and no-fallback evidence',
     });
   }
 

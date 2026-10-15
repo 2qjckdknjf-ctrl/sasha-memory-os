@@ -49,10 +49,18 @@ describe('M18.2 project context pack', () => {
     expect(aclMigration.match(/app\.has_acl\(/g)?.length).toBeGreaterThanOrEqual(6);
     expect(ephemeral).toContain('m18_slice_02_context_acl_cases.sql');
     expect(current).toMatchObject({
-      completedThrough: 'M18.1',
-      nextSlice: 'M18.2_PROJECT_CONTEXT_PACK',
+      completedThrough: 'M18.2',
+      nextSlice: 'M18.3_ROMA_INTEGRATION',
       officialPacks: { m18ProjectContext: 'm18-s02-v1' },
       chatgptModeA: { toolCount: 7 },
+      m18ProjectContextLiveReceipt: {
+        memoryId: '9ac3fb2e-95de-42aa-aa34-e9954dc0228c',
+        edgeFunctionVersion: 11,
+        maxTokens: 1800,
+        estimatedTokens: 1788,
+        aistroykaNoFallback: true,
+        sourceSpecificHandoffAcl: true,
+      },
     });
   });
 });
