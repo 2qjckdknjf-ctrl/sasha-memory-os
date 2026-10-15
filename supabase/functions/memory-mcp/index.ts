@@ -303,13 +303,7 @@ async function embedText(
   const dims = requested === 32 || requested === 1536 ? requested : 1536;
   const model = Deno.env.get("MEMORY_OS_OPENAI_EMBED_MODEL") ??
     "text-embedding-3-small";
-  const cacheKey = await queryEmbeddingCacheKey({
-    engine: apiKey ? "openai" : "stub",
-    model,
-    dimensions: dims,
-    text,
-  });
-  return await QUERY_EMBEDDING_CACHE.getOrLoad(cacheKey, async () => {
+  const load = async (): Promise<{ vector: number[]; engine: string }> => {
     if (!apiKey) return { vector: hashEmbed(text, 32), engine: "stub-hash" };
     try {
       const request: RequestInit = {
@@ -337,7 +331,19 @@ async function embedText(
     } catch {
       return { vector: hashEmbed(text, 32), engine: "stub-hash-fallback" };
     }
+  };
+
+  // Capture/write calls deliberately bypass the query cache so they can never
+  // share a bounded retrieval promise or persist its degraded fallback.
+  if (options.providerTimeoutMs === undefined) return await load();
+
+  const cacheKey = await queryEmbeddingCacheKey({
+    engine: apiKey ? "openai" : "stub",
+    model,
+    dimensions: dims,
+    text,
   });
+  return await QUERY_EMBEDDING_CACHE.getOrLoad(cacheKey, load);
 }
 
 type Hit = {

@@ -39,8 +39,9 @@ Official pack: `m20-s03-v1`
   deterministic local vector while the database preserves ACL-scoped
   structured/text retrieval. Transient fallbacks are not cached, so a later
   request may recover semantic ranking without a deployment. Capture/write
-  embeddings are not subject to this query budget and cannot persist a degraded
-  vector merely because a read-path latency guard fired.
+  embeddings bypass this query cache and budget, so they cannot share or persist
+  a degraded read-path fallback and cannot make retrieval inherit an unbounded
+  write-path provider call.
 
 ## Idempotency hardening
 
