@@ -29,6 +29,10 @@ Official pack: `m20-s03-v1`
   Edge MCP when live preflight is ready. The steady-state p95 target is 2,000
   ms and response bodies are never printed. Burst pressure remains covered by
   the 60-operation soak and the separate 16-way dedupe/concurrency gate.
+- The Edge MCP keeps a bounded five-minute, 128-entry isolate-local query
+  embedding cache. Identical requests share one in-flight provider call; failed
+  loads are evicted and retried. This removes repeated provider latency without
+  changing ranking weights, persisting queries, or logging payloads.
 
 ## Idempotency hardening
 

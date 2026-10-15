@@ -39,6 +39,9 @@ describe('M20.3 performance and retrieval gate', () => {
     const liveRetrieval = repoFile('apps/api/src/m20LiveRetrieval.ts');
     const performanceHarness = repoFile('apps/api/src/m20PerformanceHarness.ts');
     const edgeMcp = repoFile('supabase/functions/memory-mcp/index.ts');
+    const edgeEmbeddingCache = repoFile(
+      'supabase/functions/memory-mcp/queryEmbeddingCache.ts',
+    );
     const docs = repoFile('docs/engineering/M20_SLICE_03_PERFORMANCE_RETRIEVAL.md');
     const current = JSON.parse(repoFile('docs/engineering/CURRENT_STATE.json'));
 
@@ -60,6 +63,9 @@ describe('M20.3 performance and retrieval gate', () => {
     expect(performanceHarness).toContain('thresholds.agenticP95Ms');
     expect(edgeMcp).toContain('withoutSearchEmbeddings(ranked)');
     expect(edgeMcp).toContain('embedding_vector_hq');
+    expect(edgeMcp).toContain('QUERY_EMBEDDING_CACHE.getOrLoad');
+    expect(edgeEmbeddingCache).toContain('maxEntries ?? 128');
+    expect(edgeEmbeddingCache).toContain('ttlMs ?? 5 * 60_000');
     expect(docs).toContain('Recall@10 `1.0`');
     expect(current.officialPacks.m20PerformanceRetrieval).toBe('m20-s03-v1');
     expect(current.tests.m20PerformanceRoutingDedupeSql).toBe(
