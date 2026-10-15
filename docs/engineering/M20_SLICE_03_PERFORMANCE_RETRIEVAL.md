@@ -29,6 +29,19 @@ Official pack: `m20-s03-v1`
   Edge MCP when live preflight is ready. The steady-state p95 target is 2,000
   ms and response bodies are never printed. Burst pressure remains covered by
   the 60-operation soak and the separate 16-way dedupe/concurrency gate.
+- The Edge MCP keeps a bounded five-minute, 128-entry isolate-local query
+  embedding cache. Identical requests share one in-flight provider call; failed
+  or fallback loads are evicted and retried. Cache keys are SHA-256 digests, not
+  query text. This removes repeated provider latency without changing ranking
+  weights, persisting queries, or logging payloads.
+- Every external read-only query-embedding request has a 700 ms fail-closed latency
+  budget. A slow, empty, or failed provider response falls back to the existing
+  deterministic local vector while the database preserves ACL-scoped
+  structured/text retrieval. Transient fallbacks are not cached, so a later
+  request may recover semantic ranking without a deployment. Capture/write
+  embeddings bypass this query cache and budget, so they cannot share or persist
+  a degraded read-path fallback and cannot make retrieval inherit an unbounded
+  write-path provider call.
 
 ## Idempotency hardening
 

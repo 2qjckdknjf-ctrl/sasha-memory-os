@@ -10,6 +10,10 @@ import {
   EDGE_GRAPH_FUSION_PACK_VERSION,
   fuseEdgeGraphHits,
 } from "./graphFusion.ts";
+import {
+  createQueryEmbeddingCache,
+  queryEmbeddingCacheKey,
+} from "./queryEmbeddingCache.ts";
 import { buildEdgeProjectContextPack } from "./projectContextPack.ts";
 
 const SUBJECT = Deno.env.get("MEMORY_OS_CHATGPT_SUBJECT_ID") ??
@@ -29,6 +33,10 @@ const OAUTH_SCOPES = ["openid", "email", "profile"];
 const OAUTH_SECURITY_SCHEMES = [{ type: "oauth2", scopes: OAUTH_SCOPES }];
 const SEARCH_RANKING_VERSION = "hybrid-rrf+m13-s06-v1";
 const SEARCH_RANKING_WEIGHTS_VERSION = "m13-s06-v1";
+const QUERY_EMBEDDING_CACHE = createQueryEmbeddingCache({
+  cacheable: (value) => value.engine === "openai" || value.engine === "stub-hash",
+});
+const QUERY_EMBEDDING_PROVIDER_TIMEOUT_MS = 700;
 
 const READ_ONLY = new Set(["memory.search", "memory.get", "context.project"]);
 const tools = EDGE_TOOL_DEFS.map((tool) => ({
@@ -285,6 +293,7 @@ function hashEmbed(text: string, dimensions = 32): number[] {
 
 async function embedText(
   text: string,
+  options: { providerTimeoutMs?: number } = {},
 ): Promise<{ vector: number[]; engine: string }> {
   const apiKey = Deno.env.get("MEMORY_OS_OPENAI_API_KEY")?.trim() ??
     Deno.env.get("OPENAI_API_KEY")?.trim();
@@ -292,31 +301,49 @@ async function embedText(
     Deno.env.get("MEMORY_OS_OPENAI_EMBED_DIMS") ?? "1536",
   );
   const dims = requested === 32 || requested === 1536 ? requested : 1536;
-  if (!apiKey) return { vector: hashEmbed(text, 32), engine: "stub-hash" };
   const model = Deno.env.get("MEMORY_OS_OPENAI_EMBED_MODEL") ??
     "text-embedding-3-small";
-  try {
-    const res = await fetch("https://api.openai.com/v1/embeddings", {
-      method: "POST",
-      headers: {
-        authorization: `Bearer ${apiKey}`,
-        "content-type": "application/json",
-      },
-      body: JSON.stringify({ model, input: [text], dimensions: dims }),
-    });
-    if (!res.ok) {
+  const load = async (): Promise<{ vector: number[]; engine: string }> => {
+    if (!apiKey) return { vector: hashEmbed(text, 32), engine: "stub-hash" };
+    try {
+      const request: RequestInit = {
+        method: "POST",
+        headers: {
+          authorization: `Bearer ${apiKey}`,
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({ model, input: [text], dimensions: dims }),
+      };
+      if (options.providerTimeoutMs !== undefined) {
+        request.signal = AbortSignal.timeout(options.providerTimeoutMs);
+      }
+      const res = await fetch("https://api.openai.com/v1/embeddings", request);
+      if (!res.ok) {
+        return { vector: hashEmbed(text, 32), engine: "stub-hash-fallback" };
+      }
+      const payload = await res.json() as {
+        data?: Array<{ embedding?: number[] }>;
+      };
+      const vector = payload.data?.[0]?.embedding ?? [];
+      return vector.length
+        ? { vector, engine: "openai" }
+        : { vector: hashEmbed(text, 32), engine: "stub-hash-fallback" };
+    } catch {
       return { vector: hashEmbed(text, 32), engine: "stub-hash-fallback" };
     }
-    const payload = await res.json() as {
-      data?: Array<{ embedding?: number[] }>;
-    };
-    const vector = payload.data?.[0]?.embedding ?? [];
-    return vector.length
-      ? { vector, engine: "openai" }
-      : { vector: hashEmbed(text, 32), engine: "stub-hash" };
-  } catch {
-    return { vector: hashEmbed(text, 32), engine: "stub-hash-fallback" };
-  }
+  };
+
+  // Capture/write calls deliberately bypass the query cache so they can never
+  // share a bounded retrieval promise or persist its degraded fallback.
+  if (options.providerTimeoutMs === undefined) return await load();
+
+  const cacheKey = await queryEmbeddingCacheKey({
+    engine: apiKey ? "openai" : "stub",
+    model,
+    dimensions: dims,
+    text,
+  });
+  return await QUERY_EMBEDDING_CACHE.getOrLoad(cacheKey, load);
 }
 
 type Hit = {
@@ -480,7 +507,12 @@ async function callTool(
       );
       const query = String(args.query ?? "").trim();
       if (!query) throw new Error("query is required");
-      const embedded = await embedText(query);
+      // Retrieval must remain available when the optional semantic provider is
+      // slow. Capture/write embeddings intentionally have no query timeout so
+      // a transient provider delay cannot persist a degraded fallback vector.
+      const embedded = await embedText(query, {
+        providerTimeoutMs: QUERY_EMBEDDING_PROVIDER_TIMEOUT_MS,
+      });
       const rawHits = await rpc(client, "api_search_memories", {
         p_secret: secret,
         p_subject_id: actor,
