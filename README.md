@@ -16,6 +16,7 @@
 - [CURRENT_STATE manifest](docs/engineering/CURRENT_STATE.json)
 - [M14.1 baseline reconciliation](docs/engineering/M14_1_BASELINE.md)
 - [M19 Control Center governance](docs/engineering/M19_CONTROL_CENTER_GOVERNANCE.md)
+- [M20.2 reliability and DR gate](docs/engineering/M20_SLICE_02_RELIABILITY_DR.md)
 
 ## Статус
 
@@ -34,11 +35,13 @@ Machine-readable snapshot: [docs/engineering/CURRENT_STATE.json](docs/engineerin
 - **M18.3 production PASS:** least-privilege canonical-project ACL, live worker job, three audited candidate findings and MCP read-after-write
 - **M18.4 production PASS:** seven-tool-compatible approved writeback, deterministic dedupe, conflict stop, audited read-after-write and the ChatGPT/Cursor/ROMA same-state exit gate
 - **M19 production PASS:** owner governance overview, routing inbox, job controls, cursor privacy, privilege boundaries and the server-secret-safe production Chrome gate passed from trusted `main`
+- **M20.1 security implementation merged:** exhaustive RLS/RPC checks and threat model are live; leaked-password protection is enabled, while the stale GitHub Management API token still blocks a green automation receipt
+- **M20.2 reliability/DR implementation:** daily backup inventory plus current-schema isolated restore and transactional retry/DLQ/replay/token-expiry drills are mandatory in CI
 - Core path live: WP-01…08 RPCs, vault OAuth, hybrid RRF retrieval, embeddings, consolidation/outbox/jobs, MCP, Control Center
 - M10–M13 foundations merged (Drive/Gmail/Calendar policies, ROMA project-health, bounded agentic retrieval / consolidation / ranking)
 - Apple: companion-required personal-source contracts complete; live device E2E still blocked
 - Entity graph: durable projection + server-only search/inspector + evidence-bounded live traversal implementation
-- Known blockers: real provider OAuth credentials/consent, Apple live device E2E, five non-terminal outbox events without a downstream publisher policy, leaked-password protection and remaining advisor debt; Fly deferred. Terminal capture/ingest outbox backlog is zero.
+- Known blockers: real provider OAuth credentials/consent, Apple live device E2E, five non-terminal outbox events without a downstream publisher policy, stale GitHub Supabase Management token, vector-in-public advisor debt; Fly deferred. Terminal capture/ingest outbox backlog is zero.
 
 ## Репозиторий
 
@@ -136,7 +139,7 @@ Canonical order (do not skip): see [M14_1_BASELINE.md](docs/engineering/M14_1_BA
 26. ~~M18.3 ROMA integration~~ (`m18-s03-v1`) — shared context consumption, audited/deduplicated QA + release-risk outcomes, release evidence and candidate-only production read-after-write PASS; Memory OS receipt `ea0746e7-6557-4c66-b017-005e3c06f157`
 27. ~~M18.4 ChatGPT automatic writeback policy~~ (`m18-s04-v1`) — production Edge v12 create/dedupe/conflict/read-after-write PASS; cross-client M18 exit gate PASS; Memory OS receipt `b664431d-7e33-49f3-bd3b-27dbb24150f0`
 28. ~~M19 Control Center governance completion~~ (`m19-s01-v1`) — production migration, privilege checks, reversible routing probe and trusted-main Chrome E2E PASS; superseding Memory OS receipt `4376487c-d83f-42d1-bc1d-2d900baf2a30`
-29. **M20 security, live release gates and final GA evidence**
+29. **M20 security, reliability/DR, performance, privacy, release engineering and final GA evidence** — M20.1/M20.2 implementations landed or in acceptance; final closure remains open
 
 ## AI разборы 2026-10-13
 
