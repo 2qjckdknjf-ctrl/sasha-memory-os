@@ -500,6 +500,21 @@ function safeProjectContextItemTexts(
   return items.map((item) => safeProjectContextItemText(pack, item));
 }
 
+function boundQaFindingEvidenceRefs(
+  refs: QaFindingEvidenceRef[],
+  limit = 12,
+): QaFindingEvidenceRef[] {
+  if (refs.length <= limit) return refs;
+  const releaseRefs = refs
+    .filter((ref) => ref.kind === 'release')
+    .slice(0, limit);
+  const remaining = Math.max(0, limit - releaseRefs.length);
+  return [
+    ...refs.filter((ref) => ref.kind !== 'release').slice(0, remaining),
+    ...releaseRefs,
+  ];
+}
+
 function formatQaFindingEvidenceRef(ref: QaFindingEvidenceRef): string {
   switch (ref.kind) {
     case 'memory':
@@ -941,7 +956,11 @@ function buildRomaQaFindingCandidates(input: {
   };
   return candidates
     .sort((left, right) => severityRank[left.severity] - severityRank[right.severity])
-    .slice(0, 3);
+    .slice(0, 3)
+    .map((candidate) => ({
+      ...candidate,
+      evidenceRefs: boundQaFindingEvidenceRefs(candidate.evidenceRefs),
+    }));
 }
 
 function buildRomaQaFindingMemory(input: {

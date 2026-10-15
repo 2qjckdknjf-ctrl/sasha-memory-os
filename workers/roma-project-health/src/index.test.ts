@@ -74,6 +74,8 @@ function buildReleaseContext(
           `Merge SHA: ${mergeSha}`,
           'Blockers:',
           '- Private deployment credential detail must not be copied.',
+          '- Release owner approval is pending.',
+          '- Deployment audit receipt needs review.',
           'Next: M18.3 ROMA integration.',
         ].join('\n'),
         status: 'verified',
@@ -118,6 +120,26 @@ function buildReleaseContext(
         memoryType: 'task',
         recordedAt: '2026-10-15T14:34:00.000Z',
         sourceEventId: 'event-task-m18-3',
+      },
+      {
+        id: 'task-release-audit',
+        projectId,
+        title: 'Audit release evidence',
+        content: 'Private release audit notes must not be copied.',
+        status: 'active',
+        memoryType: 'task',
+        recordedAt: '2026-10-15T14:32:00.000Z',
+        sourceEventId: 'event-task-release-audit',
+      },
+      {
+        id: 'task-owner-review',
+        projectId,
+        title: 'Review release ownership',
+        content: 'Private owner review notes must not be copied.',
+        status: 'active',
+        memoryType: 'task',
+        recordedAt: '2026-10-15T14:31:00.000Z',
+        sourceEventId: 'event-task-owner-review',
       },
     ],
     facts: [],
@@ -783,6 +805,16 @@ describe('runRomaProjectFindingsJob', () => {
       ]),
     );
     expect(releaseRisk?.metadata?.release_refs).toHaveLength(6);
+    expect(releaseRisk?.metadata?.evidence_refs).toHaveLength(12);
+    expect(releaseRisk?.metadata?.evidence_refs).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          kind: 'release',
+          releaseType: 'deployment',
+          value: 'milestone-m18-2',
+        }),
+      ]),
+    );
     expect(releaseRisk?.externalVersion).toMatch(/^[a-f0-9]{24}$/);
     expect(releaseRisk?.text).toContain('Canonical status: candidate');
     expect(releaseRisk?.text).toContain('cannot silently become verified');
