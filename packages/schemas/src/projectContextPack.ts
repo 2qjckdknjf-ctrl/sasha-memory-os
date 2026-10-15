@@ -517,9 +517,7 @@ export function buildProjectContextPack(
   const milestoneSource =
     canonicalCandidates.find((memory) =>
       hasMilestoneMarker(stringOf(memory.title))
-    ) ??
-    canonicalCandidates[0] ??
-    null;
+    ) ?? null;
   const milestoneCitation = milestoneSource
     ? citationForMemory(milestoneSource, projectId)
     : null;
@@ -600,7 +598,7 @@ export function buildProjectContextPack(
   }> = [
     {
       kind: 'handoff' as const,
-      values: handoffRecommendedNext,
+      values: [...handoffRecommendedNext, ...handoffOpenItems],
       citation: handoffCitation,
       recordedMs: dateMs(handoffCreatedAt) ?? -1,
     },
@@ -672,7 +670,7 @@ export function buildProjectContextPack(
     stateSupersedesBlockers &&
       stateRecordedMs >= (dateMs(handoffCreatedAt) ?? -1)
       ? []
-      : [...handoffBlockers, ...handoffOpenItems];
+      : handoffBlockers;
   const effectiveMilestoneBlockers =
     stateSupersedesBlockers && stateRecordedMs >= milestoneRecordedMs
       ? []

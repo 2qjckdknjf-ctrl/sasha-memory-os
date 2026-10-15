@@ -74,12 +74,12 @@ describe('M18.2 project context pack', () => {
     expect(pack.currentMilestone?.id).toBe('m18-1');
     expect(pack.activeBlockers.map((item) => item.text)).toEqual([
       'provider consent absent',
-      'review deployment receipt',
       'provider consent',
       'Apple device E2E.',
     ]);
     expect(pack.latestHandoff?.validation[0]?.text).toBe('full gate passed');
     expect(pack.nextWork[0]?.text).toBe('continue from handoff');
+    expect(pack.nextWork[1]?.text).toBe('review deployment receipt');
     expect(pack.recentMerges[0]).toMatchObject({
       pullRequestUrl: 'https://github.com/example/repo/pull/99',
       mergeSha: '1111111111111111111111111111111111111111',
@@ -96,6 +96,56 @@ describe('M18.2 project context pack', () => {
       explicitProject: true,
     });
     expect(pack.budget.estimatedTokens).toBeLessThanOrEqual(1800);
+  });
+
+  it('leaves current milestone empty for ordinary decisions', () => {
+    const pack = buildProjectContextPack(
+      {
+        projectId,
+        decisions: [
+          decision({
+            id: 'ordinary-decision',
+            title: 'Canonical project architecture',
+            content:
+              'Blockers:\n- not an operational blocker\nNext allowed slice: NOT_A_MILESTONE',
+            recordedAt: '2026-10-13T15:59:00.000Z',
+          }),
+        ],
+      },
+      { projectId },
+    );
+
+    expect(pack.canonicalDecisions[0]?.id).toBe('ordinary-decision');
+    expect(pack.currentMilestone).toBeNull();
+    expect(pack.activeBlockers).toEqual([]);
+    expect(pack.nextWork).toEqual([]);
+  });
+
+  it('routes handoff open items to next work instead of blockers', () => {
+    const pack = buildProjectContextPack(
+      {
+        projectId,
+        decisions: [],
+        tasks: [],
+        facts: [],
+        latestHandoff: {
+          id: 'healthy-handoff',
+          project_id: projectId,
+          created_at: '2026-10-13T15:59:00.000Z',
+          payload: {
+            open_items: ['finish documentation'],
+            blockers: [],
+          },
+        },
+      },
+      { projectId },
+    );
+
+    expect(pack.activeBlockers).toEqual([]);
+    expect(pack.currentGoal?.text).toBe('finish documentation');
+    expect(pack.nextWork.map((item) => item.text)).toEqual([
+      'finish documentation',
+    ]);
   });
 
   it('uses bounded project state as a freshness source when no memories exist', () => {

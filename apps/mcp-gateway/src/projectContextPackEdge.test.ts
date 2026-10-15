@@ -81,6 +81,66 @@ describe("Edge project context pack", () => {
     expect(result).toEqual(buildProjectContextPack(raw, options));
   });
 
+  it("matches shared null milestone behavior for ordinary decisions", () => {
+    const raw = {
+      projectId,
+      decisions: [
+        {
+          ...memory(
+            "ordinary-decision",
+            "Canonical project architecture",
+            "2026-10-13T15:59:00Z",
+          ),
+          content:
+            "Blockers:\n- not an operational blocker\nNext allowed slice: NOT_A_MILESTONE",
+        },
+      ],
+      tasks: [],
+      facts: [],
+    };
+    const options = {
+      projectId,
+      now: new Date("2026-10-13T16:00:00Z"),
+    };
+    const result = buildEdgeProjectContextPack(raw, options);
+
+    expect(result.canonicalDecisions[0]?.id).toBe("ordinary-decision");
+    expect(result.currentMilestone).toBeNull();
+    expect(result.activeBlockers).toEqual([]);
+    expect(result.nextWork).toEqual([]);
+    expect(result).toEqual(buildProjectContextPack(raw, options));
+  });
+
+  it("matches shared routing of handoff open items to next work", () => {
+    const raw = {
+      projectId,
+      decisions: [],
+      tasks: [],
+      facts: [],
+      latestHandoff: {
+        id: "healthy-handoff",
+        project_id: projectId,
+        created_at: "2026-10-13T15:59:00Z",
+        payload: {
+          open_items: ["finish documentation"],
+          blockers: [],
+        },
+      },
+    };
+    const options = {
+      projectId,
+      now: new Date("2026-10-13T16:00:00Z"),
+    };
+    const result = buildEdgeProjectContextPack(raw, options);
+
+    expect(result.activeBlockers).toEqual([]);
+    expect(result.currentGoal?.text).toBe("finish documentation");
+    expect(result.nextWork.map((item) => item.text)).toEqual([
+      "finish documentation",
+    ]);
+    expect(result).toEqual(buildProjectContextPack(raw, options));
+  });
+
   it("fails closed when any source belongs to another project", () => {
     expect(() =>
       buildEdgeProjectContextPack(
