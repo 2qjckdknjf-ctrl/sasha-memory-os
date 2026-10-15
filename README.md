@@ -22,19 +22,20 @@
 
 Machine-readable snapshot: [docs/engineering/CURRENT_STATE.json](docs/engineering/CURRENT_STATE.json) (`m14.1-v1` schema, reconciled 2026-10-15).
 
-- **Live operational milestone:** `M18_PROJECT_CONTEXT_PACK_LIVE_PASS`; M18.3 ROMA integration is the next delivery slice
-- **Contract packs completed through:** M18.2 (`m18-s02-v1`, bounded explicit-project context with citations/provenance)
+- **Live operational milestone:** `M18_ROMA_INTEGRATION_LIVE_PASS`; M18.4 ChatGPT automatic writeback policy is the next delivery slice
+- **Contract packs completed through:** M18.3 (`m18-s03-v1`, review-gated ROMA shared-memory integration)
 - **Canonical Memory OS project UUID:** `44444444-4444-4444-8444-444444444402`
 - **M6 ChatGPT Mode A PASS (2026-08-15):** ChatGPT-only; does not close shared-memory E2E
 - **Bidirectional ChatGPT↔Cursor E2E PASS (2026-10-13):** real-session receipts, explicit project isolation, actor attribution verified
 - **M17.5 production PASS:** explicit-project entity search, evidence inspector and bounded 2-hop traversal are live
 - **M17.6 production PASS:** explicit graph search mode for HTTP + the seven-tool Edge MCP profile
 - **M18.2 production PASS:** Edge v11, exact seven-tool discovery, bounded 1,800-token context and cross-project/handoff ACL live checks
+- **M18.3 production PASS:** least-privilege canonical-project ACL, live worker job, three audited candidate findings and MCP read-after-write
 - Core path live: WP-01…08 RPCs, vault OAuth, hybrid RRF retrieval, embeddings, consolidation/outbox/jobs, MCP, Control Center
 - M10–M13 foundations merged (Drive/Gmail/Calendar policies, ROMA project-health, bounded agentic retrieval / consolidation / ranking)
 - Apple: companion-required personal-source contracts complete; live device E2E still blocked
 - Entity graph: durable projection + server-only search/inspector + evidence-bounded live traversal implementation
-- Known blockers: real provider OAuth credentials/consent, Apple live device E2E, worker server key; Fly deferred. Terminal outbox backlog is zero.
+- Known blockers: real provider OAuth credentials/consent, Apple live device E2E, leaked-password protection and remaining advisor debt; Fly deferred. Terminal outbox backlog is zero.
 
 ## Репозиторий
 
@@ -129,7 +130,8 @@ Canonical order (do not skip): see [M14_1_BASELINE.md](docs/engineering/M14_1_BA
 23. ~~M17.6 graph/hybrid fusion + evaluations~~ — production Edge v9 and live graph/fallback/temporal acceptance PASS
 24. ~~M18.1 Cursor bootstrap contract~~ (`m18-s01-v1`) — always-on rule, session hook, live bootstrap workflow, and automatic milestone read-after-write PASS
 25. ~~M18.2 project context pack~~ (`m18-s02-v1`) — explicit-project API/MCP pack, migration, Edge v11 and authenticated 1,800-token live acceptance PASS; Memory OS receipt `9ac3fb2e-95de-42aa-aa34-e9954dc0228c`
-26. **M18.3 ROMA integration** (`m18-s03-v1`) — implementation: shared context consumption, audited/deduplicated QA + release-risk outcomes, release evidence, and candidate-only read-after-write enforcement; production acceptance follows merge
+26. ~~M18.3 ROMA integration~~ (`m18-s03-v1`) — shared context consumption, audited/deduplicated QA + release-risk outcomes, release evidence and candidate-only production read-after-write PASS; Memory OS receipt `ea0746e7-6557-4c66-b017-005e3c06f157`
+27. **M18.4 ChatGPT automatic writeback policy** — next canonical slice
 
 ## AI разборы 2026-10-13
 

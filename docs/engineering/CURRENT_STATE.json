@@ -1,19 +1,19 @@
 {
   "manifestVersion": "m14.1-v1",
   "schemaVersion": "1.2",
-  "generatedAt": "2026-10-15T14:19:26.681Z",
+  "generatedAt": "2026-10-15T15:57:55.610885Z",
   "repository": "2qjckdknjf-ctrl/sasha-memory-os",
   "canonicalProjectId": "44444444-4444-4444-8444-444444444402",
   "aistroykaProjectId": "44444444-4444-4444-8444-444444444401",
   "hiairProjectId": "44444444-4444-4444-8444-444444444403",
   "canonicalWorkspaceId": "11111111-1111-4111-8111-111111111111",
-  "reconciledAgainstMainSha": "c9a8281d57495734b5822ed9cd7c4c4f1994533b",
-  "contractPacksCompletedThrough": "M18.2",
-  "liveOperationalMilestone": "M18_PROJECT_CONTEXT_PACK_LIVE_PASS",
-  "nextAllowedSlice": "M18.3_ROMA_INTEGRATION",
-  "currentMilestone": "m18-project-context-live-pass",
-  "completedThrough": "M18.2",
-  "nextSlice": "M18.3_ROMA_INTEGRATION",
+  "reconciledAgainstMainSha": "960f280a1de8ef958f8c532f688ff3bbbadcac69",
+  "contractPacksCompletedThrough": "M18.3",
+  "liveOperationalMilestone": "M18_ROMA_INTEGRATION_LIVE_PASS",
+  "nextAllowedSlice": "M18.4_CHATGPT_AUTOMATIC_WRITEBACK_POLICY",
+  "currentMilestone": "m18-roma-integration-live-pass",
+  "completedThrough": "M18.3",
+  "nextSlice": "M18.4_CHATGPT_AUTOMATIC_WRITEBACK_POLICY",
   "frozenSlices": [],
   "canonicalPlanMemoryTitle": "SASHA MEMORY OS — CANONICAL COMPLETION PLAN TO 100% — 2026-08-21",
   "supabase": {
@@ -123,6 +123,57 @@
     "canonicalProjectNoFallback": true,
     "aistroykaNoFallback": true,
     "sourceSpecificHandoffAcl": true,
+    "securityAdvisors": {
+      "rlsEnabledNoPolicy": 2,
+      "extensionInPublic": 1,
+      "leakedPasswordProtectionDisabled": 1
+    },
+    "performanceAdvisors": {
+      "unindexedForeignKeys": 75,
+      "unusedIndexes": 30,
+      "multiplePermissivePolicies": 42,
+      "absoluteAuthDbConnections": 1
+    }
+  },
+  "m18RomaIntegrationLiveReceipt": {
+    "packVersion": "m18-s03-v1",
+    "memoryId": "ea0746e7-6557-4c66-b017-005e3c06f157",
+    "verifiedAt": "2026-10-15T15:57:55.610885Z",
+    "pullRequests": [104, 105, 106],
+    "mergeShas": [
+      "50a89d0adf24b8aa4dfd201e93a4b33bfbd7462f",
+      "d8bab09295d6437b500fb9bcb11e7d49c0561679",
+      "960f280a1de8ef958f8c532f688ff3bbbadcac69"
+    ],
+    "migrations": [
+      "20261015164000_m18_roma_release_evidence.sql",
+      "20261015180000_m18_roma_canonical_project_acl.sql"
+    ],
+    "productionMigrationRecord": "20261015155505_m18_roma_canonical_project_acl",
+    "mainCiRun": 38764027979,
+    "codeqlRun": 38764026942,
+    "workerRun": 38764649250,
+    "jobId": "a5f6a9af-5537-40be-afb4-a9f542c88447",
+    "findingCount": 3,
+    "findingMemoryIds": [
+      "7e066738-1807-4e28-a342-21ff16c286ea",
+      "b4d85980-bd6b-4c6d-9d5c-62eebcac665d",
+      "796e7721-201e-4bac-9682-124eb8a4664a"
+    ],
+    "auditEventIds": [
+      "8ea84b31-61a3-4511-96df-fb7d797d7e74",
+      "b23f116c-7b1d-44d1-8ca2-1c303988995b",
+      "66dc20f8-9026-431f-9f85-e6593e47717f"
+    ],
+    "budgetEventCount": 3,
+    "candidateOnly": true,
+    "confidence": 0.6,
+    "requiresReview": true,
+    "canonicalProjectId": "44444444-4444-4444-8444-444444444402",
+    "romaSubjectId": "33333333-3333-4333-8333-333333333304",
+    "workspaceWideRomaAclCount": 0,
+    "handoffWriteGranted": false,
+    "readAfterWrite": true,
     "securityAdvisors": {
       "rlsEnabledNoPolicy": 2,
       "extensionInPublic": 1,

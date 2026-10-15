@@ -63,10 +63,24 @@ describe('M18.3 ROMA integration pack', () => {
     );
     expect(docs).toContain('ChatGPT Mode A remains exactly seven tools');
     expect(current).toMatchObject({
-      completedThrough: 'M18.2',
-      nextSlice: 'M18.3_ROMA_INTEGRATION',
+      completedThrough: 'M18.3',
+      nextSlice: 'M18.4_CHATGPT_AUTOMATIC_WRITEBACK_POLICY',
       officialPacks: { m18RomaIntegration: 'm18-s03-v1' },
       chatgptModeA: { toolCount: 7 },
+      m18RomaIntegrationLiveReceipt: {
+        packVersion: 'm18-s03-v1',
+        memoryId: 'ea0746e7-6557-4c66-b017-005e3c06f157',
+        workerRun: 38764649250,
+        jobId: 'a5f6a9af-5537-40be-afb4-a9f542c88447',
+        findingCount: 3,
+        budgetEventCount: 3,
+        candidateOnly: true,
+        confidence: 0.6,
+        requiresReview: true,
+        workspaceWideRomaAclCount: 0,
+        handoffWriteGranted: false,
+        readAfterWrite: true,
+      },
     });
   });
 });
