@@ -15,6 +15,10 @@ describe('M20.2 reliability and DR release gate', () => {
     const oauthRecovery = repoFile(
       'supabase/migrations/20261015210000_m20_oauth_reauthentication_boundary.sql',
     );
+    const productionMigration = repoFile(
+      '.github/workflows/production-migration-apply.yml',
+    );
+    const postApply = repoFile('scripts/production-migration-post-apply.sql');
     const docs = repoFile('docs/engineering/M20_SLICE_02_RELIABILITY_DR.md');
     const current = JSON.parse(repoFile('docs/engineering/CURRENT_STATE.json'));
 
@@ -37,6 +41,12 @@ describe('M20.2 reliability and DR release gate', () => {
     expect(sql).toContain('ROLLBACK;');
     expect(oauthRecovery).toContain(
       "v_mode NOT IN ('stub', 'credentials_ready', 'exchanged')",
+    );
+    expect(productionMigration).toContain(
+      '20261015210000_m20_oauth_reauthentication_boundary.sql',
+    );
+    expect(postApply).toContain(
+      'M20 OAuth exchanged completion boundary is missing',
     );
     expect(docs).toContain('15 Oct 2026 06:59:40 (+0000)');
     expect(docs).toContain('PITR is not enabled');

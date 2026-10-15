@@ -28,10 +28,12 @@ jobs:
           P0=$(sha256sum supabase/migrations/20260824100000_p0_project_identity_scope.sql | awk '{print $1}')
           M15_RUNTIME=$(sha256sum supabase/migrations/20261013133423_m15_runtime_outbox_reconciliation.sql | awk '{print $1}')
           M20=$(sha256sum supabase/migrations/20261013135122_m20_security_search_path_hardening.sql | awk '{print $1}')
+          M20_OAUTH=$(sha256sum supabase/migrations/20261015210000_m20_oauth_reauthentication_boundary.sql | awk '{print $1}')
           test "$M15" = "aa7ac5d042e132caa6bb551b32eb145c7247b237010351a98ae544684ae9dc65"
           test "$P0" = "05e9c6d5cd5115acc829b66830024afbec40d9e0e469cc3f67a730855c996935"
           test "$M15_RUNTIME" = "77b99061326a4b871027ee33d6473db47ea962bd00cdf522dc2991a3893ab713"
           test "$M20" = "e21e749e6767eaa93be94efd9216cac7e399730022f991f7fd62b2d65fb2e499"
+          test "$M20_OAUTH" = "df689aa59d50c905cf3fb03133828a689f0a8019ffbe94cf27435f37988136c4"
           echo "migration_checksums=ok head=$(git rev-parse HEAD)"
 
       - name: Owner approval gate
@@ -106,6 +108,14 @@ jobs:
           export SUPABASE_ACCESS_TOKEN
           ./scripts/apply-remote-migration.sh \
             supabase/migrations/20261013135122_m20_security_search_path_hardening.sql
+
+      - name: Apply M20 OAuth reauthentication boundary migration (Management API)
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+        run: |
+          export SUPABASE_ACCESS_TOKEN
+          ./scripts/apply-remote-migration.sh \
+            supabase/migrations/20261015210000_m20_oauth_reauthentication_boundary.sql
 
       - name: Install Supabase CLI
         run: |

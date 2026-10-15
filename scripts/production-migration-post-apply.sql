@@ -63,7 +63,20 @@ BEGIN
   ) THEN
     RAISE EXCEPTION 'M20 sanitizer search_path hardening is missing';
   END IF;
+
+  IF NOT EXISTS (
+    SELECT 1
+    FROM pg_proc p
+    JOIN pg_namespace n ON n.oid = p.pronamespace
+    WHERE n.nspname = 'app'
+      AND p.proname = 'api_oauth_complete_stub'
+      AND pg_get_function_identity_arguments(p.oid) =
+        'p_secret text, p_subject_id uuid, p_state text, p_code text, p_env text, p_exchange_mode text, p_code_fingerprint text'
+      AND position('''exchanged''' in pg_get_functiondef(p.oid)) > 0
+  ) THEN
+    RAISE EXCEPTION 'M20 OAuth exchanged completion boundary is missing';
+  END IF;
 END;
 $$;
 
-SELECT 'm15_runtime_m20_security_verification' AS check_name, 'pass' AS result;
+SELECT 'm15_runtime_m20_security_oauth_verification' AS check_name, 'pass' AS result;

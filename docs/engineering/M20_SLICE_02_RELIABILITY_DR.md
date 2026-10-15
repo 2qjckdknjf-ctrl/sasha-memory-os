@@ -80,7 +80,8 @@ broker already returned `exchanged` after a successful vault write, but the
 database completion function accepted only `stub` and `credentials_ready`.
 Migration `20261015210000_m20_oauth_reauthentication_boundary.sql` admits the
 actual terminal mode without accepting or persisting raw authorization codes or
-tokens.
+tokens. The guarded production-migration workflow pins its checksum, applies it
+after the M20 role boundary, and verifies the resulting function definition.
 
 ## Safety boundary and remaining blocker
 
