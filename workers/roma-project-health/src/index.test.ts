@@ -173,8 +173,11 @@ describe('runRomaProjectHealthJob', () => {
         ],
         tasks: [
           {
+            id: 'task-slice-01',
             title: 'Implement Slice 01',
             content: 'Task body must not be copied verbatim.',
+            status: 'active',
+            recordedAt: '2026-08-20T02:00:00.000Z',
           },
         ],
         facts: [
@@ -256,6 +259,13 @@ describe('runRomaProjectHealthJob', () => {
     expect(captureInput?.text).toContain('Risk register refreshed');
     expect(captureInput?.text).not.toContain(
       'Private salary discussion that must never be quoted.',
+    );
+    expect(captureInput?.text).toContain('Implement Slice 01');
+    expect(captureInput?.text).not.toContain(
+      'Task body must not be copied verbatim.',
+    );
+    expect(captureInput?.text).not.toContain(
+      'Decision body must not be copied verbatim.',
     );
     expect(captureInput?.text).toContain(
       'titles and structured state only; raw memory bodies are not quoted',

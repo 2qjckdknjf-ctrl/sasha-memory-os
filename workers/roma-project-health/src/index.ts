@@ -442,6 +442,31 @@ function projectContextItemEvidenceRefs(
   return refs;
 }
 
+function safeProjectContextItemText(
+  pack: ProjectContextPack,
+  item: ProjectContextPack['activeBlockers'][number],
+): string {
+  const citationById = new Map(pack.citations.map((citation) => [citation.id, citation]));
+  const memoryCitations = item.citations
+    .map((citationId) => citationById.get(citationId))
+    .filter((citation) => citation?.kind === 'memory');
+  if (memoryCitations.length > 0) {
+    const titles = memoryCitations
+      .map((citation) => citation?.title)
+      .filter((title): title is string => Boolean(title))
+      .map((title) => truncateText(title, 160));
+    return titles.length > 0 ? titles.join('; ') : 'memory evidence recorded';
+  }
+  return truncateText(item.text, 180);
+}
+
+function safeProjectContextItemTexts(
+  pack: ProjectContextPack,
+  items: ProjectContextPack['activeBlockers'],
+): string[] {
+  return items.map((item) => safeProjectContextItemText(pack, item));
+}
+
 function formatQaFindingEvidenceRef(ref: QaFindingEvidenceRef): string {
   switch (ref.kind) {
     case 'memory':
@@ -647,17 +672,17 @@ export function buildRomaProjectHealthSummary(input: {
     '',
     'Shared project context',
     `- Context pack: ${contextPack.packVersion}`,
-    `- Current goal: ${contextPack.currentGoal?.text ?? 'none'}`,
+    `- Current goal: ${contextPack.currentGoal ? safeProjectContextItemText(contextPack, contextPack.currentGoal) : 'none'}`,
     `- Current milestone: ${contextPack.currentMilestone?.title ?? 'none'}`,
     formatList(
       'Active blockers',
-      contextPack.activeBlockers.map((item) => item.text),
+      safeProjectContextItemTexts(contextPack, contextPack.activeBlockers),
     ),
     formatList(
       'Unresolved conflicts',
-      contextPack.unresolvedConflicts.map((item) => item.text),
+      safeProjectContextItemTexts(contextPack, contextPack.unresolvedConflicts),
     ),
-    formatList('Next work', contextPack.nextWork.map((item) => item.text)),
+    formatList('Next work', safeProjectContextItemTexts(contextPack, contextPack.nextWork)),
     `- Source freshness: ${contextPack.sourceFreshness.status}`,
     `- Release evidence refs: ${releaseRefs.length}`,
     `- Budget: ${contextPack.budget.estimatedTokens}/${contextPack.budget.maxTokens} estimated tokens`,
