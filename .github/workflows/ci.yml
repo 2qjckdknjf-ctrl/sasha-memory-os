@@ -210,6 +210,7 @@ jobs:
           echo "m6_legacy_mcp_health_http=$code"
 
   live-control-center-e2e:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     needs: smoke
     steps:

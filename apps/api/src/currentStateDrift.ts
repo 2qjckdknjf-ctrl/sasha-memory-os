@@ -47,9 +47,9 @@ export const CURRENT_STATE_PATH = resolve(
 
 export const OFFICIAL_M14_1_BASELINE_MANIFEST_VERSION = 'm14.1-v1' as const;
 export const CURRENT_OPERATIONAL_MILESTONE =
-  'm19-control-center-governance-live-pass' as const;
+  'm18-chatgpt-writeback-live-pass' as const;
 export const CURRENT_NEXT_SLICE =
-  'M20_PRODUCTION_GA_CLOSURE' as const;
+  'M19_CONTROL_CENTER_GOVERNANCE_COMPLETION' as const;
 
 export type CurrentStateManifest = {
   manifestVersion: string;
@@ -194,32 +194,6 @@ export type CurrentStateManifest = {
     sameCanonicalStateActors: string[];
     sameCanonicalStateMemoryId: string;
     freshnessSlaPassed: boolean;
-  };
-  m19ControlCenterGovernanceLiveReceipt: {
-    packVersion: string;
-    memoryId: string;
-    verifiedAt: string;
-    implementationPullRequest: number;
-    receiptPullRequest: number;
-    mergeSha: string;
-    prCiRun: number;
-    mainCiRun: number;
-    mainCodeqlRun: number;
-    liveBrowserCiRun: number;
-    liveBrowserJob: number;
-    workerReconciliationRun: number;
-    migration: string;
-    productionMigrationRecord: string;
-    ownerReadsPassed: boolean;
-    nonOwnerDenied: boolean;
-    clientRpcExecuteDenied: boolean;
-    opaqueCursorRedacted: boolean;
-    jobPayloadRedacted: boolean;
-    crossWorkspaceRoutingRejected: boolean;
-    probeRecordsRemoved: boolean;
-    browserProductionMetricsRendered: boolean;
-    browserLocalFallbackAbsent: boolean;
-    readAfterWrite: boolean;
   };
   projectRouting: {
     allowMemoryOsDefaultProjectIdFallback: boolean;
@@ -370,10 +344,10 @@ export function validateCurrentStateDrift(
     });
   }
 
-  if (manifest.completedThrough !== 'M19') {
+  if (manifest.completedThrough !== 'M18.4') {
     findings.push({
       code: 'completed-through',
-      message: `expected contractPacks completedThrough M19, got ${manifest.completedThrough}`,
+      message: `expected contractPacks completedThrough M18.4, got ${manifest.completedThrough}`,
     });
   }
 
@@ -474,43 +448,6 @@ export function validateCurrentStateDrift(
       code: 'm18-chatgpt-writeback-live-receipt',
       message:
         'M18.4 live receipt must preserve the seven-tool policy, create/dedupe/conflict/read-after-write proof and the ChatGPT/Cursor/ROMA same-state exit gate',
-    });
-  }
-
-  const controlCenterReceipt = manifest.m19ControlCenterGovernanceLiveReceipt;
-  if (
-    !controlCenterReceipt ||
-    controlCenterReceipt.packVersion !==
-      OFFICIAL_M19_CONTROL_CENTER_GOVERNANCE_PACK_VERSION ||
-    controlCenterReceipt.memoryId !==
-      '1cb2e53b-93eb-481e-8cd3-6cfcc4da534f' ||
-    controlCenterReceipt.implementationPullRequest !== 110 ||
-    controlCenterReceipt.receiptPullRequest !== 111 ||
-    controlCenterReceipt.mergeSha !==
-      '965050bcf981e2e9b86a81d0c79e8bc6d2620b23' ||
-    controlCenterReceipt.prCiRun !== 38776809143 ||
-    controlCenterReceipt.mainCiRun !== 38777226702 ||
-    controlCenterReceipt.mainCodeqlRun !== 38777226855 ||
-    controlCenterReceipt.liveBrowserCiRun !== 38778955603 ||
-    controlCenterReceipt.liveBrowserJob !== 116574576759 ||
-    controlCenterReceipt.workerReconciliationRun !== 38779484728 ||
-    controlCenterReceipt.productionMigrationRecord !==
-      '20261015172818_m19_control_center_governance' ||
-    controlCenterReceipt.ownerReadsPassed !== true ||
-    controlCenterReceipt.nonOwnerDenied !== true ||
-    controlCenterReceipt.clientRpcExecuteDenied !== true ||
-    controlCenterReceipt.opaqueCursorRedacted !== true ||
-    controlCenterReceipt.jobPayloadRedacted !== true ||
-    controlCenterReceipt.crossWorkspaceRoutingRejected !== true ||
-    controlCenterReceipt.probeRecordsRemoved !== true ||
-    controlCenterReceipt.browserProductionMetricsRendered !== true ||
-    controlCenterReceipt.browserLocalFallbackAbsent !== true ||
-    controlCenterReceipt.readAfterWrite !== true
-  ) {
-    findings.push({
-      code: 'm19-control-center-governance-live-receipt',
-      message:
-        'M19 live receipt must preserve owner/non-owner, redaction, workspace isolation, production browser and read-after-write evidence',
     });
   }
 

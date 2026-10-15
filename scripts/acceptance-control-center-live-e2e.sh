@@ -16,7 +16,7 @@ done
 workspace_id="${MEMORY_OS_WORKSPACE_ID:-11111111-1111-4111-8111-111111111111}"
 owner_id="${MEMORY_OS_OWNER_SUBJECT_ID:-33333333-3333-4333-8333-333333333301}"
 cursor_id="${MEMORY_OS_CURSOR_SUBJECT_ID:-33333333-3333-4333-8333-333333333303}"
-api_port=8789
+api_port=8787
 web_port=5175
 task_tmp="$(mktemp -d)"
 api_pid=""
@@ -88,8 +88,10 @@ jq -e '
   (tostring | contains("payload") | not)
 ' "$task_tmp/jobs.json" >/dev/null
 
-VITE_MEMORY_API_URL="http://127.0.0.1:${api_port}" \
-VITE_MEMORY_API_SECRET="$MEMORY_OS_API_SECRET" \
+unset VITE_MEMORY_API_SECRET
+VITE_MEMORY_API_URL='' \
+MEMORY_OS_WEB_API_PROXY_TARGET="http://127.0.0.1:${api_port}" \
+MEMORY_OS_WEB_API_PROXY_SECRET="$MEMORY_OS_API_SECRET" \
 pnpm --filter @memory-os/web exec vite --host 127.0.0.1 --port "$web_port" \
   >"$task_tmp/web.log" 2>&1 &
 web_pid=$!

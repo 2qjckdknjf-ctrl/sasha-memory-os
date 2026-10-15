@@ -30,6 +30,7 @@ describe('M19 Control Center governance pack', () => {
     const gateway = repoFile('packages/db/src/gateway.ts');
     const page = repoFile('apps/web/src/GovernancePage.tsx');
     const connections = repoFile('apps/web/src/ConnectionsPage.tsx');
+    const viteConfig = repoFile('apps/web/vite.config.ts');
     const migration = repoFile(
       'supabase/migrations/20261015200000_m19_control_center_governance.sql',
     );
@@ -59,29 +60,29 @@ describe('M19 Control Center governance pack', () => {
     expect(liveE2e).toContain('control_center_live_e2e=PASS');
     expect(liveE2e).toContain('cursor_status');
     expect(liveE2e).toContain('--headless=new');
+    expect(liveE2e).toContain("unset VITE_MEMORY_API_SECRET");
+    expect(liveE2e).not.toContain(
+      'VITE_MEMORY_API_SECRET="$MEMORY_OS_API_SECRET"',
+    );
+    expect(viteConfig).toContain('MEMORY_OS_WEB_API_PROXY_SECRET');
     expect(ci).toContain('live-control-center-e2e:');
+    expect(ci).toContain(
+      "if: github.event_name == 'push' && github.ref == 'refs/heads/main'",
+    );
     expect(ci).toContain('Resolve server-only Supabase key');
     expect(docs).toContain('/governance#routing-inbox');
+    expect(docs).toContain('FINAL TRUSTED-MAIN LIVE GATE PENDING');
     expect(current).toMatchObject({
-      completedThrough: 'M19',
-      nextSlice: 'M20_PRODUCTION_GA_CLOSURE',
+      completedThrough: 'M18.4',
+      nextSlice: 'M19_CONTROL_CENTER_GOVERNANCE_COMPLETION',
       officialPacks: { m19ControlCenterGovernance: 'm19-s01-v1' },
       supabase: {
         latestMigration: '20261015200000_m19_control_center_governance.sql',
         migrationCount: 76,
       },
-      m19ControlCenterGovernanceLiveReceipt: {
-        memoryId: '1cb2e53b-93eb-481e-8cd3-6cfcc4da534f',
-        implementationPullRequest: 110,
-        receiptPullRequest: 111,
-        liveBrowserCiRun: 38778955603,
-        ownerReadsPassed: true,
-        nonOwnerDenied: true,
-        opaqueCursorRedacted: true,
-        crossWorkspaceRoutingRejected: true,
-        browserProductionMetricsRendered: true,
-        readAfterWrite: true,
-      },
     });
+    expect(current).not.toHaveProperty(
+      'm19ControlCenterGovernanceLiveReceipt',
+    );
   });
 });
