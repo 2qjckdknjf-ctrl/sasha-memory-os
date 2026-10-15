@@ -47,6 +47,8 @@ psql "$DB_URL" -v ON_ERROR_STOP=1 -f tests/security/m15_runtime_recovery_cases.s
 psql "$DB_URL" -v ON_ERROR_STOP=1 -f tests/security/m20_security_role_boundary_cases.sql
 DB_URL="$DB_URL" MEMORY_OS_API_SECRET="$API_SECRET" \
   ./scripts/m20-run-reliability-dr-cases.sh
+DB_URL="$DB_URL" MEMORY_OS_API_SECRET="$API_SECRET" \
+  ./scripts/m20-routing-dedupe-load.sh
 psql "$DB_URL" -v ON_ERROR_STOP=1 -f tests/security/m17_slice_04_entity_graph_cases.sql
 psql "$DB_URL" -v ON_ERROR_STOP=1 -f tests/security/m17_slice_05_live_graph_cases.sql
 psql "$DB_URL" -v ON_ERROR_STOP=1 -f tests/security/m18_slice_02_context_acl_cases.sql
@@ -102,6 +104,9 @@ done
 
 export MEMORY_OS_API_BASE_URL="http://127.0.0.1:8787"
 export MEMORY_OS_PROJECT_ID="${PROJECT_ID}"
+
+echo "== M20.3 bounded API/MCP performance soak"
+./scripts/m20-performance-soak.sh
 
 echo "== ChatGPT MCP smoke on ephemeral DB"
 ./scripts/smoke-mcp-chatgpt.sh

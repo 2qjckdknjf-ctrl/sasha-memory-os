@@ -180,6 +180,17 @@ jobs:
           ./scripts/smoke-mcp-chatgpt.sh
           echo "m6_edge_smoke=pass"
 
+      - name: Live read-only M20 retrieval performance gate
+        if: steps.preflight.outputs.status == 'ready'
+        env:
+          LIVE_SECRET: ${{ secrets.MEMORY_OS_API_SECRET }}
+          LIVE_SUPABASE_URL: ${{ secrets.MEMORY_OS_SUPABASE_URL }}
+        run: |
+          export MEMORY_OS_API_BASE_URL="${LIVE_SUPABASE_URL%/}/functions/v1/memory-mcp"
+          export MEMORY_OS_API_SECRET="$LIVE_SECRET"
+          export MEMORY_OS_PROJECT_ID="44444444-4444-4444-8444-444444444402"
+          ./scripts/m20-live-retrieval.sh
+
       - name: Report blocked remote migration
         if: steps.preflight.outputs.status == 'BLOCKED_REMOTE_MIGRATION'
         run: |

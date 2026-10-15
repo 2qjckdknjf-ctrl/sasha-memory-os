@@ -5,8 +5,10 @@ import { createSeededStore } from '@memory-os/domain';
 import {
   createSearchRankingWeightsPack,
   DEFAULT_SEARCH_RANKING_WEIGHTS_PACK,
+  evaluateFrozenRetrievalQuality,
   searchMemoriesHybrid,
 } from '@memory-os/retrieval';
+import { OFFICIAL_M20_PERFORMANCE_RETRIEVAL_GATE_PACK } from '@memory-os/schemas';
 import { authorize, resolveLocalSubject, type AuthzContext } from '@memory-os/authz';
 
 type GoldenCase = {
@@ -934,6 +936,49 @@ describe('golden retrieval harness', () => {
       }
     });
   }
+
+  it('meets the frozen M20.3 Recall@10 and ACL leakage gate', async () => {
+    const report = await evaluateFrozenRetrievalQuality({
+      cases: fixture.cases,
+      topK: 10,
+      search: async (testCase) => {
+        const authz = authzFor(testCase.actor);
+        return (
+          await searchMemoriesHybrid(
+            [...store.memories.values()],
+            testCase.query,
+            { projectId },
+          )
+        )
+          .filter((hit) =>
+            authorize(authz, {
+              resourceType: 'memory',
+              action: 'read',
+              projectId: hit.memory.projectId,
+              sensitivity: hit.memory.sensitivity,
+            }),
+          )
+          .map((hit) => ({
+            title: hit.memory.title,
+            content: hit.memory.content,
+            sensitivity: hit.memory.sensitivity,
+          }));
+      },
+    });
+
+    expect(report.evaluatedCaseCount).toBe(
+      OFFICIAL_M20_PERFORMANCE_RETRIEVAL_GATE_PACK.thresholds.frozenCaseCount,
+    );
+    expect(report.recallAtK).toBeGreaterThanOrEqual(
+      OFFICIAL_M20_PERFORMANCE_RETRIEVAL_GATE_PACK.thresholds.recallAt10Floor,
+    );
+    expect(report.aclLeakageCases).toBe(
+      OFFICIAL_M20_PERFORMANCE_RETRIEVAL_GATE_PACK.thresholds.aclLeakageCasesMax,
+    );
+    console.log(
+      `m20_retrieval_eval=pass cases=${report.evaluatedCaseCount} relevant=${report.relevantCaseCount} recall_at_10=${report.recallAtK.toFixed(6)} acl_leakage_cases=${report.aclLeakageCases}`,
+    );
+  });
 
   it('keeps personal Gmail and Calendar memories out of default agent retrieval', async () => {
     store.captureText({

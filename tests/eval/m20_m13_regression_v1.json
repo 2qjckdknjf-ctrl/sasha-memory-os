@@ -1,0 +1,32 @@
+{
+  "version": "m20-m13-regression-v1",
+  "rankingVersion": "hybrid-rrf+m13-s06-v1",
+  "rankingWeightsVersion": "m13-s06-v1",
+  "toolAllowlist": ["memory.search"],
+  "cases": [
+    {
+      "id": "answered-with-bounded-evidence",
+      "maxSteps": 4,
+      "minEvidenceHits": 2,
+      "hitCount": 2,
+      "expectedOutcome": "answered",
+      "expectedStopReason": "enough_evidence"
+    },
+    {
+      "id": "not-enough-data",
+      "maxSteps": 4,
+      "minEvidenceHits": 2,
+      "hitCount": 0,
+      "expectedOutcome": "not_enough_data",
+      "expectedStopReason": "not_enough_data"
+    },
+    {
+      "id": "max-steps-fail-closed",
+      "maxSteps": 1,
+      "minEvidenceHits": 2,
+      "hitCount": 1,
+      "expectedOutcome": "budget_exhausted",
+      "expectedStopReason": "max_steps"
+    }
+  ]
+}

@@ -26,6 +26,7 @@ export * from './consolidate.js';
 export * from './conflicts.js';
 export * from './extraction.js';
 export * from './ranking-weights.js';
+export * from './performance-eval.js';
 
 /** Classic RRF constant (Cormack et al.). */
 export const RRF_K = 60;
