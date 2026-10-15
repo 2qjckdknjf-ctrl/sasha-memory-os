@@ -52,7 +52,7 @@ describe('M20.3 performance and retrieval gate', () => {
     expect(migration).toContain('idempotency key conflict');
     expect(migration).toContain('public.api_search_memories_bounded');
     expect(migration).toContain(
-      'LEAST(GREATEST(COALESCE(p_limit, 20), 1), 50)',
+      'LEAST(GREATEST(COALESCE(p_limit, 12), 1), 50)',
     );
     expect(routingLoad).toContain('concurrent_calls=16');
     expect(routingLoad).toContain('cross_project_replay=rejected');

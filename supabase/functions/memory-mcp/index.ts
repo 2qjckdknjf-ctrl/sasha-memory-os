@@ -509,7 +509,7 @@ async function callTool(
       const query = String(args.query ?? "").trim();
       if (!query) throw new Error("query is required");
       const searchLimit = Math.min(
-        Math.max(Math.trunc(Number(args.limit ?? 20)) || 20, 1),
+        Math.max(Math.trunc(Number(args.limit ?? 12)) || 12, 1),
         50,
       );
       // Retrieval must remain available when the optional semantic provider is
