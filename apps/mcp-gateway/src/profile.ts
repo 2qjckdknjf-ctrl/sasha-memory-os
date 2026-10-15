@@ -85,7 +85,7 @@ export function getMcpProfile(name?: McpProfileName | string | null): McpProfile
       },
       instructions: [
         'Sasha Memory OS ChatGPT pilot. Prefer memory.search (pack_context=true) then context.project before writing.',
-        'Writes: capture.text for notes/facts; memory.store_decision for decisions; memory.set_status for review.',
+        'Writes: capture.text for notes/facts; memory.store_decision for decisions; memory.set_status for review. Automatic writeback uses memory.store_decision.writeback only after explicit approval or a verified milestone.',
         'Defaults fill actor_subject_id / workspace_id when omitted; writes require an explicit project_id (UUID or slug from /projects or context.project).',
         'Do not invent owner/ops tools (oauth, outbox, consolidation, embed).',
       ].join(' '),

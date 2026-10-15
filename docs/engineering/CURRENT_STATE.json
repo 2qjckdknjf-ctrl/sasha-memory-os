@@ -1,7 +1,7 @@
 {
   "manifestVersion": "m14.1-v1",
   "schemaVersion": "1.2",
-  "generatedAt": "2026-10-15T15:57:55.610885Z",
+  "generatedAt": "2026-10-15T16:12:00Z",
   "repository": "2qjckdknjf-ctrl/sasha-memory-os",
   "canonicalProjectId": "44444444-4444-4444-8444-444444444402",
   "aistroykaProjectId": "44444444-4444-4444-8444-444444444401",
@@ -20,8 +20,8 @@
     "projectName": "sasha-memory-os",
     "projectRef": "vpxblcxsvlylqyldiuwr",
     "region": "eu-central-1",
-    "latestMigration": "20261015180000_m18_roma_canonical_project_acl.sql",
-    "migrationCount": 74
+    "latestMigration": "20261015190000_m18_chatgpt_automatic_writeback.sql",
+    "migrationCount": 75
   },
   "officialPacks": {
     "m14Slo": "m14-s01-v1",
@@ -56,6 +56,7 @@
     "m18CursorBootstrap": "m18-s01-v1",
     "m18ProjectContext": "m18-s02-v1",
     "m18RomaIntegration": "m18-s03-v1",
+    "m18ChatgptWriteback": "m18-s04-v1",
     "p0ProjectIdentity": "p0-project-identity-v1"
   },
   "deployments": {
@@ -231,7 +232,9 @@
     "m20RoleBoundarySql": "tests/security/m20_security_role_boundary_cases.sql",
     "m18CursorBootstrapPack": "tests/security/m18_slice_01_pack.test.ts",
     "m18ProjectContextPack": "tests/security/m18_slice_02_pack.test.ts",
-    "m18RomaCanonicalAclSql": "tests/security/m18_slice_03_roma_canonical_acl_cases.sql"
+    "m18RomaCanonicalAclSql": "tests/security/m18_slice_03_roma_canonical_acl_cases.sql",
+    "m18ChatgptWritebackPack": "tests/security/m18_slice_04_pack.test.ts",
+    "m18ChatgptWritebackSql": "tests/security/m18_slice_04_chatgpt_writeback_cases.sql"
   },
   "openPrPolicy": {
     "staleDraftPr16": {

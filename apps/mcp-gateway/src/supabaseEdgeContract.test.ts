@@ -44,6 +44,32 @@ describe("supabase edge memory-mcp contract", () => {
     });
   });
 
+  it("adds the approved-only writeback envelope without adding an eighth tool", () => {
+    const storeDecision = EDGE_TOOL_DEFS.find(
+      (tool) => tool.name === "memory.store_decision",
+    );
+    expect(EDGE_TOOL_DEFS).toHaveLength(7);
+    expect(storeDecision?.inputSchema.properties).toMatchObject({
+      writeback: {
+        type: "object",
+        properties: {
+          kind: {
+            enum: ["approved_decision", "completed_milestone"],
+          },
+          approval: {
+            properties: {
+              source: { enum: ["explicit_user", "verified_workflow"] },
+            },
+            required: ["source", "reference"],
+          },
+          evidence_refs: { type: "array", minItems: 1, maxItems: 12 },
+        },
+        required: ["kind", "approval", "evidence_refs"],
+      },
+    });
+    expect(storeDecision?.inputSchema.required).not.toContain("writeback");
+  });
+
   it("fills only actor/workspace defaults and never invents a project_id", () => {
     expect(
       applyEdgeDefaults(

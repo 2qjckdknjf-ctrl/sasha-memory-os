@@ -95,6 +95,7 @@ describe('mcp profile', () => {
     expect(storeDecision?.inputSchema?.required ?? []).toContain('project_id');
     expect(storeDecision?.inputSchema?.required ?? []).not.toContain('actor_subject_id');
     expect(storeDecision?.inputSchema?.required ?? []).not.toContain('workspace_id');
+    expect(storeDecision?.inputSchema?.properties).toHaveProperty('writeback');
     const handoff = tools.find((t) => t.name === 'handoff.create');
     expect(handoff?.inputSchema?.required ?? []).toContain('project_id');
   });

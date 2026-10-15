@@ -164,6 +164,47 @@ export class SupabaseMemoryGateway {
     return data;
   }
 
+  async chatgptWritebackDecision(input: {
+    subjectId: string;
+    workspaceId: string;
+    projectId: string;
+    title: string;
+    content: string;
+    idempotencyKey: string;
+    writeback: {
+      kind: 'approved_decision' | 'completed_milestone';
+      approval: {
+        source: 'explicit_user' | 'verified_workflow';
+        reference: string;
+      };
+      evidence_refs: string[];
+    };
+    importance?: number;
+    confidence?: number;
+    sensitivity?: string;
+    rationale?: string;
+  }) {
+    const { data, error } = await this.client.rpc(
+      'api_chatgpt_writeback_decision',
+      {
+        p_secret: this.apiSecret,
+        p_subject_id: input.subjectId,
+        p_workspace_id: input.workspaceId,
+        p_project_id: input.projectId,
+        p_title: input.title,
+        p_content: input.content,
+        p_idempotency_key: input.idempotencyKey,
+        p_writeback: input.writeback,
+        p_importance: input.importance ?? 0.8,
+        p_confidence: input.confidence ?? 0.9,
+        p_sensitivity: input.sensitivity ?? 'internal',
+        p_rationale: input.rationale ?? null,
+      },
+    );
+    if (error) throw error;
+    return data;
+  }
+
   async createHandoff(input: {
     subjectId: string;
     workspaceId: string;

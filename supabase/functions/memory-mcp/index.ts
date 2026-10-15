@@ -658,6 +658,22 @@ async function callTool(
       if (!title || !content || !key) {
         throw new Error("title, content and idempotency_key are required");
       }
+      if (args.writeback !== undefined) {
+        return rpc(client, "api_chatgpt_writeback_decision", {
+          p_secret: secret,
+          p_subject_id: actor,
+          p_workspace_id: workspace,
+          p_project_id: project,
+          p_title: title,
+          p_content: content,
+          p_idempotency_key: key,
+          p_writeback: args.writeback,
+          p_importance: Number(args.importance ?? 0.8),
+          p_confidence: Number(args.confidence ?? 0.9),
+          p_sensitivity: String(args.sensitivity ?? "internal"),
+          p_rationale: args.rationale ? String(args.rationale) : null,
+        });
+      }
       return rpc(client, "api_create_decision", {
         p_secret: secret,
         p_subject_id: actor,
