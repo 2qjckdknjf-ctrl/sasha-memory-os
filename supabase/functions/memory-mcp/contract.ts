@@ -35,6 +35,7 @@ export const EDGE_TOOL_DEFS: EdgeToolDef[] = [
         include_history: { type: "boolean" },
         recorded_after: { type: "string" },
         recorded_before: { type: "string" },
+        limit: { type: "number", minimum: 1, maximum: 50 },
         pack_context: { type: "boolean" },
         max_context_chars: { type: "number" },
         retrieval_mode: { type: "string", enum: ["hybrid", "graph"] },

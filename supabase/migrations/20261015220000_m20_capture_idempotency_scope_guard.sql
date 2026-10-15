@@ -228,3 +228,231 @@ GRANT EXECUTE ON FUNCTION app.api_capture_text(
 GRANT EXECUTE ON FUNCTION public.api_capture_text(
   text, uuid, uuid, uuid, text, text, text, text, boolean, text, text
 ) TO service_role;
+
+-- Bound the authoritative ACL/ranking query before JSON aggregation so both
+-- database work and database-to-Edge transfer have deterministic ceilings.
+CREATE OR REPLACE FUNCTION app.api_search_memories_bounded(
+  p_secret text,
+  p_subject_id uuid,
+  p_query text,
+  p_project_id uuid DEFAULT NULL,
+  p_include_history boolean DEFAULT false,
+  p_query_embedding jsonb DEFAULT NULL,
+  p_recorded_after timestamptz DEFAULT NULL,
+  p_recorded_before timestamptz DEFAULT NULL,
+  p_limit integer DEFAULT 24
+)
+RETURNS jsonb
+LANGUAGE plpgsql
+VOLATILE
+SECURITY DEFINER
+SET search_path = public, app, extensions
+AS $$
+DECLARE
+  v_query text := coalesce(p_query, '');
+  v_has_query boolean := btrim(v_query) <> '';
+  v_query_vec vector(32);
+  v_query_vec_hq vector(1536);
+  v_qdims int := 0;
+BEGIN
+  PERFORM app.assert_api_secret(p_secret);
+  PERFORM app.with_subject(p_subject_id);
+
+  IF p_recorded_after IS NOT NULL
+     AND p_recorded_before IS NOT NULL
+     AND p_recorded_after > p_recorded_before THEN
+    RAISE EXCEPTION 'recorded_after must be <= recorded_before';
+  END IF;
+
+  IF p_query_embedding IS NOT NULL
+     AND jsonb_typeof(p_query_embedding) = 'array' THEN
+    v_qdims := jsonb_array_length(p_query_embedding);
+    IF v_qdims = 32 THEN
+      v_query_vec := (
+        SELECT array_agg(value::text::float4 ORDER BY ordinality)::vector(32)
+        FROM jsonb_array_elements(p_query_embedding) WITH ORDINALITY AS t(value, ordinality)
+      );
+    ELSIF v_qdims = 1536 THEN
+      v_query_vec_hq := (
+        SELECT array_agg(value::text::float4 ORDER BY ordinality)::vector(1536)
+        FROM jsonb_array_elements(p_query_embedding) WITH ORDINALITY AS t(value, ordinality)
+      );
+    END IF;
+  END IF;
+
+  RETURN COALESCE((
+    SELECT jsonb_agg(hit ORDER BY (hit->>'score')::float8 DESC)
+    FROM (
+      SELECT candidate.hit
+      FROM (
+        SELECT jsonb_build_object(
+          'memory', (
+            to_jsonb(m) || jsonb_build_object(
+              'project_id', effective_project.effective_project_id,
+              'stored_project_id', m.project_id,
+              'effective_project_id', effective_project.effective_project_id
+            )
+          ),
+          'score',
+            (
+              LEAST(
+                1.0,
+                GREATEST(0.0, m.importance + coalesce(pref.importance_delta, 0.0))
+              )
+              * m.confidence
+            )
+            * CASE m.status
+                WHEN 'verified' THEN 1.15
+                WHEN 'active' THEN 1.08
+                WHEN 'candidate' THEN 1.0
+                WHEN 'disputed' THEN 0.7
+                ELSE 0.5
+              END
+            * CASE
+                WHEN pref.pinned THEN 1.75
+                ELSE 1.0
+              END
+            * CASE
+                WHEN NOT v_has_query THEN 1.0
+                WHEN m.title ILIKE '%' || v_query || '%'
+                  OR m.content ILIKE '%' || v_query || '%' THEN 1.0
+                ELSE 0.6
+              END
+            * CASE
+                WHEN v_query_vec_hq IS NOT NULL AND m.embedding_vector_hq IS NOT NULL THEN
+                  0.7 + 0.3 * greatest(0.0, 1.0 - (m.embedding_vector_hq <=> v_query_vec_hq))
+                WHEN v_query_vec IS NOT NULL AND m.embedding_vector IS NOT NULL THEN
+                  0.7 + 0.3 * greatest(0.0, 1.0 - (m.embedding_vector <=> v_query_vec))
+                ELSE 1.0
+              END,
+          'reason',
+            CASE
+              WHEN v_query_vec_hq IS NOT NULL AND m.embedding_vector_hq IS NOT NULL
+                THEN 'hybrid:sql+vector-hq'
+              WHEN v_query_vec IS NOT NULL AND m.embedding_vector IS NOT NULL
+                THEN 'hybrid:sql+vector'
+              ELSE 'structured+text'
+            END,
+          'personalization',
+            CASE
+              WHEN pref.scope IS NULL THEN NULL
+              ELSE jsonb_build_object(
+                'memoryId', m.id,
+                'projectId', effective_project.effective_project_id,
+                'storedProjectId', m.project_id,
+                'scope', pref.scope,
+                'actorSubjectId', pref.actor_subject_id,
+                'pinned', pref.pinned,
+                'importanceDelta', coalesce(pref.importance_delta, 0.0),
+                'rankingVersion', pref.ranking_version,
+                'version', pref.version
+              )
+            END
+        ) AS hit
+        FROM memory_records m
+        CROSS JOIN LATERAL (
+          SELECT app.effective_memory_project_id(m.id) AS effective_project_id
+        ) effective_project
+        LEFT JOIN LATERAL (
+          SELECT
+            mp.scope,
+            mp.actor_subject_id,
+            mp.pinned,
+            mp.importance_delta,
+            mp.ranking_version,
+            mp.version
+          FROM memory_personalizations mp
+          WHERE mp.workspace_id = m.workspace_id
+            AND mp.project_id = effective_project.effective_project_id
+            AND mp.memory_id = m.id
+            AND (
+              (mp.scope = 'actor' AND mp.actor_subject_id = p_subject_id)
+              OR mp.scope = 'project_default'
+            )
+          ORDER BY
+            CASE WHEN mp.scope = 'actor' THEN 0 ELSE 1 END,
+            mp.version DESC
+          LIMIT 1
+        ) pref ON true
+        WHERE (
+            p_project_id IS NULL
+            OR effective_project.effective_project_id = p_project_id
+          )
+          AND (
+            p_include_history
+            OR m.status IN ('active', 'verified', 'candidate')
+          )
+          AND (p_recorded_after IS NULL OR m.recorded_at >= p_recorded_after)
+          AND (p_recorded_before IS NULL OR m.recorded_at <= p_recorded_before)
+          AND app.has_acl(
+            m.workspace_id,
+            'memory',
+            'read',
+            effective_project.effective_project_id,
+            m.sensitivity
+          )
+          AND (
+            NOT v_has_query
+            OR m.title ILIKE '%' || v_query || '%'
+            OR m.content ILIKE '%' || v_query || '%'
+            OR (
+              v_query_vec_hq IS NOT NULL
+              AND m.embedding_vector_hq IS NOT NULL
+              AND (m.embedding_vector_hq <=> v_query_vec_hq) < 0.55
+            )
+            OR (
+              v_query_vec IS NOT NULL
+              AND m.embedding_vector IS NOT NULL
+              AND (m.embedding_vector <=> v_query_vec) < 0.55
+            )
+          )
+      ) candidate
+      ORDER BY (candidate.hit->>'score')::float8 DESC
+      LIMIT LEAST(GREATEST(COALESCE(p_limit, 24), 1), 50)
+    ) ranked
+  ), '[]'::jsonb);
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION public.api_search_memories_bounded(
+  p_secret text,
+  p_subject_id uuid,
+  p_query text,
+  p_project_id uuid DEFAULT NULL,
+  p_include_history boolean DEFAULT false,
+  p_query_embedding jsonb DEFAULT NULL,
+  p_recorded_after timestamptz DEFAULT NULL,
+  p_recorded_before timestamptz DEFAULT NULL,
+  p_limit integer DEFAULT 24
+)
+RETURNS jsonb
+LANGUAGE sql
+VOLATILE
+SECURITY DEFINER
+SET search_path = public, app, extensions
+AS $$
+  SELECT app.api_search_memories_bounded(
+    p_secret,
+    p_subject_id,
+    p_query,
+    p_project_id,
+    p_include_history,
+    p_query_embedding,
+    p_recorded_after,
+    p_recorded_before,
+    p_limit
+  );
+$$;
+
+REVOKE ALL ON FUNCTION app.api_search_memories_bounded(
+  text, uuid, text, uuid, boolean, jsonb, timestamptz, timestamptz, integer
+) FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION public.api_search_memories_bounded(
+  text, uuid, text, uuid, boolean, jsonb, timestamptz, timestamptz, integer
+) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION app.api_search_memories_bounded(
+  text, uuid, text, uuid, boolean, jsonb, timestamptz, timestamptz, integer
+) TO service_role;
+GRANT EXECUTE ON FUNCTION public.api_search_memories_bounded(
+  text, uuid, text, uuid, boolean, jsonb, timestamptz, timestamptz, integer
+) TO service_role;

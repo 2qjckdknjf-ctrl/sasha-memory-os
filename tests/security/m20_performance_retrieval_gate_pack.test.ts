@@ -50,6 +50,10 @@ describe('M20.3 performance and retrieval gate', () => {
     expect(ci).toContain('m20-live-retrieval.sh');
     expect(migration).toContain('pg_advisory_xact_lock');
     expect(migration).toContain('idempotency key conflict');
+    expect(migration).toContain('public.api_search_memories_bounded');
+    expect(migration).toContain(
+      'LEAST(GREATEST(COALESCE(p_limit, 24), 1), 50)',
+    );
     expect(routingLoad).toContain('concurrent_calls=16');
     expect(routingLoad).toContain('cross_project_replay=rejected');
     expect(liveRetrieval).toContain(
@@ -64,6 +68,19 @@ describe('M20.3 performance and retrieval gate', () => {
     expect(edgeMcp).toContain('withoutSearchEmbeddings(ranked)');
     expect(edgeMcp).toContain('embedding_vector_hq');
     expect(edgeMcp).toContain('QUERY_EMBEDDING_CACHE.getOrLoad');
+    expect(edgeMcp).toContain('queryVectorForRetrieval(embedded)');
+    expect(edgeMcp).toContain('p_query_embedding: queryVector');
+    expect(edgeMcp).toContain('p_query_embedding: null');
+    expect(edgeMcp).toContain('rpc(client, "api_search_memories_bounded"');
+    expect(edgeMcp).toContain('p_limit: candidateLimit');
+    expect(edgeMcp).toContain(
+      'const rankedCandidates = rerankRrf(',
+    );
+    expect(edgeMcp).toContain('lexicalMatchIds');
+    expect(edgeMcp).toContain('const [lexicalRawHits, semanticRawHits] = await Promise.all');
+    expect(edgeMcp).toContain('const ranked = rankedCandidates.slice(0, searchLimit)');
+    expect(edgeMcp).toContain('hybridHits: rankedCandidates');
+    expect(edgeMcp).toContain('const limitedFused = fused.slice(0, searchLimit)');
     expect(edgeMcp).toContain('QUERY_EMBEDDING_PROVIDER_TIMEOUT_MS = 700');
     expect(edgeMcp).toContain(
       'providerTimeoutMs: QUERY_EMBEDDING_PROVIDER_TIMEOUT_MS',

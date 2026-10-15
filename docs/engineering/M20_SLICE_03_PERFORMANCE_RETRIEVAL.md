@@ -42,6 +42,16 @@ Official pack: `m20-s03-v1`
   embeddings bypass this query cache and budget, so they cannot share or persist
   a degraded read-path fallback and cannot make retrieval inherit an unbounded
   write-path provider call.
+- A transient provider fallback is never compared with stored provider vectors.
+  The request degrades to the same ACL-scoped structured/text search instead of
+  widening SQL candidates with incompatible hash-vector matches; later requests
+  retry the semantic provider normally.
+- Edge search uses a service-role-only bounded wrapper around the authoritative
+  ACL/ranking RPC. It fetches a bounded candidate pool of at least 24 and at
+  most 50, applies RRF, then returns 12 hits by default or an explicit `limit`
+  from 1 to 50. Graph fusion reapplies the same requested limit. This preserves
+  Recall@10 headroom while preventing unbounded memory bodies and vectors from
+  crossing the database/Edge boundary.
 
 ## Idempotency hardening
 
