@@ -1,6 +1,7 @@
 import { OFFICIAL_M20_PERFORMANCE_RETRIEVAL_GATE_PACK } from '@memory-os/schemas';
 import {
   runBoundedSoakRecipe,
+  resolveBoundedSoakConfig,
   type BoundedSoakConfigInput,
   type BoundedSoakReport,
 } from './soakHarness.js';
@@ -19,7 +20,16 @@ type PerformanceClient = {
   ): Promise<Response>;
 };
 
-type LatencyTargetId = 'search.hybrid' | 'project.state' | 'write.receipt';
+type LatencyTargetId =
+  | 'search.hybrid'
+  | 'search.agentic'
+  | 'project.state'
+  | 'write.receipt';
+
+type AgenticLatencySample = {
+  ok: boolean;
+  durationMs: number;
+};
 
 export type M20PerformanceSoakReport = {
   version: typeof OFFICIAL_M20_PERFORMANCE_SOAK_VERSION;
@@ -68,7 +78,75 @@ export function evaluateM20PerformanceSoak(
       `search.hybrid p95 exceeded (${report.targets['search.hybrid'].p95Ms}ms > ${thresholds.hybridP95Ms}ms)`,
     );
   }
+  if (report.targets['search.agentic'].samples === 0) {
+    errors.push('search.agentic recorded no successful samples');
+  } else if (report.targets['search.agentic'].p95Ms > thresholds.agenticP95Ms) {
+    errors.push(
+      `search.agentic p95 exceeded (${report.targets['search.agentic'].p95Ms}ms > ${thresholds.agenticP95Ms}ms)`,
+    );
+  }
   return errors;
+}
+
+async function runAgenticLatencySample(
+  client: PerformanceClient,
+  input: BoundedSoakConfigInput,
+  sample: number,
+): Promise<AgenticLatencySample> {
+  const config = resolveBoundedSoakConfig(input);
+  const headers = new Headers({
+    accept: 'application/json, text/event-stream',
+    'content-type': 'application/json',
+  });
+  if (config.apiSecret) headers.set('x-memory-os-api-secret', config.apiSecret);
+  const startedAt = performance.now();
+  try {
+    const response = await client.request(`${config.baseUrl}/mcp`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({
+        jsonrpc: '2.0',
+        id: 20_000 + sample,
+        method: 'tools/call',
+        params: {
+          name: 'memory.search',
+          arguments: {
+            query: 'M20 bounded agentic performance gate',
+            project_id: config.projectId,
+            retrieval_mode: 'agentic',
+            agentic: {
+              max_steps: 2,
+              max_time_ms: 7_000,
+              max_tokens: 2_000,
+              max_cost_usd: 0.01,
+              min_evidence_hits: 1,
+            },
+            pack_context: false,
+          },
+        },
+      }),
+      signal: AbortSignal.timeout(
+        OFFICIAL_M20_PERFORMANCE_RETRIEVAL_GATE_PACK.thresholds.agenticP95Ms + 1_000,
+      ),
+    });
+    const body = (await response.json()) as {
+      error?: unknown;
+      result?: { isError?: boolean };
+    };
+    return {
+      ok:
+        response.ok &&
+        !body.error &&
+        Boolean(body.result) &&
+        body.result?.isError !== true,
+      durationMs: Math.max(0, Math.round(performance.now() - startedAt)),
+    };
+  } catch {
+    return {
+      ok: false,
+      durationMs: Math.max(0, Math.round(performance.now() - startedAt)),
+    };
+  }
 }
 
 export async function runM20PerformanceSoak(
@@ -77,6 +155,7 @@ export async function runM20PerformanceSoak(
 ): Promise<M20PerformanceSoakReport> {
   const waves = resolveWaves(input.waves);
   const reports: BoundedSoakReport[] = [];
+  const agenticSamples: AgenticLatencySample[] = [];
   for (let wave = 1; wave <= waves; wave += 1) {
     const report = await runBoundedSoakRecipe(client, {
       ...input,
@@ -89,10 +168,15 @@ export async function runM20PerformanceSoak(
       throw new Error(`M20 performance wave ${wave} failed: ${report.assertions.errors.join('; ')}`);
     }
     reports.push(report);
+    agenticSamples.push(await runAgenticLatencySample(client, input, wave));
   }
 
   const burst = reports.flatMap((report) => report.burst);
   const target = (targetId: LatencyTargetId) => {
+    if (targetId === 'search.agentic') {
+      const durations = agenticSamples.filter((row) => row.ok).map((row) => row.durationMs);
+      return { samples: durations.length, p95Ms: percentile95(durations) };
+    }
     const durations = burst
       .filter((row) => row.ok && row.targetId === targetId)
       .map((row) => row.durationMs);
@@ -106,11 +190,14 @@ export async function runM20PerformanceSoak(
       roundsPerWave: ROUNDS_PER_WAVE,
       concurrencyPerWave: CONCURRENCY_PER_WAVE,
     },
-    totalOperations: burst.length,
+    totalOperations: burst.length + agenticSamples.length,
     apiFailures: burst.filter((row) => row.surface === 'api' && !row.ok).length,
-    mcpFailures: burst.filter((row) => row.surface === 'mcp' && !row.ok).length,
+    mcpFailures:
+      burst.filter((row) => row.surface === 'mcp' && !row.ok).length +
+      agenticSamples.filter((row) => !row.ok).length,
     targets: {
       'search.hybrid': target('search.hybrid'),
+      'search.agentic': target('search.agentic'),
       'project.state': target('project.state'),
       'write.receipt': target('write.receipt'),
     },

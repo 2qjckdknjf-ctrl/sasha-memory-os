@@ -15,17 +15,20 @@ Official pack: `m20-s03-v1`
   retrieval tool remains `memory.search`, the budget remains bounded, and
   `writeActionsAttempted` remains zero.
 - Bounded load/soak: five waves reuse the M14 API/MCP harness at concurrency
-  three and two rounds per wave. The mandatory run contains 60 operations on
-  the ephemeral Supabase stack, requires zero API/MCP failures, preserves the
-  M14 hybrid p95 target of 2,000 ms, logs no payload bodies, and produces only
-  idempotent candidate captures.
+  three and two rounds per wave. The mandatory run contains 60 operations plus
+  five bounded agentic retrieval probes on the ephemeral Supabase stack,
+  requires zero API/MCP failures, preserves the M14 hybrid p95 target of 2,000
+  ms, enforces the agentic p95 target of 8,000 ms, logs no payload bodies, and
+  produces only idempotent candidate captures.
 - Routing and dedupe under load: 16 concurrent database capture calls with one
   key must produce one source event, artifact, processing job, and outbox row;
   40 project-ref resolutions must have precision `1.0`; cross-project reuse of
   the same key must be rejected.
-- Live check: 12 authenticated, explicit-project, read-only `memory.search`
-  calls run against the production Edge MCP when live preflight is ready. The
-  p95 target is 2,000 ms and response bodies are never printed.
+- Live check: one bounded warm-up followed by 12 sequential authenticated,
+  explicit-project, read-only `memory.search` calls runs against the production
+  Edge MCP when live preflight is ready. The steady-state p95 target is 2,000
+  ms and response bodies are never printed. Burst pressure remains covered by
+  the 60-operation soak and the separate 16-way dedupe/concurrency gate.
 
 ## Idempotency hardening
 
@@ -48,7 +51,7 @@ idempotency conflict instead of returning a receipt from another project.
 ## Acceptance evidence required after merge
 
 - PR CI and CodeQL green; latest Codex review has no unresolved finding.
-- Trusted-main CI green, including ephemeral 60-operation soak, concurrent
+- Trusted-main CI green, including ephemeral 60-operation soak plus agentic probes, concurrent
   routing/dedupe SQL, shared-memory E2E, live Edge retrieval, and live Control
   Center.
 - Production migration applied only after the merged main checks are green.

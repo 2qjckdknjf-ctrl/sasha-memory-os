@@ -1,4 +1,5 @@
 const LIVE_READ_ONLY_SAMPLES = 12;
+const LIVE_READ_ONLY_CONCURRENCY = 1;
 const HYBRID_P95_THRESHOLD_MS = 2_000;
 
 type LiveRetrievalClient = {
@@ -9,6 +10,7 @@ type LiveRetrievalClient = {
 };
 
 export type M20LiveRetrievalReport = {
+  warmupMs: number | null;
   samples: number;
   failed: number;
   p95Ms: number;
@@ -50,7 +52,7 @@ export async function runM20LiveReadOnlyRetrieval(input: {
   timeoutMs?: number;
 }): Promise<M20LiveRetrievalReport> {
   const samples = input.samples ?? LIVE_READ_ONLY_SAMPLES;
-  const concurrency = input.concurrency ?? 3;
+  const concurrency = input.concurrency ?? LIVE_READ_ONLY_CONCURRENCY;
   const timeoutMs = input.timeoutMs ?? 4_000;
   if (!input.baseUrl.trim() || !input.apiSecret.trim() || !input.projectId.trim()) {
     throw new Error('live retrieval requires baseUrl, apiSecret, and explicit projectId');
@@ -65,46 +67,55 @@ export async function runM20LiveReadOnlyRetrieval(input: {
   const endpoint = `${input.baseUrl.replace(/\/+$/g, '')}/mcp`;
   const durations: number[] = [];
   let failed = 0;
+  const executeSample = async (sample: number): Promise<number | null> => {
+    const startedAt = performance.now();
+    try {
+      const response = await input.client.request(endpoint, {
+        method: 'POST',
+        headers: {
+          accept: 'application/json, text/event-stream',
+          'content-type': 'application/json',
+          'x-memory-os-api-secret': input.apiSecret,
+        },
+        body: JSON.stringify({
+          jsonrpc: '2.0',
+          id: sample,
+          method: 'tools/call',
+          params: {
+            name: 'memory.search',
+            arguments: {
+              query: 'M20 release gate',
+              project_id: input.projectId,
+              pack_context: false,
+            },
+          },
+        }),
+        signal: AbortSignal.timeout(timeoutMs),
+      });
+      const body = (await response.json()) as {
+        error?: unknown;
+        result?: { isError?: boolean };
+      };
+      if (!response.ok || body.error || !body.result || body.result.isError === true) {
+        failed += 1;
+        return null;
+      }
+      return Math.max(0, Math.round(performance.now() - startedAt));
+    } catch {
+      failed += 1;
+      return null;
+    }
+  };
+
+  // Exclude one bounded warm-up from the steady-state p95. Burst/concurrency is
+  // covered separately by the 60-operation soak and the 16-way dedupe gate.
+  const warmupMs = await executeSample(0);
   await runConcurrent(
     Array.from({ length: samples }, (_, index) => index + 1),
     concurrency,
     async (sample) => {
-      const startedAt = performance.now();
-      try {
-        const response = await input.client.request(endpoint, {
-          method: 'POST',
-          headers: {
-            accept: 'application/json, text/event-stream',
-            'content-type': 'application/json',
-            'x-memory-os-api-secret': input.apiSecret,
-          },
-          body: JSON.stringify({
-            jsonrpc: '2.0',
-            id: sample,
-            method: 'tools/call',
-            params: {
-              name: 'memory.search',
-              arguments: {
-                query: 'M20 release gate',
-                project_id: input.projectId,
-                pack_context: false,
-              },
-            },
-          }),
-          signal: AbortSignal.timeout(timeoutMs),
-        });
-        const body = (await response.json()) as {
-          error?: unknown;
-          result?: { isError?: boolean };
-        };
-        if (!response.ok || body.error || !body.result || body.result.isError === true) {
-          failed += 1;
-          return;
-        }
-        durations.push(Math.max(0, Math.round(performance.now() - startedAt)));
-      } catch {
-        failed += 1;
-      }
+      const durationMs = await executeSample(sample);
+      if (durationMs !== null) durations.push(durationMs);
     },
   );
 
@@ -114,6 +125,7 @@ export async function runM20LiveReadOnlyRetrieval(input: {
     durations.length === samples &&
     p95Ms <= HYBRID_P95_THRESHOLD_MS;
   return {
+    warmupMs,
     samples: durations.length,
     failed,
     p95Ms,

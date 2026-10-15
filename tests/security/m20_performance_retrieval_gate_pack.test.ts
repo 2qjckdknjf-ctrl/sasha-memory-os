@@ -37,6 +37,8 @@ describe('M20.3 performance and retrieval gate', () => {
     );
     const routingLoad = repoFile('scripts/m20-routing-dedupe-load.sh');
     const liveRetrieval = repoFile('apps/api/src/m20LiveRetrieval.ts');
+    const performanceHarness = repoFile('apps/api/src/m20PerformanceHarness.ts');
+    const edgeMcp = repoFile('supabase/functions/memory-mcp/index.ts');
     const docs = repoFile('docs/engineering/M20_SLICE_03_PERFORMANCE_RETRIEVAL.md');
     const current = JSON.parse(repoFile('docs/engineering/CURRENT_STATE.json'));
 
@@ -53,6 +55,11 @@ describe('M20.3 performance and retrieval gate', () => {
     expect(liveRetrieval).toContain(
       `const HYBRID_P95_THRESHOLD_MS = ${OFFICIAL_M20_PERFORMANCE_RETRIEVAL_GATE_PACK.thresholds.hybridP95Ms.toLocaleString('en-US').replace(',', '_')}`,
     );
+    expect(liveRetrieval).toContain('const LIVE_READ_ONLY_CONCURRENCY = 1');
+    expect(performanceHarness).toContain("targetId === 'search.agentic'");
+    expect(performanceHarness).toContain('thresholds.agenticP95Ms');
+    expect(edgeMcp).toContain('withoutSearchEmbeddings(ranked)');
+    expect(edgeMcp).toContain('embedding_vector_hq');
     expect(docs).toContain('Recall@10 `1.0`');
     expect(current.officialPacks.m20PerformanceRetrieval).toBe('m20-s03-v1');
     expect(current.tests.m20PerformanceRoutingDedupeSql).toBe(

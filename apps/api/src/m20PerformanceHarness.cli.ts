@@ -24,6 +24,7 @@ async function main(): Promise<void> {
       `api_failures=${report.apiFailures}`,
       `mcp_failures=${report.mcpFailures}`,
       `hybrid_p95_ms=${report.targets['search.hybrid'].p95Ms}`,
+      `agentic_p95_ms=${report.targets['search.agentic'].p95Ms}`,
       `project_state_p95_ms=${report.targets['project.state'].p95Ms}`,
       `write_receipt_p95_ms=${report.targets['write.receipt'].p95Ms}`,
       'payload_logged=false',

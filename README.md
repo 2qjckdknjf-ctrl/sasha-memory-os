@@ -38,7 +38,7 @@ Machine-readable snapshot: [docs/engineering/CURRENT_STATE.json](docs/engineerin
 - **M19 production PASS:** owner governance overview, routing inbox, job controls, cursor privacy, privilege boundaries and the server-secret-safe production Chrome gate passed from trusted `main`
 - **M20.1 security implementation merged:** exhaustive RLS/RPC checks and threat model are live; leaked-password protection is enabled, while the stale GitHub Management API token still blocks a green automation receipt
 - **M20.2 reliability/DR implementation:** daily backup inventory plus current-schema isolated restore and transactional retry/DLQ/replay/token-expiry drills are mandatory in CI
-- **M20.3 performance/retrieval implementation:** frozen 200-case Recall@10 gate, M13 regression pack, 60-operation Supabase soak, concurrent route/dedupe proof and read-only live Edge latency are mandatory in CI
+- **M20.3 performance/retrieval implementation:** frozen 200-case Recall@10 gate, M13 regression pack, 60-operation Supabase soak plus five bounded agentic probes, concurrent route/dedupe proof and steady-state read-only live Edge latency are mandatory in CI
 - Core path live: WP-01…08 RPCs, vault OAuth, hybrid RRF retrieval, embeddings, consolidation/outbox/jobs, MCP, Control Center
 - M10–M13 foundations merged (Drive/Gmail/Calendar policies, ROMA project-health, bounded agentic retrieval / consolidation / ranking)
 - Apple: companion-required personal-source contracts complete; live device E2E still blocked

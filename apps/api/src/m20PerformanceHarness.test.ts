@@ -23,12 +23,13 @@ describe('M20.3 performance soak', () => {
 
     expect(report).toMatchObject({
       version: 'm20-s03-v1',
-      totalOperations: 60,
+      totalOperations: 65,
       apiFailures: 0,
       mcpFailures: 0,
       assertions: { ok: true, errors: [] },
     });
     expect(report.targets['search.hybrid'].samples).toBe(20);
+    expect(report.targets['search.agentic'].samples).toBe(5);
     expect(report.targets['project.state'].samples).toBe(20);
     expect(report.targets['write.receipt'].samples).toBe(20);
   });
@@ -48,10 +49,34 @@ describe('M20.3 performance soak', () => {
         mcpFailures: 0,
         targets: {
           'search.hybrid': { samples: 4, p95Ms: 1 },
+          'search.agentic': { samples: 1, p95Ms: 1 },
           'project.state': { samples: 4, p95Ms: 1 },
           'write.receipt': { samples: 4, p95Ms: 1 },
         },
       }),
     ).toContain('soak operation floor missed (12 < 60)');
+  });
+
+  it('fails closed when bounded agentic retrieval exceeds its declared p95', () => {
+    expect(
+      evaluateM20PerformanceSoak({
+        version: 'm20-s03-v1',
+        config: {
+          projectId,
+          waves: 5,
+          roundsPerWave: 2,
+          concurrencyPerWave: 3,
+        },
+        totalOperations: 65,
+        apiFailures: 0,
+        mcpFailures: 0,
+        targets: {
+          'search.hybrid': { samples: 20, p95Ms: 1 },
+          'search.agentic': { samples: 5, p95Ms: 8_001 },
+          'project.state': { samples: 20, p95Ms: 1 },
+          'write.receipt': { samples: 20, p95Ms: 1 },
+        },
+      }),
+    ).toContain('search.agentic p95 exceeded (8001ms > 8000ms)');
   });
 });

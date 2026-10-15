@@ -25,8 +25,8 @@ describe('M20.3 live read-only retrieval gate', () => {
       },
     });
 
-    expect(report).toMatchObject({ samples: 4, failed: 0, ok: true });
-    expect(payloads).toHaveLength(4);
+    expect(report).toMatchObject({ warmupMs: expect.any(Number), samples: 4, failed: 0, ok: true });
+    expect(payloads).toHaveLength(5);
     expect(payloads).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
@@ -56,7 +56,7 @@ describe('M20.3 live read-only retrieval gate', () => {
         },
       },
     });
-    expect(report).toMatchObject({ samples: 0, failed: 1, ok: false });
+    expect(report).toMatchObject({ warmupMs: null, samples: 0, failed: 2, ok: false });
     expect(JSON.stringify(report)).not.toContain('private body');
   });
 });

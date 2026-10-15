@@ -13,7 +13,7 @@ async function main(): Promise<void> {
     );
   }
   console.log(
-    `m20_live_retrieval=pass samples=${report.samples} failed=0 p95_ms=${report.p95Ms} threshold_ms=${report.thresholdMs} read_only=true payload_logged=false`,
+    `m20_live_retrieval=pass warmup_ms=${report.warmupMs} samples=${report.samples} failed=0 p95_ms=${report.p95Ms} threshold_ms=${report.thresholdMs} read_only=true payload_logged=false`,
   );
 }
 
