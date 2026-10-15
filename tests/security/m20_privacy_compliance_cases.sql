@@ -202,7 +202,11 @@ BEGIN
     v_connection, v_workspace, 'github', 'M20.4 privacy source', 'connected',
     ARRAY['repositories.read'], jsonb_build_object('tokenHint', v_marker)
   );
-  PERFORM app.api_vault_put(v_secret, v_vault_ref, 'connector-' || v_marker);
+  PERFORM app.api_vault_put(
+    v_secret,
+    v_vault_ref,
+    encode(convert_to('connector-' || v_marker, 'UTF8'), 'base64')
+  );
   INSERT INTO public.connector_secrets (
     workspace_id, connector_account_id, vault_ref, key_purpose
   ) VALUES (v_workspace, v_connection, v_vault_ref, 'oauth_access');
