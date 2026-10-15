@@ -42,7 +42,8 @@ stack, proves:
    reaches connector-derived records across project boundaries;
 4. execution replay is idempotent;
 5. privacy free text never survives in audit/ops state;
-6. retention preview is non-mutating and apply enforces every window;
+6. retention preview is non-mutating; apply expires only quarantined artifacts,
+   preserves processed provenance, and redacts shared entities that must remain;
 7. legacy targetless requests fail closed before mutation, correction audits
    are redacted, authoritative corrections preserve effective project routing,
    retention removes orphan graph entities, arbitrary metadata references do

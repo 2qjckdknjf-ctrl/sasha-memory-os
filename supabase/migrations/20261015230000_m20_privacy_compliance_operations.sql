@@ -1244,6 +1244,7 @@ BEGIN
   FROM public.artifacts a
   WHERE a.workspace_id = p_workspace_id
     AND a.project_id = p_project_id
+    AND a.metadata @> '{"quarantine": true}'::jsonb
     AND a.created_at < p_as_of - interval '180 days';
   v_artifact_count := cardinality(v_artifact_ids);
   SELECT coalesce(array_agg(DISTINCT a.source_event_id), '{}'::uuid[])
@@ -1395,6 +1396,24 @@ BEGIN
     WHERE a.memory_id = ANY(v_candidate_ids);
     DELETE FROM public.memory_entities me
     WHERE me.memory_id = ANY(v_candidate_ids);
+    UPDATE public.entities e
+    SET canonical_name = 'Redacted retained entity',
+        status = 'archived',
+        confidence = 0,
+        source_event_id = NULL,
+        created_from_memory_id = NULL,
+        source_ref = 'retention-redacted:' || e.id::text,
+        metadata = jsonb_build_object(
+          'retentionSourceRemoved', true,
+          'policyVersion', 'm20-s04-v1',
+          'expiredAt', p_as_of
+        ),
+        updated_at = now()
+    WHERE e.id = ANY(v_entity_ids)
+      AND e.created_from_memory_id = ANY(v_candidate_ids)
+      AND EXISTS (
+        SELECT 1 FROM public.memory_entities me WHERE me.entity_id = e.id
+      );
     DELETE FROM public.entities e
     WHERE e.id = ANY(v_entity_ids)
       AND NOT EXISTS (

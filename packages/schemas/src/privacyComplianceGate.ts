@@ -36,6 +36,8 @@ export const OFFICIAL_M20_PRIVACY_COMPLIANCE_GATE_PACK = {
     correctionPreservesEffectiveProject: true,
     legacyRequestsFailClosed: true,
     dryRunRetentionByDefault: true,
+    retentionOnlyExpiresQuarantinedArtifacts: true,
+    retentionRedactsSharedEntities: true,
     retentionIsProjectScoped: true,
     auditContainsMetadataOnly: true,
     logsContainSensitiveBodies: false,

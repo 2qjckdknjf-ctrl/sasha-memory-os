@@ -52,6 +52,9 @@ DECLARE
   v_legacy_connection_artifact constant uuid := '99999999-0000-4000-8000-000000000438';
   v_legacy_connection_chunk constant uuid := '99999999-0000-4000-8000-000000000439';
   v_snapshot_late_memory constant uuid := '99999999-0000-4000-8000-000000000440';
+  v_retained_source constant uuid := '99999999-0000-4000-8000-000000000441';
+  v_retained_artifact constant uuid := '99999999-0000-4000-8000-000000000442';
+  v_retained_chunk constant uuid := '99999999-0000-4000-8000-000000000443';
   v_marker constant text := 'M20_PRIVACY_SECRET_MARKER_6f9fd9';
   v_vault_ref constant text := 'vault:test/m20/privacy-connector';
   v_created jsonb;
@@ -577,6 +580,15 @@ BEGIN
     'm20-privacy/retention-source', now() - interval '181 days',
     now() - interval '181 days', jsonb_build_object('body', v_marker), v_owner
   );
+  INSERT INTO public.source_events (
+    id, workspace_id, project_id, provider, event_type, idempotency_key,
+    observed_at, recorded_at, payload, created_by_subject
+  ) VALUES (
+    v_retained_source, v_workspace, v_project, 'manual',
+    'retention.processed.fixture', 'm20-privacy/retained-source',
+    now() - interval '181 days', now() - interval '181 days',
+    jsonb_build_object('body', v_marker), v_owner
+  );
   INSERT INTO public.entities (
     id, workspace_id, project_id, stable_id, entity_class, canonical_name,
     source_ref, created_from_memory_id, metadata
@@ -587,22 +599,42 @@ BEGIN
   );
   INSERT INTO public.memory_entities (
     workspace_id, project_id, memory_id, entity_id, role, source_ref
-  ) VALUES (
-    v_workspace, v_project, v_retention_memory, v_retention_entity, 'subject',
-    'retention-fixture'
-  );
+  ) VALUES
+    (
+      v_workspace, v_project, v_retention_memory, v_retention_entity, 'subject',
+      'retention-fixture'
+    ),
+    (
+      v_workspace, v_project, v_unaffected_memory, v_retention_entity, 'related',
+      'retention-shared-fixture'
+    );
   INSERT INTO public.artifacts (
     id, workspace_id, project_id, source_event_id, storage_mode, storage_key,
     metadata, created_at
   ) VALUES (
     v_retention_artifact, v_workspace, v_project, v_retention_source, 'indexed',
-    'private/' || v_marker, jsonb_build_object('body', v_marker),
+    'private/' || v_marker,
+    jsonb_build_object('body', v_marker, 'quarantine', true),
+    now() - interval '181 days'
+  );
+  INSERT INTO public.artifacts (
+    id, workspace_id, project_id, source_event_id, storage_mode, storage_key,
+    metadata, created_at
+  ) VALUES (
+    v_retained_artifact, v_workspace, v_project, v_retained_source, 'indexed',
+    'processed/' || v_marker,
+    jsonb_build_object('body', v_marker, 'quarantine', false),
     now() - interval '181 days'
   );
   INSERT INTO public.artifact_chunks (
     id, workspace_id, artifact_id, chunk_index, content, char_start, char_end
   ) VALUES (
     v_retention_chunk, v_workspace, v_retention_artifact, 0, v_marker, 0, 27
+  );
+  INSERT INTO public.artifact_chunks (
+    id, workspace_id, artifact_id, chunk_index, content, char_start, char_end
+  ) VALUES (
+    v_retained_chunk, v_workspace, v_retained_artifact, 0, v_marker, 0, 27
   );
   INSERT INTO public.outbox_events (
     id, workspace_id, aggregate_type, aggregate_id, event_type, payload,
@@ -687,11 +719,31 @@ BEGIN
     SELECT 1 FROM public.processing_jobs WHERE id = v_retention_job
   ) OR EXISTS (
     SELECT 1 FROM public.audit_log WHERE id = v_retention_audit
-  ) OR EXISTS (
-    SELECT 1 FROM public.entities WHERE id = v_retention_entity
+  ) OR NOT EXISTS (
+    SELECT 1 FROM public.entities e
+    WHERE e.id = v_retention_entity
+      AND e.canonical_name = 'Redacted retained entity'
+      AND e.created_from_memory_id IS NULL
+      AND e.source_event_id IS NULL
+      AND e.metadata->>'retentionSourceRemoved' = 'true'
+  ) OR NOT EXISTS (
+    SELECT 1 FROM public.memory_entities me
+    WHERE me.memory_id = v_unaffected_memory
+      AND me.entity_id = v_retention_entity
   ) OR EXISTS (
     SELECT 1 FROM public.source_events s
     WHERE s.id = v_retention_source AND s.payload::text LIKE '%' || v_marker || '%'
+  ) OR NOT EXISTS (
+    SELECT 1 FROM public.artifact_chunks WHERE id = v_retained_chunk
+  ) OR NOT EXISTS (
+    SELECT 1 FROM public.artifacts a
+    WHERE a.id = v_retained_artifact
+      AND a.storage_key = 'processed/' || v_marker
+      AND a.metadata @> '{"quarantine": false}'::jsonb
+  ) OR NOT EXISTS (
+    SELECT 1 FROM public.source_events s
+    WHERE s.id = v_retained_source
+      AND s.payload::text LIKE '%' || v_marker || '%'
   ) OR NOT EXISTS (
     SELECT 1 FROM public.outbox_events WHERE id = v_other_retention_outbox
   ) OR NOT EXISTS (

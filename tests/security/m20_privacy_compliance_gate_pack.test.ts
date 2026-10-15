@@ -47,6 +47,8 @@ describe('M20.4 privacy and compliance gate', () => {
         connectorCaptureJobsStopped: true,
         correctionPreservesEffectiveProject: true,
         legacyRequestsFailClosed: true,
+        retentionOnlyExpiresQuarantinedArtifacts: true,
+        retentionRedactsSharedEntities: true,
         retentionIsProjectScoped: true,
         auditContainsMetadataOnly: true,
         logsContainSensitiveBodies: false,
@@ -118,6 +120,8 @@ describe('M20.4 privacy and compliance gate', () => {
     expect(migration).toContain("'snapshotAt'");
     expect(migration).toContain("s.payload #>> '{source,account_id}'");
     expect(migration).toContain('j.source_event_id = ANY(v_source_ids)');
+    expect(migration).toContain(`a.metadata @> '{"quarantine": true}'::jsonb`);
+    expect(migration).toContain("canonical_name = 'Redacted retained entity'");
     expect(migration).toContain('v_offset integer');
     expect(migration).toContain("reason = '[redacted after execution]'");
     expect(migration).toContain("reason = 'privacy correction redacted'");
@@ -146,6 +150,7 @@ describe('M20.4 privacy and compliance gate', () => {
     expect(sql).toContain('cross-project memory were not revoked');
     expect(sql).toContain('privacy correction lost effective project routing');
     expect(sql).toContain('Legacy api_capture_connector_record rows');
+    expect(sql).toContain("a.metadata @> '{\"quarantine\": false}'::jsonb");
     expect(sql).toContain('legacy request without a target unexpectedly executed');
     expect(sql).toContain('crossed the project boundary');
     expect(ephemeral).toContain('m20_privacy_compliance_cases.sql');
