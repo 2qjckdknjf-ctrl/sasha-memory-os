@@ -4,6 +4,11 @@ import {
   loadMemoryOsEnv,
   SupabaseMemoryGateway,
 } from '@memory-os/db';
+import {
+  buildProjectContextPack,
+  OFFICIAL_M18_ROMA_INTEGRATION_PACK,
+  type ProjectContextPack,
+} from '@memory-os/schemas';
 
 export const packageName = 'worker-roma-project-health' as const;
 
@@ -92,6 +97,7 @@ type RomaProjectHealthGateway = Pick<
   | 'completeRomaProjectFindings'
   | 'completeRomaProjectHealth'
   | 'deadLetterStaleJobs'
+  | 'getMemory'
   | 'listOutboxPending'
   | 'listProjects'
   | 'projectContext'
@@ -117,9 +123,12 @@ export type RomaProjectHealthRunResult = {
 type FindingSeverity = 'low' | 'medium' | 'high';
 type FindingStatus = 'open';
 type NotificationSeverity = 'info' | 'low' | 'medium' | 'high';
+type FindingOutcomeType = 'qa' | 'release_risk';
+type FindingCanonicalStatus = 'candidate';
+type ReleaseReferenceType = 'pull_request' | 'commit' | 'deployment';
 
 type QaFindingEvidenceRef = {
-  kind: 'memory' | 'project_state' | 'handoff';
+  kind: 'memory' | 'project_state' | 'handoff' | 'release';
   memoryId?: string;
   memoryType?: string | null;
   handoffId?: string | null;
@@ -128,6 +137,10 @@ type QaFindingEvidenceRef = {
   title?: string;
   titles?: string[];
   createdAt?: string | null;
+  releaseType?: ReleaseReferenceType;
+  value?: string;
+  url?: string | null;
+  citationIds?: string[];
 };
 
 type QaFindingCandidate = {
@@ -136,6 +149,10 @@ type QaFindingCandidate = {
   summary: string;
   severity: FindingSeverity;
   status: FindingStatus;
+  outcomeType: FindingOutcomeType;
+  confidence: number;
+  canonicalStatus: FindingCanonicalStatus;
+  requiresReview: true;
   evidenceRefs: QaFindingEvidenceRef[];
 };
 
@@ -144,6 +161,10 @@ type RomaQaFindingWrite = {
   title: string;
   severity: FindingSeverity;
   status: FindingStatus;
+  outcomeType: FindingOutcomeType;
+  confidence: number;
+  canonicalStatus: FindingCanonicalStatus;
+  requiresReview: true;
   memoryId: string;
   auditEventId: string;
   idempotencyKey: string;
@@ -155,6 +176,10 @@ export type RomaQaFindingApprovalCheckpointRequest = {
   findingKey: string;
   severity: FindingSeverity;
   findingStatus: FindingStatus;
+  outcomeType: FindingOutcomeType;
+  confidence: number;
+  canonicalStatus: FindingCanonicalStatus;
+  requiresReview: true;
   reason: string;
   evidenceRefs: QaFindingEvidenceRef[];
   sourceJobId: string;
@@ -228,6 +253,8 @@ type SummaryPayload = {
     stateVersion: number | null;
     hasHandoff: boolean;
   };
+  contextPack: ProjectContextPack;
+  releaseRefs: QaFindingEvidenceRef[];
 };
 
 function requireGateway(
@@ -302,6 +329,192 @@ function toMemoryEvidenceRefs(
     }));
 }
 
+function findingPolicy(outcomeType: FindingOutcomeType) {
+  return {
+    outcomeType,
+    confidence: OFFICIAL_M18_ROMA_INTEGRATION_PACK.findingPolicy.defaultConfidence,
+    canonicalStatus:
+      OFFICIAL_M18_ROMA_INTEGRATION_PACK.findingPolicy.canonicalStatus,
+    requiresReview: true as const,
+  };
+}
+
+function buildRomaProjectContextPack(
+  context: ProjectContextRow,
+  projectId: string,
+): ProjectContextPack {
+  const pack = buildProjectContextPack(context, { projectId });
+  if (
+    pack.projectId !== projectId ||
+    pack.provenance.explicitProject !== true ||
+    pack.provenance.subjectScoped !== true
+  ) {
+    throw new Error('ROMA project context pack failed explicit-project provenance checks');
+  }
+  return pack;
+}
+
+function isAffirmativeDeploymentReceipt(
+  milestone: NonNullable<ProjectContextPack['currentMilestone']>,
+): boolean {
+  const text = `${milestone.title} ${milestone.summary}`;
+  return [
+    /\blive\s+pass\b/i,
+    /\b(?:deployment|deploy|migration)\s+(?:is\s+)?(?:live|complete(?:d)?|applied|verified|successful|passed)\b/i,
+    /\b(?:deployed|migrated|released)\s+(?:to\s+)?production\b/i,
+    /\bproduction\s+(?:edge\s+)?(?:is\s+)?live\b/i,
+    /\bproduction\s+(?:deployment|migration)\s+(?:is\s+)?(?:complete(?:d)?|verified|successful|passed)\b/i,
+  ].some((pattern) => pattern.test(text));
+}
+
+function releaseEvidenceRefs(pack: ProjectContextPack): QaFindingEvidenceRef[] {
+  const refs: QaFindingEvidenceRef[] = [];
+  for (const merge of pack.recentMerges) {
+    if (merge.pullRequestUrl) {
+      refs.push({
+        kind: 'release',
+        releaseType: 'pull_request',
+        value: merge.pullRequestUrl,
+        url: merge.pullRequestUrl,
+        title: truncateText(merge.title, 120),
+        citationIds: [...merge.citations],
+      });
+    }
+    if (merge.mergeSha) {
+      refs.push({
+        kind: 'release',
+        releaseType: 'commit',
+        value: merge.mergeSha,
+        url: null,
+        title: truncateText(merge.title, 120),
+        citationIds: [...merge.citations],
+      });
+    }
+  }
+  const milestone = pack.currentMilestone;
+  if (milestone && isAffirmativeDeploymentReceipt(milestone)) {
+    refs.push({
+      kind: 'release',
+      releaseType: 'deployment',
+      value: milestone.id,
+      url: `memory-os://memory/${milestone.id}`,
+      title: truncateText(milestone.title, 120),
+      citationIds: [...milestone.citations],
+    });
+  }
+  const seen = new Set<string>();
+  const uniqueRefs = refs.filter((ref) => {
+    const key = `${ref.releaseType ?? ''}:${ref.value ?? ''}`;
+    if (!ref.value || seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+  const deploymentRef = uniqueRefs.find(
+    (ref) => ref.releaseType === 'deployment',
+  );
+  if (!deploymentRef) return uniqueRefs.slice(0, 6);
+  return [
+    ...uniqueRefs.filter((ref) => ref !== deploymentRef).slice(0, 5),
+    deploymentRef,
+  ];
+}
+
+function projectContextCitationEvidenceRefs(
+  pack: ProjectContextPack,
+  citationIds: string[],
+  field: string,
+  structuredTitles: string[] = [],
+): QaFindingEvidenceRef[] {
+  const citationById = new Map(pack.citations.map((citation) => [citation.id, citation]));
+  const refs: QaFindingEvidenceRef[] = [];
+  for (const citationId of citationIds) {
+    const citation = citationById.get(citationId);
+    if (!citation) continue;
+    if (citation.kind === 'memory') {
+      refs.push({
+        kind: 'memory',
+        memoryId: citation.sourceId,
+        title: citation.title ?? undefined,
+        field,
+      });
+    } else if (citation.kind === 'handoff') {
+      refs.push({
+        kind: 'handoff',
+        handoffId: citation.sourceId,
+        createdAt: citation.recordedAt,
+        field,
+      });
+    } else {
+      const titles = structuredTitles.length > 0
+        ? structuredTitles
+        : citation.title
+          ? [citation.title]
+          : [];
+      refs.push({
+        kind: 'project_state',
+        field,
+        titles: titles.slice(0, 3).map((title) => truncateText(title, 120)),
+      });
+    }
+  }
+  return refs;
+}
+
+function projectContextItemEvidenceRefs(
+  pack: ProjectContextPack,
+  items: ProjectContextPack['activeBlockers'],
+  field: string,
+): QaFindingEvidenceRef[] {
+  return items.slice(0, 3).flatMap((item) =>
+    projectContextCitationEvidenceRefs(
+      pack,
+      item.citations,
+      field,
+      [item.text],
+    ),
+  );
+}
+
+function safeProjectContextItemText(
+  pack: ProjectContextPack,
+  item: ProjectContextPack['activeBlockers'][number],
+): string {
+  const citationById = new Map(pack.citations.map((citation) => [citation.id, citation]));
+  const memoryCitations = item.citations
+    .map((citationId) => citationById.get(citationId))
+    .filter((citation) => citation?.kind === 'memory');
+  if (memoryCitations.length > 0) {
+    const titles = memoryCitations
+      .map((citation) => citation?.title)
+      .filter((title): title is string => Boolean(title))
+      .map((title) => truncateText(title, 160));
+    return titles.length > 0 ? titles.join('; ') : 'memory evidence recorded';
+  }
+  return truncateText(item.text, 180);
+}
+
+function safeProjectContextItemTexts(
+  pack: ProjectContextPack,
+  items: ProjectContextPack['activeBlockers'],
+): string[] {
+  return items.map((item) => safeProjectContextItemText(pack, item));
+}
+
+function boundQaFindingEvidenceRefs(
+  refs: QaFindingEvidenceRef[],
+  limit = 12,
+): QaFindingEvidenceRef[] {
+  if (refs.length <= limit) return refs;
+  const releaseRefs = refs
+    .filter((ref) => ref.kind === 'release')
+    .slice(0, limit);
+  const remaining = Math.max(0, limit - releaseRefs.length);
+  return [
+    ...refs.filter((ref) => ref.kind !== 'release').slice(0, remaining),
+    ...releaseRefs,
+  ];
+}
+
 function formatQaFindingEvidenceRef(ref: QaFindingEvidenceRef): string {
   switch (ref.kind) {
     case 'memory':
@@ -310,6 +523,8 @@ function formatQaFindingEvidenceRef(ref: QaFindingEvidenceRef): string {
       return `- project_state v${ref.stateVersion ?? 'n/a'} ${ref.field ?? 'context'}: ${(ref.titles ?? []).join('; ') || 'none'}`;
     case 'handoff':
       return `- handoff ${ref.handoffId ?? 'none'}${ref.createdAt ? ` at ${ref.createdAt}` : ''}`;
+    case 'release':
+      return `- release ${ref.releaseType ?? 'evidence'} ${ref.value ?? 'unknown'}${ref.url ? ` (${ref.url})` : ''}`;
     default: {
       const _exhaustive: never = ref.kind;
       return _exhaustive;
@@ -322,6 +537,10 @@ function stableFindingIdempotencyKey(input: {
   findingKey: string;
   severity: FindingSeverity;
   status: FindingStatus;
+  outcomeType: FindingOutcomeType;
+  confidence: number;
+  canonicalStatus: FindingCanonicalStatus;
+  requiresReview: true;
   evidenceRefs: QaFindingEvidenceRef[];
 }): string {
   const fingerprint = createHash('sha256')
@@ -329,6 +548,12 @@ function stableFindingIdempotencyKey(input: {
     .digest('hex')
     .slice(0, 24);
   return `roma-project-findings/${input.projectId}/${input.findingKey}/${fingerprint}`;
+}
+
+function findingRevision(idempotencyKey: string): string {
+  const revision = idempotencyKey.split('/').at(-1)?.trim();
+  if (!revision) throw new Error('ROMA finding idempotency revision is missing');
+  return revision;
 }
 
 function maxFindingSeverity(findings: RomaQaFindingWrite[]): FindingSeverity {
@@ -399,6 +624,27 @@ function assertStructuredWriteSuccess<T extends { error?: unknown }>(result: T):
   return result;
 }
 
+async function verifyRomaCandidateWrite(input: {
+  gateway: RomaProjectHealthGateway;
+  romaSubjectId: string;
+  projectId: string;
+  memoryId: string;
+}): Promise<void> {
+  const memory = await input.gateway.getMemory({
+    subjectId: input.romaSubjectId,
+    memoryId: input.memoryId,
+  });
+  if (
+    memory.projectId !== input.projectId ||
+    memory.status !== OFFICIAL_M18_ROMA_INTEGRATION_PACK.findingPolicy.canonicalStatus ||
+    memory.createdBySubject !== input.romaSubjectId
+  ) {
+    throw new Error(
+      'ROMA write verification failed: memory must remain a project-scoped candidate authored by ROMA',
+    );
+  }
+}
+
 function isRetryableRomaProjectHealthError(message: string): boolean {
   return !/project .* not visible to ROMA|project not found/i.test(message);
 }
@@ -410,6 +656,7 @@ function isRetryableRomaProjectFindingsError(message: string): boolean {
 export function buildRomaProjectHealthSummary(input: {
   project: ProjectRow;
   context: ProjectContextRow;
+  contextPack?: ProjectContextPack;
   job: ClaimedRomaProjectHealthJob;
   romaSubjectId?: string;
 }): SummaryPayload {
@@ -434,6 +681,9 @@ export function buildRomaProjectHealthSummary(input: {
       ? truncateText(state.summary, 220)
       : 'No project state summary recorded.';
   const handoffSummary = summarizeHandoff(input.context.latestHandoff);
+  const contextPack =
+    input.contextPack ?? buildRomaProjectContextPack(input.context, input.project.id);
+  const releaseRefs = releaseEvidenceRefs(contextPack);
   const requestedBy = input.job.requestedBy ?? 'unknown';
   const reason = input.job.reason ?? DEFAULT_REASON;
 
@@ -468,6 +718,23 @@ export function buildRomaProjectHealthSummary(input: {
     formatList('Fact titles', factTitles),
     `- Latest handoff: ${handoffSummary}`,
     '',
+    'Shared project context',
+    `- Context pack: ${contextPack.packVersion}`,
+    `- Current goal: ${contextPack.currentGoal ? safeProjectContextItemText(contextPack, contextPack.currentGoal) : 'none'}`,
+    `- Current milestone: ${contextPack.currentMilestone?.title ?? 'none'}`,
+    formatList(
+      'Active blockers',
+      safeProjectContextItemTexts(contextPack, contextPack.activeBlockers),
+    ),
+    formatList(
+      'Unresolved conflicts',
+      safeProjectContextItemTexts(contextPack, contextPack.unresolvedConflicts),
+    ),
+    formatList('Next work', safeProjectContextItemTexts(contextPack, contextPack.nextWork)),
+    `- Source freshness: ${contextPack.sourceFreshness.status}`,
+    `- Release evidence refs: ${releaseRefs.length}`,
+    `- Budget: ${contextPack.budget.estimatedTokens}/${contextPack.budget.maxTokens} estimated tokens`,
+    '',
     'Audit',
     `- Job ID: ${input.job.jobId}`,
     `- Request event ID: ${input.job.requestEventId}`,
@@ -491,21 +758,54 @@ export function buildRomaProjectHealthSummary(input: {
       stateVersion: typeof state?.version === 'number' ? state.version : null,
       hasHandoff: Boolean(input.context.latestHandoff),
     },
+    contextPack,
+    releaseRefs,
   };
 }
 
 function buildRomaQaFindingCandidates(input: {
   project: ProjectRow;
   context: ProjectContextRow;
+  contextPack: ProjectContextPack;
 }): QaFindingCandidate[] {
   const state = input.context.state ?? null;
   const stateData =
     state && typeof state.state === 'object' && state.state !== null ? state.state : {};
-  const blocked = readStringArray(stateData.blocked);
-  const risks = readStringArray(stateData.risks);
+  const blockedFromState = readStringArray(stateData.blocked);
+  const blocked =
+    blockedFromState.length > 0
+      ? blockedFromState
+      : safeProjectContextItemTexts(
+          input.contextPack,
+          input.contextPack.activeBlockers,
+        );
+  const risksFromState = readStringArray(stateData.risks);
+  const risks =
+    risksFromState.length > 0
+      ? risksFromState
+      : safeProjectContextItemTexts(
+          input.contextPack,
+          input.contextPack.unresolvedConflicts,
+        );
   const next = readStringArray(stateData.next);
   const taskRefs = toMemoryEvidenceRefs(input.context.tasks);
   const factRefs = toMemoryEvidenceRefs(input.context.facts);
+  const blockerContextRefs = projectContextItemEvidenceRefs(
+    input.contextPack,
+    input.contextPack.activeBlockers,
+    'activeBlockers',
+  );
+  const conflictContextRefs = projectContextItemEvidenceRefs(
+    input.contextPack,
+    input.contextPack.unresolvedConflicts,
+    'unresolvedConflicts',
+  );
+  const releaseRefs = releaseEvidenceRefs(input.contextPack);
+  const freshnessRefs = projectContextCitationEvidenceRefs(
+    input.contextPack,
+    input.contextPack.sourceFreshness.citations,
+    'sourceFreshness',
+  );
   const candidates: QaFindingCandidate[] = [];
 
   if (blocked.length > 0) {
@@ -516,6 +816,7 @@ function buildRomaQaFindingCandidates(input: {
         'Project state lists blocked work items, so ROMA flagged follow-up that may stall delivery.',
       severity: blocked.length > 1 ? 'high' : 'medium',
       status: 'open',
+      ...findingPolicy('release_risk'),
       evidenceRefs: [
         {
           kind: 'project_state',
@@ -524,6 +825,8 @@ function buildRomaQaFindingCandidates(input: {
           titles: blocked.slice(0, 5).map((entry) => truncateText(entry, 120)),
         },
         ...taskRefs,
+        ...blockerContextRefs,
+        ...releaseRefs,
       ],
     });
   }
@@ -536,6 +839,7 @@ function buildRomaQaFindingCandidates(input: {
         'The project state includes active risks that should stay visible until the owner confirms mitigation.',
       severity: 'medium',
       status: 'open',
+      ...findingPolicy('release_risk'),
       evidenceRefs: [
         {
           kind: 'project_state',
@@ -544,6 +848,8 @@ function buildRomaQaFindingCandidates(input: {
           titles: risks.slice(0, 5).map((entry) => truncateText(entry, 120)),
         },
         ...factRefs,
+        ...conflictContextRefs,
+        ...releaseRefs,
       ],
     });
   }
@@ -556,6 +862,7 @@ function buildRomaQaFindingCandidates(input: {
         'ROMA could not find a recent handoff for this project, reducing traceability for the next automation step.',
       severity: 'medium',
       status: 'open',
+      ...findingPolicy('qa'),
       evidenceRefs: [
         {
           kind: 'handoff',
@@ -577,6 +884,7 @@ function buildRomaQaFindingCandidates(input: {
         'ROMA could not find a current project state summary, so QA context is harder to audit or explain.',
       severity: 'medium',
       status: 'open',
+      ...findingPolicy('qa'),
       evidenceRefs: [
         {
           kind: 'project_state',
@@ -596,6 +904,7 @@ function buildRomaQaFindingCandidates(input: {
         'ROMA did not find any active or verified task memories for the project, which weakens QA accountability.',
       severity: 'medium',
       status: 'open',
+      ...findingPolicy('qa'),
       evidenceRefs: [
         {
           kind: 'project_state',
@@ -615,6 +924,7 @@ function buildRomaQaFindingCandidates(input: {
         'ROMA found no explicit blocked or risk entries in the current project state, so follow-up remains under-documented.',
       severity: 'low',
       status: 'open',
+      ...findingPolicy('qa'),
       evidenceRefs: [
         {
           kind: 'project_state',
@@ -626,7 +936,31 @@ function buildRomaQaFindingCandidates(input: {
     });
   }
 
-  return candidates.slice(0, 3);
+  if (input.contextPack.sourceFreshness.status === 'stale') {
+    candidates.push({
+      key: 'stale-release-context',
+      title: 'Release context is stale',
+      summary:
+        'ROMA detected project context older than the configured freshness SLA, so release conclusions require refreshed evidence.',
+      severity: 'high',
+      status: 'open',
+      ...findingPolicy('release_risk'),
+      evidenceRefs: [...releaseRefs, ...freshnessRefs],
+    });
+  }
+
+  const severityRank: Record<FindingSeverity, number> = {
+    high: 0,
+    medium: 1,
+    low: 2,
+  };
+  return candidates
+    .sort((left, right) => severityRank[left.severity] - severityRank[right.severity])
+    .slice(0, 3)
+    .map((candidate) => ({
+      ...candidate,
+      evidenceRefs: boundQaFindingEvidenceRefs(candidate.evidenceRefs),
+    }));
 }
 
 function buildRomaQaFindingMemory(input: {
@@ -643,6 +977,10 @@ function buildRomaQaFindingMemory(input: {
     findingKey: input.finding.key,
     severity: input.finding.severity,
     status: input.finding.status,
+    outcomeType: input.finding.outcomeType,
+    confidence: input.finding.confidence,
+    canonicalStatus: input.finding.canonicalStatus,
+    requiresReview: input.finding.requiresReview,
     evidenceRefs: input.finding.evidenceRefs,
   });
   const lines = [
@@ -653,6 +991,10 @@ function buildRomaQaFindingMemory(input: {
     `Finding key: ${input.finding.key}`,
     `Severity: ${input.finding.severity}`,
     `Status: ${input.finding.status}`,
+    `Outcome type: ${input.finding.outcomeType}`,
+    `Confidence: ${input.finding.confidence}`,
+    `Canonical status: ${input.finding.canonicalStatus}`,
+    `Requires review: ${input.finding.requiresReview ? 'yes' : 'no'}`,
     `Execution subject: ROMA (${romaSubjectId})`,
     `Requested by: ${input.job.requestedBy ?? 'unknown'}`,
     `Reason: ${reason}`,
@@ -668,6 +1010,7 @@ function buildRomaQaFindingMemory(input: {
     `- Request event ID: ${input.job.requestEventId}`,
     `- Idempotency key: ${idempotencyKey}`,
     '- Note: this finding stores titles and structured evidence refs only; raw memory bodies are not quoted.',
+    '- Promotion policy: ROMA findings remain candidate evidence and cannot silently become verified canonical truth.',
     '- ACL note: personal, confidential, and restricted memories remain excluded from ROMA access.',
   ];
 
@@ -689,6 +1032,10 @@ export function buildRomaQaFindingApprovalCheckpointRequest(input: {
     findingKey: input.finding.key,
     severity: input.finding.severity,
     status: input.finding.status,
+    outcomeType: input.finding.outcomeType,
+    confidence: input.finding.confidence,
+    canonicalStatus: input.finding.canonicalStatus,
+    requiresReview: input.finding.requiresReview,
     evidenceRefs: input.finding.evidenceRefs,
   });
 
@@ -698,6 +1045,10 @@ export function buildRomaQaFindingApprovalCheckpointRequest(input: {
     findingKey: input.finding.key,
     severity: input.finding.severity,
     findingStatus: input.finding.status,
+    outcomeType: input.finding.outcomeType,
+    confidence: input.finding.confidence,
+    canonicalStatus: input.finding.canonicalStatus,
+    requiresReview: input.finding.requiresReview,
     reason,
     evidenceRefs: input.finding.evidenceRefs.map((ref) => ({
       kind: ref.kind,
@@ -709,6 +1060,10 @@ export function buildRomaQaFindingApprovalCheckpointRequest(input: {
       title: ref.title,
       titles: ref.titles ? [...ref.titles] : undefined,
       createdAt: ref.createdAt ?? null,
+      releaseType: ref.releaseType,
+      value: ref.value,
+      url: ref.url ?? null,
+      citationIds: ref.citationIds ? [...ref.citationIds] : undefined,
     })),
     sourceJobId: input.job.jobId,
     requestEventId: input.job.requestEventId,
@@ -735,9 +1090,11 @@ async function executeRomaProjectHealthJob(options: {
     romaSubjectId,
     job.projectId,
   )) as ProjectContextRow;
+  const contextPack = buildRomaProjectContextPack(context, job.projectId);
   const summary = buildRomaProjectHealthSummary({
     project,
     context,
+    contextPack,
     job,
     romaSubjectId,
   });
@@ -767,6 +1124,8 @@ async function executeRomaProjectHealthJob(options: {
         requestedBy: job.requestedBy,
         executionSubjectId: romaSubjectId,
         idempotencyKey: job.idempotencyKey,
+        integrationPackVersion: OFFICIAL_M18_ROMA_INTEGRATION_PACK.version,
+        projectContextPackVersion: contextPack.packVersion,
       },
       scope: {
         workspaceId: job.workspaceId,
@@ -780,6 +1139,12 @@ async function executeRomaProjectHealthJob(options: {
       project_name: project.name,
       project_status: project.status,
       source_counts: summary.counts,
+      roma_integration_pack: OFFICIAL_M18_ROMA_INTEGRATION_PACK.version,
+      project_context_pack: contextPack.packVersion,
+      project_context_generated_at: contextPack.generatedAt,
+      project_context_freshness: contextPack.sourceFreshness.status,
+      project_context_citations: contextPack.citations.map((citation) => citation.id),
+      release_refs: summary.releaseRefs,
     },
     processNow: true,
   }));
@@ -787,6 +1152,12 @@ async function executeRomaProjectHealthJob(options: {
   if (!memoryId) {
     throw new Error('roma project health capture did not produce a memory');
   }
+  await verifyRomaCandidateWrite({
+    gateway,
+    romaSubjectId,
+    projectId: job.projectId,
+    memoryId,
+  });
   const audit = await gateway.appendAuditEvent({
     subjectId: romaSubjectId,
     workspaceId: job.workspaceId,
@@ -805,6 +1176,11 @@ async function executeRomaProjectHealthJob(options: {
       summaryTitle: summary.title,
       quoteTitles: summary.quoteTitles,
       sourceCounts: summary.counts,
+      integrationPackVersion: OFFICIAL_M18_ROMA_INTEGRATION_PACK.version,
+      projectContextPackVersion: contextPack.packVersion,
+      projectContextGeneratedAt: contextPack.generatedAt,
+      projectContextFreshness: contextPack.sourceFreshness.status,
+      releaseRefs: summary.releaseRefs,
     },
   });
 
@@ -893,9 +1269,11 @@ async function executeRomaProjectFindingsJob(options: {
     romaSubjectId,
     job.projectId,
   )) as ProjectContextRow;
+  const contextPack = buildRomaProjectContextPack(context, job.projectId);
   const candidates = buildRomaQaFindingCandidates({
     project,
     context,
+    contextPack,
   });
   const findings: RomaQaFindingWrite[] = [];
 
@@ -913,7 +1291,7 @@ async function executeRomaProjectFindingsJob(options: {
       provider: 'roma',
       accountId: 'service:roma',
       externalId: `qa-finding/${job.projectId}/${candidate.key}`,
-      externalVersion: '1',
+      externalVersion: findingRevision(findingMemory.idempotencyKey),
       eventType: 'roma.qa_finding.created',
       title: findingMemory.title,
       text: findingMemory.text,
@@ -932,6 +1310,8 @@ async function executeRomaProjectFindingsJob(options: {
           requestedBy: job.requestedBy,
           executionSubjectId: romaSubjectId,
           idempotencyKey: findingMemory.idempotencyKey,
+          integrationPackVersion: OFFICIAL_M18_ROMA_INTEGRATION_PACK.version,
+          projectContextPackVersion: contextPack.packVersion,
         },
         scope: {
           workspaceId: job.workspaceId,
@@ -948,7 +1328,19 @@ async function executeRomaProjectFindingsJob(options: {
         finding_key: candidate.key,
         finding_severity: candidate.severity,
         finding_status: candidate.status,
+        outcome_type: candidate.outcomeType,
+        confidence: candidate.confidence,
+        canonical_status: candidate.canonicalStatus,
+        requires_review: candidate.requiresReview,
+        auto_verify_allowed: false,
         evidence_refs: candidate.evidenceRefs,
+        release_refs: candidate.evidenceRefs.filter(
+          (ref) => ref.kind === 'release',
+        ),
+        roma_integration_pack: OFFICIAL_M18_ROMA_INTEGRATION_PACK.version,
+        project_context_pack: contextPack.packVersion,
+        project_context_generated_at: contextPack.generatedAt,
+        project_context_freshness: contextPack.sourceFreshness.status,
       },
       processNow: true,
     }));
@@ -956,6 +1348,12 @@ async function executeRomaProjectFindingsJob(options: {
     if (!memoryId) {
       throw new Error(`roma qa finding capture did not produce a memory for ${candidate.key}`);
     }
+    await verifyRomaCandidateWrite({
+      gateway,
+      romaSubjectId,
+      projectId: job.projectId,
+      memoryId,
+    });
     const audit = await gateway.appendAuditEvent({
       subjectId: romaSubjectId,
       workspaceId: job.workspaceId,
@@ -975,6 +1373,14 @@ async function executeRomaProjectFindingsJob(options: {
         findingTitle: findingMemory.title,
         severity: candidate.severity,
         status: candidate.status,
+        outcomeType: candidate.outcomeType,
+        confidence: candidate.confidence,
+        canonicalStatus: candidate.canonicalStatus,
+        requiresReview: candidate.requiresReview,
+        autoVerifyAllowed: false,
+        integrationPackVersion: OFFICIAL_M18_ROMA_INTEGRATION_PACK.version,
+        projectContextPackVersion: contextPack.packVersion,
+        projectContextGeneratedAt: contextPack.generatedAt,
         evidenceRefs: candidate.evidenceRefs,
       },
     });
@@ -983,6 +1389,10 @@ async function executeRomaProjectFindingsJob(options: {
       title: findingMemory.title,
       severity: candidate.severity,
       status: candidate.status,
+      outcomeType: candidate.outcomeType,
+      confidence: candidate.confidence,
+      canonicalStatus: candidate.canonicalStatus,
+      requiresReview: candidate.requiresReview,
       memoryId,
       auditEventId: audit.id,
       idempotencyKey: findingMemory.idempotencyKey,

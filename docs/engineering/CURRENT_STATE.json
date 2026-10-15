@@ -20,8 +20,8 @@
     "projectName": "sasha-memory-os",
     "projectRef": "vpxblcxsvlylqyldiuwr",
     "region": "eu-central-1",
-    "latestMigration": "20261013164246_m18_project_context_source_acl.sql",
-    "migrationCount": 72
+    "latestMigration": "20261015164000_m18_roma_release_evidence.sql",
+    "migrationCount": 73
   },
   "officialPacks": {
     "m14Slo": "m14-s01-v1",
@@ -55,6 +55,7 @@
     "m17GraphHybridFusion": "m17-s06-v1",
     "m18CursorBootstrap": "m18-s01-v1",
     "m18ProjectContext": "m18-s02-v1",
+    "m18RomaIntegration": "m18-s03-v1",
     "p0ProjectIdentity": "p0-project-identity-v1"
   },
   "deployments": {

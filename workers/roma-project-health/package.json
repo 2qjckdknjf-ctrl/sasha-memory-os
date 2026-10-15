@@ -15,6 +15,7 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@memory-os/db": "workspace:*"
+    "@memory-os/db": "workspace:*",
+    "@memory-os/schemas": "workspace:*"
   }
 }

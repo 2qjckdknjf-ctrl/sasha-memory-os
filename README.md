@@ -129,7 +129,7 @@ Canonical order (do not skip): see [M14_1_BASELINE.md](docs/engineering/M14_1_BA
 23. ~~M17.6 graph/hybrid fusion + evaluations~~ — production Edge v9 and live graph/fallback/temporal acceptance PASS
 24. ~~M18.1 Cursor bootstrap contract~~ (`m18-s01-v1`) — always-on rule, session hook, live bootstrap workflow, and automatic milestone read-after-write PASS
 25. ~~M18.2 project context pack~~ (`m18-s02-v1`) — explicit-project API/MCP pack, migration, Edge v11 and authenticated 1,800-token live acceptance PASS; Memory OS receipt `9ac3fb2e-95de-42aa-aa34-e9954dc0228c`
-26. **M18.3 ROMA integration** — next canonical slice
+26. **M18.3 ROMA integration** (`m18-s03-v1`) — implementation: shared context consumption, audited/deduplicated QA + release-risk outcomes, release evidence, and candidate-only read-after-write enforcement; production acceptance follows merge
 
 ## AI разборы 2026-10-13
 

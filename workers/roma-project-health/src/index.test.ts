@@ -52,6 +52,134 @@ function buildFindingsJob(
   };
 }
 
+function buildReleaseContext(
+  mergeSha = '49d051c436fd2a4fbe9d7f64661edb0b3880aaa0',
+  options: {
+    milestoneTitle?: string;
+    deploymentLine?: string;
+  } = {},
+) {
+  return {
+    projectId,
+    decisions: [
+      {
+        id: 'milestone-m18-2',
+        projectId,
+        title:
+          options.milestoneTitle ??
+          'M18.2 PROJECT CONTEXT PACK LIVE PASS — PR #103',
+        content: [
+          options.deploymentLine ?? 'Production Edge v11 deployment is live.',
+          'PR: https://github.com/2qjckdknjf-ctrl/sasha-memory-os/pull/103',
+          `Merge SHA: ${mergeSha}`,
+          'Blockers:',
+          '- Private deployment credential detail must not be copied.',
+          '- Release owner approval is pending.',
+          '- Deployment audit receipt needs review.',
+          'Next: M18.3 ROMA integration.',
+        ].join('\n'),
+        status: 'verified',
+        memoryType: 'decision',
+        recordedAt: '2026-10-15T14:33:14.000Z',
+        sourceEventId: 'event-m18-2',
+      },
+      {
+        id: 'milestone-m18-1',
+        projectId,
+        title: 'M18.1 CURSOR BOOTSTRAP MERGED — PR #102',
+        content: [
+          'PR: https://github.com/2qjckdknjf-ctrl/sasha-memory-os/pull/102',
+          'Merge SHA: 2222222222222222222222222222222222222222',
+        ].join('\n'),
+        status: 'verified',
+        memoryType: 'decision',
+        recordedAt: '2026-10-14T14:33:14.000Z',
+        sourceEventId: 'event-m18-1',
+      },
+      {
+        id: 'milestone-m17-6',
+        projectId,
+        title: 'M17.6 GRAPH FUSION MERGED — PR #101',
+        content: [
+          'PR: https://github.com/2qjckdknjf-ctrl/sasha-memory-os/pull/101',
+          'Merge SHA: 1111111111111111111111111111111111111111',
+        ].join('\n'),
+        status: 'verified',
+        memoryType: 'decision',
+        recordedAt: '2026-10-13T14:33:14.000Z',
+        sourceEventId: 'event-m17-6',
+      },
+    ],
+    tasks: [
+      {
+        id: 'task-m18-3',
+        projectId,
+        title: 'Implement M18.3 ROMA integration',
+        content: 'Private implementation notes must not be copied.',
+        status: 'active',
+        memoryType: 'task',
+        recordedAt: '2026-10-15T14:34:00.000Z',
+        sourceEventId: 'event-task-m18-3',
+      },
+      {
+        id: 'task-release-audit',
+        projectId,
+        title: 'Audit release evidence',
+        content: 'Private release audit notes must not be copied.',
+        status: 'active',
+        memoryType: 'task',
+        recordedAt: '2026-10-15T14:32:00.000Z',
+        sourceEventId: 'event-task-release-audit',
+      },
+      {
+        id: 'task-owner-review',
+        projectId,
+        title: 'Review release ownership',
+        content: 'Private owner review notes must not be copied.',
+        status: 'active',
+        memoryType: 'task',
+        recordedAt: '2026-10-15T14:31:00.000Z',
+        sourceEventId: 'event-task-owner-review',
+      },
+    ],
+    facts: [],
+    state: {
+      id: 'project-state-m18-3',
+      projectId,
+      version: 8,
+      summary: 'M18.3 is active with a release gate.',
+      updatedAt: '2026-10-15T14:35:00.000Z',
+      state: {
+        stage: 'm18-3',
+        risks: ['Release evidence could become stale.'],
+        next: ['Complete M18.3 ROMA integration.'],
+      },
+    },
+    latestHandoff: {
+      id: 'handoff-m18-3',
+      projectId,
+      createdAt: '2026-10-15T14:34:30.000Z',
+      payload: { summary: 'M18.2 handed off to ROMA integration.' },
+    },
+  };
+}
+
+function candidateGetMemory() {
+  return vi.fn(async ({ memoryId }: { memoryId: string }) => ({
+    id: memoryId,
+    title: 'ROMA candidate memory',
+    content: 'candidate outcome',
+    status: 'candidate',
+    sensitivity: 'internal',
+    memoryType: 'fact',
+    projectId,
+    workspaceId,
+    recordedAt: '2026-10-15T14:35:00.000Z',
+    createdBySubject: roma,
+    metadata: { needs_review: true },
+  }));
+}
+
 describe('parseWorkerIntervalMs', () => {
   it('returns null when unset', () => {
     expect(parseWorkerIntervalMs({})).toBeNull();
@@ -100,8 +228,11 @@ describe('runRomaProjectHealthJob', () => {
         ],
         tasks: [
           {
+            id: 'task-slice-01',
             title: 'Implement Slice 01',
             content: 'Task body must not be copied verbatim.',
+            status: 'active',
+            recordedAt: '2026-08-20T02:00:00.000Z',
           },
         ],
         facts: [
@@ -129,6 +260,7 @@ describe('runRomaProjectHealthJob', () => {
         },
       })),
       captureConnectorRecord,
+      getMemory: candidateGetMemory(),
       appendAuditEvent,
       completeRomaProjectHealth,
     };
@@ -183,6 +315,13 @@ describe('runRomaProjectHealthJob', () => {
     expect(captureInput?.text).not.toContain(
       'Private salary discussion that must never be quoted.',
     );
+    expect(captureInput?.text).toContain('Implement Slice 01');
+    expect(captureInput?.text).not.toContain(
+      'Task body must not be copied verbatim.',
+    );
+    expect(captureInput?.text).not.toContain(
+      'Decision body must not be copied verbatim.',
+    );
     expect(captureInput?.text).toContain(
       'titles and structured state only; raw memory bodies are not quoted',
     );
@@ -221,6 +360,7 @@ describe('runRomaProjectHealthJob', () => {
         latestHandoff: null,
       })),
       captureConnectorRecord,
+      getMemory: candidateGetMemory(),
       appendAuditEvent,
       completeRomaProjectHealth,
     };
@@ -395,6 +535,7 @@ describe('runRomaProjectFindingsJob', () => {
         latestHandoff: null,
       })),
       captureConnectorRecord,
+      getMemory: candidateGetMemory(),
       appendAuditEvent,
       completeRomaProjectFindings,
     };
@@ -482,6 +623,7 @@ describe('runRomaProjectFindingsJob', () => {
         latestHandoff: null,
       })),
       captureConnectorRecord,
+      getMemory: candidateGetMemory(),
       appendAuditEvent: vi.fn(async ({ afterState }: Record<string, any>) => ({
         id: `audit-${afterState.findingKey}`,
       })),
@@ -543,6 +685,7 @@ describe('runRomaProjectFindingsJob', () => {
         latestHandoff: null,
       })),
       captureConnectorRecord,
+      getMemory: candidateGetMemory(),
       appendAuditEvent: vi.fn(async ({ afterState }: Record<string, any>) => ({
         id: `audit-${afterState.findingKey}`,
       })),
@@ -570,6 +713,289 @@ describe('runRomaProjectFindingsJob', () => {
       .slice(captureConnectorRecord.mock.calls.length / 2)
       .map((call) => call[0]?.idempotencyKey);
     expect(secondKeys).toEqual(firstKeys);
+  });
+
+  it('consumes the M18.2 pack, links release evidence, and keeps claims candidate-only', async () => {
+    const captureConnectorRecord = vi.fn(async (input: Record<string, any>) => ({
+      eventId: `source-${input.idempotencyKey}`,
+      process: {
+        memoryId: `memory-${input.idempotencyKey}`,
+        status: 'candidate',
+      },
+    }));
+    const projectContext = vi.fn(async () => buildReleaseContext());
+    const getMemory = vi.fn(async ({ memoryId }: { memoryId: string }) => ({
+      id: memoryId,
+      title: 'ROMA QA finding',
+      content: 'candidate outcome',
+      status: 'candidate',
+      sensitivity: 'internal',
+      memoryType: 'fact',
+      projectId,
+      workspaceId,
+      recordedAt: '2026-10-15T14:35:00.000Z',
+      createdBySubject: roma,
+      metadata: { needs_review: true },
+    }));
+    const gateway = {
+      listProjects: vi.fn(async () => [
+        {
+          id: projectId,
+          slug: 'aistroyka',
+          name: 'AISTROYKA',
+          status: 'active',
+        },
+      ]),
+      projectContext,
+      captureConnectorRecord,
+      getMemory,
+      appendAuditEvent: vi.fn(async ({ afterState }: Record<string, any>) => ({
+        id: `audit-${afterState.findingKey}`,
+      })),
+      completeRomaProjectFindings: vi.fn(async () => ({
+        jobId: 'job-findings-1',
+        status: 'succeeded',
+      })),
+    };
+
+    const first = await runRomaProjectFindingsJob({
+      gateway: gateway as any,
+      job: buildFindingsJob(),
+      romaSubjectId: roma,
+    });
+    const second = await runRomaProjectFindingsJob({
+      gateway: gateway as any,
+      job: buildFindingsJob(),
+      romaSubjectId: roma,
+    });
+
+    expect(projectContext).toHaveBeenCalledWith(roma, projectId);
+    expect(getMemory).toHaveBeenCalledWith(
+      expect.objectContaining({ subjectId: roma }),
+    );
+    expect(first.findings.map((finding) => finding.idempotencyKey)).toEqual(
+      second.findings.map((finding) => finding.idempotencyKey),
+    );
+    const releaseRisk = captureConnectorRecord.mock.calls
+      .map((call) => call[0] as Record<string, any>)
+      .find((input) => input.metadata?.outcome_type === 'release_risk');
+    expect(releaseRisk).toBeTruthy();
+    expect(releaseRisk?.metadata).toMatchObject({
+      roma_integration_pack: 'm18-s03-v1',
+      project_context_pack: 'm18-s02-v1',
+      canonical_status: 'candidate',
+      requires_review: true,
+      auto_verify_allowed: false,
+      confidence: 0.6,
+    });
+    expect(releaseRisk?.metadata?.release_refs).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          releaseType: 'pull_request',
+          value: 'https://github.com/2qjckdknjf-ctrl/sasha-memory-os/pull/103',
+        }),
+        expect.objectContaining({
+          releaseType: 'commit',
+          value: '49d051c436fd2a4fbe9d7f64661edb0b3880aaa0',
+        }),
+        expect.objectContaining({
+          releaseType: 'deployment',
+          value: 'milestone-m18-2',
+        }),
+      ]),
+    );
+    expect(releaseRisk?.metadata?.release_refs).toHaveLength(6);
+    expect(releaseRisk?.metadata?.evidence_refs).toHaveLength(12);
+    expect(releaseRisk?.metadata?.evidence_refs).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          kind: 'release',
+          releaseType: 'deployment',
+          value: 'milestone-m18-2',
+        }),
+      ]),
+    );
+    expect(releaseRisk?.externalVersion).toMatch(/^[a-f0-9]{24}$/);
+    expect(releaseRisk?.text).toContain('Canonical status: candidate');
+    expect(releaseRisk?.text).toContain('cannot silently become verified');
+    expect(releaseRisk?.text).not.toContain('Private implementation notes');
+    for (const call of captureConnectorRecord.mock.calls) {
+      expect(call[0]?.text).not.toContain(
+        'Private deployment credential detail must not be copied.',
+      );
+    }
+
+    projectContext.mockResolvedValueOnce(
+      buildReleaseContext('aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'),
+    );
+    await runRomaProjectFindingsJob({
+      gateway: gateway as any,
+      job: buildFindingsJob({ jobId: 'job-findings-2' }),
+      romaSubjectId: roma,
+    });
+    const changedReleaseRisk = captureConnectorRecord.mock.calls
+      .slice(-2)
+      .map((call) => call[0] as Record<string, any>)
+      .find((input) => input.metadata?.outcome_type === 'release_risk');
+    expect(changedReleaseRisk?.externalVersion).not.toBe(
+      releaseRisk?.externalVersion,
+    );
+
+    projectContext.mockResolvedValueOnce(
+      buildReleaseContext(
+        'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
+        {
+          milestoneTitle: 'M18.3 production deployment pending',
+          deploymentLine: 'Production deployment is pending review.',
+        },
+      ),
+    );
+    await runRomaProjectFindingsJob({
+      gateway: gateway as any,
+      job: buildFindingsJob({ jobId: 'job-findings-3' }),
+      romaSubjectId: roma,
+    });
+    const pendingReleaseRefs = captureConnectorRecord.mock.calls
+      .slice(-2)
+      .flatMap((call) => call[0]?.metadata?.release_refs ?? []);
+    expect(pendingReleaseRefs).not.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ releaseType: 'deployment' }),
+      ]),
+    );
+  });
+
+  it('prioritizes stale release risk and attaches freshness evidence', async () => {
+    const captureConnectorRecord = vi.fn(async (input: Record<string, any>) => ({
+      eventId: `source-${input.metadata.finding_key}`,
+      process: { memoryId: `memory-${input.metadata.finding_key}` },
+    }));
+    const gateway = {
+      listProjects: vi.fn(async () => [
+        {
+          id: projectId,
+          slug: 'aistroyka',
+          name: 'AISTROYKA',
+          status: 'active',
+        },
+      ]),
+      projectContext: vi.fn(async () => ({
+        projectId,
+        decisions: [],
+        tasks: [],
+        facts: [
+          {
+            id: 'fact-old-signal',
+            projectId,
+            title: 'Last known QA signal',
+            content: 'Private stale fact body must not be copied.',
+            status: 'verified',
+            memoryType: 'fact',
+            recordedAt: '2020-01-02T00:00:00.000Z',
+          },
+        ],
+        state: {
+          id: 'state-old',
+          projectId,
+          version: 1,
+          summary: '',
+          updatedAt: '2020-01-01T00:00:00.000Z',
+          state: {},
+        },
+        latestHandoff: null,
+      })),
+      captureConnectorRecord,
+      getMemory: candidateGetMemory(),
+      appendAuditEvent: vi.fn(async ({ afterState }: Record<string, any>) => ({
+        id: `audit-${afterState.findingKey}`,
+      })),
+      completeRomaProjectFindings: vi.fn(async () => ({
+        jobId: 'job-findings-stale',
+        status: 'succeeded',
+      })),
+    };
+
+    const result = await runRomaProjectFindingsJob({
+      gateway: gateway as any,
+      job: buildFindingsJob({ jobId: 'job-findings-stale' }),
+      romaSubjectId: roma,
+    });
+
+    expect(result.findings).toHaveLength(3);
+    expect(result.findings[0]).toMatchObject({
+      findingKey: 'stale-release-context',
+      severity: 'high',
+    });
+    const staleInput = captureConnectorRecord.mock.calls
+      .map((call) => call[0] as Record<string, any>)
+      .find((input) => input.metadata?.finding_key === 'stale-release-context');
+    expect(staleInput?.metadata?.release_refs).toEqual([]);
+    expect(staleInput?.metadata?.evidence_refs).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          kind: 'memory',
+          memoryId: 'fact-old-signal',
+          title: 'Last known QA signal',
+          field: 'sourceFreshness',
+        }),
+      ]),
+    );
+    expect(staleInput?.text).not.toContain(
+      'Private stale fact body must not be copied.',
+    );
+  });
+
+  it('fails closed if a ROMA outcome is promoted during read-after-write', async () => {
+    const appendAuditEvent = vi.fn();
+    const completeRomaProjectFindings = vi.fn(async () => ({
+      jobId: 'job-findings-1',
+      status: 'failed',
+    }));
+    const gateway = {
+      listProjects: vi.fn(async () => [
+        {
+          id: projectId,
+          slug: 'aistroyka',
+          name: 'AISTROYKA',
+          status: 'active',
+        },
+      ]),
+      projectContext: vi.fn(async () => buildReleaseContext()),
+      captureConnectorRecord: vi.fn(async () => ({
+        eventId: 'source-promoted',
+        process: { memoryId: 'memory-promoted' },
+      })),
+      getMemory: vi.fn(async () => ({
+        id: 'memory-promoted',
+        title: 'ROMA promoted finding',
+        content: 'must fail closed',
+        status: 'verified',
+        sensitivity: 'internal',
+        memoryType: 'fact',
+        projectId,
+        workspaceId,
+        recordedAt: '2026-10-15T14:35:00.000Z',
+        createdBySubject: roma,
+        metadata: {},
+      })),
+      appendAuditEvent,
+      completeRomaProjectFindings,
+    };
+
+    await expect(
+      runRomaProjectFindingsJob({
+        gateway: gateway as any,
+        job: buildFindingsJob(),
+        romaSubjectId: roma,
+      }),
+    ).rejects.toThrow(/must remain a project-scoped candidate/i);
+    expect(appendAuditEvent).not.toHaveBeenCalled();
+    expect(completeRomaProjectFindings).toHaveBeenCalledWith(
+      expect.objectContaining({
+        status: 'failed',
+        error: expect.stringMatching(/must remain a project-scoped candidate/i),
+      }),
+    );
   });
 
   it('fails the findings job when the project is not visible to ROMA', async () => {
@@ -838,6 +1264,7 @@ describe('runRomaProjectHealthTick', () => {
         latestHandoff: null,
       })),
       captureConnectorRecord,
+      getMemory: candidateGetMemory(),
       appendAuditEvent: vi.fn(async () => ({ id: 'audit-roma-1' })),
       completeRomaProjectHealth: vi.fn(async () => ({
         jobId: 'job-roma-1',
@@ -971,6 +1398,7 @@ describe('buildRomaQaFindingApprovalCheckpointRequest', () => {
         eventId: 'source-findings-1',
         process: { memoryId: 'memory-findings-1' },
       })),
+      getMemory: candidateGetMemory(),
       appendAuditEvent: vi.fn(async () => ({ id: 'audit-findings-1' })),
       completeRomaProjectFindings: vi.fn(async () => ({
         jobId: 'job-findings-1',
@@ -995,6 +1423,10 @@ describe('buildRomaQaFindingApprovalCheckpointRequest', () => {
           'Project state lists blocked work items, so ROMA flagged follow-up that may stall delivery.',
         severity: 'high',
         status: 'open',
+        outcomeType: 'release_risk',
+        confidence: 0.6,
+        canonicalStatus: 'candidate',
+        requiresReview: true,
         evidenceRefs: [
           {
             kind: 'project_state',
