@@ -77,6 +77,7 @@ import {
   oauthCompleteSchema,
   oauthStartSchema,
   replayConnectorJobSchema,
+  routingCorrectionRequestSchema,
   resolveProjectContextMaxTokens,
   resyncConnectionSchema,
   revokeConnectionSchema,
@@ -2109,6 +2110,9 @@ export function createApp(options?: {
   app.use('/v1/connections/sync', requireHttpApiSecret);
   app.use('/v1/connections/*/resync', requireHttpApiSecret);
   app.use('/v1/connections/*/github/reconcile', requireHttpApiSecret);
+  app.use('/v1/governance/*', requireHttpApiSecret);
+  app.use('/v1/routing/*', requireHttpApiSecret);
+  app.use('/v1/jobs', requireHttpApiSecret);
   app.use('/v1/jobs/dead-letter-stale', requireHttpApiSecret);
   app.use('/v1/jobs/*/replay', requireHttpApiSecret);
   app.use('/v1/outbox/*', requireHttpApiSecret);
@@ -2542,6 +2546,94 @@ export function createApp(options?: {
         actor: resolveSeedActor(entry.actorSubjectId),
       }));
     return c.json({ events, backend: 'memory-store' });
+  });
+
+  app.get('/v1/governance/overview', async (c) => {
+    const authz = c.get('authz');
+    if (!authz.isOwner) return c.json({ error: 'forbidden' }, 403);
+    const workspaceId = c.req.query('workspace_id')?.trim();
+    if (!workspaceId) return c.json({ error: 'workspace_id is required' }, 400);
+    const projectId = c.req.query('project_id')?.trim() || null;
+    const gw = c.get('gateway');
+    if (!gw) {
+      return c.json({
+        workspaceId,
+        projectId,
+        generatedAt: new Date().toISOString(),
+        freshness: {
+          status: 'unknown',
+          newestRecordedAt: null,
+          latestMemoryAt: null,
+          latestSourceEventAt: null,
+          latestConnectorSyncAt: null,
+          slaSeconds: 86_400,
+        },
+        projects: { total: 0, withState: 0 },
+        memories: { total: 0, candidate: 0, disputed: 0 },
+        routing: { unclassified: 0 },
+        connections: { total: 0, needsAttention: 0, revoked: 0 },
+        jobs: { queued: 0, running: 0, failed: 0, deadLetter: 0 },
+        outbox: { pending: 0 },
+        backend: 'memory-store',
+      });
+    }
+    try {
+      const result = await gw.controlCenterOverview({
+        subjectId: authz.subjectId,
+        workspaceId,
+        projectId,
+      });
+      return c.json({ ...(result as Record<string, unknown>), backend: 'supabase' });
+    } catch (err) {
+      if (isForbiddenError(err)) return c.json({ error: 'forbidden' }, 403);
+      if (isNotFoundError(err)) return c.json({ error: 'project_not_found' }, 404);
+      return c.json({ error: (err as Error).message }, 500);
+    }
+  });
+
+  app.get('/v1/routing/unclassified', async (c) => {
+    const authz = c.get('authz');
+    if (!authz.isOwner) return c.json({ error: 'forbidden' }, 403);
+    const workspaceId = c.req.query('workspace_id')?.trim();
+    if (!workspaceId) return c.json({ error: 'workspace_id is required' }, 400);
+    const limitRaw = Number(c.req.query('limit') ?? '50');
+    const limit = Number.isFinite(limitRaw) ? Math.min(Math.max(limitRaw, 1), 200) : 50;
+    const gw = c.get('gateway');
+    if (!gw) return c.json({ count: 0, items: [], backend: 'memory-store' });
+    try {
+      const result = await gw.listUnclassifiedMemories({
+        subjectId: authz.subjectId,
+        workspaceId,
+        limit,
+      });
+      return c.json({ ...(result as Record<string, unknown>), backend: 'supabase' });
+    } catch (err) {
+      if (isForbiddenError(err)) return c.json({ error: 'forbidden' }, 403);
+      return c.json({ error: (err as Error).message }, 500);
+    }
+  });
+
+  app.post('/v1/routing/:memoryId/correct', async (c) => {
+    const authz = c.get('authz');
+    if (!authz.isOwner) return c.json({ error: 'forbidden' }, 403);
+    const body = routingCorrectionRequestSchema.parse(await c.req.json().catch(() => ({})));
+    const gw = c.get('gateway');
+    if (!gw) return c.json({ error: 'supabase gateway required' }, 501);
+    try {
+      const result = await gw.applyProjectRoutingCorrection({
+        subjectId: authz.subjectId,
+        memoryId: c.req.param('memoryId'),
+        correctedProjectId: body.corrected_project_id,
+        classification: body.classification,
+        reason: body.reason,
+        sourceEvidence: body.source_evidence,
+      });
+      return c.json({ ...(result as Record<string, unknown>), corrected: true });
+    } catch (err) {
+      if (isForbiddenError(err)) return c.json({ error: 'forbidden' }, 403);
+      if (isNotFoundError(err)) return c.json({ error: 'memory_not_found' }, 404);
+      return c.json({ error: (err as Error).message }, 500);
+    }
   });
 
   app.get('/v1/connectors', async (c) => {
@@ -4002,6 +4094,43 @@ export function createApp(options?: {
       },
       201,
     );
+  });
+
+  app.get('/v1/jobs', async (c) => {
+    const authz = c.get('authz');
+    if (!authz.isOwner) return c.json({ error: 'forbidden' }, 403);
+    const workspaceId = c.req.query('workspace_id')?.trim();
+    if (!workspaceId) return c.json({ error: 'workspace_id is required' }, 400);
+    const requestedStatuses = (c.req.query('statuses') ?? 'queued,running,failed,dead_letter')
+      .split(',')
+      .map((status) => status.trim())
+      .filter(Boolean);
+    const allowedStatuses = new Set([
+      'queued',
+      'running',
+      'succeeded',
+      'failed',
+      'dead_letter',
+    ]);
+    if (requestedStatuses.some((status) => !allowedStatuses.has(status))) {
+      return c.json({ error: 'invalid job status' }, 400);
+    }
+    const limitRaw = Number(c.req.query('limit') ?? '50');
+    const limit = Number.isFinite(limitRaw) ? Math.min(Math.max(limitRaw, 1), 200) : 50;
+    const gw = c.get('gateway');
+    if (!gw) return c.json({ count: 0, jobs: [], backend: 'memory-store' });
+    try {
+      const result = await gw.listProcessingJobs({
+        subjectId: authz.subjectId,
+        workspaceId,
+        statuses: requestedStatuses,
+        limit,
+      });
+      return c.json({ ...(result as Record<string, unknown>), backend: 'supabase' });
+    } catch (err) {
+      if (isForbiddenError(err)) return c.json({ error: 'forbidden' }, 403);
+      return c.json({ error: (err as Error).message }, 500);
+    }
   });
 
   app.get('/v1/jobs/:id', async (c) => {

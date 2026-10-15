@@ -15,6 +15,7 @@
 - [M6 ChatGPT production closeout](docs/engineering/M6_CHATGPT_PRODUCTION.md)
 - [CURRENT_STATE manifest](docs/engineering/CURRENT_STATE.json)
 - [M14.1 baseline reconciliation](docs/engineering/M14_1_BASELINE.md)
+- [M19 Control Center governance](docs/engineering/M19_CONTROL_CENTER_GOVERNANCE.md)
 
 ## Статус
 
@@ -133,7 +134,7 @@ Canonical order (do not skip): see [M14_1_BASELINE.md](docs/engineering/M14_1_BA
 25. ~~M18.2 project context pack~~ (`m18-s02-v1`) — explicit-project API/MCP pack, migration, Edge v11 and authenticated 1,800-token live acceptance PASS; Memory OS receipt `9ac3fb2e-95de-42aa-aa34-e9954dc0228c`
 26. ~~M18.3 ROMA integration~~ (`m18-s03-v1`) — shared context consumption, audited/deduplicated QA + release-risk outcomes, release evidence and candidate-only production read-after-write PASS; Memory OS receipt `ea0746e7-6557-4c66-b017-005e3c06f157`
 27. ~~M18.4 ChatGPT automatic writeback policy~~ (`m18-s04-v1`) — production Edge v12 create/dedupe/conflict/read-after-write PASS; cross-client M18 exit gate PASS; Memory OS receipt `b664431d-7e33-49f3-bd3b-27dbb24150f0`
-28. **M19 Control Center governance completion** — next canonical slice
+28. **M19 Control Center governance completion** (`m19-s01-v1`) — implementation in progress; live receipt pending
 29. M20 security, live release gates and final GA evidence
 
 ## AI разборы 2026-10-13

@@ -1860,6 +1860,79 @@ export class SupabaseMemoryGateway {
     return data;
   }
 
+  async controlCenterOverview(input: {
+    subjectId: string;
+    workspaceId: string;
+    projectId?: string | null;
+  }) {
+    const { data, error } = await this.client.rpc('api_control_center_overview', {
+      p_secret: this.apiSecret,
+      p_subject_id: input.subjectId,
+      p_workspace_id: input.workspaceId,
+      p_project_id: input.projectId ?? null,
+    });
+    if (error) throw error;
+    return data;
+  }
+
+  async listUnclassifiedMemories(input: {
+    subjectId: string;
+    workspaceId: string;
+    limit?: number;
+  }) {
+    const { data, error } = await this.client.rpc('api_list_unclassified_memories', {
+      p_secret: this.apiSecret,
+      p_subject_id: input.subjectId,
+      p_workspace_id: input.workspaceId,
+      p_limit: input.limit ?? 50,
+    });
+    if (error) throw error;
+    return data;
+  }
+
+  async applyProjectRoutingCorrection(input: {
+    subjectId: string;
+    memoryId: string;
+    correctedProjectId: string;
+    classification:
+      | 'KEEP_AISTROYKA'
+      | 'MOVE_TO_MEMORY_OS'
+      | 'MOVE_TO_HIAIR'
+      | 'UNCLASSIFIED'
+      | 'REVIEW_REQUIRED';
+    reason: string;
+    sourceEvidence?: Record<string, unknown>;
+  }) {
+    const { data, error } = await this.client.rpc('api_apply_project_routing_correction', {
+      p_secret: this.apiSecret,
+      p_actor_subject_id: input.subjectId,
+      p_memory_id: input.memoryId,
+      p_corrected_project_id: input.correctedProjectId,
+      p_classification: input.classification,
+      p_reason: input.reason,
+      p_source_evidence: input.sourceEvidence ?? {},
+    });
+    if (error) throw error;
+    return data;
+  }
+
+  async listProcessingJobs(input: {
+    subjectId: string;
+    workspaceId: string;
+    statuses?: string[];
+    limit?: number;
+  }) {
+    const { data, error } = await this.client.rpc('api_list_processing_jobs', {
+      p_secret: this.apiSecret,
+      p_subject_id: input.subjectId,
+      p_workspace_id: input.workspaceId,
+      p_statuses: input.statuses ?? ['queued', 'running', 'failed', 'dead_letter'],
+      p_limit: input.limit ?? 50,
+    });
+    if (error) throw error;
+    return data;
+  }
+
   async claimConnectorSyncJobs(input: {
     subjectId: string;
     workspaceId: string;

@@ -76,10 +76,6 @@ describe('M18.4 ChatGPT automatic writeback pack', () => {
       nextSlice: 'M19_CONTROL_CENTER_GOVERNANCE_COMPLETION',
       officialPacks: { m18ChatgptWriteback: 'm18-s04-v1' },
       chatgptModeA: { toolCount: 7 },
-      supabase: {
-        latestMigration: '20261015190000_m18_chatgpt_automatic_writeback.sql',
-        migrationCount: 75,
-      },
       m18ChatgptWritebackLiveReceipt: {
         packVersion: 'm18-s04-v1',
         memoryId: 'b664431d-7e33-49f3-bd3b-27dbb24150f0',

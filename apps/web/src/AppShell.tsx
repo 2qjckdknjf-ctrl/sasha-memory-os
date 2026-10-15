@@ -20,6 +20,7 @@ type PrimaryLink = {
 
 const primaryLinks: PrimaryLink[] = [
   { to: '/', label: 'Главная', end: true },
+  { to: '/governance', label: 'Управление' },
   { to: '/connections', label: 'Подключения' },
   { to: '/agents', label: 'Агенты и права' },
   { to: '/tasks', label: 'Задачи' },
