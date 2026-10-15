@@ -28,8 +28,10 @@ cleanup() {
   psql "$DB_URL" -X -v ON_ERROR_STOP=1 \
     -v ready_ref="$ready_ref" \
     -v recovery_ref="$recovery_ref" \
-    -c "DELETE FROM public.connector_vault_blobs WHERE vault_ref IN (:'ready_ref', :'recovery_ref');" \
-    >/dev/null 2>&1 || true
+    >/dev/null 2>&1 <<'SQL' || true
+DELETE FROM public.connector_vault_blobs
+WHERE vault_ref IN (:'ready_ref', :'recovery_ref');
+SQL
 }
 trap cleanup EXIT
 
@@ -51,7 +53,12 @@ SQL
 for ref in "$ready_ref" "$recovery_ref"; do
   ciphertext="$(psql "$DB_URL" -X -A -t -v ON_ERROR_STOP=1 \
     -v vault_ref="$ref" \
-    -c "SELECT encode(ciphertext, 'base64') FROM public.connector_vault_blobs WHERE vault_ref = :'vault_ref';")"
+    <<'SQL'
+SELECT encode(ciphertext, 'base64')
+FROM public.connector_vault_blobs
+WHERE vault_ref = :'vault_ref';
+SQL
+)"
   printf '%s' "$ciphertext" | verify_fixture "$ref"
 done
 echo 'm20_vault_fixture_read=pass algorithm=aes-256-gcm payload_logged=false'
