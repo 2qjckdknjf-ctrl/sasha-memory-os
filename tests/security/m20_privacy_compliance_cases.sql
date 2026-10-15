@@ -192,7 +192,9 @@ BEGIN
      ))) THEN
     RAISE EXCEPTION 'privacy export omitted source, primary, or derived data: %', v_export;
   END IF;
-  v_snapshot_at := clock_timestamp();
+  -- The acceptance body is one SQL statement, so use its stable start time to
+  -- model the snapshot returned by the first HTTP/RPC request.
+  v_snapshot_at := statement_timestamp();
   v_export := public.api_export_project_privacy_bundle(
     v_secret, v_owner, v_workspace, v_project, 1, 0, v_snapshot_at
   );
