@@ -71,6 +71,16 @@ It proves:
   future claims;
 - restored token material plus explicit reauthentication makes the job
   claimable and completable again.
+- the real callback order is enforced: one-time OAuth state, vault write,
+  `api_oauth_complete_stub(..., exchange_mode = 'exchanged')`, state
+  consumption, audit, readiness reconciliation, then worker claim.
+
+The slice also closes a production defect found by this gate: the provider
+broker already returned `exchanged` after a successful vault write, but the
+database completion function accepted only `stub` and `credentials_ready`.
+Migration `20261015210000_m20_oauth_reauthentication_boundary.sql` admits the
+actual terminal mode without accepting or persisting raw authorization codes or
+tokens.
 
 ## Safety boundary and remaining blocker
 

@@ -20,8 +20,8 @@
     "projectName": "sasha-memory-os",
     "projectRef": "vpxblcxsvlylqyldiuwr",
     "region": "eu-central-1",
-    "latestMigration": "20261015200000_m19_control_center_governance.sql",
-    "migrationCount": 76
+    "latestMigration": "20261015210000_m20_oauth_reauthentication_boundary.sql",
+    "migrationCount": 77
   },
   "officialPacks": {
     "m14Slo": "m14-s01-v1",

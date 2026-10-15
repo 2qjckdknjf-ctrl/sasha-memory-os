@@ -12,6 +12,9 @@ describe('M20.2 reliability and DR release gate', () => {
     const ci = repoFile('scripts/ci-ephemeral-shared-memory-smoke.sh');
     const restore = repoFile('scripts/m20-current-schema-restore-drill.sh');
     const sql = repoFile('tests/security/m20_reliability_dr_cases.sql');
+    const oauthRecovery = repoFile(
+      'supabase/migrations/20261015210000_m20_oauth_reauthentication_boundary.sql',
+    );
     const docs = repoFile('docs/engineering/M20_SLICE_02_RELIABILITY_DR.md');
     const current = JSON.parse(repoFile('docs/engineering/CURRENT_STATE.json'));
 
@@ -25,8 +28,16 @@ describe('M20.2 reliability and DR release gate', () => {
     expect(sql).toContain('api_dead_letter_stale_jobs');
     expect(sql).toContain('api_replay_connector_sync');
     expect(sql).toContain('api_retry_connector_sync');
+    expect(sql).toContain('api_oauth_start');
+    expect(sql).toContain('api_oauth_complete_stub');
+    expect(sql).toContain("'exchanged'");
+    expect(sql).toContain('before bounded backoff elapsed');
+    expect(sql).toContain('before dead-lettering');
     expect(sql).toContain('reauth_required');
     expect(sql).toContain('ROLLBACK;');
+    expect(oauthRecovery).toContain(
+      "v_mode NOT IN ('stub', 'credentials_ready', 'exchanged')",
+    );
     expect(docs).toContain('15 Oct 2026 06:59:40 (+0000)');
     expect(docs).toContain('PITR is not enabled');
     expect(docs).toContain('0 buckets / 0 objects');
