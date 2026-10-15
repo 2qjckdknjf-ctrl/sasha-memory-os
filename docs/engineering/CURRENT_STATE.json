@@ -20,8 +20,8 @@
     "projectName": "sasha-memory-os",
     "projectRef": "vpxblcxsvlylqyldiuwr",
     "region": "eu-central-1",
-    "latestMigration": "20261015164000_m18_roma_release_evidence.sql",
-    "migrationCount": 73
+    "latestMigration": "20261015180000_m18_roma_canonical_project_acl.sql",
+    "migrationCount": 74
   },
   "officialPacks": {
     "m14Slo": "m14-s01-v1",
@@ -179,7 +179,8 @@
     "p0ProjectIdentityPack": "tests/security/p0_project_identity_pack.test.ts",
     "m20RoleBoundarySql": "tests/security/m20_security_role_boundary_cases.sql",
     "m18CursorBootstrapPack": "tests/security/m18_slice_01_pack.test.ts",
-    "m18ProjectContextPack": "tests/security/m18_slice_02_pack.test.ts"
+    "m18ProjectContextPack": "tests/security/m18_slice_02_pack.test.ts",
+    "m18RomaCanonicalAclSql": "tests/security/m18_slice_03_roma_canonical_acl_cases.sql"
   },
   "openPrPolicy": {
     "staleDraftPr16": {
