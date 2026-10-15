@@ -29,6 +29,7 @@ export * from './chatgptWritebackPolicy.js';
 export * from './controlCenterGovernance.js';
 export * from './securityReleaseGate.js';
 export * from './reliabilityDrGate.js';
+export * from './performanceRetrievalGate.js';
 export * from './appleCompanion.js';
 export * from './memory.js';
 export * from './jobs.js';

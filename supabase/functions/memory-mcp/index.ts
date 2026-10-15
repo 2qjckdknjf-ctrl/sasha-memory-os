@@ -326,6 +326,24 @@ type Hit = {
   personalization?: Record<string, unknown> | null;
 };
 
+const SEARCH_EMBEDDING_FIELDS = [
+  "embedding",
+  "embedding_vector",
+  "embedding_vector_hq",
+  "embeddingVector",
+  "embeddingVectorHq",
+] as const;
+
+function withoutSearchEmbeddings<T extends { memory: Record<string, unknown> }>(
+  hits: readonly T[],
+): T[] {
+  return hits.map((hit) => {
+    const memory = { ...hit.memory };
+    for (const field of SEARCH_EMBEDDING_FIELDS) delete memory[field];
+    return { ...hit, memory };
+  });
+}
+
 function isPinned(hit: Hit): boolean {
   const personalization = hit.personalization;
   return Boolean(
@@ -524,7 +542,7 @@ async function callTool(
             ? "no hybrid hits to ground graph traversal"
             : "no graph seeds; hybrid-only retrieval";
           return {
-            hits: ranked,
+            hits: withoutSearchEmbeddings(ranked),
             ranking: "hybrid-rrf",
             rankingVersion: SEARCH_RANKING_VERSION,
             rankingWeightsVersion: SEARCH_RANKING_WEIGHTS_VERSION,
@@ -590,7 +608,7 @@ async function callTool(
           ]),
         ];
         return {
-          hits: fused,
+          hits: withoutSearchEmbeddings(fused),
           ranking: "hybrid-rrf+graph-evidence",
           rankingVersion:
             `${SEARCH_RANKING_VERSION}+${EDGE_GRAPH_FUSION_PACK_VERSION}`,
@@ -619,7 +637,7 @@ async function callTool(
         };
       }
       return {
-        hits: ranked,
+        hits: withoutSearchEmbeddings(ranked),
         ranking: "hybrid-rrf",
         rankingVersion: SEARCH_RANKING_VERSION,
         rankingWeightsVersion: SEARCH_RANKING_WEIGHTS_VERSION,
