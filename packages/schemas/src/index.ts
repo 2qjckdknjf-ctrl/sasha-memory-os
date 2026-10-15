@@ -25,6 +25,7 @@ export * from './graphHybridFusion.js';
 export * from './cursorBootstrapContract.js';
 export * from './projectContextPack.js';
 export * from './romaIntegrationContract.js';
+export * from './chatgptWritebackPolicy.js';
 export * from './appleCompanion.js';
 export * from './memory.js';
 export * from './jobs.js';

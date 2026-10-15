@@ -833,6 +833,33 @@ export const mcpTools: McpTool[] = [
         content: { type: 'string' },
         actor_subject_id: { type: 'string' },
         idempotency_key: { type: 'string' },
+        writeback: {
+          type: 'object',
+          properties: {
+            kind: {
+              type: 'string',
+              enum: ['approved_decision', 'completed_milestone'],
+            },
+            approval: {
+              type: 'object',
+              properties: {
+                source: {
+                  type: 'string',
+                  enum: ['explicit_user', 'verified_workflow'],
+                },
+                reference: { type: 'string' },
+              },
+              required: ['source', 'reference'],
+            },
+            evidence_refs: {
+              type: 'array',
+              items: { type: 'string' },
+              minItems: 1,
+              maxItems: 12,
+            },
+          },
+          required: ['kind', 'approval', 'evidence_refs'],
+        },
       },
       required: [
         'workspace_id',
@@ -1693,6 +1720,26 @@ export function createMcpHandlers(options?: {
             ...args,
             project_id: resolvedProjectId,
           });
+          if (input.writeback) {
+            if (!gateway) {
+              throw new Error(
+                'automatic ChatGPT writeback requires the Supabase gateway',
+              );
+            }
+            return gateway.chatgptWritebackDecision({
+              subjectId: input.actor_subject_id,
+              workspaceId: input.workspace_id,
+              projectId: resolvedProjectId,
+              title: input.title,
+              content: input.content,
+              idempotencyKey: input.idempotency_key,
+              writeback: input.writeback,
+              importance: input.importance,
+              confidence: input.confidence,
+              sensitivity: input.sensitivity,
+              rationale: input.rationale,
+            });
+          }
           if (gateway) {
             return gateway.createDecision({
               subjectId: input.actor_subject_id,

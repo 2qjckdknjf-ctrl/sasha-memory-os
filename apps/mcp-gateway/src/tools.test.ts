@@ -81,6 +81,10 @@ function createTwoProjectGateway() {
     }),
     captureText: vi.fn(async () => ({ process: null })),
     createDecision: vi.fn(async () => ({ id: 'decision-1' })),
+    chatgptWritebackDecision: vi.fn(async () => ({
+      memory: { id: 'writeback-decision-1' },
+      writeback: { outcome: 'created', packVersion: 'm18-s04-v1' },
+    })),
     createHandoff: vi.fn(async () => ({ id: 'handoff-1' })),
     search: vi.fn(async () => []),
     appendAuditEvent: vi.fn(async () => ({})),
@@ -1199,6 +1203,58 @@ describe('mcp gateway alpha', () => {
     expect(gateway.createDecision).toHaveBeenCalledWith(
       expect.objectContaining({ projectId }),
     );
+  });
+
+  it('routes an approved ChatGPT writeback through the policy RPC', async () => {
+    const gateway = createTwoProjectGateway();
+    const mcp = createMcpHandlers({ gateway: gateway as any, profile: 'chatgpt' });
+    const result = await mcp.call('memory.store_decision', {
+      project_id: projectId,
+      title: 'Approved ChatGPT decision',
+      content: 'Use the approved automatic writeback policy.',
+      idempotency_key: 'mcp-chatgpt-writeback-1',
+      writeback: {
+        kind: 'approved_decision',
+        approval: {
+          source: 'explicit_user',
+          reference: 'conversation:turn-42',
+        },
+        evidence_refs: ['memory:source-1'],
+      },
+    });
+
+    expect(result).toMatchObject({
+      writeback: { outcome: 'created', packVersion: 'm18-s04-v1' },
+    });
+    expect(gateway.chatgptWritebackDecision).toHaveBeenCalledWith(
+      expect.objectContaining({
+        subjectId: chatgpt,
+        workspaceId,
+        projectId,
+        writeback: expect.objectContaining({ kind: 'approved_decision' }),
+      }),
+    );
+    expect(gateway.createDecision).not.toHaveBeenCalled();
+  });
+
+  it('fails closed when automatic writeback has no Supabase gateway', async () => {
+    const mcp = createMcpHandlers({ profile: 'chatgpt' });
+    await expect(
+      mcp.call('memory.store_decision', {
+        project_id: projectId,
+        title: 'Approved ChatGPT decision offline',
+        content: 'Policy writes require the centralized database decision.',
+        idempotency_key: 'mcp-chatgpt-writeback-offline-1',
+        writeback: {
+          kind: 'approved_decision',
+          approval: {
+            source: 'explicit_user',
+            reference: 'conversation:turn-43',
+          },
+          evidence_refs: ['memory:source-2'],
+        },
+      }),
+    ).rejects.toThrow(/requires the Supabase gateway/i);
   });
 
   it('still resolves an explicit short slug without any text hint', async () => {

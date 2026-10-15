@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { sensitivitySchema } from './ingestion.js';
+import { chatgptWritebackEnvelopeSchema } from './chatgptWritebackPolicy.js';
 
 export const memoryTypeSchema = z.enum([
   'fact',
@@ -57,6 +58,7 @@ export const createDecisionSchema = z.object({
   sensitivity: sensitivitySchema.default('internal'),
   idempotency_key: z.string().min(1),
   actor_subject_id: z.string().uuid(),
+  writeback: chatgptWritebackEnvelopeSchema.optional(),
 });
 
 export const projectStateSchema = z.object({
