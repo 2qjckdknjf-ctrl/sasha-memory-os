@@ -6,7 +6,7 @@ WITH required_grants(resource_type, actions) AS (
     ('memory'::text, ARRAY['read', 'write']::text[]),
     ('project'::text, ARRAY['read']::text[]),
     ('project_state'::text, ARRAY['read']::text[]),
-    ('handoff'::text, ARRAY['read', 'write']::text[])
+    ('handoff'::text, ARRAY['read']::text[])
 )
 INSERT INTO acl_entries (
   workspace_id,

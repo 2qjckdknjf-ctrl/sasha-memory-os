@@ -64,9 +64,9 @@ BEGIN
       AND effect = 'allow'
       AND resource_type = 'handoff'
       AND project_id = v_project
-      AND (actions = '{}'::text[] OR ARRAY['read', 'write']::text[] <@ actions)
+      AND actions = ARRAY['read']::text[]
   ) THEN
-    RAISE EXCEPTION 'ROMA canonical handoff read/write grant missing';
+    RAISE EXCEPTION 'ROMA canonical handoff read-only grant missing';
   END IF;
 
   PERFORM app.with_subject(v_owner);
