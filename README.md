@@ -20,15 +20,16 @@
 
 **Dedicated Supabase live** — project `sasha-memory-os` (`vpxblcxsvlylqyldiuwr`, `eu-central-1`). Details: [docs/engineering/SUPABASE.md](docs/engineering/SUPABASE.md).
 
-Machine-readable snapshot: [docs/engineering/CURRENT_STATE.json](docs/engineering/CURRENT_STATE.json) (`m14.1-v1` schema, reconciled 2026-10-13).
+Machine-readable snapshot: [docs/engineering/CURRENT_STATE.json](docs/engineering/CURRENT_STATE.json) (`m14.1-v1` schema, reconciled 2026-10-15).
 
-- **Live operational milestone:** `M20_SECURITY_GOVERNANCE`; M17.6 graph/hybrid fusion + frozen evals is the active delivery slice
-- **Contract packs completed through:** M17.6 (`m17-s06-v1`, evidence-aware graph/hybrid fusion)
+- **Live operational milestone:** `M18_PROJECT_CONTEXT_PACK_LIVE_PASS`; M18.3 ROMA integration is the next delivery slice
+- **Contract packs completed through:** M18.2 (`m18-s02-v1`, bounded explicit-project context with citations/provenance)
 - **Canonical Memory OS project UUID:** `44444444-4444-4444-8444-444444444402`
 - **M6 ChatGPT Mode A PASS (2026-08-15):** ChatGPT-only; does not close shared-memory E2E
 - **Bidirectional ChatGPT↔Cursor E2E PASS (2026-10-13):** real-session receipts, explicit project isolation, actor attribution verified
 - **M17.5 production PASS:** explicit-project entity search, evidence inspector and bounded 2-hop traversal are live
-- **M17.6 implementation:** explicit graph search mode for HTTP + the existing seven-tool Edge MCP profile; production Edge deployment follows merge and green CI
+- **M17.6 production PASS:** explicit graph search mode for HTTP + the seven-tool Edge MCP profile
+- **M18.2 production PASS:** Edge v11, exact seven-tool discovery, bounded 1,800-token context and cross-project/handoff ACL live checks
 - Core path live: WP-01…08 RPCs, vault OAuth, hybrid RRF retrieval, embeddings, consolidation/outbox/jobs, MCP, Control Center
 - M10–M13 foundations merged (Drive/Gmail/Calendar policies, ROMA project-health, bounded agentic retrieval / consolidation / ranking)
 - Apple: companion-required personal-source contracts complete; live device E2E still blocked
@@ -126,8 +127,9 @@ Canonical order (do not skip): see [M14_1_BASELINE.md](docs/engineering/M14_1_BA
 21. ~~M17.4 Entity migration backfill~~ — durable additive graph projection; production acceptance PASS
 22. ~~M17.5 graph inspector + live graph E2E~~ — implementation, mandatory ephemeral proof and production acceptance PASS
 23. ~~M17.6 graph/hybrid fusion + evaluations~~ — production Edge v9 and live graph/fallback/temporal acceptance PASS
-24. **M18.1 Cursor bootstrap contract complete** (`m18-s01-v1`) — always-on rule, session hook, live bootstrap workflow, and automatic milestone read-after-write
-25. **M18.2 project context pack implementation ready** (`m18-s02-v1`) — compact explicit-project API/MCP response with token budget, citations/provenance, freshness, blockers, merges, conflicts and next work; production Edge deployment and authenticated live acceptance remain required before completion advances to M18.3
+24. ~~M18.1 Cursor bootstrap contract~~ (`m18-s01-v1`) — always-on rule, session hook, live bootstrap workflow, and automatic milestone read-after-write PASS
+25. ~~M18.2 project context pack~~ (`m18-s02-v1`) — explicit-project API/MCP pack, migration, Edge v11 and authenticated 1,800-token live acceptance PASS; Memory OS receipt `9ac3fb2e-95de-42aa-aa34-e9954dc0228c`
+26. **M18.3 ROMA integration** — next canonical slice
 
 ## AI разборы 2026-10-13
 
