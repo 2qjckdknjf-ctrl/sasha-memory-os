@@ -54,6 +54,7 @@ import {
   appleCompanionTransferredObjectsListQuerySchema,
   applyExtractionSchema,
   bindAuthUserSchema,
+  buildProjectContextPack,
   captureDocumentSchema,
   captureLinkSchema,
   connectionCollectionExclusionSet,
@@ -76,6 +77,7 @@ import {
   oauthCompleteSchema,
   oauthStartSchema,
   replayConnectorJobSchema,
+  resolveProjectContextMaxTokens,
   resyncConnectionSchema,
   revokeConnectionSchema,
   selectedConnectionCollections,
@@ -5577,6 +5579,83 @@ export function createApp(options?: {
       }),
     );
     return c.json(projectContext(readable, projectId));
+  });
+
+  app.get('/v1/projects/:id/context-pack', async (c) => {
+    const projectId = c.req.param('id');
+    const authz = c.get('authz');
+    if (
+      !authorize(authz, {
+        resourceType: 'memory',
+        action: 'read',
+        projectId,
+        sensitivity: 'internal',
+      })
+    ) {
+      return c.json({ error: 'forbidden' }, 403);
+    }
+
+    let maxTokens: number;
+    try {
+      maxTokens = resolveProjectContextMaxTokens(c.req.query('max_tokens'));
+    } catch (err) {
+      return c.json({ error: (err as Error).message }, 400);
+    }
+
+    const gw = c.get('gateway');
+    try {
+      const canReadState = authorize(authz, {
+        resourceType: 'project_state',
+        action: 'read',
+        projectId,
+      });
+      const canReadHandoff = authorize(authz, {
+        resourceType: 'handoff',
+        action: 'read',
+        projectId,
+      });
+      const rawContextValue = gw
+        ? await gw.projectContext(authz.subjectId, projectId)
+        : {
+            ...projectContext(
+              [...c.get('store').memories.values()].filter((memory) =>
+                authorize(authz, {
+                  resourceType: 'memory',
+                  action: 'read',
+                  projectId: memory.projectId,
+                  sensitivity: memory.sensitivity,
+                }),
+              ),
+              projectId,
+            ),
+            state: canReadState
+              ? c.get('store').getProjectState(projectId)
+              : null,
+            latest_handoff: canReadHandoff
+              ? c.get('store').latestHandoff(projectId)
+              : null,
+          };
+      const rawContext = isRecord(rawContextValue)
+        ? {
+            ...rawContextValue,
+            ...(!canReadState ? { state: null } : {}),
+            ...(!canReadHandoff
+              ? { latestHandoff: null, latest_handoff: null }
+              : {}),
+          }
+        : rawContextValue;
+      return c.json(
+        buildProjectContextPack(rawContext, {
+          projectId,
+          maxTokens,
+        }),
+      );
+    } catch (err) {
+      if (isForbiddenError(err)) return c.json({ error: 'forbidden' }, 403);
+      const message = (err as Error).message;
+      const status = /project context .*mismatch/i.test(message) ? 409 : 500;
+      return c.json({ error: message }, status);
+    }
   });
 
   app.get('/v1/projects/:id/state', async (c) => {

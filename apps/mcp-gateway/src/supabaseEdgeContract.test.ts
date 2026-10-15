@@ -38,6 +38,10 @@ describe("supabase edge memory-mcp contract", () => {
     expect(requiredByTool["memory.store_decision"]).toContain("project_id");
     expect(requiredByTool["handoff.create"]).toContain("project_id");
     expect(requiredByTool["capture.text"]).toContain("project_id");
+    const context = EDGE_TOOL_DEFS.find((tool) => tool.name === "context.project");
+    expect(context?.inputSchema.properties).toMatchObject({
+      max_tokens: { type: "number" },
+    });
   });
 
   it("fills only actor/workspace defaults and never invents a project_id", () => {

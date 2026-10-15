@@ -556,20 +556,29 @@ describe('mcp gateway alpha', () => {
       workspace_id: workspaceId,
       project_id: projectId,
       actor_subject_id: owner,
-    })) as { facts: Array<{ title: string }> };
-    expect(
-      ownerContext.facts.some((memory) => memory.title === 'Personal Calendar standup note'),
-    ).toBe(true);
+    })) as {
+      citations: Array<{ title: string | null }>;
+      provenance: { sourceCount: number };
+    };
+    expect(ownerContext.provenance.sourceCount).toBeGreaterThan(0);
 
     for (const subjectId of [roma]) {
       const context = (await ownerMcp.call('context.project', {
         workspace_id: workspaceId,
         project_id: projectId,
         actor_subject_id: subjectId,
-      })) as { facts: Array<{ title: string }> };
+      })) as {
+        citations: Array<{ title: string | null }>;
+        provenance: { sourceCount: number };
+      };
       expect(
-        context.facts.some((memory) => memory.title === 'Personal Calendar standup note'),
+        context.citations.some(
+          (citation) => citation.title === 'Personal Calendar standup note',
+        ),
       ).toBe(false);
+      expect(context.provenance.sourceCount).toBeLessThan(
+        ownerContext.provenance.sourceCount,
+      );
     }
 
     await expect(
@@ -582,9 +591,11 @@ describe('mcp gateway alpha', () => {
 
     const chatgptContext = (await chatgptMcp.call('context.project', {
       project_id: projectId,
-    })) as { facts: Array<{ title: string }> };
+    })) as { citations: Array<{ title: string | null }> };
     expect(
-      chatgptContext.facts.some((memory) => memory.title === 'Personal Calendar standup note'),
+      chatgptContext.citations.some(
+        (citation) => citation.title === 'Personal Calendar standup note',
+      ),
     ).toBe(false);
   });
 
@@ -1365,17 +1376,61 @@ describe('mcp gateway alpha', () => {
     const result = (await mcp.call('context.project', {
       project_id: memoryOsProjectId,
       actor_subject_id: cursor,
-    })) as { decisions: unknown[]; state: { version: number } | null };
-    expect(result.decisions.length).toBe(1);
-    expect(result.state?.version).toBe(1);
+    })) as {
+      packVersion: string;
+      projectId: string;
+      canonicalDecisions: unknown[];
+      citations: unknown[];
+      budget: { estimatedTokens: number; maxTokens: number };
+    };
+    expect(result.packVersion).toBe('m18-s02-v1');
+    expect(result.projectId).toBe(memoryOsProjectId);
+    expect(result.canonicalDecisions.length).toBe(1);
+    expect(result.citations.length).toBeGreaterThan(0);
+    expect(result.budget.estimatedTokens).toBeLessThanOrEqual(
+      result.budget.maxTokens,
+    );
   });
 
   it('accepts context.project by slug', async () => {
     const mcp = createMcpHandlers({ profile: 'chatgpt' });
     const result = (await mcp.call('context.project', {
       project_id: 'aistroyka',
-    })) as { decisions: unknown[] };
-    expect(result.decisions.length).toBe(1);
+    })) as { projectId: string; canonicalDecisions: unknown[] };
+    expect(result.projectId).toBe(projectId);
+    expect(result.canonicalDecisions.length).toBe(1);
+  });
+
+  it('omits offline handoff context without handoff.read', async () => {
+    const store = createSeededStore();
+    const handoff = store.createHandoff({
+      workspaceId,
+      projectId,
+      fromSubjectId: owner,
+      payload: {
+        completed: ['secret handoff'],
+        artifacts: [],
+        validation: [],
+        open_items: [],
+        blockers: [],
+        recommended_next: ['secret handoff work'],
+      },
+    });
+    const mcp = createMcpHandlers({ store, profile: 'chatgpt' });
+    const result = (await mcp.call('context.project', {
+      project_id: projectId,
+      actor_subject_id: chatgpt,
+    })) as {
+      latestHandoff: { id: string } | null;
+      citations: Array<{ id: string }>;
+    };
+
+    expect(result.latestHandoff).toBeNull();
+    expect(result.citations).not.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ id: `handoff:${handoff.id}` }),
+      ]),
+    );
   });
 
   it('lists connections stub offline', async () => {
@@ -1405,5 +1460,26 @@ describe('mcp gateway alpha', () => {
       },
     });
     expect((handoff as { projectId: string }).projectId).toBe(memoryOsProjectId);
+    const context = (await mcp.call('context.project', {
+      project_id: memoryOsProjectId,
+      actor_subject_id: cursor,
+      max_tokens: 1800,
+    })) as {
+      latestHandoff: {
+        id: string;
+        recommendedNext: Array<{ text: string; citations: string[] }>;
+      } | null;
+      nextWork: Array<{ text: string; citations: string[] }>;
+      citations: Array<{ id: string; kind: string }>;
+    };
+    expect(context.latestHandoff?.id).toBe((handoff as { id: string }).id);
+    expect(context.latestHandoff?.recommendedNext[0]?.text).toBe('ship WP-02');
+    expect(context.nextWork[0]?.text).toBe('ship WP-02');
+    expect(context.citations).toContainEqual(
+      expect.objectContaining({
+        id: `handoff:${(handoff as { id: string }).id}`,
+        kind: 'handoff',
+      }),
+    );
   });
 });

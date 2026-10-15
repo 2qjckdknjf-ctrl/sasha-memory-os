@@ -69,7 +69,10 @@ describe('mcp profile', () => {
         tools: Array<{
           name: string;
           annotations?: { readOnlyHint?: boolean };
-          inputSchema?: { required?: string[] };
+          inputSchema?: {
+            required?: string[];
+            properties?: Record<string, unknown>;
+          };
         }>;
       }
     ).tools;
@@ -82,6 +85,7 @@ describe('mcp profile', () => {
     expect(search?.inputSchema?.required ?? []).not.toContain('project_id');
     const contextProject = tools.find((t) => t.name === 'context.project');
     expect(contextProject?.inputSchema?.required ?? []).toContain('project_id');
+    expect(contextProject?.inputSchema?.properties).toHaveProperty('max_tokens');
     const capture = tools.find((t) => t.name === 'capture.text');
     expect(capture?.annotations?.readOnlyHint).toBe(false);
     expect(capture?.inputSchema?.required ?? []).toContain('project_id');

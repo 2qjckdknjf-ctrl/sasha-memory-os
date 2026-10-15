@@ -10,6 +10,7 @@ import {
   EDGE_GRAPH_FUSION_PACK_VERSION,
   fuseEdgeGraphHits,
 } from "./graphFusion.ts";
+import { buildEdgeProjectContextPack } from "./projectContextPack.ts";
 
 const SUBJECT = Deno.env.get("MEMORY_OS_CHATGPT_SUBJECT_ID") ??
   "33333333-3333-4333-8333-333333333302";
@@ -634,10 +635,19 @@ async function callTool(
     }
     case "context.project": {
       const project = await resolveProjectId("required");
-      return rpc(client, "api_project_context", {
+      if (!project) {
+        throw new Error(
+          "project reference is required; pass project UUID or slug",
+        );
+      }
+      const raw = await rpc(client, "api_project_context", {
         p_secret: secret,
         p_subject_id: actor,
         p_project_id: project,
+      });
+      return buildEdgeProjectContextPack(raw, {
+        projectId: project,
+        maxTokens: args.max_tokens,
       });
     }
     case "memory.store_decision": {

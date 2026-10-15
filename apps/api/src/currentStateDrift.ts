@@ -33,6 +33,7 @@ import {
   OFFICIAL_M17_GRAPH_HYBRID_FUSION_PACK_VERSION,
   OFFICIAL_M17_LIVE_GRAPH_PACK_VERSION,
   OFFICIAL_M18_CURSOR_BOOTSTRAP_PACK_VERSION,
+  OFFICIAL_M18_PROJECT_CONTEXT_PACK_VERSION,
 } from '@memory-os/schemas';
 
 const WORKSPACE_ROOT = resolve(import.meta.dirname, '../../..');
@@ -96,6 +97,7 @@ export type CurrentStateManifest = {
     m17LiveGraph: string;
     m17GraphHybridFusion: string;
     m18CursorBootstrap: string;
+    m18ProjectContext: string;
   };
   deployments: {
     flyApi: {
@@ -318,6 +320,7 @@ export function validateCurrentStateDrift(
       m17LiveGraph: OFFICIAL_M17_LIVE_GRAPH_PACK_VERSION,
       m17GraphHybridFusion: OFFICIAL_M17_GRAPH_HYBRID_FUSION_PACK_VERSION,
       m18CursorBootstrap: OFFICIAL_M18_CURSOR_BOOTSTRAP_PACK_VERSION,
+      m18ProjectContext: OFFICIAL_M18_PROJECT_CONTEXT_PACK_VERSION,
     };
 
   for (const [key, expected] of Object.entries(expectedPacks) as Array<

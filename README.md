@@ -126,7 +126,8 @@ Canonical order (do not skip): see [M14_1_BASELINE.md](docs/engineering/M14_1_BA
 21. ~~M17.4 Entity migration backfill~~ — durable additive graph projection; production acceptance PASS
 22. ~~M17.5 graph inspector + live graph E2E~~ — implementation, mandatory ephemeral proof and production acceptance PASS
 23. ~~M17.6 graph/hybrid fusion + evaluations~~ — production Edge v9 and live graph/fallback/temporal acceptance PASS
-24. **M18.1 Cursor bootstrap contract complete** (`m18-s01-v1`) — always-on rule, session hook, live bootstrap workflow, and automatic milestone read-after-write; next: M18.2 project context pack
+24. **M18.1 Cursor bootstrap contract complete** (`m18-s01-v1`) — always-on rule, session hook, live bootstrap workflow, and automatic milestone read-after-write
+25. **M18.2 project context pack implementation ready** (`m18-s02-v1`) — compact explicit-project API/MCP response with token budget, citations/provenance, freshness, blockers, merges, conflicts and next work; production Edge deployment and authenticated live acceptance remain required before completion advances to M18.3
 
 ## AI разборы 2026-10-13
 

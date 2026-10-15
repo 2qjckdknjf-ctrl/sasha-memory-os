@@ -23,6 +23,7 @@ export * from './entityMigrationBackfill.js';
 export * from './entityGraphLive.js';
 export * from './graphHybridFusion.js';
 export * from './cursorBootstrapContract.js';
+export * from './projectContextPack.js';
 export * from './appleCompanion.js';
 export * from './memory.js';
 export * from './jobs.js';

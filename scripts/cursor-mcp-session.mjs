@@ -241,6 +241,26 @@ function compactSearchResult(value) {
 
 function compactProjectContext(value) {
   const result = value && typeof value === 'object' ? value : {};
+  if (result.packVersion === 'm18-s02-v1') {
+    return {
+      projectId: result.projectId ?? projectId,
+      packVersion: result.packVersion,
+      generatedAt: result.generatedAt ?? null,
+      currentGoal: result.currentGoal ?? null,
+      canonicalDecisions: result.canonicalDecisions ?? [],
+      currentMilestone: result.currentMilestone ?? null,
+      latestHandoff: result.latestHandoff ?? null,
+      activeBlockers: result.activeBlockers ?? [],
+      recentMerges: result.recentMerges ?? [],
+      unresolvedConflicts: result.unresolvedConflicts ?? [],
+      nextWork: result.nextWork ?? [],
+      sourceFreshness: result.sourceFreshness ?? null,
+      citations: result.citations ?? [],
+      provenance: result.provenance ?? null,
+      budget: result.budget ?? null,
+      text: result.text ?? '',
+    };
+  }
   const decisions = Array.isArray(result.decisions) ? result.decisions : [];
   return {
     projectId: result.projectId ?? projectId,
@@ -278,6 +298,7 @@ try {
     const projectContext = await callTool('context.project', {
       actor_subject_id: CURSOR_SUBJECT_ID,
       project_id: projectId,
+      max_tokens: 1800,
     });
     output = {
       packVersion: CURSOR_BOOTSTRAP_PACK_VERSION,
