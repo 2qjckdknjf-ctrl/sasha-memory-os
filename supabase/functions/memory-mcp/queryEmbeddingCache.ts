@@ -3,6 +3,17 @@ export type QueryEmbedding = {
   engine: string;
 };
 
+/**
+ * A transient provider fallback is not semantically compatible with stored
+ * provider vectors. Passing it to SQL would widen the candidate set with
+ * meaningless cosine matches, so retrieval degrades to ACL-scoped text only.
+ */
+export function queryVectorForRetrieval(
+  embedding: QueryEmbedding,
+): number[] | null {
+  return embedding.engine === "stub-hash-fallback" ? null : embedding.vector;
+}
+
 type CacheEntry = {
   expiresAt: number;
   value: Promise<QueryEmbedding>;

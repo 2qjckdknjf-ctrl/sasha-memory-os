@@ -13,6 +13,7 @@ import {
 import {
   createQueryEmbeddingCache,
   queryEmbeddingCacheKey,
+  queryVectorForRetrieval,
 } from "./queryEmbeddingCache.ts";
 import { buildEdgeProjectContextPack } from "./projectContextPack.ts";
 
@@ -513,13 +514,14 @@ async function callTool(
       const embedded = await embedText(query, {
         providerTimeoutMs: QUERY_EMBEDDING_PROVIDER_TIMEOUT_MS,
       });
+      const queryVector = queryVectorForRetrieval(embedded);
       const rawHits = await rpc(client, "api_search_memories", {
         p_secret: secret,
         p_subject_id: actor,
         p_query: query,
         p_project_id: project || null,
         p_include_history: Boolean(args.include_history),
-        p_query_embedding: embedded.vector,
+        p_query_embedding: queryVector,
         p_recorded_after: args.recorded_after
           ? String(args.recorded_after)
           : null,
@@ -539,7 +541,7 @@ async function callTool(
               : null,
         } satisfies Hit;
       });
-      const ranked = rerankRrf(hits, embedded.vector);
+      const ranked = rerankRrf(hits, queryVector ?? []);
       if (retrievalMode === "graph") {
         if (!project) {
           throw new Error("project reference is required for graph retrieval");

@@ -2,9 +2,23 @@ import { describe, expect, it, vi } from 'vitest';
 import {
   createQueryEmbeddingCache,
   queryEmbeddingCacheKey,
+  queryVectorForRetrieval,
 } from '../../supabase/functions/memory-mcp/queryEmbeddingCache.js';
 
 describe('M20.3 Edge query embedding cache', () => {
+  it('degrades transient provider fallbacks to text retrieval', () => {
+    expect(
+      queryVectorForRetrieval({ vector: [0.1, 0.2], engine: 'stub-hash-fallback' }),
+    ).toBeNull();
+    expect(queryVectorForRetrieval({ vector: [0.1, 0.2], engine: 'openai' })).toEqual([
+      0.1,
+      0.2,
+    ]);
+    expect(queryVectorForRetrieval({ vector: [0.3], engine: 'stub-hash' })).toEqual([
+      0.3,
+    ]);
+  });
+
   it('uses a fixed-size digest instead of retaining query text in the cache key', async () => {
     const key = await queryEmbeddingCacheKey({
       engine: 'openai',

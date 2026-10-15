@@ -42,6 +42,10 @@ Official pack: `m20-s03-v1`
   embeddings bypass this query cache and budget, so they cannot share or persist
   a degraded read-path fallback and cannot make retrieval inherit an unbounded
   write-path provider call.
+- A transient provider fallback is never compared with stored provider vectors.
+  The request degrades to the same ACL-scoped structured/text search instead of
+  widening SQL candidates with incompatible hash-vector matches; later requests
+  retry the semantic provider normally.
 
 ## Idempotency hardening
 

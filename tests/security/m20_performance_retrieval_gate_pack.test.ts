@@ -64,6 +64,8 @@ describe('M20.3 performance and retrieval gate', () => {
     expect(edgeMcp).toContain('withoutSearchEmbeddings(ranked)');
     expect(edgeMcp).toContain('embedding_vector_hq');
     expect(edgeMcp).toContain('QUERY_EMBEDDING_CACHE.getOrLoad');
+    expect(edgeMcp).toContain('queryVectorForRetrieval(embedded)');
+    expect(edgeMcp).toContain('p_query_embedding: queryVector');
     expect(edgeMcp).toContain('QUERY_EMBEDDING_PROVIDER_TIMEOUT_MS = 700');
     expect(edgeMcp).toContain(
       'providerTimeoutMs: QUERY_EMBEDDING_PROVIDER_TIMEOUT_MS',
