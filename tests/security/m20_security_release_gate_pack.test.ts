@@ -36,7 +36,8 @@ describe('M20.1 security release gate pack', () => {
     expect(sql).toContain("config.value LIKE 'search_path=%'");
     expect(sql).toContain("has_function_privilege('service_role'");
     expect(sql).toContain("has_table_privilege('anon', 'public.connector_vault_blobs'");
-    expect(workflow).toContain("if: github.ref == 'refs/heads/main'");
+    expect(workflow).toContain("if [[ \"$GITHUB_REF\" != 'refs/heads/main' ]]");
+    expect(workflow).toContain('exit 1');
     expect(workflow).toContain("'.password_hibp_enabled == true'");
     expect(workflow).not.toContain('echo "$SUPABASE_ACCESS_TOKEN"');
     expect(docs).toContain('zero open P0/P1');

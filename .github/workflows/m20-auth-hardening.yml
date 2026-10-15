@@ -8,12 +8,19 @@ permissions:
 
 jobs:
   enable-leaked-password-protection:
-    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     env:
       PROJECT_REF: vpxblcxsvlylqyldiuwr
       SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
     steps:
+      - name: Require trusted main ref
+        shell: bash
+        run: |
+          if [[ "$GITHUB_REF" != 'refs/heads/main' ]]; then
+            echo 'This production workflow must be dispatched from main.' >&2
+            exit 1
+          fi
+
       - name: Require server-side management credential
         run: test -n "$SUPABASE_ACCESS_TOKEN"
 
