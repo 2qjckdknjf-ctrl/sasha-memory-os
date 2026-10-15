@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import {
   buildRomaQaFindingApprovalCheckpointRequest,
   parseWorkerIntervalMs,
+  resolveRomaSubjectId,
   runRomaAutomationOnce,
   runRomaProjectFindingsJob,
   runRomaProjectFindingsTick,
@@ -1458,6 +1459,45 @@ describe('buildRomaQaFindingApprovalCheckpointRequest', () => {
 });
 
 describe('runRomaAutomationOnce', () => {
+  it('uses the canonical ROMA subject when the optional workflow secret is blank', () => {
+    expect(resolveRomaSubjectId({ MEMORY_OS_ROMA_SUBJECT_ID: '' })).toBe(roma);
+    expect(resolveRomaSubjectId({ MEMORY_OS_ROMA_SUBJECT_ID: '   ' })).toBe(roma);
+    expect(
+      resolveRomaSubjectId({ MEMORY_OS_ROMA_SUBJECT_ID: `  ${owner}  ` }),
+    ).toBe(owner);
+  });
+
+  it('preserves structured Supabase error messages instead of object coercion', async () => {
+    const gateway = {
+      deadLetterStaleJobs: vi.fn(async () => ({ deadLettered: 0 })),
+      claimRomaProjectFindingsJobs: vi.fn(async () => {
+        throw {
+          message: 'invalid input syntax for type uuid',
+          code: '22P02',
+        };
+      }),
+      tickRomaProjectHealthSchedules: vi.fn(async () => {
+        throw {
+          message: 'roma subject required',
+          code: '42501',
+        };
+      }),
+    };
+
+    const report = await runRomaAutomationOnce({
+      gateway: gateway as any,
+      workspaceId,
+      romaSubjectId: roma,
+    });
+
+    expect(report.qaFindings.error).toBe(
+      'invalid input syntax for type uuid (22P02)',
+    );
+    expect(report.projectHealth.error).toBe('roma subject required (42501)');
+    expect(report.qaFindings.error).not.toContain('[object Object]');
+    expect(report.projectHealth.error).not.toContain('[object Object]');
+  });
+
   it('still runs the health tick when the findings tick throws', async () => {
     const tickRomaProjectHealthSchedules = vi.fn(async () => ({
       count: 1,

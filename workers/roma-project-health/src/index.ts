@@ -13,11 +13,17 @@ import {
 export const packageName = 'worker-roma-project-health' as const;
 
 const WORKSPACE_ID =
-  process.env.MEMORY_OS_WORKSPACE_ID ??
+  process.env.MEMORY_OS_WORKSPACE_ID?.trim() ||
   '11111111-1111-4111-8111-111111111111';
-const ROMA_SUBJECT_ID =
-  process.env.MEMORY_OS_ROMA_SUBJECT_ID ??
-  '33333333-3333-4333-8333-333333333304';
+const DEFAULT_ROMA_SUBJECT_ID = '33333333-3333-4333-8333-333333333304';
+
+export function resolveRomaSubjectId(
+  env: NodeJS.ProcessEnv = process.env,
+): string {
+  return env.MEMORY_OS_ROMA_SUBJECT_ID?.trim() || DEFAULT_ROMA_SUBJECT_ID;
+}
+
+const ROMA_SUBJECT_ID = resolveRomaSubjectId();
 const DEFAULT_REASON =
   'Generate an audited ROMA project-health summary for one explicit project.';
 
@@ -256,6 +262,28 @@ type SummaryPayload = {
   contextPack: ProjectContextPack;
   releaseRefs: QaFindingEvidenceRef[];
 };
+
+function errorMessage(err: unknown): string {
+  if (err instanceof Error && err.message.trim()) return err.message;
+  if (typeof err === 'object' && err !== null) {
+    const record = err as Record<string, unknown>;
+    const message = [record.message, record.error, record.details, record.hint]
+      .find((value): value is string =>
+        typeof value === 'string' && value.trim().length > 0,
+      );
+    const code = typeof record.code === 'string' && record.code.trim()
+      ? record.code.trim()
+      : null;
+    if (message) return code ? `${message} (${code})` : message;
+    try {
+      const serialized = JSON.stringify(record);
+      if (serialized && serialized !== '{}') return serialized.slice(0, 500);
+    } catch {
+      // Fall through to the generic conversion below.
+    }
+  }
+  return String(err);
+}
 
 function requireGateway(
   gateway?: RomaProjectHealthGateway,
@@ -1235,7 +1263,7 @@ export async function runRomaProjectHealthJob(options: {
       notificationSeverity: notification.severity,
     };
   } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
+    const message = errorMessage(err);
     try {
       await gateway.completeRomaProjectHealth({
         subjectId: romaSubjectId,
@@ -1450,7 +1478,7 @@ export async function runRomaProjectFindingsJob(options: {
       notificationSeverity: notification.severity,
     };
   } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
+    const message = errorMessage(err);
     try {
       await gateway.completeRomaProjectFindings({
         subjectId: romaSubjectId,
@@ -1525,7 +1553,7 @@ export async function runRomaProjectFindingsTick(options?: {
         notificationSeverity: notification.severity,
       });
     } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
+      const message = errorMessage(err);
       if (isRetryableRomaProjectFindingsError(message)) {
         if (job.attempt + 1 >= maxAttempts) {
           await gateway.completeRomaProjectFindings({
@@ -1640,7 +1668,7 @@ export async function runRomaProjectHealthTick(options?: {
         notificationSeverity: notification.severity,
       });
     } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
+      const message = errorMessage(err);
       if (isRetryableRomaProjectHealthError(message)) {
         if (job.attempt + 1 >= maxAttempts) {
           await gateway.completeRomaProjectHealth({
@@ -1716,7 +1744,7 @@ export async function runRomaAutomationOnce(options?: {
     failed: [],
     pendingOutbox: 0,
     deadLettered: 0,
-    error: err instanceof Error ? err.message : String(err),
+    error: errorMessage(err),
   }));
   const projectHealth = await runRomaProjectHealthTick({
     gateway: options?.gateway,
@@ -1738,7 +1766,7 @@ export async function runRomaAutomationOnce(options?: {
     failed: [],
     pendingOutbox: 0,
     deadLettered: 0,
-    error: err instanceof Error ? err.message : String(err),
+    error: errorMessage(err),
   }));
   return {
     qaFindings,
