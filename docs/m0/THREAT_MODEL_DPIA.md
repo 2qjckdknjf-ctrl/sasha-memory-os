@@ -49,10 +49,10 @@ The authoritative data map and enforced retention windows are in
 
 | Right | Live contract |
 |---|---|
-| Access / portability | Owner-only bounded `GET /v1/export/privacy`, including provenance and connector-derived records |
+| Access / portability | Owner-only fully paginated `GET /v1/export/privacy`, including provenance and connector-derived records |
 | Correction | Idempotent privacy request plus owner execution; prior memory becomes superseded |
 | Retraction | Owner execution marks the target retracted with metadata-only audit |
-| Erasure | Target memory and derived data tombstoned; source-account request also revokes connector, vault, cursor, jobs and outbox |
+| Erasure | Target memory and derived data tombstoned; source-account request also revokes the workspace-wide connector, vault, cursor, jobs and outbox and erases its derived records across projects |
 | Retention | Owner dry-run/apply route implementing the published 30/90/180/365-day windows |
 
 ## Residual risks and decisions

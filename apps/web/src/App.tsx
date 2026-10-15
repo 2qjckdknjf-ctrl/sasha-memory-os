@@ -1614,13 +1614,69 @@ export function App() {
         return;
       }
       const targetProjectId = resolveExplicitWriteProjectId();
-      const dump = await apiGet<{
+      type PrivacyExportPage = {
         format?: string;
-        counts?: { memories?: number; sourceEvents?: number; artifacts?: number };
-      }>(
-        `/v1/export/privacy?workspace_id=${WORKSPACE_ID}&project_id=${encodeURIComponent(targetProjectId)}&limit=500`,
-        subjectId,
-        actor,
+        counts?: {
+          memories?: number;
+          sourceEvents?: number;
+          artifacts?: number;
+          connectorAccounts?: number;
+          privacyRequests?: number;
+        };
+        pagination?: {
+          limit?: number;
+          offset?: number;
+          nextOffset?: number | null;
+          hasMore?: boolean;
+        };
+        truncated?: Record<string, boolean>;
+        memories?: Array<Record<string, unknown>>;
+        sourceEvents?: Array<Record<string, unknown>>;
+        artifacts?: Array<Record<string, unknown>>;
+        connectorAccounts?: Array<Record<string, unknown>>;
+        privacyRequests?: Array<Record<string, unknown>>;
+        [key: string]: unknown;
+      };
+      let offset = 0;
+      let dump: PrivacyExportPage | null = null;
+      for (;;) {
+        const page = await apiGet<PrivacyExportPage>(
+          `/v1/export/privacy?workspace_id=${WORKSPACE_ID}&project_id=${encodeURIComponent(targetProjectId)}&limit=500&offset=${offset}`,
+          subjectId,
+          actor,
+        );
+        if (!dump) {
+          dump = {
+            ...page,
+            memories: [],
+            sourceEvents: [],
+            artifacts: [],
+            connectorAccounts: [],
+            privacyRequests: [],
+          };
+        }
+        dump.memories?.push(...(page.memories ?? []));
+        dump.sourceEvents?.push(...(page.sourceEvents ?? []));
+        dump.artifacts?.push(...(page.artifacts ?? []));
+        dump.connectorAccounts?.push(...(page.connectorAccounts ?? []));
+        dump.privacyRequests?.push(...(page.privacyRequests ?? []));
+
+        if (page.pagination?.hasMore !== true) break;
+        const nextOffset = page.pagination.nextOffset;
+        if (typeof nextOffset !== 'number' || nextOffset <= offset) {
+          throw new Error('Privacy export pagination did not advance');
+        }
+        offset = nextOffset;
+      }
+      if (!dump) throw new Error('Privacy export returned no pages');
+      dump.pagination = {
+        limit: dump.pagination?.limit ?? 500,
+        offset: 0,
+        nextOffset: null,
+        hasMore: false,
+      };
+      dump.truncated = Object.fromEntries(
+        Object.keys(dump.truncated ?? {}).map((key) => [key, false]),
       );
       const blob = new Blob([JSON.stringify(dump, null, 2)], {
         type: 'application/json',

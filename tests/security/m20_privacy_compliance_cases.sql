@@ -11,6 +11,7 @@ DECLARE
   v_owner constant uuid := '33333333-3333-4333-8333-333333333301';
   v_workspace constant uuid := '11111111-1111-4111-8111-111111111111';
   v_project constant uuid := '44444444-4444-4444-8444-444444444402';
+  v_other_project constant uuid := '44444444-4444-4444-8444-444444444401';
   v_source constant uuid := '99999999-0000-4000-8000-000000000401';
   v_artifact constant uuid := '99999999-0000-4000-8000-000000000402';
   v_chunk constant uuid := '99999999-0000-4000-8000-000000000403';
@@ -25,6 +26,10 @@ DECLARE
   v_connection_memory constant uuid := '99999999-0000-4000-8000-000000000412';
   v_connection_job constant uuid := '99999999-0000-4000-8000-000000000413';
   v_connection_outbox constant uuid := '99999999-0000-4000-8000-000000000414';
+  v_cross_project_source constant uuid := '99999999-0000-4000-8000-000000000415';
+  v_cross_project_memory constant uuid := '99999999-0000-4000-8000-000000000416';
+  v_correction_memory constant uuid := '99999999-0000-4000-8000-000000000417';
+  v_legacy_request constant uuid := '99999999-0000-4000-8000-000000000418';
   v_retention_memory constant uuid := '99999999-0000-4000-8000-000000000420';
   v_retention_source constant uuid := '99999999-0000-4000-8000-000000000421';
   v_retention_artifact constant uuid := '99999999-0000-4000-8000-000000000422';
@@ -32,10 +37,12 @@ DECLARE
   v_retention_outbox constant uuid := '99999999-0000-4000-8000-000000000424';
   v_retention_job constant uuid := '99999999-0000-4000-8000-000000000425';
   v_retention_audit constant uuid := '99999999-0000-4000-8000-000000000426';
+  v_retention_entity constant uuid := '99999999-0000-4000-8000-000000000427';
   v_marker constant text := 'M20_PRIVACY_SECRET_MARKER_6f9fd9';
   v_vault_ref constant text := 'vault:test/m20/privacy-connector';
   v_created jsonb;
   v_export jsonb;
+  v_export_page_2 jsonb;
   v_result jsonb;
   v_request uuid;
   v_connector_request uuid;
@@ -138,6 +145,26 @@ BEGIN
      OR NOT (v_export->'memories' @> jsonb_build_array(jsonb_build_object('id', v_derived))) THEN
     RAISE EXCEPTION 'privacy export omitted source, primary, or derived data: %', v_export;
   END IF;
+  v_export := public.api_export_project_privacy_bundle(
+    v_secret, v_owner, v_workspace, v_project, 1, 0
+  );
+  v_export_page_2 := public.api_export_project_privacy_bundle(
+    v_secret, v_owner, v_workspace, v_project, 1, 1
+  );
+  IF coalesce((v_export->'pagination'->>'hasMore')::boolean, false) IS NOT TRUE
+     OR (v_export->'pagination'->>'nextOffset')::integer <> 1
+     OR jsonb_array_length(v_export->'memories') > 1
+     OR jsonb_array_length(v_export->'sourceEvents') > 1
+     OR jsonb_array_length(v_export->'artifacts') > 1
+     OR EXISTS (
+       SELECT 1
+       FROM jsonb_array_elements(v_export->'memories') first_page
+       JOIN jsonb_array_elements(v_export_page_2->'memories') second_page
+         ON first_page->>'id' = second_page->>'id'
+     ) THEN
+    RAISE EXCEPTION 'privacy export pagination is incomplete or unstable: %, %',
+      v_export, v_export_page_2;
+  END IF;
 
   v_created := public.api_create_privacy_request_v2(
     v_secret, v_owner, v_workspace, v_project, 'deletion', v_primary, NULL,
@@ -196,6 +223,55 @@ BEGIN
     RAISE EXCEPTION 'completed privacy request retained sensitive free text';
   END IF;
 
+  -- Legacy requests created before the v2 route must fail closed instead of
+  -- becoming completed no-ops, and correction audits must not retain bodies.
+  INSERT INTO public.privacy_requests (
+    id, workspace_id, project_id, actor_subject_id, request_type, status,
+    reason, idempotency_key
+  ) VALUES (
+    v_legacy_request, v_workspace, v_project, v_owner, 'deletion', 'submitted',
+    'legacy request without target', 'm20-privacy/legacy-no-target'
+  );
+  BEGIN
+    PERFORM public.api_execute_privacy_request(v_secret, v_owner, v_legacy_request);
+    RAISE EXCEPTION 'legacy request without a target unexpectedly executed';
+  EXCEPTION WHEN OTHERS THEN
+    IF SQLERRM = 'legacy request without a target unexpectedly executed' THEN
+      RAISE;
+    END IF;
+  END;
+  IF NOT EXISTS (
+    SELECT 1 FROM public.privacy_requests r
+    WHERE r.id = v_legacy_request AND r.status = 'submitted'
+  ) THEN
+    RAISE EXCEPTION 'invalid legacy request was mutated before validation';
+  END IF;
+
+  INSERT INTO public.memory_records (
+    id, workspace_id, project_id, memory_type, title, content, status,
+    created_by_subject
+  ) VALUES (
+    v_correction_memory, v_workspace, v_project, 'fact', v_marker, v_marker,
+    'active', v_owner
+  );
+  v_created := public.api_create_privacy_request_v2(
+    v_secret, v_owner, v_workspace, v_project, 'correction',
+    v_correction_memory, NULL, 'correct ' || v_marker,
+    'authoritative ' || v_marker, 'm20-privacy/correction-audit'
+  );
+  v_result := public.api_execute_privacy_request(
+    v_secret, v_owner, (v_created->>'id')::uuid
+  );
+  IF v_result->>'status' <> 'completed' OR EXISTS (
+    SELECT 1 FROM public.audit_log a
+    WHERE a.workspace_id = v_workspace
+      AND a.action IN ('memory.correct', 'privacy.request.completed')
+      AND concat_ws(' ', a.reason, a.before_state::text, a.after_state::text)
+          LIKE '%' || v_marker || '%'
+  ) THEN
+    RAISE EXCEPTION 'privacy correction leaked sensitive content into audit: %', v_result;
+  END IF;
+
   INSERT INTO public.connector_accounts (
     id, workspace_id, connector_id, display_name, status, scopes, metadata
   ) VALUES (
@@ -221,12 +297,27 @@ BEGIN
     'connector.privacy.fixture', 'm20-privacy/connector-source', now(),
     jsonb_build_object('body', v_marker), v_owner
   );
+  INSERT INTO public.source_events (
+    id, workspace_id, project_id, connector_account_id, provider, event_type,
+    idempotency_key, observed_at, payload, created_by_subject
+  ) VALUES (
+    v_cross_project_source, v_workspace, v_other_project, v_connection, 'github',
+    'connector.privacy.cross-project', 'm20-privacy/cross-project-source', now(),
+    jsonb_build_object('body', v_marker), v_owner
+  );
   INSERT INTO public.memory_records (
     id, workspace_id, project_id, memory_type, title, content, status,
     source_event_id, created_by_subject
   ) VALUES (
     v_connection_memory, v_workspace, v_project, 'fact', v_marker, v_marker,
     'active', v_connection_source, v_owner
+  );
+  INSERT INTO public.memory_records (
+    id, workspace_id, project_id, memory_type, title, content, status,
+    source_event_id, created_by_subject
+  ) VALUES (
+    v_cross_project_memory, v_workspace, v_other_project, 'fact', v_marker,
+    v_marker, 'active', v_cross_project_source, v_owner
   );
   INSERT INTO public.processing_jobs (
     id, workspace_id, job_type, status, source_event_id, idempotency_key
@@ -276,8 +367,11 @@ BEGIN
   ) OR NOT EXISTS (
     SELECT 1 FROM public.memory_records m
     WHERE m.id = v_connection_memory AND m.status = 'deleted'
+  ) OR NOT EXISTS (
+    SELECT 1 FROM public.memory_records m
+    WHERE m.id = v_cross_project_memory AND m.status = 'deleted'
   ) THEN
-    RAISE EXCEPTION 'connector-derived jobs, outbox, or memory were not revoked';
+    RAISE EXCEPTION 'connector-derived jobs, outbox, or cross-project memory were not revoked';
   END IF;
 
   INSERT INTO public.memory_records (
@@ -294,6 +388,20 @@ BEGIN
     v_retention_source, v_workspace, v_project, 'manual', 'retention.fixture',
     'm20-privacy/retention-source', now() - interval '181 days',
     now() - interval '181 days', jsonb_build_object('body', v_marker), v_owner
+  );
+  INSERT INTO public.entities (
+    id, workspace_id, project_id, stable_id, entity_class, canonical_name,
+    source_ref, created_from_memory_id, metadata
+  ) VALUES (
+    v_retention_entity, v_workspace, v_project, 'm20-retention-entity',
+    'document', v_marker, 'memory:' || v_retention_memory::text,
+    v_retention_memory, jsonb_build_object('body', v_marker)
+  );
+  INSERT INTO public.memory_entities (
+    workspace_id, project_id, memory_id, entity_id, role, source_ref
+  ) VALUES (
+    v_workspace, v_project, v_retention_memory, v_retention_entity, 'subject',
+    'retention-fixture'
   );
   INSERT INTO public.artifacts (
     id, workspace_id, project_id, source_event_id, storage_mode, storage_key,
@@ -366,6 +474,8 @@ BEGIN
   ) OR EXISTS (
     SELECT 1 FROM public.audit_log WHERE id = v_retention_audit
   ) OR EXISTS (
+    SELECT 1 FROM public.entities WHERE id = v_retention_entity
+  ) OR EXISTS (
     SELECT 1 FROM public.source_events s
     WHERE s.id = v_retention_source AND s.payload::text LIKE '%' || v_marker || '%'
   ) THEN
@@ -380,6 +490,15 @@ BEGIN
     'service_role', 'public.api_execute_privacy_request(text,uuid,uuid)', 'EXECUTE'
   ) THEN
     RAISE EXCEPTION 'privacy executor role boundary is not server-only';
+  END IF;
+  IF has_function_privilege(
+    'anon', 'public.api_export_project_privacy_bundle(text,uuid,uuid,uuid,integer,integer)', 'EXECUTE'
+  ) OR has_function_privilege(
+    'authenticated', 'public.api_export_project_privacy_bundle(text,uuid,uuid,uuid,integer,integer)', 'EXECUTE'
+  ) OR NOT has_function_privilege(
+    'service_role', 'public.api_export_project_privacy_bundle(text,uuid,uuid,uuid,integer,integer)', 'EXECUTE'
+  ) THEN
+    RAISE EXCEPTION 'privacy export role boundary is not server-only';
   END IF;
 END;
 $$;

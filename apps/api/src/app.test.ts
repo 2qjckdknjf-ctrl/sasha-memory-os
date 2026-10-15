@@ -3562,6 +3562,35 @@ describe('memory api demo slice', () => {
     expect(retention.status).toBe(501);
   });
 
+  it('passes bounded privacy export pagination to the durable gateway', async () => {
+    const gateway = {
+      exportPrivacyBundle: vi.fn(async () => ({
+        format: 'memory-os.privacy-export.v1',
+        counts: { memories: 501 },
+        pagination: { limit: 500, offset: 500, nextOffset: null, hasMore: false },
+        memories: [],
+        sourceEvents: [],
+        artifacts: [],
+        connectorAccounts: [],
+        privacyRequests: [],
+      })),
+    };
+    const app = createApp({ gateway: gateway as any });
+    const response = await app.request(
+      `/v1/export/privacy?workspace_id=${workspaceId}&project_id=${memoryOsProjectId}&limit=999&offset=500`,
+      { headers: { 'x-subject-id': owner, 'x-actor-key': 'owner' } },
+    );
+
+    expect(response.status).toBe(200);
+    expect(gateway.exportPrivacyBundle).toHaveBeenCalledWith({
+      subjectId: owner,
+      workspaceId,
+      projectId: memoryOsProjectId,
+      limit: 500,
+      offset: 500,
+    });
+  });
+
   it('requires explicit project_id for privacy requests', async () => {
     const app = createApp({});
     const ownerId = '33333333-3333-4333-8333-333333333301';

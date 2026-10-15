@@ -8,7 +8,8 @@ Official pack: `m20-s04-v1`
 
 - `GET /v1/export/privacy`: owner-only, explicit-project portability bundle
   covering canonical/derived memories, provenance/evidence, source events,
-  artifacts/chunks and non-secret connector metadata.
+  artifacts/chunks and non-secret connector metadata. Stable offset pagination
+  is consumed to completion by the Control Center export action.
 - `POST /v1/privacy/requests`: idempotent correction, retraction, memory deletion
   or connector-source revocation request.
 - `POST /v1/privacy/requests/:id/execute`: idempotent execution with a
@@ -23,20 +24,24 @@ Migration `20261015230000_m20_privacy_compliance_operations.sql` preserves
 tombstones for referential integrity while removing content-bearing evidence,
 revisions, chunks, embeddings, graph projections, conflict/personalization
 records and typed task/decision payloads. Connector-source deletion additionally
-revokes the connection and removes vault references/payloads and cursors.
+revokes the workspace-wide connection, removes vault references/payloads and
+cursors, and erases records derived from that account in every project.
 
 ## Mandatory acceptance
 
 `tests/security/m20_privacy_compliance_cases.sql`, wired into the ephemeral CI
 stack, proves:
 
-1. export includes primary and derived records plus raw provenance;
+1. paginated export includes every primary and derived record plus raw provenance;
 2. deletion removes both primary and derived bodies/evidence/graph projections;
-3. connector revocation deletes vault/cursor state and stops queued work;
+3. connector revocation deletes vault/cursor state, stops queued work and
+   reaches connector-derived records across project boundaries;
 4. execution replay is idempotent;
 5. privacy free text never survives in audit/ops state;
 6. retention preview is non-mutating and apply enforces every window;
-7. privacy RPCs are denied to `anon`/`authenticated` and granted to
+7. legacy targetless requests fail closed before mutation, correction audits
+   are redacted, and retention removes orphan graph entities;
+8. privacy RPCs are denied to `anon`/`authenticated` and granted to
    `service_role`.
 
 The TypeScript gate also freezes route names, retention windows, UI hygiene,

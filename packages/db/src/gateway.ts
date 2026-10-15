@@ -633,6 +633,7 @@ export class SupabaseMemoryGateway {
     workspaceId: string;
     projectId: string;
     limit?: number;
+    offset?: number;
   }) {
     const { data, error } = await this.client.rpc('api_export_project_privacy_bundle', {
       p_secret: this.apiSecret,
@@ -640,6 +641,7 @@ export class SupabaseMemoryGateway {
       p_workspace_id: input.workspaceId,
       p_project_id: input.projectId,
       p_limit: input.limit ?? 500,
+      p_offset: input.offset ?? 0,
     });
     if (error) throw error;
     return data as {
@@ -651,6 +653,14 @@ export class SupabaseMemoryGateway {
         memories: number;
         sourceEvents: number;
         artifacts: number;
+        connectorAccounts: number;
+        privacyRequests: number;
+      };
+      pagination: {
+        limit: number;
+        offset: number;
+        nextOffset: number | null;
+        hasMore: boolean;
       };
       memories: Array<Record<string, unknown>>;
       sourceEvents: Array<Record<string, unknown>>;

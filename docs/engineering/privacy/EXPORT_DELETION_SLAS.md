@@ -15,7 +15,9 @@ Route: `GET /v1/export/privacy`
 
 The M20.4 route supersedes the narrower legacy `GET /v1/export/memories`
 surface. Invocation requires an explicit `project_id`, includes
-connector-derived provenance, and writes metadata-only audit counts.
+connector-derived provenance, and writes metadata-only audit counts. Responses
+use deterministic offset pagination; the Control Center follows `nextOffset`
+until `hasMore=false` and downloads one complete portability bundle.
 
 ## Deletion / forget SLA
 
@@ -60,11 +62,11 @@ operational audit and telemetry.
 
 | Operation | Route | Target SLA | Executed behavior |
 |---|---|---:|---|
-| Access/export | `GET /v1/export/privacy` | 72h | Bounded project bundle with memory, provenance/evidence, source events, artifacts/chunks and non-secret connector metadata |
+| Access/export | `GET /v1/export/privacy` | 72h | Fully paginated project bundle with memory, provenance/evidence, source events, artifacts/chunks and non-secret connector metadata |
 | Correction | create request, then `POST /v1/privacy/requests/:id/execute` | 30d | Existing correction contract creates/chooses authoritative memory and supersedes the old record |
 | Retraction | same execution route | 30d | Target memory becomes `retracted` |
 | Erasure | same execution route | 30d | Target plus derived memories are tombstoned; evidence/revisions/chunks/vectors/graph projection and sensitive snapshots are removed |
-| Source revocation | deletion request with `target_connector_account_id` | 30d | Connector is revoked; vault refs/payloads, cursors, pending jobs/outbox and connector-derived project records converge to deletion |
+| Source revocation | deletion request with `target_connector_account_id` | 30d | Connector is revoked workspace-wide; vault refs/payloads, cursors, pending jobs/outbox and connector-derived records in every project converge to deletion |
 | Retention | `POST /v1/privacy/retention/run` | scheduled owner operation | Dry-run by default; apply enforces `m20-s04-v1` windows |
 
 Request creation is idempotent. Reusing a key for a different project, request

@@ -256,7 +256,8 @@ CREATE OR REPLACE FUNCTION app.api_export_project_privacy_bundle(
   p_subject_id uuid,
   p_workspace_id uuid,
   p_project_id uuid,
-  p_limit integer DEFAULT 500
+  p_limit integer DEFAULT 500,
+  p_offset integer DEFAULT 0
 )
 RETURNS jsonb
 LANGUAGE plpgsql
@@ -266,9 +267,13 @@ SET search_path = public, app
 AS $$
 DECLARE
   v_limit integer := greatest(1, least(coalesce(p_limit, 500), 500));
+  v_offset integer := greatest(0, coalesce(p_offset, 0));
   v_memory_count integer;
   v_source_count integer;
   v_artifact_count integer;
+  v_connector_count integer;
+  v_request_count integer;
+  v_max_count integer;
   v_bundle jsonb;
 BEGIN
   PERFORM app.assert_api_secret(p_secret);
@@ -296,6 +301,18 @@ BEGIN
   WHERE s.workspace_id = p_workspace_id AND s.project_id = p_project_id;
   SELECT count(*) INTO v_artifact_count FROM public.artifacts a
   WHERE a.workspace_id = p_workspace_id AND a.project_id = p_project_id;
+  SELECT count(*) INTO v_connector_count FROM public.connector_accounts c
+  WHERE c.workspace_id = p_workspace_id
+    AND EXISTS (
+      SELECT 1 FROM public.source_events s
+      WHERE s.connector_account_id = c.id AND s.project_id = p_project_id
+    );
+  SELECT count(*) INTO v_request_count FROM public.privacy_requests r
+  WHERE r.workspace_id = p_workspace_id AND r.project_id = p_project_id;
+  v_max_count := greatest(
+    v_memory_count, v_source_count, v_artifact_count, v_connector_count,
+    v_request_count
+  );
 
   SELECT jsonb_build_object(
     'format', 'memory-os.privacy-export.v1',
@@ -306,12 +323,25 @@ BEGIN
     'counts', jsonb_build_object(
       'memories', v_memory_count,
       'sourceEvents', v_source_count,
-      'artifacts', v_artifact_count
+      'artifacts', v_artifact_count,
+      'connectorAccounts', v_connector_count,
+      'privacyRequests', v_request_count
     ),
     'truncated', jsonb_build_object(
-      'memories', v_memory_count > v_limit,
-      'sourceEvents', v_source_count > v_limit,
-      'artifacts', v_artifact_count > v_limit
+      'memories', v_memory_count > v_offset + v_limit,
+      'sourceEvents', v_source_count > v_offset + v_limit,
+      'artifacts', v_artifact_count > v_offset + v_limit,
+      'connectorAccounts', v_connector_count > v_offset + v_limit,
+      'privacyRequests', v_request_count > v_offset + v_limit
+    ),
+    'pagination', jsonb_build_object(
+      'limit', v_limit,
+      'offset', v_offset,
+      'nextOffset', CASE
+        WHEN v_offset + v_limit < v_max_count THEN v_offset + v_limit
+        ELSE NULL
+      END,
+      'hasMore', v_offset + v_limit < v_max_count
     ),
     'retentionPolicy', jsonb_build_object(
       'version', 'm20-s04-v1',
@@ -360,7 +390,8 @@ BEGIN
         SELECT * FROM public.memory_records candidate
         WHERE candidate.workspace_id = p_workspace_id
           AND app.effective_memory_project_id(candidate.id) = p_project_id
-        ORDER BY candidate.recorded_at DESC LIMIT v_limit
+        ORDER BY candidate.recorded_at DESC, candidate.id DESC
+        LIMIT v_limit OFFSET v_offset
       ) m
     ), '[]'::jsonb),
     'sourceEvents', coalesce((
@@ -383,7 +414,8 @@ BEGIN
         SELECT * FROM public.source_events source
         WHERE source.workspace_id = p_workspace_id
           AND source.project_id = p_project_id
-        ORDER BY source.recorded_at DESC LIMIT v_limit
+        ORDER BY source.recorded_at DESC, source.id DESC
+        LIMIT v_limit OFFSET v_offset
       ) s
     ), '[]'::jsonb),
     'artifacts', coalesce((
@@ -413,7 +445,8 @@ BEGIN
         SELECT * FROM public.artifacts artifact
         WHERE artifact.workspace_id = p_workspace_id
           AND artifact.project_id = p_project_id
-        ORDER BY artifact.created_at DESC LIMIT v_limit
+        ORDER BY artifact.created_at DESC, artifact.id DESC
+        LIMIT v_limit OFFSET v_offset
       ) a
     ), '[]'::jsonb),
     'connectorAccounts', coalesce((
@@ -427,12 +460,17 @@ BEGIN
         'createdAt', c.created_at,
         'updatedAt', c.updated_at
       ) ORDER BY c.created_at)
-      FROM public.connector_accounts c
-      WHERE c.workspace_id = p_workspace_id
-        AND EXISTS (
-          SELECT 1 FROM public.source_events s
-          WHERE s.connector_account_id = c.id AND s.project_id = p_project_id
-        )
+      FROM (
+        SELECT * FROM public.connector_accounts candidate
+        WHERE candidate.workspace_id = p_workspace_id
+          AND EXISTS (
+            SELECT 1 FROM public.source_events s
+            WHERE s.connector_account_id = candidate.id
+              AND s.project_id = p_project_id
+          )
+        ORDER BY candidate.created_at, candidate.id
+        LIMIT v_limit OFFSET v_offset
+      ) c
     ), '[]'::jsonb),
     'privacyRequests', coalesce((
       SELECT jsonb_agg(jsonb_strip_nulls(jsonb_build_object(
@@ -447,8 +485,13 @@ BEGIN
         'completedAt', r.completed_at,
         'resultSummary', r.result_summary
       )) ORDER BY r.created_at DESC)
-      FROM public.privacy_requests r
-      WHERE r.workspace_id = p_workspace_id AND r.project_id = p_project_id
+      FROM (
+        SELECT * FROM public.privacy_requests candidate
+        WHERE candidate.workspace_id = p_workspace_id
+          AND candidate.project_id = p_project_id
+        ORDER BY candidate.created_at DESC, candidate.id DESC
+        LIMIT v_limit OFFSET v_offset
+      ) r
     ), '[]'::jsonb)
   ) INTO v_bundle;
 
@@ -462,7 +505,10 @@ BEGIN
       'memoryCount', v_memory_count,
       'sourceEventCount', v_source_count,
       'artifactCount', v_artifact_count,
-      'limit', v_limit
+      'connectorAccountCount', v_connector_count,
+      'privacyRequestCount', v_request_count,
+      'limit', v_limit,
+      'offset', v_offset
     )
   );
 
@@ -475,7 +521,8 @@ CREATE OR REPLACE FUNCTION public.api_export_project_privacy_bundle(
   p_subject_id uuid,
   p_workspace_id uuid,
   p_project_id uuid,
-  p_limit integer DEFAULT 500
+  p_limit integer DEFAULT 500,
+  p_offset integer DEFAULT 0
 )
 RETURNS jsonb
 LANGUAGE sql
@@ -484,7 +531,7 @@ SECURITY DEFINER
 SET search_path = public, app
 AS $$
   SELECT app.api_export_project_privacy_bundle(
-    p_secret, p_subject_id, p_workspace_id, p_project_id, p_limit
+    p_secret, p_subject_id, p_workspace_id, p_project_id, p_limit, p_offset
   );
 $$;
 
@@ -502,6 +549,7 @@ AS $$
 DECLARE
   v_request public.privacy_requests%ROWTYPE;
   v_result jsonb := '{}'::jsonb;
+  v_authoritative_memory_id uuid;
   v_affected_ids uuid[] := '{}'::uuid[];
   v_source_ids uuid[] := '{}'::uuid[];
   v_entity_ids uuid[] := '{}'::uuid[];
@@ -542,6 +590,37 @@ BEGIN
   IF v_request.status NOT IN ('submitted', 'processing') THEN
     RAISE EXCEPTION 'privacy request is not executable: %', v_request.status;
   END IF;
+  IF v_request.request_type NOT IN ('deletion', 'correction', 'retraction') THEN
+    RAISE EXCEPTION 'invalid privacy request type: %', v_request.request_type;
+  END IF;
+  IF v_request.request_type IN ('correction', 'retraction')
+     AND v_request.target_memory_id IS NULL THEN
+    RAISE EXCEPTION 'target_memory_id required for %', v_request.request_type;
+  END IF;
+  IF v_request.request_type = 'correction'
+     AND nullif(btrim(coalesce(v_request.correction_text, '')), '') IS NULL THEN
+    RAISE EXCEPTION 'correction_text required for correction';
+  END IF;
+  IF v_request.request_type = 'deletion'
+     AND v_request.target_memory_id IS NULL
+     AND v_request.target_connector_account_id IS NULL THEN
+    RAISE EXCEPTION 'deletion requires a memory or connector target';
+  END IF;
+  IF v_request.target_memory_id IS NOT NULL AND NOT EXISTS (
+    SELECT 1 FROM public.memory_records m
+    WHERE m.id = v_request.target_memory_id
+      AND m.workspace_id = v_request.workspace_id
+      AND app.effective_memory_project_id(m.id) = v_request.project_id
+  ) THEN
+    RAISE EXCEPTION 'memory target not found in project' USING ERRCODE = 'P0002';
+  END IF;
+  IF v_request.target_connector_account_id IS NOT NULL AND NOT EXISTS (
+    SELECT 1 FROM public.connector_accounts c
+    WHERE c.id = v_request.target_connector_account_id
+      AND c.workspace_id = v_request.workspace_id
+  ) THEN
+    RAISE EXCEPTION 'connector target not found in workspace' USING ERRCODE = 'P0002';
+  END IF;
 
   UPDATE public.privacy_requests
   SET status = 'processing', failure_code = NULL
@@ -553,10 +632,28 @@ BEGIN
       format('privacy request %s', v_request.id),
       NULL, v_request.correction_text, NULL
     );
+    v_authoritative_memory_id := nullif(v_result->>'authoritativeId', '')::uuid;
+
+    -- api_correct_memory predates privacy operations and stores a complete
+    -- before-state snapshot. Keep the audit envelope, but replace sensitive
+    -- body/title/reason material with identifiers before completing the request.
+    UPDATE public.audit_log a
+    SET reason = 'privacy correction redacted',
+        before_state = NULL,
+        after_state = jsonb_build_object(
+          'privacyRequestId', v_request.id,
+          'supersededMemoryId', v_request.target_memory_id,
+          'authoritativeMemoryId', v_authoritative_memory_id
+        )
+    WHERE a.workspace_id = v_request.workspace_id
+      AND a.action = 'memory.correct'
+      AND a.object_id = v_request.target_memory_id
+      AND a.after_state->>'authoritativeId' = v_authoritative_memory_id::text;
+
     v_result := jsonb_build_object(
       'operation', 'correction',
       'targetMemoryId', v_request.target_memory_id,
-      'authoritativeMemoryId', v_result->>'authoritativeId'
+      'authoritativeMemoryId', v_authoritative_memory_id
     );
   ELSIF v_request.request_type = 'retraction' THEN
     v_result := app.api_set_memory_status(
@@ -651,14 +748,20 @@ BEGIN
       UNION
       SELECT m.id FROM public.memory_records m
       WHERE m.workspace_id = v_request.workspace_id
-        AND app.effective_memory_project_id(m.id) = v_request.project_id
+        AND (
+          v_request.target_connector_account_id IS NOT NULL
+          OR app.effective_memory_project_id(m.id) = v_request.project_id
+        )
         AND m.source_event_id = ANY(v_source_ids)
       UNION
       SELECT me.memory_id FROM public.memory_evidence me
       JOIN public.memory_records m ON m.id = me.memory_id
       WHERE me.source_event_id = ANY(v_source_ids)
         AND m.workspace_id = v_request.workspace_id
-        AND app.effective_memory_project_id(m.id) = v_request.project_id
+        AND (
+          v_request.target_connector_account_id IS NOT NULL
+          OR app.effective_memory_project_id(m.id) = v_request.project_id
+        )
     ) affected WHERE memory_id IS NOT NULL;
 
     -- One bounded metadata expansion covers consolidations/corrections that
@@ -670,7 +773,10 @@ BEGIN
       UNION
       SELECT m.id FROM public.memory_records m
       WHERE m.workspace_id = v_request.workspace_id
-        AND app.effective_memory_project_id(m.id) = v_request.project_id
+        AND (
+          v_request.target_connector_account_id IS NOT NULL
+          OR app.effective_memory_project_id(m.id) = v_request.project_id
+        )
         AND EXISTS (
           SELECT 1 FROM unnest(v_affected_ids) affected(id)
           WHERE m.metadata::text LIKE '%' || affected.id::text || '%'
@@ -893,6 +999,7 @@ SET search_path = public, app
 AS $$
 DECLARE
   v_candidate_ids uuid[] := '{}'::uuid[];
+  v_entity_ids uuid[] := '{}'::uuid[];
   v_artifact_ids uuid[] := '{}'::uuid[];
   v_artifact_source_ids uuid[] := '{}'::uuid[];
   v_candidate_count integer := 0;
@@ -964,14 +1071,80 @@ BEGIN
   );
 
   IF NOT p_dry_run THEN
+    SELECT coalesce(array_agg(DISTINCT entity_id), '{}'::uuid[])
+    INTO v_entity_ids
+    FROM (
+      SELECT me.entity_id FROM public.memory_entities me
+      WHERE me.memory_id = ANY(v_candidate_ids)
+      UNION
+      SELECT e.id FROM public.entities e
+      WHERE e.created_from_memory_id = ANY(v_candidate_ids)
+    ) retention_entities;
+
+    -- Remove typed and graph projections before tombstoning the source memory.
+    -- Entity ids must be collected first so graph rows cannot become orphans.
+    DELETE FROM public.memory_conflicts mc
+    WHERE mc.left_memory_id = ANY(v_candidate_ids)
+       OR mc.right_memory_id = ANY(v_candidate_ids);
+    DELETE FROM public.memory_personalizations mp
+    WHERE mp.memory_id = ANY(v_candidate_ids);
+    DELETE FROM public.tasks t WHERE t.memory_id = ANY(v_candidate_ids);
+    DELETE FROM public.decisions d WHERE d.memory_id = ANY(v_candidate_ids);
     DELETE FROM public.memory_revisions mr WHERE mr.memory_id = ANY(v_candidate_ids);
     DELETE FROM public.memory_evidence me WHERE me.memory_id = ANY(v_candidate_ids);
-    DELETE FROM public.entity_edges e WHERE e.memory_id = ANY(v_candidate_ids);
-    DELETE FROM public.entity_aliases a WHERE a.memory_id = ANY(v_candidate_ids);
-    DELETE FROM public.memory_entities me WHERE me.memory_id = ANY(v_candidate_ids);
-    UPDATE public.decisions d
-    SET rationale = NULL, alternatives = '[]'::jsonb, decision_maker = NULL
-    WHERE d.memory_id = ANY(v_candidate_ids);
+    DELETE FROM public.entity_edges e
+    WHERE e.memory_id = ANY(v_candidate_ids);
+    DELETE FROM public.entity_aliases a
+    WHERE a.memory_id = ANY(v_candidate_ids);
+    DELETE FROM public.memory_entities me
+    WHERE me.memory_id = ANY(v_candidate_ids);
+    DELETE FROM public.entities e
+    WHERE e.id = ANY(v_entity_ids)
+      AND NOT EXISTS (
+        SELECT 1 FROM public.memory_entities me WHERE me.entity_id = e.id
+      );
+    UPDATE public.project_routing_corrections prc
+    SET reason = 'retention policy expiry',
+        source_evidence = jsonb_build_object(
+          'retentionExpired', true,
+          'policyVersion', 'm20-s04-v1'
+        )
+    WHERE prc.memory_id = ANY(v_candidate_ids);
+    UPDATE public.approval_checkpoints ac
+    SET approved_memory_id = NULL,
+        requested_reason = 'retention policy expiry',
+        decision_reason = CASE
+          WHEN ac.decision_reason IS NULL THEN NULL
+          ELSE 'retention policy expiry'
+        END,
+        payload = jsonb_build_object(
+          'retentionExpired', true,
+          'policyVersion', 'm20-s04-v1'
+        ),
+        updated_at = now()
+    WHERE ac.approved_memory_id = ANY(v_candidate_ids);
+    UPDATE public.handoffs h
+    SET payload = jsonb_build_object(
+      'retentionExpired', true,
+      'policyVersion', 'm20-s04-v1'
+    )
+    WHERE h.memory_id = ANY(v_candidate_ids);
+    UPDATE public.audit_log a
+    SET reason = 'retention expiry redacted',
+        before_state = NULL,
+        after_state = jsonb_build_object(
+          'retentionExpired', true,
+          'policyVersion', 'm20-s04-v1'
+        )
+    WHERE a.workspace_id = p_workspace_id
+      AND (
+        a.object_id = ANY(v_candidate_ids)
+        OR EXISTS (
+          SELECT 1 FROM unnest(v_candidate_ids) expired(id)
+          WHERE coalesce(a.before_state, '{}'::jsonb)::text LIKE '%' || expired.id::text || '%'
+             OR coalesce(a.after_state, '{}'::jsonb)::text LIKE '%' || expired.id::text || '%'
+        )
+      );
     UPDATE public.memory_records m
     SET title = 'Expired candidate memory',
         content = '[expired by retention policy]',
@@ -1061,10 +1234,10 @@ REVOKE ALL ON FUNCTION public.api_create_privacy_request_v2(
   text, uuid, uuid, uuid, text, uuid, uuid, text, text, text
 ) FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON FUNCTION app.api_export_project_privacy_bundle(
-  text, uuid, uuid, uuid, integer
+  text, uuid, uuid, uuid, integer, integer
 ) FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON FUNCTION public.api_export_project_privacy_bundle(
-  text, uuid, uuid, uuid, integer
+  text, uuid, uuid, uuid, integer, integer
 ) FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON FUNCTION app.api_execute_privacy_request(text, uuid, uuid)
   FROM PUBLIC, anon, authenticated;
@@ -1084,10 +1257,10 @@ GRANT EXECUTE ON FUNCTION public.api_create_privacy_request_v2(
   text, uuid, uuid, uuid, text, uuid, uuid, text, text, text
 ) TO service_role;
 GRANT EXECUTE ON FUNCTION app.api_export_project_privacy_bundle(
-  text, uuid, uuid, uuid, integer
+  text, uuid, uuid, uuid, integer, integer
 ) TO service_role;
 GRANT EXECUTE ON FUNCTION public.api_export_project_privacy_bundle(
-  text, uuid, uuid, uuid, integer
+  text, uuid, uuid, uuid, integer, integer
 ) TO service_role;
 GRANT EXECUTE ON FUNCTION app.api_execute_privacy_request(text, uuid, uuid)
   TO service_role;

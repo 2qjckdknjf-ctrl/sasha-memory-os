@@ -36,6 +36,9 @@ describe('M20.4 privacy and compliance gate', () => {
         derivedMemoriesIncluded: true,
         sourceRevocationDeletesVaultReferences: true,
         graphProjectionRemovedOnDeletion: true,
+        exportIsFullyPaginated: true,
+        connectorRevocationIsWorkspaceWide: true,
+        legacyRequestsFailClosed: true,
         auditContainsMetadataOnly: true,
         logsContainSensitiveBodies: false,
         modeAToolCount: 7,
@@ -102,7 +105,10 @@ describe('M20.4 privacy and compliance gate', () => {
     expect(migration).toContain('api_export_project_privacy_bundle');
     expect(migration).toContain('api_execute_privacy_request');
     expect(migration).toContain('api_apply_retention_policy');
+    expect(migration).toContain("'nextOffset'");
+    expect(migration).toContain('v_offset integer');
     expect(migration).toContain("reason = '[redacted after execution]'");
+    expect(migration).toContain("reason = 'privacy correction redacted'");
     expect(migration).toContain('DELETE FROM public.artifact_chunks');
     expect(migration).toContain('embedding_vector_hq = NULL');
     expect(migration).toContain('DELETE FROM public.entity_edges');
@@ -112,6 +118,7 @@ describe('M20.4 privacy and compliance gate', () => {
     expect(api).toContain("app.post('/v1/privacy/requests/:id/execute'");
     expect(api).toContain("app.post('/v1/privacy/retention/run'");
     expect(appUi).toContain('/v1/export/privacy?workspace_id=');
+    expect(appUi).toContain('Privacy export pagination did not advance');
     expect(privacyUi).toContain('executeRequest(request)');
     expect(privacyUi).toContain('runRetention(false)');
     expect(privacyUi).not.toContain('{request.reason}');
@@ -119,6 +126,8 @@ describe('M20.4 privacy and compliance gate', () => {
     expect(sql).toContain('m20_privacy_compliance_cases=pass');
     expect(sql).toContain('derived deletion did not complete');
     expect(sql).toContain('sensitive content leaked into operational audit state');
+    expect(sql).toContain('cross-project memory were not revoked');
+    expect(sql).toContain('legacy request without a target unexpectedly executed');
     expect(ephemeral).toContain('m20_privacy_compliance_cases.sql');
     expect(dataMap).toContain('POST /v1/privacy/retention/run');
     expect(dpia).toContain('V1 GA technical review refreshed 2026-10-15');

@@ -49,7 +49,7 @@ export payloads into audit/operational telemetry.
 
 ## Rights and operational surfaces
 
-- Portability: `GET /v1/export/privacy` returns bounded project memories,
+- Portability: `GET /v1/export/privacy` returns fully paginated project memories,
   provenance/evidence, source events, artifacts/chunks, connector metadata and
   the retention policy. It never returns connector secrets or vault refs.
 - Request: `POST /v1/privacy/requests` creates an idempotent owner request.
