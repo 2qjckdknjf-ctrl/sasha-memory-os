@@ -512,6 +512,7 @@ async function callTool(
         Math.max(Math.trunc(Number(args.limit ?? 12)) || 12, 1),
         50,
       );
+      const candidateLimit = Math.min(Math.max(searchLimit * 2, 24), 50);
       // Retrieval must remain available when the optional semantic provider is
       // slow. Capture/write embeddings intentionally have no query timeout so
       // a transient provider delay cannot persist a degraded fallback vector.
@@ -532,7 +533,7 @@ async function callTool(
         p_recorded_before: args.recorded_before
           ? String(args.recorded_before)
           : null,
-        p_limit: searchLimit,
+        p_limit: candidateLimit,
       });
       const hits = (Array.isArray(rawHits) ? rawHits : []).map((value) => {
         const row = value as Record<string, unknown>;
@@ -546,7 +547,7 @@ async function callTool(
               : null,
         } satisfies Hit;
       });
-      const ranked = rerankRrf(hits, queryVector ?? []);
+      const ranked = rerankRrf(hits, queryVector ?? []).slice(0, searchLimit);
       if (retrievalMode === "graph") {
         if (!project) {
           throw new Error("project reference is required for graph retrieval");
@@ -640,14 +641,15 @@ async function callTool(
               ? [edge.sourceRef]
               : [];
           });
+        const limitedFused = fused.slice(0, searchLimit);
         const evidenceRefs = [
           ...new Set([
             ...edgeEvidence,
-            ...fused.flatMap((hit) => hit.evidenceRefs),
+            ...limitedFused.flatMap((hit) => hit.evidenceRefs),
           ]),
         ];
         return {
-          hits: withoutSearchEmbeddings(fused),
+          hits: withoutSearchEmbeddings(limitedFused),
           ranking: "hybrid-rrf+graph-evidence",
           rankingVersion:
             `${SEARCH_RANKING_VERSION}+${EDGE_GRAPH_FUSION_PACK_VERSION}`,
@@ -663,12 +665,12 @@ async function callTool(
             graphHitCount: Array.isArray(graph.memories)
               ? graph.memories.length
               : 0,
-            fusedHitCount: fused.length,
+            fusedHitCount: limitedFused.length,
           },
           ...(Boolean(args.pack_context)
             ? {
               context: packContext(
-                fused,
+                limitedFused,
                 Number(args.max_context_chars ?? 4000),
               ),
             }

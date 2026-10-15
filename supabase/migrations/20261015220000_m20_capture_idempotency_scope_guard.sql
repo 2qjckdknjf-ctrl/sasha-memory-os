@@ -241,7 +241,7 @@ CREATE OR REPLACE FUNCTION public.api_search_memories_bounded(
   p_query_embedding jsonb DEFAULT NULL,
   p_recorded_after timestamptz DEFAULT NULL,
   p_recorded_before timestamptz DEFAULT NULL,
-  p_limit integer DEFAULT 12
+  p_limit integer DEFAULT 24
 )
 RETURNS jsonb
 LANGUAGE sql
@@ -264,7 +264,7 @@ AS $$
           p_recorded_before
         )
       ) WITH ORDINALITY AS item(value, ordinality)
-      WHERE item.ordinality <= LEAST(GREATEST(COALESCE(p_limit, 12), 1), 50)
+      WHERE item.ordinality <= LEAST(GREATEST(COALESCE(p_limit, 24), 1), 50)
     ),
     '[]'::jsonb
   );

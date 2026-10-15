@@ -52,7 +52,7 @@ describe('M20.3 performance and retrieval gate', () => {
     expect(migration).toContain('idempotency key conflict');
     expect(migration).toContain('public.api_search_memories_bounded');
     expect(migration).toContain(
-      'LEAST(GREATEST(COALESCE(p_limit, 12), 1), 50)',
+      'LEAST(GREATEST(COALESCE(p_limit, 24), 1), 50)',
     );
     expect(routingLoad).toContain('concurrent_calls=16');
     expect(routingLoad).toContain('cross_project_replay=rejected');
@@ -71,7 +71,11 @@ describe('M20.3 performance and retrieval gate', () => {
     expect(edgeMcp).toContain('queryVectorForRetrieval(embedded)');
     expect(edgeMcp).toContain('p_query_embedding: queryVector');
     expect(edgeMcp).toContain('rpc(client, "api_search_memories_bounded"');
-    expect(edgeMcp).toContain('p_limit: searchLimit');
+    expect(edgeMcp).toContain('p_limit: candidateLimit');
+    expect(edgeMcp).toContain(
+      'rerankRrf(hits, queryVector ?? []).slice(0, searchLimit)',
+    );
+    expect(edgeMcp).toContain('const limitedFused = fused.slice(0, searchLimit)');
     expect(edgeMcp).toContain('QUERY_EMBEDDING_PROVIDER_TIMEOUT_MS = 700');
     expect(edgeMcp).toContain(
       'providerTimeoutMs: QUERY_EMBEDDING_PROVIDER_TIMEOUT_MS',
