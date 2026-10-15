@@ -20,6 +20,7 @@ DECLARE
   v_created jsonb;
   v_deduplicated jsonb;
   v_conflict jsonb;
+  v_second jsonb;
   v_memory_id uuid;
   v_before_count bigint;
   v_after_count bigint;
@@ -79,13 +80,57 @@ BEGIN
     'M18.4 security test decision',
     'Use the approved automatic writeback policy for this test.',
     'm18-s04-security-deduplicated',
-    v_envelope
+    jsonb_build_object(
+      'kind', 'approved_decision',
+      'approval', jsonb_build_object(
+        'source', 'explicit_user',
+        'reference', 'security-test:new-unpersisted-approval'
+      ),
+      'evidence_refs', jsonb_build_array('security-test:new-unpersisted-evidence')
+    )
   );
   IF (v_deduplicated#>>'{memory,id}')::uuid IS DISTINCT FROM v_memory_id
      OR v_deduplicated#>>'{writeback,outcome}' <> 'deduplicated'
      OR (v_deduplicated#>>'{writeback,deduplicated}')::boolean IS DISTINCT FROM true
-     OR (v_deduplicated#>>'{writeback,readAfterWrite}')::boolean IS DISTINCT FROM true THEN
+     OR (v_deduplicated#>>'{writeback,readAfterWrite}')::boolean IS DISTINCT FROM true
+     OR v_deduplicated#>>'{writeback,provenance,approval,reference}'
+        IS DISTINCT FROM 'security-test:explicit-approval'
+     OR v_deduplicated#>>'{writeback,provenance,evidenceRefs,0}'
+        IS DISTINCT FROM 'security-test:evidence-1' THEN
     RAISE EXCEPTION 'exact writeback duplicate did not reuse verified memory';
+  END IF;
+
+  v_second := public.api_chatgpt_writeback_decision(
+    v_secret,
+    v_chatgpt,
+    v_workspace,
+    v_project,
+    'M18.4 second security test decision',
+    'This second approved memory exercises idempotency ordering.',
+    'm18-s04-security-second',
+    v_envelope
+  );
+  IF v_second#>>'{writeback,outcome}' <> 'created' THEN
+    RAISE EXCEPTION 'second writeback fixture was not created';
+  END IF;
+
+  v_rejected := false;
+  BEGIN
+    PERFORM public.api_chatgpt_writeback_decision(
+      v_secret,
+      v_chatgpt,
+      v_workspace,
+      v_project,
+      'M18.4 second security test decision',
+      'This second approved memory exercises idempotency ordering.',
+      'm18-s04-security-created',
+      v_envelope
+    );
+  EXCEPTION WHEN unique_violation THEN
+    v_rejected := true;
+  END;
+  IF NOT v_rejected THEN
+    RAISE EXCEPTION 'reused idempotency key bypassed conflict through content dedupe';
   END IF;
 
   SELECT count(*) INTO v_before_count

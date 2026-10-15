@@ -34,6 +34,7 @@ DECLARE
   v_fingerprint text;
   v_provenance jsonb;
   v_existing_id uuid;
+  v_key_memory_id uuid;
   v_conflict_id uuid;
   v_event_id uuid;
   v_memory_id uuid;
@@ -168,19 +169,45 @@ BEGIN
     hashtextextended(p_workspace_id::text || ':' || p_project_id::text || ':' || v_normalized_title, 0)
   );
 
-  SELECT m.id INTO v_existing_id
-  FROM memory_records m
-  WHERE m.workspace_id = p_workspace_id
-    AND app.effective_memory_project_id(m.id) = p_project_id
-    AND m.memory_type = 'decision'
-    AND m.status IN ('active', 'verified')
-    AND m.superseded_by IS NULL
-    AND regexp_replace(lower(btrim(m.title)), '\s+', ' ', 'g') = v_normalized_title
-    AND regexp_replace(btrim(m.content), '\s+', ' ', 'g') = v_normalized_content
-    AND m.created_by_subject = p_subject_id
-    AND m.metadata#>>'{chatgptWriteback,fingerprint}' = v_fingerprint
-  ORDER BY m.recorded_at DESC, m.id
+  -- Validate an already-used idempotency key before any content-level dedupe.
+  -- A key can never report success for two different approved payloads.
+  SELECT se.id, se.payload, m.id
+  INTO v_event_id, v_event_payload, v_key_memory_id
+  FROM source_events se
+  LEFT JOIN memory_records m
+    ON m.source_event_id = se.id
+   AND m.memory_type = 'decision'
+  WHERE se.workspace_id = p_workspace_id
+    AND se.provider = 'chatgpt'
+    AND se.idempotency_key = p_idempotency_key
+  ORDER BY m.recorded_at DESC NULLS LAST, m.id
   LIMIT 1;
+
+  IF v_event_id IS NOT NULL THEN
+    IF v_event_payload#>>'{chatgptWriteback,fingerprint}' IS DISTINCT FROM v_fingerprint
+       OR (v_event_payload#>>'{chatgptWriteback,projectId}')::uuid IS DISTINCT FROM p_project_id THEN
+      RAISE EXCEPTION 'idempotency key conflict for automatic writeback'
+        USING ERRCODE = '23505';
+    END IF;
+    IF v_key_memory_id IS NULL THEN
+      RAISE EXCEPTION 'idempotent writeback source event has no decision memory';
+    END IF;
+    v_existing_id := v_key_memory_id;
+  ELSE
+    SELECT m.id INTO v_existing_id
+    FROM memory_records m
+    WHERE m.workspace_id = p_workspace_id
+      AND app.effective_memory_project_id(m.id) = p_project_id
+      AND m.memory_type = 'decision'
+      AND m.status IN ('active', 'verified')
+      AND m.superseded_by IS NULL
+      AND regexp_replace(lower(btrim(m.title)), '\s+', ' ', 'g') = v_normalized_title
+      AND regexp_replace(btrim(m.content), '\s+', ' ', 'g') = v_normalized_content
+      AND m.created_by_subject = p_subject_id
+      AND m.metadata#>>'{chatgptWriteback,fingerprint}' = v_fingerprint
+    ORDER BY m.recorded_at DESC, m.id
+    LIMIT 1;
+  END IF;
 
   IF v_existing_id IS NOT NULL THEN
     v_readback := app.api_get_memory(p_secret, p_subject_id, v_existing_id);
@@ -222,7 +249,7 @@ BEGIN
         'readBeforeWrite', true,
         'deduplicated', true,
         'readAfterWrite', true,
-        'provenance', v_provenance,
+        'provenance', v_readback#>'{metadata,chatgptWriteback}',
         'audit', v_audit
       )
     );
