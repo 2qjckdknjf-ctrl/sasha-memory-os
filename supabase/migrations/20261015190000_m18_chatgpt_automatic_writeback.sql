@@ -461,10 +461,10 @@ REVOKE ALL ON FUNCTION public.api_chatgpt_writeback_decision(
 
 GRANT EXECUTE ON FUNCTION app.api_chatgpt_writeback_decision(
   text, uuid, uuid, uuid, text, text, text, jsonb, numeric, numeric, text, text
-) TO anon, authenticated, service_role;
+) TO service_role;
 GRANT EXECUTE ON FUNCTION public.api_chatgpt_writeback_decision(
   text, uuid, uuid, uuid, text, text, text, jsonb, numeric, numeric, text, text
-) TO anon, authenticated, service_role;
+) TO service_role;
 
 COMMENT ON FUNCTION public.api_chatgpt_writeback_decision(
   text, uuid, uuid, uuid, text, text, text, jsonb, numeric, numeric, text, text
