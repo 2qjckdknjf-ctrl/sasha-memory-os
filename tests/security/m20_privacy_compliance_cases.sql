@@ -65,6 +65,10 @@ DECLARE
   v_notification_job constant uuid := '99999999-0000-4000-8000-000000000451';
   v_notification constant uuid := '99999999-0000-4000-8000-000000000452';
   v_notification_outbox constant uuid := '99999999-0000-4000-8000-000000000453';
+  v_retention_notification_job constant uuid := '99999999-0000-4000-8000-000000000454';
+  v_retention_notification constant uuid := '99999999-0000-4000-8000-000000000455';
+  v_retention_notification_outbox constant uuid := '99999999-0000-4000-8000-000000000456';
+  v_retention_recent_consumer constant uuid := '99999999-0000-4000-8000-000000000457';
   v_marker constant text := 'M20_PRIVACY_SECRET_MARKER_6f9fd9';
   v_vault_ref constant text := 'vault:test/m20/privacy-connector';
   v_created jsonb;
@@ -771,6 +775,43 @@ BEGIN
     'm20-privacy/retention-source', now() - interval '181 days',
     now() - interval '181 days', jsonb_build_object('body', v_marker), v_owner
   );
+  INSERT INTO public.memory_records (
+    id, workspace_id, project_id, memory_type, title, content, status,
+    source_event_id, recorded_at, created_by_subject
+  ) VALUES (
+    v_retention_recent_consumer, v_workspace, v_project, 'fact', v_marker,
+    v_marker, 'active', v_retention_source, now(), v_owner
+  );
+  INSERT INTO public.processing_jobs (
+    id, workspace_id, job_type, status, source_event_id, idempotency_key,
+    error
+  ) VALUES (
+    v_retention_notification_job, v_workspace, 'roma_project_health',
+    'succeeded', v_retention_source, 'm20-privacy/retention-notification-job',
+    v_marker
+  );
+  INSERT INTO public.project_notifications (
+    id, workspace_id, project_id, recipient_subject_id, notification_type,
+    source_job_id, source_job_type, source_memory_ids, severity, title, status,
+    idempotency_key, metadata, created_by_subject
+  ) VALUES (
+    v_retention_notification, v_workspace, v_project, v_owner,
+    'roma_project_health_completed', v_retention_notification_job,
+    'roma_project_health', ARRAY[v_retention_memory], 'high', v_marker,
+    'unread', 'm20-privacy/retention-notification',
+    jsonb_build_object('body', v_marker), v_owner
+  );
+  INSERT INTO public.outbox_events (
+    id, workspace_id, aggregate_type, aggregate_id, event_type, payload
+  ) VALUES (
+    v_retention_notification_outbox, v_workspace, 'project_notification',
+    v_retention_notification, 'project.notification.created',
+    jsonb_build_object(
+      'sourceMemoryIds', jsonb_build_array(v_retention_memory),
+      'title', v_marker,
+      'metadata', jsonb_build_object('body', v_marker)
+    )
+  );
   INSERT INTO public.source_events (
     id, workspace_id, project_id, provider, event_type, idempotency_key,
     observed_at, recorded_at, payload, created_by_subject
@@ -926,6 +967,11 @@ BEGIN
     WHERE m.id = v_retention_memory
       AND m.status = 'deleted'
       AND m.content = '[expired by retention policy]'
+  ) OR NOT EXISTS (
+    SELECT 1 FROM public.memory_records m
+    WHERE m.id = v_retention_recent_consumer
+      AND m.status = 'deleted'
+      AND m.content = '[expired by retention policy]'
   ) OR EXISTS (
     SELECT 1 FROM public.artifact_chunks WHERE id = v_retention_chunk
   ) OR EXISTS (
@@ -959,6 +1005,24 @@ BEGIN
     SELECT 1 FROM public.source_events s
     WHERE s.id = v_retained_source
       AND s.payload::text LIKE '%' || v_marker || '%'
+  ) OR NOT EXISTS (
+    SELECT 1 FROM public.project_notifications n
+    WHERE n.id = v_retention_notification
+      AND n.source_memory_ids = '{}'::uuid[]
+      AND n.title = 'Retention-redacted notification'
+      AND n.metadata->>'retentionRedacted' = 'true'
+  ) OR NOT EXISTS (
+    SELECT 1 FROM public.outbox_events o
+    WHERE o.id = v_retention_notification_outbox
+      AND o.published_at IS NOT NULL
+      AND o.payload->>'retentionRedacted' = 'true'
+      AND o.payload::text NOT LIKE '%' || v_marker || '%'
+      AND o.payload::text NOT LIKE '%' || v_retention_memory::text || '%'
+  ) OR NOT EXISTS (
+    SELECT 1 FROM public.processing_jobs j
+    WHERE j.id = v_retention_notification_job
+      AND j.status = 'succeeded'
+      AND j.error = 'retention source redacted'
   ) OR NOT EXISTS (
     SELECT 1 FROM public.outbox_events WHERE id = v_other_retention_outbox
   ) OR NOT EXISTS (

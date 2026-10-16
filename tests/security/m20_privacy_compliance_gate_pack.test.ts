@@ -58,6 +58,9 @@ describe('M20.4 privacy and compliance gate', () => {
         retentionLocksCandidatesBeforeMutation: true,
         retentionLocksArtifactsBeforeMutation: true,
         retentionLocksJobsAndOutboxBeforeMutation: true,
+        retentionLocksSourceJobsBeforeMutation: true,
+        retentionRescansSourceConsumers: true,
+        retentionRedactsAsyncDerivatives: true,
         retentionOnlyExpiresQuarantinedArtifacts: true,
         retentionRedactsSharedEntities: true,
         retentionIsProjectScoped: true,
@@ -140,6 +143,7 @@ describe('M20.4 privacy and compliance gate', () => {
     expect(migration).toContain('FOR UPDATE OF a');
     expect(migration).toContain('FOR UPDATE OF j');
     expect(migration).toContain('FOR UPDATE OF o');
+    expect(migration).toContain('broken legacy worker left the artifact quarantined');
     expect(migration).toContain("s.payload #>> '{source,account_id}'");
     expect(migration).toContain('j.source_event_id = ANY(v_source_ids)');
     expect(migration).toContain(`a.metadata @> '{"quarantine": true}'::jsonb`);
@@ -180,6 +184,7 @@ describe('M20.4 privacy and compliance gate', () => {
     expect(sql).toContain('expired export snapshot purge is not independently scheduled');
     expect(sql).toContain('workspace provenance consumer retained content/embedding');
     expect(sql).toContain('notification, outbox, or job retained erased memory data');
+    expect(sql).toContain('Retention-redacted notification');
     expect(ephemeral).toContain('m20_privacy_compliance_cases.sql');
     expect(dataMap).toContain('POST /v1/privacy/retention/run');
     expect(dpia).toContain('V1 GA technical review refreshed 2026-10-15');

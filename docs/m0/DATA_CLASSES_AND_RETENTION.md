@@ -51,6 +51,10 @@ export payloads into audit/operational telemetry. Project retention deletes
 outbox, dead-letter and audit rows only when their source, aggregate, payload or
 linked object positively attributes them to the requested project; ambiguous
 workspace-level rows are preserved.
+Destructive apply first locks source-linked jobs, waits for in-flight ingest,
+then locks/revalidates mutable eligibility and re-scans source consumers. This
+prevents ingest, replay, and delivery from recreating or removing data across
+the retention boundary.
 
 ## Rights and operational surfaces
 

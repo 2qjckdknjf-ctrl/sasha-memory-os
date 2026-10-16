@@ -54,7 +54,7 @@ The authoritative data map and enforced retention windows are in
 | Correction | Idempotent privacy request plus owner execution; prior memory becomes superseded |
 | Retraction | Owner execution marks the target retracted with metadata-only audit |
 | Erasure | Target memory and all workspace consumers/derivatives of its shared source are tombstoned before provenance is sanitized; source-account request also resolves legacy payload identity, revokes the workspace-wide connector, vault, cursor, source-linked jobs and outbox, and erases its derived records across projects |
-| Retention | Owner dry-run/apply route implementing the published 30/90/180/365-day windows; candidate memories, still-quarantined artifacts, dead-letter jobs and published outbox rows are locked and revalidated before expiry, while shared entities are retained in redacted form |
+| Retention | Owner dry-run/apply route implementing the published 30/90/180/365-day windows; apply locks source jobs, waits for ingest, re-scans source consumers, locks/revalidates candidates, quarantined artifacts, dead-letter jobs and published outbox rows, redacts async derivatives, and retains shared entities in redacted form |
 
 ## Residual risks and decisions
 

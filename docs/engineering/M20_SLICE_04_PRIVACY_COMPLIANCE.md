@@ -60,7 +60,10 @@ stack, proves:
    preserves processed provenance, redacts shared entities that must remain,
    and locks/revalidates candidate memories plus quarantined artifacts before
    destructive mutation; dead-letter jobs and published outbox events are also
-   locked/revalidated so replay or delivery cannot race with deletion;
+   locked/revalidated so replay or delivery cannot race with deletion. Apply
+   locks the source-linked jobs first, waits for in-flight ingest, re-scans
+   source consumers, stops queued source work, and redacts retention-derived
+   notifications/outbox before tombstoning;
 7. legacy targetless requests fail closed before mutation, correction audits
    are redacted, authoritative corrections preserve effective project routing,
    retention removes orphan graph entities, arbitrary metadata references do

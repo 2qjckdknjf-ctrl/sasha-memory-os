@@ -1468,6 +1468,7 @@ DECLARE
   v_outbox_ids uuid[] := '{}'::uuid[];
   v_dead_letter_ids uuid[] := '{}'::uuid[];
   v_audit_ids uuid[] := '{}'::uuid[];
+  v_notification_ids uuid[] := '{}'::uuid[];
   v_candidate_count integer := 0;
   v_artifact_count integer := 0;
   v_outbox_count integer := 0;
@@ -1653,7 +1654,19 @@ BEGIN
     );
 
     -- A worker may promote a quarantined artifact while retention is being
-    -- approved. Lock and re-evaluate it before removing chunks or provenance.
+    -- approved. It locks its processing job first, so take those same row locks
+    -- before the source/artifact locks, wait for in-flight ingest to finish,
+    -- and then re-evaluate the artifact before removing provenance.
+    PERFORM 1
+    FROM public.processing_jobs j
+    WHERE j.workspace_id = p_workspace_id
+      AND j.source_event_id = ANY(v_artifact_source_ids)
+    FOR UPDATE OF j;
+    PERFORM 1
+    FROM public.source_events s
+    WHERE s.workspace_id = p_workspace_id
+      AND s.id = ANY(v_artifact_source_ids)
+    FOR UPDATE OF s;
     SELECT coalesce(array_agg(eligible.id), '{}'::uuid[])
     INTO v_artifact_ids
     FROM (
@@ -1670,9 +1683,81 @@ BEGIN
     INTO v_artifact_source_ids
     FROM public.artifacts a
     WHERE a.id = ANY(v_artifact_ids) AND a.source_event_id IS NOT NULL;
+
+    -- A worker that completed while we waited is excluded above. If a
+    -- broken legacy worker left the artifact quarantined after creating a consumer,
+    -- include every such source/evidence consumer in the same tombstone set.
+    SELECT coalesce(array_agg(DISTINCT memory_id), '{}'::uuid[])
+    INTO v_candidate_ids
+    FROM (
+      SELECT unnest(v_candidate_ids) AS memory_id
+      UNION
+      SELECT m.id
+      FROM public.memory_records m
+      WHERE m.workspace_id = p_workspace_id
+        AND m.status <> 'deleted'
+        AND m.source_event_id = ANY(v_artifact_source_ids)
+      UNION
+      SELECT me.memory_id
+      FROM public.memory_evidence me
+      JOIN public.memory_records m ON m.id = me.memory_id
+      WHERE m.workspace_id = p_workspace_id
+        AND m.status <> 'deleted'
+        AND me.source_event_id = ANY(v_artifact_source_ids)
+    ) source_consumers;
+    v_candidate_count := cardinality(v_candidate_ids);
+    v_result := jsonb_set(
+      v_result, '{candidateMemories}', to_jsonb(v_candidate_count), false
+    );
     v_result := jsonb_set(
       v_result, '{quarantineArtifacts}', to_jsonb(v_artifact_count), false
     );
+
+    -- No queued/running worker may process provenance that is about to expire.
+    UPDATE public.processing_jobs j
+    SET status = 'dead_letter',
+        error = 'source expired by retention policy',
+        attempt = j.attempt + 1,
+        updated_at = now()
+    WHERE j.workspace_id = p_workspace_id
+      AND j.source_event_id = ANY(v_artifact_source_ids)
+      AND j.status IN ('queued', 'running');
+    UPDATE public.processing_jobs j
+    SET error = CASE
+          WHEN j.error IS NULL THEN NULL
+          ELSE 'retention source redacted'
+        END,
+        updated_at = now()
+    WHERE j.workspace_id = p_workspace_id
+      AND j.source_event_id = ANY(v_artifact_source_ids);
+    UPDATE public.outbox_events o
+    SET payload = jsonb_build_object(
+          'retentionRedacted', true,
+          'policyVersion', 'm20-s04-v1',
+          'aggregateType', o.aggregate_type,
+          'aggregateId', o.aggregate_id
+        ),
+        published_at = coalesce(o.published_at, now()),
+        attempts = o.attempts + CASE WHEN o.published_at IS NULL THEN 1 ELSE 0 END,
+        last_error = CASE
+          WHEN o.published_at IS NULL THEN 'retention source redacted'
+          ELSE o.last_error
+        END
+    WHERE o.workspace_id = p_workspace_id
+      AND (
+        (
+          o.aggregate_type = 'source_event'
+          AND o.aggregate_id = ANY(v_artifact_source_ids)
+        )
+        OR (
+          o.aggregate_type = 'processing_job'
+          AND EXISTS (
+            SELECT 1 FROM public.processing_jobs j
+            WHERE j.id = o.aggregate_id
+              AND j.source_event_id = ANY(v_artifact_source_ids)
+          )
+        )
+      );
 
     -- Replay and delivery workers mutate these eligibility fields. Lock and
     -- re-evaluate them so retention cannot delete newly queued live work.
@@ -1762,6 +1847,41 @@ BEGIN
       ),
       '{publishedOutboxEvents}', to_jsonb(v_outbox_count), false
     );
+
+    SELECT coalesce(array_agg(n.id), '{}'::uuid[])
+    INTO v_notification_ids
+    FROM public.project_notifications n
+    WHERE n.workspace_id = p_workspace_id
+      AND n.source_memory_ids && v_candidate_ids;
+    UPDATE public.project_notifications n
+    SET source_memory_ids = ARRAY(
+          SELECT source_memory_id
+          FROM unnest(n.source_memory_ids) source_memory_id
+          WHERE NOT source_memory_id = ANY(v_candidate_ids)
+        ),
+        title = 'Retention-redacted notification',
+        metadata = jsonb_build_object(
+          'retentionRedacted', true,
+          'policyVersion', 'm20-s04-v1'
+        ),
+        updated_at = now()
+    WHERE n.id = ANY(v_notification_ids);
+    UPDATE public.outbox_events o
+    SET payload = jsonb_build_object(
+          'retentionRedacted', true,
+          'policyVersion', 'm20-s04-v1',
+          'aggregateType', o.aggregate_type,
+          'aggregateId', o.aggregate_id
+        ),
+        published_at = coalesce(o.published_at, now()),
+        attempts = o.attempts + CASE WHEN o.published_at IS NULL THEN 1 ELSE 0 END,
+        last_error = CASE
+          WHEN o.published_at IS NULL THEN 'retention memory redacted'
+          ELSE o.last_error
+        END
+    WHERE o.workspace_id = p_workspace_id
+      AND o.aggregate_type = 'project_notification'
+      AND o.aggregate_id = ANY(v_notification_ids);
 
     SELECT coalesce(array_agg(DISTINCT entity_id), '{}'::uuid[])
     INTO v_entity_ids
