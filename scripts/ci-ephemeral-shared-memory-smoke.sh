@@ -56,6 +56,7 @@ psql "$DB_URL" -v ON_ERROR_STOP=1 -f tests/security/m18_slice_03_roma_release_ev
 psql "$DB_URL" -v ON_ERROR_STOP=1 -f tests/security/m18_slice_03_roma_canonical_acl_cases.sql
 psql "$DB_URL" -v ON_ERROR_STOP=1 -f tests/security/m18_slice_04_chatgpt_writeback_cases.sql
 psql "$DB_URL" -v ON_ERROR_STOP=1 -f tests/security/m19_control_center_governance_cases.sql
+psql "$DB_URL" -v ON_ERROR_STOP=1 -f tests/security/m20_privacy_compliance_cases.sql
 
 echo "== M20.2 disposable current-schema restore drill"
 DB_URL="$DB_URL" ./scripts/m20-current-schema-restore-drill.sh

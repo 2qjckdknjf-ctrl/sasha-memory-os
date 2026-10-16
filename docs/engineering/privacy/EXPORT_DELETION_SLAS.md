@@ -1,26 +1,24 @@
-# Export and deletion SLAs
+# Export, correction, retraction and deletion SLAs
 
-Version: `m14-s06-v1`
+Version: `m20-s04-v1` (supersedes documentary-only `m14-s06-v1`)
 
-Roadmap sections: `16.6`, `16.7`, `20.17`
-
-This note documents the existing privacy/export surfaces only. It does not add a
-new product, a new UI, or live production delete/export automation.
+All privacy routes are owner-only, require an explicit project, use server-only
+database RPCs, and emit metadata-only audit records. Memory/source bodies,
+export payloads, free-text reasons, correction text and credentials are never
+written to operational logs or rendered in the privacy history.
 
 ## Owner export SLA
 
 Owner: Privacy owner
 Deadline: 72h from validated owner request
-Route: `GET /v1/export/memories`
+Route: `GET /v1/export/privacy`
 
-- Export stays on the existing owner-only route `GET /v1/export/memories`.
-- Export requires explicit `project_id`; never default to AISTROYKA or
-  `MEMORY_OS_DEFAULT_PROJECT_ID`.
-- The export SLA covers canonical project memories and connector-derived records
-  already normalized into project-scoped memories.
-- Connector-derived coverage includes GitHub, Google Drive, Gmail, Google Calendar, and Apple transferred objects where those records were captured into the current project scope.
-- Audit stays metadata-only audit: record route, project scope, and count only.
-  Do not log memory bodies, export payloads, privacy request free-text reasons, correction text, or tokens.
+The M20.4 route supersedes the narrower legacy `GET /v1/export/memories`
+surface. Invocation requires an explicit `project_id`, includes
+connector-derived provenance and typed decision/task fields, and writes
+metadata-only audit counts. Responses use deterministic offset pagination; the
+Control Center follows `nextOffset` until `hasMore=false` and downloads one
+complete portability bundle.
 
 ## Deletion / forget SLA
 
@@ -28,16 +26,9 @@ Owner: Privacy owner
 Deadline: 30d from validated owner request
 Route: `POST /v1/privacy/requests`
 
-- Deletion / forget stays on the existing privacy-request route
-  `POST /v1/privacy/requests` with `request_type = deletion`.
-- Deletion requires explicit `project_id`; never default to AISTROYKA or
-  `MEMORY_OS_DEFAULT_PROJECT_ID`.
-- The deletion SLA covers connector-derived data as well as canonical memories.
-- Connector-derived coverage includes GitHub, Google Drive, Gmail, Google Calendar, and Apple transferred objects already captured into Memory OS.
-- Existing tombstone and retention surfaces remain authoritative; this slice
-  does not invent a parallel delete product.
-- Audit stays metadata-only audit: request type, target memory id, project
-  scope, and status only.
+Deletion requires explicit `project_id` and a memory or connector target. The
+connector-derived path is executed by `POST /v1/privacy/requests/:id/execute`;
+its audit is metadata-only audit and excludes bodies and owner free text.
 
 ## Correction SLA
 
@@ -45,12 +36,8 @@ Owner: Privacy owner
 Deadline: 30d from validated owner request
 Route: `POST /v1/privacy/requests`
 
-- Correction stays on the existing privacy-request route
-  `POST /v1/privacy/requests` with `request_type = correction`.
-- Correction requires explicit `project_id`; never default to AISTROYKA or
-  `MEMORY_OS_DEFAULT_PROJECT_ID`.
-- Audit stays metadata-only audit and must not quote correction text or memory
-  bodies.
+Correction requires explicit `project_id`, target memory and correction text.
+Execution uses the canonical supersession contract and metadata-only audit.
 
 ## Retraction SLA
 
@@ -58,33 +45,42 @@ Owner: Privacy owner
 Deadline: 30d from validated owner request
 Route: `POST /v1/privacy/requests`
 
-- Retraction stays on the existing privacy-request route
-  `POST /v1/privacy/requests` with `request_type = retraction`.
-- Retraction requires explicit `project_id`; never default to AISTROYKA or
-  `MEMORY_OS_DEFAULT_PROJECT_ID`.
-- Audit stays metadata-only audit and must not quote free-text request reasons
-  or payload bodies.
+Retraction requires explicit `project_id` and a target memory. Execution marks
+the target retracted and emits metadata-only audit.
 
 ## Connector-derived coverage
 
-- Export/delete coverage for connector-derived data reuses the current shared
-  connector surfaces instead of inventing a second privacy stack.
-- Covered connector-derived families are GitHub, Google Drive, Gmail, Google Calendar, and Apple transferred objects.
-- Shared tombstone execution remains on `workers/connector-sync/src/index.ts`.
-- Apple-transferred-object tombstones remain on
-  `apps/web/src/TransferredObjectsPage.tsx`.
-- Retention defaults stay anchored in `docs/m0/DATA_CLASSES_AND_RETENTION.md`:
-  class B canonical memory, class C capture/quarantine artifacts, class D
-  connector secrets, class E audit/outbox, and class F embeddings.
-- Disconnect/revoke behavior still hands off to the existing connector retention
-  and tombstone flows documented in the connector slices.
+Covered families are GitHub, Google Drive, Gmail, Google Calendar, and Apple transferred objects. The implementation reuses connector lifecycle handling in
+`workers/connector-sync/src/index.ts` and the owner-visible transferred-object
+surface in `apps/web/src/TransferredObjectsPage.tsx`.
 
 ## Telemetry hygiene
 
 Do not log memory bodies, export payloads, privacy request free-text reasons, correction text, or tokens.
 
-- Export audit entries stay count/scope only.
-- Privacy-request audit entries stay request-type/status/scope only.
-- Secret values and authorization material stay redacted.
-- Live production export/delete is out of scope for this slice and still
-  requires owner approval.
+Only request/status/scope identifiers and aggregate counts are permitted in
+operational audit and telemetry.
+
+| Operation | Route | Target SLA | Executed behavior |
+|---|---|---:|---|
+| Access/export | `GET /v1/export/privacy` | 72h | Fully paginated project bundle with memory, provenance/evidence, source events, artifacts/chunks and non-secret connector metadata |
+| Correction | create request, then `POST /v1/privacy/requests/:id/execute` | 30d | Existing correction contract creates/chooses authoritative memory and supersedes the old record |
+| Retraction | same execution route | 30d | Target memory becomes `retracted` |
+| Erasure | same execution route | 30d | Target plus derived memories are tombstoned; evidence/revisions/chunks/vectors/graph projection and sensitive snapshots are removed |
+| Source revocation | deletion request with `target_connector_account_id` | 30d | Connector is revoked workspace-wide; vault refs/payloads, cursors, pending jobs/outbox and connector-derived records in every project converge to deletion |
+| Retention | `POST /v1/privacy/retention/run` | scheduled owner operation | Dry-run by default; apply enforces `m20-s04-v1` windows only for data positively attributed to the explicit project |
+
+Request creation is idempotent. Reusing a key for a different project, request
+type, memory or connector fails closed. Execution is also idempotent: a
+completed request returns the saved metadata-only result without repeating the
+mutation.
+
+Connector-derived coverage includes GitHub, Google Drive, Gmail, Google
+Calendar and Apple transferred objects once their data is present in the
+selected project. Revoking an account removes its server-held secret/cursor
+state; no provider-side account deletion is claimed.
+
+Retention windows and the complete data map live in
+[`docs/m0/DATA_CLASSES_AND_RETENTION.md`](../../m0/DATA_CLASSES_AND_RETENTION.md).
+The mandatory transactional acceptance test is
+`tests/security/m20_privacy_compliance_cases.sql`.

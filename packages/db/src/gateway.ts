@@ -527,6 +527,7 @@ export class SupabaseMemoryGateway {
     projectId?: string | null;
     requestType: 'deletion' | 'correction' | 'retraction';
     targetMemoryId?: string | null;
+    targetConnectorAccountId?: string | null;
     reason: string;
     correctionText?: string | null;
     idempotencyKey: string;
@@ -534,13 +535,14 @@ export class SupabaseMemoryGateway {
     if (!input.projectId) {
       throw new Error('project_id is required for privacy requests');
     }
-    const { data, error } = await this.client.rpc('api_create_privacy_request', {
+    const { data, error } = await this.client.rpc('api_create_privacy_request_v2', {
       p_secret: this.apiSecret,
       p_subject_id: input.subjectId,
       p_workspace_id: input.workspaceId,
       p_project_id: input.projectId,
       p_request_type: input.requestType,
       p_target_memory_id: input.targetMemoryId ?? null,
+      p_target_connector_account_id: input.targetConnectorAccountId ?? null,
       p_reason: input.reason,
       p_correction_text: input.correctionText ?? null,
       p_idempotency_key: input.idempotencyKey,
@@ -552,11 +554,14 @@ export class SupabaseMemoryGateway {
       projectId: string | null;
       actorSubjectId: string | null;
       requestType: 'deletion' | 'correction' | 'retraction';
-      status: 'submitted';
+      status: 'submitted' | 'processing' | 'completed' | 'failed';
       targetMemoryId: string | null;
+      targetConnectorAccountId: string | null;
       reason: string;
       correctionText: string | null;
       createdAt: string;
+      completedAt?: string | null;
+      resultSummary?: Record<string, unknown>;
       actor?: {
         id: string;
         externalKey?: string | null;
@@ -585,11 +590,15 @@ export class SupabaseMemoryGateway {
         projectId: string | null;
         actorSubjectId: string | null;
         requestType: 'deletion' | 'correction' | 'retraction';
-        status: 'submitted';
+        status: 'submitted' | 'processing' | 'completed' | 'failed';
         targetMemoryId: string | null;
+        targetConnectorAccountId: string | null;
         reason: string;
         correctionText: string | null;
         createdAt: string;
+        completedAt?: string | null;
+        resultSummary?: Record<string, unknown>;
+        failureCode?: string | null;
         actor?: {
           id: string;
           externalKey?: string | null;
@@ -597,6 +606,102 @@ export class SupabaseMemoryGateway {
           kind?: string | null;
         } | null;
       }>;
+    };
+  }
+
+  async executePrivacyRequest(input: {
+    subjectId: string;
+    requestId: string;
+  }) {
+    const { data, error } = await this.client.rpc('api_execute_privacy_request', {
+      p_secret: this.apiSecret,
+      p_subject_id: input.subjectId,
+      p_request_id: input.requestId,
+    });
+    if (error) throw error;
+    return data as {
+      id: string;
+      status: 'completed' | 'failed';
+      completedAt: string | null;
+      resultSummary: Record<string, unknown>;
+      failureCode: string | null;
+      idempotent: boolean;
+    };
+  }
+
+  async exportPrivacyBundle(input: {
+    subjectId: string;
+    workspaceId: string;
+    projectId: string;
+    limit?: number;
+    offset?: number;
+    snapshotAt?: string;
+    exportId?: string;
+  }) {
+    const { data, error } = await this.client.rpc('api_export_project_privacy_bundle', {
+      p_secret: this.apiSecret,
+      p_subject_id: input.subjectId,
+      p_workspace_id: input.workspaceId,
+      p_project_id: input.projectId,
+      p_limit: input.limit ?? 500,
+      p_offset: input.offset ?? 0,
+      p_snapshot_at: input.snapshotAt ?? null,
+      p_export_id: input.exportId ?? null,
+    });
+    if (error) throw error;
+    return data as {
+      format: 'memory-os.privacy-export.v1';
+      exportedAt: string;
+      snapshotAt: string;
+      exportId: string;
+      workspaceId: string;
+      projectId: string;
+      counts: {
+        memories: number;
+        sourceEvents: number;
+        artifacts: number;
+        connectorAccounts: number;
+        privacyRequests: number;
+      };
+      pagination: {
+        limit: number;
+        offset: number;
+        nextOffset: number | null;
+        hasMore: boolean;
+      };
+      memories: Array<Record<string, unknown>>;
+      sourceEvents: Array<Record<string, unknown>>;
+      artifacts: Array<Record<string, unknown>>;
+      connectorAccounts: Array<Record<string, unknown>>;
+      privacyRequests: Array<Record<string, unknown>>;
+    };
+  }
+
+  async runRetentionPolicy(input: {
+    subjectId: string;
+    workspaceId: string;
+    projectId: string;
+    asOf?: string | null;
+    dryRun?: boolean;
+  }) {
+    const { data, error } = await this.client.rpc('api_apply_retention_policy', {
+      p_secret: this.apiSecret,
+      p_subject_id: input.subjectId,
+      p_workspace_id: input.workspaceId,
+      p_project_id: input.projectId,
+      p_as_of: input.asOf ?? new Date().toISOString(),
+      p_dry_run: input.dryRun !== false,
+    });
+    if (error) throw error;
+    return data as {
+      policyVersion: 'm20-s04-v1';
+      asOf: string;
+      dryRun: boolean;
+      candidateMemories: number;
+      quarantineArtifacts: number;
+      publishedOutboxEvents: number;
+      deadLetterJobs: number;
+      auditEvents: number;
     };
   }
 

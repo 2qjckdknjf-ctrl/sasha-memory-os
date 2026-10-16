@@ -1,64 +1,76 @@
-# Threat model + initial DPIA (RG0)
+# Threat model + DPIA
 
-Status: **owner accepted for alpha 2026-08-12** — not a formal legal sign-off; revisit when data volume grows.
+Status: **V1 GA technical review refreshed 2026-10-15**. This is an engineering
+DPIA record, not external legal advice or a formal regulator filing.
 
-## System summary
+## Processing summary
 
-Sasha Memory OS stores long-term personal/work memory for a private owner and selected agents (ChatGPT, Cursor, future ROMA). Control plane: HTTP API, MCP gateway, Web demo, Supabase Postgres (EU), vault-backed connectors, GH-scheduled workers + Edge ticks.
+Sasha Memory OS stores long-term personal and work memory for one owner and
+explicitly authorized agents. The primary control plane is Supabase Postgres in
+`eu-central-1`, server-only RPCs, the seven-tool Edge MCP, owner Control Center,
+vault-backed connectors, and scheduled workers. Every memory write requires an
+explicit project; there is no AISTROYKA/default-project fallback.
 
-## Data subjects / purposes
+Data subjects include the owner and incidental authors in selected repositories,
+files, mail and calendar events. The stated purpose is multi-agent continuity
+and owner-controlled retrieval. Collection is limited to explicit capture and
+selected connector scopes. Proposed lawful basis remains owner consent and
+legitimate interest for personal productivity; connected third-party content
+must be minimized.
 
-| Subject | Purpose |
-|---|---|
-| Owner (primary) | Canonical memory, review, connectors, export later |
-| Agent actors (ChatGPT/Cursor) | Scoped read/write under ACL |
-| Third-party content authors | Incidental in mail/docs/calendar — minimized via selected sync |
+The authoritative data map and enforced retention windows are in
+[DATA_CLASSES_AND_RETENTION.md](./DATA_CLASSES_AND_RETENTION.md).
 
-Lawful basis (proposed): legitimate interest / consent for personal productivity memory; owner controls connectors and sensitivity.
+## Assets and trust boundaries
 
-## Assets
+1. Canonical memories, source payloads, evidence, embeddings and graph data.
+2. OAuth tokens and connector cursors held behind Vault/KMS and server RPCs.
+3. API secret, Supabase service role and GitHub deployment credentials.
+4. Audit, outbox and job metadata, which can reveal activity even without bodies.
+5. Actor/session bindings for owner, ChatGPT, Cursor and ROMA.
+6. Export bundles and privacy-request free text, including service-only
+   row-wise export snapshots retained for no more than 15 minutes.
 
-1. Canonical memories + embeddings  
-2. OAuth tokens in vault  
-3. API secret / vault key / service role  
-4. Outbox / jobs (side-channel of activity)  
-5. Web/MCP session binding (`x-subject-id`, auth bind)
+## Threats and landed controls
 
-## Top threats (STRIDE-lite)
-
-| ID | Threat | Mitigation (landed / planned) |
+| ID | Threat | Current control |
 |---|---|---|
-| T1 | Stolen `MEMORY_OS_API_SECRET` → owner ops | Secret only server-side; required outside local/test; rotate via env |
-| T2 | Token leakage in DB | Vault refs only; `supabase_vault` KMS path available |
-| T3 | Cross-subject read | RLS + `app.has_acl`; golden forbidden-access cases |
-| T4 | SSRF via link capture | DNS/private IP blocks; no credentialed URLs |
-| T5 | Prompt/agent over-share | Sensitivity + project ACL; no dangerous writes by default |
-| T6 | Stale connector jobs / orphan outbox | Idempotent enqueue; dead-letter cron |
-| T7 | Embed provider exfil | Optional OpenAI; stub locally; dims controlled |
-| T8 | Supply-chain / wrong Supabase project | Dedicated `sasha-memory-os`; never AISTROYKA/HiAir |
+| T1 | API/service credential theft | Server-only secrets, GitHub secret scanning/push protection, rotation runbooks, privileged RPC denial for browser roles |
+| T2 | Token leakage in tables/logs | Vault refs only, KMS/local encrypted vault, metadata-only telemetry, connector revocation deletes secret/cursor material |
+| T3 | Cross-subject/project disclosure | RLS, ACL, explicit project, sensitivity checks, 200-case retrieval gate with zero leakage |
+| T4 | SSRF or credentialed URL capture | DNS/private-address and credentialed-URL rejection |
+| T5 | Agent over-share or unsafe write | Seven bounded tools, per-actor ACL, candidate/review policy, no retrieval-side writes |
+| T6 | Retry, stale job, routing race, or outbox duplication | Idempotent capture and conflict-safe privacy-request creation, workspace serialization for routing/retention, atomic privacy-execution rollback with a durable redacted failure state, advisory locking, bounded retry/dead-letter/replay and restore drills |
+| T7 | AI-provider transfer | External embedding/transcription is optional, bounded and documented; local fallback exists |
+| T8 | Wrong Supabase/project routing | Dedicated project ref, immutable project IDs, fail-closed routing and no default fallback |
+| T9 | Incomplete erasure through derived data | M20.4 deletes evidence/revisions/chunks across workspace consumers of shared provenance, clears vectors, removes graph projections and sanitizes source/artifact/notification/outbox/audit snapshots |
+| T10 | Sensitive privacy details in ops UI/logs or abandoned exports | Strict operational allowlist; Privacy history does not render reasons/correction text; audit stores counts/IDs only; export rows are owner-bound, independently purged after 15 minutes, and synchronously invalidated by workspace erasure |
 
-## DPIA checklist (initial)
+## Rights implementation
 
-| Question | Alpha answer |
+| Right | Live contract |
 |---|---|
-| What data? | See [DATA_CLASSES_AND_RETENTION.md](./DATA_CLASSES_AND_RETENTION.md) |
-| Why? | External Memory Core for multi-agent continuity |
-| Necessity? | Only captured/synced scopes; not full-device scrape |
-| Risks to owner? | Sensitive facts, mail, calendar if connected |
-| Measures? | ACL/RLS, vault, API secret, EU region, audit/outbox |
-| Retention? | Table in data classes doc |
-| Third countries? | Embeddings may call OpenAI if enabled — document/disable for strict EU-only |
-| Rights? | Retract/dispute/status + owner `GET /v1/export/memories` (alpha) |
+| Access / portability | Owner-only fully paginated `GET /v1/export/privacy`, pinned to an immutable row-wise `exportId`/`snapshotAt` snapshot and including revision history, routed provenance and connector-derived records |
+| Correction | Idempotent privacy request plus owner execution; prior memory becomes superseded |
+| Retraction | Owner execution marks the target retracted with metadata-only audit |
+| Erasure | Target memory and all workspace consumers/derivatives of its shared source are tombstoned before provenance is sanitized; source-account request also resolves legacy payload identity, revokes the workspace-wide connector, vault, cursor and source-linked jobs, redacts published and unpublished associated outbox payloads, and erases its derived records across projects |
+| Retention | Owner dry-run/apply route implementing the published 30/90/180/365-day windows; preview includes same-project source consumers, while apply locks source jobs, waits for ingest, re-scans those consumers, skips quarantined sources shared with another effective project, locks/revalidates candidates, artifacts, dead-letter jobs and published outbox rows (including successfully processed job events), redacts async derivatives, and retains shared entities in redacted form |
 
-## Residual risks (owner must accept)
+## Residual risks and decisions
 
-1. OpenAI embeddings / Whisper leave EU when `MEMORY_OS_EMBED_ENGINE=openai` or `MEMORY_OS_TRANSCRIBE_ENGINE=openai`.  
-2. Full Node API not on Fly by choice (deferred) — ops via Edge + GH Node workers (authenticated secrets).  
+- OpenAI embedding/transcription can process content outside the primary EU
+  region when explicitly enabled. Strict EU-only deployments must keep those
+  providers disabled or complete a separate transfer assessment.
+- Supabase reports the `vector` extension in `public`; it is tracked as advisor
+  debt. Privileged RPCs remain client-denied and vectors inherit memory ACL.
+- Real GitHub/Google connector E2E still requires provider credentials and user
+  consent. Fixture/restore evidence is not described as live provider consent.
+- Apple Photos/Files/Notes/Reminders/Contacts require the signed companion and
+  real-device permissions; no server-side iCloud scraping is attempted.
+- Daily database backups do not include future Supabase Storage objects. The
+  first archived object remains blocked until an off-site versioned copy and
+  checksum manifest meet the 24-hour object RPO.
 
-3. ChatGPT custom MCP write may be unavailable → Web/MCP stdio fallback.
-
-## Owner accept
-
-- [x] Threat table accepted  
-- [x] Residual risks accepted or mitigated by config (e.g. embed=stub)  
-- [x] DPIA promoted to formal review if/when personal data volume grows
+The owner has accepted the original architecture and data classes. Any material
+change in purpose, data volume, subject population, provider geography or
+automated decision-making requires a new review.
