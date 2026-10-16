@@ -62,6 +62,9 @@ DECLARE
   v_routed_export_memory constant uuid := '99999999-0000-4000-8000-000000000448';
   v_shared_source_memory constant uuid := '99999999-0000-4000-8000-000000000449';
   v_expired_export constant uuid := '99999999-0000-4000-8000-000000000450';
+  v_notification_job constant uuid := '99999999-0000-4000-8000-000000000451';
+  v_notification constant uuid := '99999999-0000-4000-8000-000000000452';
+  v_notification_outbox constant uuid := '99999999-0000-4000-8000-000000000453';
   v_marker constant text := 'M20_PRIVACY_SECRET_MARKER_6f9fd9';
   v_vault_ref constant text := 'vault:test/m20/privacy-connector';
   v_created jsonb;
@@ -192,6 +195,34 @@ BEGIN
   ) VALUES (
     v_audit, v_workspace, v_owner, 'privacy.fixture.raw', 'memory', v_primary,
     v_marker, jsonb_build_object('body', v_marker), jsonb_build_object('body', v_marker)
+  );
+  INSERT INTO public.processing_jobs (
+    id, workspace_id, job_type, status, source_event_id, idempotency_key,
+    error
+  ) VALUES (
+    v_notification_job, v_workspace, 'roma_project_health', 'succeeded',
+    v_source, 'm20-privacy/notification-job', v_marker
+  );
+  INSERT INTO public.project_notifications (
+    id, workspace_id, project_id, recipient_subject_id, notification_type,
+    source_job_id, source_job_type, source_memory_ids, severity, title, status,
+    idempotency_key, metadata, created_by_subject
+  ) VALUES (
+    v_notification, v_workspace, v_project, v_owner,
+    'roma_project_health_completed', v_notification_job,
+    'roma_project_health', ARRAY[v_primary], 'high', v_marker, 'unread',
+    'm20-privacy/notification', jsonb_build_object('body', v_marker), v_owner
+  );
+  INSERT INTO public.outbox_events (
+    id, workspace_id, aggregate_type, aggregate_id, event_type, payload
+  ) VALUES (
+    v_notification_outbox, v_workspace, 'project_notification',
+    v_notification, 'project.notification.created',
+    jsonb_build_object(
+      'sourceMemoryIds', jsonb_build_array(v_primary),
+      'title', v_marker,
+      'metadata', jsonb_build_object('body', v_marker)
+    )
   );
 
   -- A memory routed into the exported project must bring its original source,
@@ -431,6 +462,26 @@ BEGIN
     )
   ) THEN
     RAISE EXCEPTION 'source event or artifact retained erased content';
+  END IF;
+  IF NOT EXISTS (
+    SELECT 1 FROM public.project_notifications n
+    WHERE n.id = v_notification
+      AND n.source_memory_ids = '{}'::uuid[]
+      AND n.title = 'Privacy-redacted notification'
+      AND n.metadata->>'privacyRedacted' = 'true'
+  ) OR NOT EXISTS (
+    SELECT 1 FROM public.outbox_events o
+    WHERE o.id = v_notification_outbox
+      AND o.published_at IS NOT NULL
+      AND o.payload->>'privacyRedacted' = 'true'
+      AND o.payload::text NOT LIKE '%' || v_marker || '%'
+      AND o.payload::text NOT LIKE '%' || v_primary::text || '%'
+  ) OR NOT EXISTS (
+    SELECT 1 FROM public.processing_jobs j
+    WHERE j.id = v_notification_job
+      AND j.error = 'privacy source redacted'
+  ) THEN
+    RAISE EXCEPTION 'notification, outbox, or job retained erased memory data';
   END IF;
   IF EXISTS (
     SELECT 1 FROM public.audit_log a

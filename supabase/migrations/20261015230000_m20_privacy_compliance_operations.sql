@@ -825,6 +825,7 @@ DECLARE
   v_source_ids uuid[] := '{}'::uuid[];
   v_entity_ids uuid[] := '{}'::uuid[];
   v_artifact_ids uuid[] := '{}'::uuid[];
+  v_notification_ids uuid[] := '{}'::uuid[];
   v_vault_ref text;
   v_affected_count integer := 0;
   v_source_count integer := 0;
@@ -1166,6 +1167,80 @@ BEGIN
       EXIT WHEN v_previous_affected_count = cardinality(v_affected_ids)
         AND v_previous_source_count = cardinality(v_source_ids);
     END LOOP;
+
+    -- Stop source-linked work and redact every asynchronous envelope before
+    -- the underlying memory/source bodies are removed.
+    WITH stopped AS (
+      UPDATE public.processing_jobs j
+      SET status = 'dead_letter',
+          error = 'source erased by privacy request',
+          attempt = j.attempt + 1,
+          updated_at = now()
+      WHERE j.workspace_id = v_request.workspace_id
+        AND j.source_event_id = ANY(v_source_ids)
+        AND j.status IN ('queued', 'running')
+      RETURNING j.id
+    )
+    SELECT v_stopped_job_count + count(*) INTO v_stopped_job_count
+    FROM stopped;
+    UPDATE public.processing_jobs j
+    SET error = CASE
+          WHEN j.error IS NULL THEN NULL
+          ELSE 'privacy source redacted'
+        END,
+        updated_at = now()
+    WHERE j.workspace_id = v_request.workspace_id
+      AND j.source_event_id = ANY(v_source_ids);
+
+    SELECT coalesce(array_agg(n.id), '{}'::uuid[])
+    INTO v_notification_ids
+    FROM public.project_notifications n
+    WHERE n.workspace_id = v_request.workspace_id
+      AND n.source_memory_ids && v_affected_ids;
+    UPDATE public.project_notifications n
+    SET source_memory_ids = ARRAY(
+          SELECT source_memory_id
+          FROM unnest(n.source_memory_ids) source_memory_id
+          WHERE NOT source_memory_id = ANY(v_affected_ids)
+        ),
+        title = 'Privacy-redacted notification',
+        metadata = jsonb_build_object(
+          'privacyRedacted', true,
+          'privacyRequestId', v_request.id
+        ),
+        updated_at = now()
+    WHERE n.id = ANY(v_notification_ids);
+
+    UPDATE public.outbox_events o
+    SET payload = jsonb_build_object(
+          'privacyRedacted', true,
+          'privacyRequestId', v_request.id,
+          'aggregateType', o.aggregate_type,
+          'aggregateId', o.aggregate_id
+        ),
+        published_at = coalesce(o.published_at, now()),
+        attempts = o.attempts + CASE WHEN o.published_at IS NULL THEN 1 ELSE 0 END,
+        last_error = CASE
+          WHEN o.published_at IS NULL THEN 'privacy source redacted'
+          ELSE o.last_error
+        END
+    WHERE o.workspace_id = v_request.workspace_id
+      AND (
+        (o.aggregate_type = 'memory' AND o.aggregate_id = ANY(v_affected_ids))
+        OR (o.aggregate_type = 'source_event' AND o.aggregate_id = ANY(v_source_ids))
+        OR (
+          o.aggregate_type = 'processing_job'
+          AND EXISTS (
+            SELECT 1 FROM public.processing_jobs j
+            WHERE j.id = o.aggregate_id
+              AND j.source_event_id = ANY(v_source_ids)
+          )
+        )
+        OR (
+          o.aggregate_type = 'project_notification'
+          AND o.aggregate_id = ANY(v_notification_ids)
+        )
+      );
 
     SELECT coalesce(array_agg(DISTINCT entity_id), '{}'::uuid[])
     INTO v_entity_ids
@@ -1597,6 +1672,95 @@ BEGIN
     WHERE a.id = ANY(v_artifact_ids) AND a.source_event_id IS NOT NULL;
     v_result := jsonb_set(
       v_result, '{quarantineArtifacts}', to_jsonb(v_artifact_count), false
+    );
+
+    -- Replay and delivery workers mutate these eligibility fields. Lock and
+    -- re-evaluate them so retention cannot delete newly queued live work.
+    SELECT coalesce(array_agg(eligible.id), '{}'::uuid[])
+    INTO v_dead_letter_ids
+    FROM (
+      SELECT j.id
+      FROM public.processing_jobs j
+      WHERE j.workspace_id = p_workspace_id
+        AND j.status = 'dead_letter'
+        AND j.updated_at < p_as_of - interval '90 days'
+        AND (
+          EXISTS (
+            SELECT 1 FROM public.source_events s
+            WHERE s.id = j.source_event_id AND s.project_id = p_project_id
+          )
+          OR EXISTS (
+            SELECT 1 FROM public.project_notifications n
+            WHERE n.source_job_id = j.id AND n.project_id = p_project_id
+          )
+          OR EXISTS (
+            SELECT 1 FROM public.approval_checkpoints c
+            WHERE c.source_job_id = j.id AND c.project_id = p_project_id
+          )
+          OR EXISTS (
+            SELECT 1 FROM public.outbox_events linked_outbox
+            WHERE linked_outbox.aggregate_type = 'processing_job'
+              AND linked_outbox.aggregate_id = j.id
+              AND linked_outbox.payload->>'projectId' = p_project_id::text
+          )
+        )
+      FOR UPDATE OF j
+    ) eligible;
+    v_dead_letter_count := cardinality(v_dead_letter_ids);
+
+    SELECT coalesce(array_agg(eligible.id), '{}'::uuid[])
+    INTO v_outbox_ids
+    FROM (
+      SELECT o.id
+      FROM public.outbox_events o
+      WHERE o.workspace_id = p_workspace_id
+        AND o.published_at IS NOT NULL
+        AND o.published_at < p_as_of - interval '30 days'
+        AND (
+          o.payload->>'projectId' = p_project_id::text
+          OR (o.aggregate_type = 'project' AND o.aggregate_id = p_project_id)
+          OR (
+            o.aggregate_type = 'processing_job'
+            AND o.aggregate_id = ANY(v_dead_letter_ids)
+          )
+          OR (
+            o.aggregate_type = 'memory'
+            AND EXISTS (
+              SELECT 1 FROM public.memory_records m
+              WHERE m.id = o.aggregate_id
+                AND app.effective_memory_project_id(m.id) = p_project_id
+            )
+          )
+          OR (
+            o.aggregate_type = 'source_event'
+            AND EXISTS (
+              SELECT 1 FROM public.source_events s
+              WHERE s.id = o.aggregate_id AND s.project_id = p_project_id
+            )
+          )
+          OR (
+            o.aggregate_type = 'project_notification'
+            AND EXISTS (
+              SELECT 1 FROM public.project_notifications n
+              WHERE n.id = o.aggregate_id AND n.project_id = p_project_id
+            )
+          )
+          OR (
+            o.aggregate_type = 'approval_checkpoint'
+            AND EXISTS (
+              SELECT 1 FROM public.approval_checkpoints c
+              WHERE c.id = o.aggregate_id AND c.project_id = p_project_id
+            )
+          )
+        )
+      FOR UPDATE OF o
+    ) eligible;
+    v_outbox_count := cardinality(v_outbox_ids);
+    v_result := jsonb_set(
+      jsonb_set(
+        v_result, '{deadLetterJobs}', to_jsonb(v_dead_letter_count), false
+      ),
+      '{publishedOutboxEvents}', to_jsonb(v_outbox_count), false
     );
 
     SELECT coalesce(array_agg(DISTINCT entity_id), '{}'::uuid[])

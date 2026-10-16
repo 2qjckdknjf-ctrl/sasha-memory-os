@@ -37,7 +37,9 @@ records and typed task/decision payloads. Connector-source deletion additionally
 revokes the workspace-wide connection, removes vault references/payloads and
 cursors, and erases records derived from that account in every project. A
 memory-targeted deletion likewise follows shared source/evidence consumers
-across the owner workspace before sanitizing their common provenance.
+across the owner workspace before sanitizing their common provenance. Derived
+notifications, job errors and outbox payloads are redacted or stopped before
+the underlying source is tombstoned.
 
 ## Mandatory acceptance
 
@@ -57,7 +59,8 @@ stack, proves:
 6. retention preview is non-mutating; apply expires only quarantined artifacts,
    preserves processed provenance, redacts shared entities that must remain,
    and locks/revalidates candidate memories plus quarantined artifacts before
-   destructive mutation;
+   destructive mutation; dead-letter jobs and published outbox events are also
+   locked/revalidated so replay or delivery cannot race with deletion;
 7. legacy targetless requests fail closed before mutation, correction audits
    are redacted, authoritative corrections preserve effective project routing,
    retention removes orphan graph entities, arbitrary metadata references do
