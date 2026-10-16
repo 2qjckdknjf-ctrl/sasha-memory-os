@@ -44,17 +44,17 @@ The authoritative data map and enforced retention windows are in
 | T7 | AI-provider transfer | External embedding/transcription is optional, bounded and documented; local fallback exists |
 | T8 | Wrong Supabase/project routing | Dedicated project ref, immutable project IDs, fail-closed routing and no default fallback |
 | T9 | Incomplete erasure through derived data | M20.4 deletes evidence/revisions/chunks across workspace consumers of shared provenance, clears vectors, removes graph projections and sanitizes source/artifact/notification/outbox/audit snapshots |
-| T10 | Sensitive privacy details in ops UI/logs or abandoned exports | Strict operational allowlist; Privacy history does not render reasons/correction text; audit stores counts/IDs only; export rows are owner-bound and independently purged after 15 minutes |
+| T10 | Sensitive privacy details in ops UI/logs or abandoned exports | Strict operational allowlist; Privacy history does not render reasons/correction text; audit stores counts/IDs only; export rows are owner-bound, independently purged after 15 minutes, and synchronously invalidated by workspace erasure |
 
 ## Rights implementation
 
 | Right | Live contract |
 |---|---|
-| Access / portability | Owner-only fully paginated `GET /v1/export/privacy`, pinned to an immutable row-wise `exportId`/`snapshotAt` snapshot and including routed provenance and connector-derived records |
+| Access / portability | Owner-only fully paginated `GET /v1/export/privacy`, pinned to an immutable row-wise `exportId`/`snapshotAt` snapshot and including revision history, routed provenance and connector-derived records |
 | Correction | Idempotent privacy request plus owner execution; prior memory becomes superseded |
 | Retraction | Owner execution marks the target retracted with metadata-only audit |
 | Erasure | Target memory and all workspace consumers/derivatives of its shared source are tombstoned before provenance is sanitized; source-account request also resolves legacy payload identity, revokes the workspace-wide connector, vault, cursor, source-linked jobs and outbox, and erases its derived records across projects |
-| Retention | Owner dry-run/apply route implementing the published 30/90/180/365-day windows; apply locks source jobs, waits for ingest, re-scans source consumers, locks/revalidates candidates, quarantined artifacts, dead-letter jobs and published outbox rows, redacts async derivatives, and retains shared entities in redacted form |
+| Retention | Owner dry-run/apply route implementing the published 30/90/180/365-day windows; apply locks source jobs, waits for ingest, re-scans same-project source consumers, skips quarantined sources shared with another effective project, locks/revalidates candidates, artifacts, dead-letter jobs and published outbox rows, redacts async derivatives, and retains shared entities in redacted form |
 
 ## Residual risks and decisions
 

@@ -42,6 +42,7 @@ describe('M20.4 privacy and compliance gate', () => {
         derivationMetadataIsAllowlisted: true,
         sourceRevocationDeletesVaultReferences: true,
         graphProjectionRemovedOnDeletion: true,
+        exportIncludesRevisionHistory: true,
         routedMemoryProvenanceIncluded: true,
         exportIsFullyPaginated: true,
         exportUsesStableSnapshot: true,
@@ -49,6 +50,8 @@ describe('M20.4 privacy and compliance gate', () => {
         exportSnapshotItemsAreRowBounded: true,
         exportSnapshotsAreOwnerBoundAndEphemeral: true,
         exportSnapshotsHaveIndependentScheduledPurge: true,
+        erasureInvalidatesExportSnapshots: true,
+        exportAndErasureAreWorkspaceSerialized: true,
         connectorRevocationIsWorkspaceWide: true,
         legacyConnectorIdentityResolved: true,
         connectorCaptureJobsStopped: true,
@@ -60,6 +63,7 @@ describe('M20.4 privacy and compliance gate', () => {
         retentionLocksJobsAndOutboxBeforeMutation: true,
         retentionLocksSourceJobsBeforeMutation: true,
         retentionRescansSourceConsumers: true,
+        retentionSkipsCrossProjectSharedSources: true,
         retentionRedactsAsyncDerivatives: true,
         retentionOnlyExpiresQuarantinedArtifacts: true,
         retentionRedactsSharedEntities: true,
@@ -137,6 +141,9 @@ describe('M20.4 privacy and compliance gate', () => {
     expect(migration).toContain('privacy_export_snapshot_items');
     expect(migration).toContain('purge_expired_privacy_export_snapshots');
     expect(migration).toContain('memory-os-privacy-export-snapshot-purge');
+    expect(migration).toContain("'revisions'");
+    expect(migration).toContain('FROM public.memory_revisions mr');
+    expect(migration).toContain('FOR UPDATE OF workspace');
     expect(migration).toContain('source_event_in_project_export_at');
     expect(migration).toContain('as_of must not be null or in the future');
     expect(migration).toContain('FOR UPDATE OF m');
@@ -183,6 +190,8 @@ describe('M20.4 privacy and compliance gate', () => {
     expect(sql).toContain('future retention cutoff mutated data');
     expect(sql).toContain('expired export snapshot purge is not independently scheduled');
     expect(sql).toContain('workspace provenance consumer retained content/embedding');
+    expect(sql).toContain('pre-erasure export snapshot readable');
+    expect(sql).toContain('Out-of-project shared retention consumer');
     expect(sql).toContain('notification, outbox, or job retained erased memory data');
     expect(sql).toContain('Retention-redacted notification');
     expect(ephemeral).toContain('m20_privacy_compliance_cases.sql');

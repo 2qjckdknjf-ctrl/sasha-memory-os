@@ -438,6 +438,13 @@ BEGIN
     RAISE EXCEPTION 'snapshot_at cannot be in the future' USING ERRCODE = '22023';
   END IF;
 
+  -- Export materialization and destructive privacy operations serialize on the
+  -- workspace row. Once an erasure commits, no pre-erasure page can be resumed.
+  PERFORM 1
+  FROM public.workspaces workspace
+  WHERE workspace.id = p_workspace_id
+  FOR UPDATE OF workspace;
+
   PERFORM app.purge_expired_privacy_export_snapshots();
 
   IF v_export_id IS NULL THEN
@@ -489,6 +496,18 @@ BEGIN
             'span', me.evidence_span
           ) ORDER BY me.source_event_id)
           FROM public.memory_evidence me WHERE me.memory_id = m.id
+        ), '[]'::jsonb),
+        'revisions', coalesce((
+          SELECT jsonb_agg(jsonb_build_object(
+            'id', mr.id,
+            'revision', mr.revision,
+            'snapshot', mr.snapshot,
+            'reason', mr.reason,
+            'createdBySubject', mr.created_by_subject,
+            'createdAt', mr.created_at
+          ) ORDER BY mr.revision)
+          FROM public.memory_revisions mr
+          WHERE mr.memory_id = m.id AND mr.created_at <= v_snapshot_at
         ), '[]'::jsonb),
         'decision', (
           SELECT jsonb_build_object(
@@ -895,6 +914,15 @@ BEGIN
   ) THEN
     RAISE EXCEPTION 'connector target not found in workspace' USING ERRCODE = 'P0002';
   END IF;
+
+  -- Wait for any in-flight export page, block new materializations until this
+  -- transaction commits, and invalidate every pre-erasure workspace snapshot.
+  PERFORM 1
+  FROM public.workspaces workspace
+  WHERE workspace.id = v_request.workspace_id
+  FOR UPDATE OF workspace;
+  DELETE FROM public.privacy_export_snapshots snapshot
+  WHERE snapshot.workspace_id = v_request.workspace_id;
 
   UPDATE public.privacy_requests
   SET status = 'processing', failure_code = NULL
@@ -1511,7 +1539,22 @@ BEGIN
   WHERE a.workspace_id = p_workspace_id
     AND a.project_id = p_project_id
     AND a.metadata @> '{"quarantine": true}'::jsonb
-    AND a.created_at < p_as_of - interval '180 days';
+    AND a.created_at < p_as_of - interval '180 days'
+    AND NOT EXISTS (
+      SELECT 1
+      FROM public.memory_records outside_memory
+      WHERE outside_memory.workspace_id = p_workspace_id
+        AND outside_memory.status <> 'deleted'
+        AND app.effective_memory_project_id(outside_memory.id) <> p_project_id
+        AND (
+          outside_memory.source_event_id = a.source_event_id
+          OR EXISTS (
+            SELECT 1 FROM public.memory_evidence outside_evidence
+            WHERE outside_evidence.memory_id = outside_memory.id
+              AND outside_evidence.source_event_id = a.source_event_id
+          )
+        )
+    );
   v_artifact_count := cardinality(v_artifact_ids);
   SELECT coalesce(array_agg(DISTINCT a.source_event_id), '{}'::uuid[])
   INTO v_artifact_source_ids
@@ -1635,6 +1678,15 @@ BEGIN
   );
 
   IF NOT p_dry_run THEN
+    -- Match export's workspace lock and remove materialized pre-erasure bodies
+    -- before any retention mutation can be reported as complete.
+    PERFORM 1
+    FROM public.workspaces workspace
+    WHERE workspace.id = p_workspace_id
+    FOR UPDATE OF workspace;
+    DELETE FROM public.privacy_export_snapshots snapshot
+    WHERE snapshot.workspace_id = p_workspace_id;
+
     -- Serialize candidate approval against destructive expiry and re-evaluate
     -- the status/age predicate after any concurrent updater has committed.
     SELECT coalesce(array_agg(eligible.id), '{}'::uuid[])
@@ -1676,6 +1728,21 @@ BEGIN
         AND a.project_id = p_project_id
         AND a.metadata @> '{"quarantine": true}'::jsonb
         AND a.created_at < p_as_of - interval '180 days'
+        AND NOT EXISTS (
+          SELECT 1
+          FROM public.memory_records outside_memory
+          WHERE outside_memory.workspace_id = p_workspace_id
+            AND outside_memory.status <> 'deleted'
+            AND app.effective_memory_project_id(outside_memory.id) <> p_project_id
+            AND (
+              outside_memory.source_event_id = a.source_event_id
+              OR EXISTS (
+                SELECT 1 FROM public.memory_evidence outside_evidence
+                WHERE outside_evidence.memory_id = outside_memory.id
+                  AND outside_evidence.source_event_id = a.source_event_id
+              )
+            )
+        )
       FOR UPDATE OF a
     ) eligible;
     v_artifact_count := cardinality(v_artifact_ids);
@@ -1696,6 +1763,7 @@ BEGIN
       FROM public.memory_records m
       WHERE m.workspace_id = p_workspace_id
         AND m.status <> 'deleted'
+        AND app.effective_memory_project_id(m.id) = p_project_id
         AND m.source_event_id = ANY(v_artifact_source_ids)
       UNION
       SELECT me.memory_id
@@ -1703,6 +1771,7 @@ BEGIN
       JOIN public.memory_records m ON m.id = me.memory_id
       WHERE m.workspace_id = p_workspace_id
         AND m.status <> 'deleted'
+        AND app.effective_memory_project_id(m.id) = p_project_id
         AND me.source_event_id = ANY(v_artifact_source_ids)
     ) source_consumers;
     v_candidate_count := cardinality(v_candidate_ids);

@@ -69,6 +69,11 @@ DECLARE
   v_retention_notification constant uuid := '99999999-0000-4000-8000-000000000455';
   v_retention_notification_outbox constant uuid := '99999999-0000-4000-8000-000000000456';
   v_retention_recent_consumer constant uuid := '99999999-0000-4000-8000-000000000457';
+  v_primary_revision constant uuid := '99999999-0000-4000-8000-000000000458';
+  v_shared_retention_source constant uuid := '99999999-0000-4000-8000-000000000459';
+  v_shared_retention_artifact constant uuid := '99999999-0000-4000-8000-000000000460';
+  v_shared_retention_chunk constant uuid := '99999999-0000-4000-8000-000000000461';
+  v_shared_retention_memory constant uuid := '99999999-0000-4000-8000-000000000462';
   v_marker constant text := 'M20_PRIVACY_SECRET_MARKER_6f9fd9';
   v_vault_ref constant text := 'vault:test/m20/privacy-connector';
   v_created jsonb;
@@ -82,6 +87,7 @@ DECLARE
   v_snapshot_at timestamptz;
   v_snapshot_memory_count integer;
   v_mutated_memory uuid;
+  v_retention_export uuid;
   v_original_content text;
 BEGIN
   INSERT INTO public.source_events (
@@ -145,6 +151,14 @@ BEGIN
     memory_id, source_event_id, workspace_id, evidence_span
   ) VALUES (
     v_derived, v_source, v_workspace, jsonb_build_object('quote', v_marker)
+  );
+  INSERT INTO public.memory_revisions (
+    id, workspace_id, memory_id, revision, snapshot, reason,
+    created_by_subject
+  ) VALUES (
+    v_primary_revision, v_workspace, v_primary, 1,
+    jsonb_build_object('content', 'Historical ' || v_marker),
+    'Owner portability revision ' || v_marker, v_owner
   );
   INSERT INTO public.decisions (
     memory_id, workspace_id, rationale, alternatives, decision_maker
@@ -282,6 +296,13 @@ BEGIN
      OR v_export::text NOT LIKE '%' || v_marker || '%'
      OR NOT (v_export->'memories' @> jsonb_build_array(jsonb_build_object('id', v_primary)))
      OR NOT (v_export->'memories' @> jsonb_build_array(jsonb_build_object(
+       'id', v_primary,
+       'revisions', jsonb_build_array(jsonb_build_object(
+         'id', v_primary_revision, 'revision', 1,
+         'reason', 'Owner portability revision ' || v_marker
+       ))
+     )))
+     OR NOT (v_export->'memories' @> jsonb_build_array(jsonb_build_object(
        'id', v_derived, 'decision', jsonb_build_object('rationale', v_marker)
      )))
      OR NOT (v_export->'memories' @> jsonb_build_array(jsonb_build_object(
@@ -418,6 +439,15 @@ BEGIN
   v_result := public.api_execute_privacy_request(v_secret, v_owner, v_request);
   IF coalesce((v_result->>'idempotent')::boolean, false) IS NOT TRUE THEN
     RAISE EXCEPTION 'privacy execution replay was not idempotent: %', v_result;
+  END IF;
+  IF EXISTS (
+    SELECT 1 FROM public.privacy_export_snapshots snapshot
+    WHERE snapshot.id = (v_export->>'exportId')::uuid
+  ) OR EXISTS (
+    SELECT 1 FROM public.privacy_export_snapshot_items item
+    WHERE item.snapshot_id = (v_export->>'exportId')::uuid
+  ) THEN
+    RAISE EXCEPTION 'privacy execution left a pre-erasure export snapshot readable';
   END IF;
   IF (SELECT count(*) FROM public.memory_records m
       WHERE m.id IN (
@@ -821,6 +851,40 @@ BEGIN
     now() - interval '181 days', now() - interval '181 days',
     jsonb_build_object('body', v_marker), v_owner
   );
+  -- A quarantined artifact whose source is still consumed by another effective
+  -- project must remain intact when retention is scoped to v_project.
+  INSERT INTO public.source_events (
+    id, workspace_id, project_id, provider, event_type, idempotency_key,
+    observed_at, recorded_at, payload, created_by_subject
+  ) VALUES (
+    v_shared_retention_source, v_workspace, v_project, 'manual',
+    'retention.shared-project.fixture', 'm20-privacy/shared-retention-source',
+    now() - interval '181 days', now() - interval '181 days',
+    jsonb_build_object('body', v_marker), v_owner
+  );
+  INSERT INTO public.artifacts (
+    id, workspace_id, project_id, source_event_id, storage_mode, storage_key,
+    metadata, created_at
+  ) VALUES (
+    v_shared_retention_artifact, v_workspace, v_project,
+    v_shared_retention_source, 'indexed', 'shared-retention/' || v_marker,
+    jsonb_build_object('body', v_marker, 'quarantine', true),
+    now() - interval '181 days'
+  );
+  INSERT INTO public.artifact_chunks (
+    id, workspace_id, artifact_id, chunk_index, content, char_start, char_end
+  ) VALUES (
+    v_shared_retention_chunk, v_workspace, v_shared_retention_artifact, 0,
+    v_marker, 0, 27
+  );
+  INSERT INTO public.memory_records (
+    id, workspace_id, project_id, memory_type, title, content, status,
+    source_event_id, recorded_at, created_by_subject
+  ) VALUES (
+    v_shared_retention_memory, v_workspace, v_other_project, 'fact',
+    'Out-of-project shared retention consumer', v_marker, 'active',
+    v_shared_retention_source, now(), v_owner
+  );
   INSERT INTO public.entities (
     id, workspace_id, project_id, stable_id, entity_class, canonical_name,
     source_ref, created_from_memory_id, metadata
@@ -956,6 +1020,16 @@ BEGIN
     RAISE EXCEPTION 'retention preview mutated data';
   END IF;
 
+  v_export := public.api_export_project_privacy_bundle(
+    v_secret, v_owner, v_workspace, v_project, 1
+  );
+  v_retention_export := (v_export->>'exportId')::uuid;
+  IF NOT EXISTS (
+    SELECT 1 FROM public.privacy_export_snapshots WHERE id = v_retention_export
+  ) THEN
+    RAISE EXCEPTION 'retention snapshot invalidation fixture was not materialized';
+  END IF;
+
   v_result := public.api_apply_retention_policy(
     v_secret, v_owner, v_workspace, v_project, now(), false
   );
@@ -1029,6 +1103,20 @@ BEGIN
     SELECT 1 FROM public.processing_jobs WHERE id = v_other_retention_job
   ) OR NOT EXISTS (
     SELECT 1 FROM public.audit_log WHERE id = v_other_retention_audit
+  ) OR EXISTS (
+    SELECT 1 FROM public.privacy_export_snapshots WHERE id = v_retention_export
+  ) OR NOT EXISTS (
+    SELECT 1 FROM public.memory_records m
+    WHERE m.id = v_shared_retention_memory
+      AND m.status = 'active'
+      AND m.content = v_marker
+  ) OR NOT EXISTS (
+    SELECT 1 FROM public.artifact_chunks c
+    WHERE c.id = v_shared_retention_chunk AND c.content = v_marker
+  ) OR NOT EXISTS (
+    SELECT 1 FROM public.source_events s
+    WHERE s.id = v_shared_retention_source
+      AND s.payload::text LIKE '%' || v_marker || '%'
   ) THEN
     RAISE EXCEPTION 'retention apply missed scoped rows or crossed the project boundary';
   END IF;

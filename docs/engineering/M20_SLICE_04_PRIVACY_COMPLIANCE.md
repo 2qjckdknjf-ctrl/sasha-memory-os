@@ -7,7 +7,7 @@ Official pack: `m20-s04-v1`
 ## Delivered surfaces
 
 - `GET /v1/export/privacy`: owner-only, explicit-project portability bundle
-  covering canonical/derived memories, provenance/evidence, source events,
+  covering canonical/derived memories, revision history, provenance/evidence, source events,
   typed decision/task payloads, artifacts/chunks and non-secret connector
   metadata. Routed memories bring their original source, artifact/chunks and
   non-secret connector account into the bundle. Offset pagination reads an
@@ -15,8 +15,9 @@ Official pack: `m20-s04-v1`
   `exportId` and `snapshotAt`. No whole-project JSON aggregate is built: each
   response aggregates at most the requested page. The snapshot expires after
   15 minutes, is removed after the final page, and an independent per-minute
-  database job physically purges abandoned snapshots. The Control Center
-  consumes it to completion.
+  database job physically purges abandoned snapshots. Export materialization
+  is workspace-serialized with erasure, which invalidates every pre-erasure
+  snapshot before reporting completion. The Control Center consumes it to completion.
 - `POST /v1/privacy/requests`: idempotent correction, retraction, memory deletion
   or connector-source revocation request.
 - `POST /v1/privacy/requests/:id/execute`: idempotent execution with a
@@ -63,7 +64,9 @@ stack, proves:
    locked/revalidated so replay or delivery cannot race with deletion. Apply
    locks the source-linked jobs first, waits for in-flight ingest, re-scans
    source consumers, stops queued source work, and redacts retention-derived
-   notifications/outbox before tombstoning;
+   notifications/outbox before tombstoning. A quarantined source shared with an
+   active memory in another effective project is retained rather than crossing
+   the requested project boundary;
 7. legacy targetless requests fail closed before mutation, correction audits
    are redacted, authoritative corrections preserve effective project routing,
    retention removes orphan graph entities, arbitrary metadata references do
@@ -76,7 +79,10 @@ stack, proves:
    client roles and are owner/workspace/project-bound;
 10. future retention cutoffs fail closed without mutation;
 11. the scheduled snapshot purge removes abandoned export bodies independently
-    of later export traffic.
+    of later export traffic, while erasure invalidates remaining workspace
+    snapshots synchronously;
+12. portability includes stored memory revision snapshots and their owner-visible
+    reasons.
 
 The TypeScript gate also freezes route names, retention windows, UI hygiene,
 schema validation, CI wiring, DPIA/data-map freshness and the exact seven-tool
