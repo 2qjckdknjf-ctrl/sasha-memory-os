@@ -1727,7 +1727,12 @@ BEGIN
           WHEN j.error IS NULL THEN NULL
           ELSE 'retention source redacted'
         END,
-        updated_at = now()
+        -- Preserve the eligibility timestamp of an already-dead-lettered job;
+        -- queued/running jobs were just advanced to now() by the update above.
+        updated_at = CASE
+          WHEN j.status = 'dead_letter' THEN j.updated_at
+          ELSE now()
+        END
     WHERE j.workspace_id = p_workspace_id
       AND j.source_event_id = ANY(v_artifact_source_ids);
     UPDATE public.outbox_events o
