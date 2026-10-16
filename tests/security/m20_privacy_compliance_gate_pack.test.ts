@@ -38,6 +38,7 @@ describe('M20.4 privacy and compliance gate', () => {
         recursiveDerivedErasure: true,
         sharedSourceConsumersErasedWorkspaceWide: true,
         notificationAndOutboxDerivativesRedacted: true,
+        connectorOutboxPayloadsRedacted: true,
         unaffectedGraphLinksPreserved: true,
         derivationMetadataIsAllowlisted: true,
         sourceRevocationDeletesVaultReferences: true,
@@ -57,14 +58,17 @@ describe('M20.4 privacy and compliance gate', () => {
         connectorCaptureJobsStopped: true,
         correctionPreservesEffectiveProject: true,
         legacyRequestsFailClosed: true,
+        requestCreationIsConcurrentlyIdempotent: true,
         futureRetentionCutoffsRejected: true,
         retentionLocksCandidatesBeforeMutation: true,
         retentionLocksArtifactsBeforeMutation: true,
         retentionLocksJobsAndOutboxBeforeMutation: true,
         retentionLocksSourceJobsBeforeMutation: true,
         retentionRescansSourceConsumers: true,
+        retentionPreviewIncludesSourceConsumers: true,
         retentionSkipsCrossProjectSharedSources: true,
         retentionRedactsAsyncDerivatives: true,
+        retentionExpiresSuccessfulJobOutbox: true,
         retentionOnlyExpiresQuarantinedArtifacts: true,
         retentionRedactsSharedEntities: true,
         retentionIsProjectScoped: true,
@@ -134,6 +138,7 @@ describe('M20.4 privacy and compliance gate', () => {
     expect(migration).toContain('api_export_project_privacy_bundle');
     expect(migration).toContain('api_execute_privacy_request');
     expect(migration).toContain('api_apply_retention_policy');
+    expect(migration).toContain('ON CONFLICT (workspace_id, idempotency_key) DO NOTHING');
     expect(migration).toContain("'nextOffset'");
     expect(migration).toContain("'snapshotAt'");
     expect(migration).toContain("'exportId'");
@@ -181,6 +186,7 @@ describe('M20.4 privacy and compliance gate', () => {
     expect(sql).toContain('derived deletion did not complete');
     expect(sql).toContain('sensitive content leaked into operational audit state');
     expect(sql).toContain('cross-project memory were not revoked');
+    expect(sql).toContain("o.payload->>'privacyRedacted' = 'true'");
     expect(sql).toContain('privacy correction lost effective project routing');
     expect(sql).toContain('Legacy api_capture_connector_record rows');
     expect(sql).toContain("a.metadata @> '{\"quarantine\": false}'::jsonb");
@@ -194,6 +200,7 @@ describe('M20.4 privacy and compliance gate', () => {
     expect(sql).toContain('Out-of-project shared retention consumer');
     expect(sql).toContain('notification, outbox, or job retained erased memory data');
     expect(sql).toContain('Retention-redacted notification');
+    expect(sql).toContain("'ingest.succeeded'");
     expect(ephemeral).toContain('m20_privacy_compliance_cases.sql');
     expect(dataMap).toContain('POST /v1/privacy/retention/run');
     expect(dpia).toContain('V1 GA technical review refreshed 2026-10-15');

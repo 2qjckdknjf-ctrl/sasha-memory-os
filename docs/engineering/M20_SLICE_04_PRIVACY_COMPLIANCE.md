@@ -40,7 +40,10 @@ cursors, and erases records derived from that account in every project. A
 memory-targeted deletion likewise follows shared source/evidence consumers
 across the owner workspace before sanitizing their common provenance. Derived
 notifications, job errors and outbox payloads are redacted or stopped before
-the underlying source is tombstoned.
+the underlying source is tombstoned. Connector revocation replaces sensitive
+payloads on both published and unpublished outbox rows with a minimal privacy
+marker, so a previously delivered event cannot remain a credential or content
+store.
 
 ## Mandatory acceptance
 
@@ -55,16 +58,20 @@ stack, proves:
    unaffected memories;
 3. connector revocation deletes vault/cursor state, stops queued work and
    reaches connector-derived records across project boundaries;
-4. execution replay is idempotent;
+4. request creation is conflict-safe under concurrent retries and execution
+   replay is idempotent;
 5. privacy free text never survives in audit/ops state;
-6. retention preview is non-mutating; apply expires only quarantined artifacts,
+6. retention preview is non-mutating and reports the same same-project source
+   consumers that apply will tombstone; apply expires only quarantined artifacts,
    preserves processed provenance, redacts shared entities that must remain,
    and locks/revalidates candidate memories plus quarantined artifacts before
    destructive mutation; dead-letter jobs and published outbox events are also
    locked/revalidated so replay or delivery cannot race with deletion. Apply
    locks the source-linked jobs first, waits for in-flight ingest, re-scans
    source consumers, stops queued source work, and redacts retention-derived
-   notifications/outbox before tombstoning. A quarantined source shared with an
+   notifications/outbox before tombstoning. Published outbox for successful
+   processing jobs is attributed through source, notification, checkpoint, or
+   result-memory provenance and expires after 30 days. A quarantined source shared with an
    active memory in another effective project is retained rather than crossing
    the requested project boundary;
 7. legacy targetless requests fail closed before mutation, correction audits

@@ -118,6 +118,7 @@ AS $$
 DECLARE
   v_id uuid;
   v_existing public.privacy_requests%ROWTYPE;
+  v_inserted boolean := false;
   v_reason text := nullif(btrim(coalesce(p_reason, '')), '');
   v_correction text := nullif(btrim(coalesce(p_correction_text, '')), '');
   v_key text := nullif(btrim(coalesce(p_idempotency_key, '')), '');
@@ -173,12 +174,26 @@ BEGIN
     RAISE EXCEPTION 'connector target not found in workspace' USING ERRCODE = 'P0002';
   END IF;
 
-  SELECT * INTO v_existing
-  FROM public.privacy_requests r
-  WHERE r.workspace_id = p_workspace_id AND r.idempotency_key = v_key
-  FOR UPDATE;
+  INSERT INTO public.privacy_requests (
+    workspace_id, project_id, actor_subject_id, request_type, status,
+    target_memory_id, target_connector_account_id, reason, correction_text,
+    idempotency_key
+  ) VALUES (
+    p_workspace_id, p_project_id, p_subject_id, p_request_type, 'submitted',
+    p_target_memory_id, p_target_connector_account_id, v_reason, v_correction,
+    v_key
+  )
+  ON CONFLICT (workspace_id, idempotency_key) DO NOTHING
+  RETURNING id INTO v_id;
 
-  IF FOUND THEN
+  IF v_id IS NULL THEN
+    SELECT * INTO v_existing
+    FROM public.privacy_requests r
+    WHERE r.workspace_id = p_workspace_id AND r.idempotency_key = v_key
+    FOR UPDATE;
+    IF NOT FOUND THEN
+      RAISE EXCEPTION 'idempotent privacy request unavailable';
+    END IF;
     IF v_existing.project_id IS DISTINCT FROM p_project_id
        OR v_existing.actor_subject_id IS DISTINCT FROM p_subject_id
        OR v_existing.request_type <> p_request_type
@@ -195,16 +210,10 @@ BEGIN
     END IF;
     v_id := v_existing.id;
   ELSE
-    INSERT INTO public.privacy_requests (
-      workspace_id, project_id, actor_subject_id, request_type, status,
-      target_memory_id, target_connector_account_id, reason, correction_text,
-      idempotency_key
-    ) VALUES (
-      p_workspace_id, p_project_id, p_subject_id, p_request_type, 'submitted',
-      p_target_memory_id, p_target_connector_account_id, v_reason, v_correction,
-      v_key
-    ) RETURNING id INTO v_id;
+    v_inserted := true;
+  END IF;
 
+  IF v_inserted THEN
     INSERT INTO public.audit_log (
       workspace_id, actor_subject_id, action, object_type, object_id, reason,
       after_state
@@ -1077,13 +1086,25 @@ BEGIN
       ) SELECT count(*) INTO v_stopped_job_count FROM stopped;
 
       UPDATE public.outbox_events o
-      SET published_at = coalesce(o.published_at, now()),
-          attempts = o.attempts + 1,
-          last_error = 'connector revoked by privacy request'
+      SET payload = jsonb_build_object(
+            'privacyRedacted', true,
+            'privacyRequestId', v_request.id,
+            'aggregateType', o.aggregate_type,
+            'aggregateId', o.aggregate_id
+          ),
+          published_at = coalesce(o.published_at, now()),
+          attempts = o.attempts + CASE WHEN o.published_at IS NULL THEN 1 ELSE 0 END,
+          last_error = CASE
+            WHEN o.published_at IS NULL THEN 'connector revoked by privacy request'
+            ELSE NULL
+          END
       WHERE o.workspace_id = v_request.workspace_id
-        AND o.published_at IS NULL
         AND (
           o.payload->>'connectionId' = v_request.target_connector_account_id::text
+          OR (
+            o.aggregate_type = 'connector_account'
+            AND o.aggregate_id = v_request.target_connector_account_id
+          )
           OR (o.aggregate_type = 'source_event' AND o.aggregate_id = ANY(v_source_ids))
           OR (
             o.aggregate_type = 'processing_job'
@@ -1561,6 +1582,30 @@ BEGIN
   FROM public.artifacts a
   WHERE a.id = ANY(v_artifact_ids) AND a.source_event_id IS NOT NULL;
 
+  -- Preview the same active/verified in-project consumers that apply will
+  -- tombstone together with an expiring quarantined source.
+  SELECT coalesce(array_agg(DISTINCT memory_id), '{}'::uuid[])
+  INTO v_candidate_ids
+  FROM (
+    SELECT unnest(v_candidate_ids) AS memory_id
+    UNION
+    SELECT m.id
+    FROM public.memory_records m
+    WHERE m.workspace_id = p_workspace_id
+      AND m.status <> 'deleted'
+      AND app.effective_memory_project_id(m.id) = p_project_id
+      AND m.source_event_id = ANY(v_artifact_source_ids)
+    UNION
+    SELECT me.memory_id
+    FROM public.memory_evidence me
+    JOIN public.memory_records m ON m.id = me.memory_id
+    WHERE m.workspace_id = p_workspace_id
+      AND m.status <> 'deleted'
+      AND app.effective_memory_project_id(m.id) = p_project_id
+      AND me.source_event_id = ANY(v_artifact_source_ids)
+  ) source_consumers;
+  v_candidate_count := cardinality(v_candidate_ids);
+
   SELECT coalesce(array_agg(j.id), '{}'::uuid[]) INTO v_dead_letter_ids
   FROM public.processing_jobs j
   WHERE j.workspace_id = p_workspace_id
@@ -1596,7 +1641,40 @@ BEGIN
     AND (
       o.payload->>'projectId' = p_project_id::text
       OR (o.aggregate_type = 'project' AND o.aggregate_id = p_project_id)
-      OR (o.aggregate_type = 'processing_job' AND o.aggregate_id = ANY(v_dead_letter_ids))
+      OR (
+        o.aggregate_type = 'processing_job'
+        AND EXISTS (
+          SELECT 1 FROM public.processing_jobs linked_job
+          WHERE linked_job.id = o.aggregate_id
+            AND linked_job.workspace_id = p_workspace_id
+            AND (
+              EXISTS (
+                SELECT 1 FROM public.source_events source
+                WHERE source.id = linked_job.source_event_id
+                  AND source.project_id = p_project_id
+              )
+              OR EXISTS (
+                SELECT 1 FROM public.project_notifications notification
+                WHERE notification.source_job_id = linked_job.id
+                  AND notification.project_id = p_project_id
+              )
+              OR EXISTS (
+                SELECT 1 FROM public.approval_checkpoints checkpoint
+                WHERE checkpoint.source_job_id = linked_job.id
+                  AND checkpoint.project_id = p_project_id
+              )
+              OR EXISTS (
+                SELECT 1 FROM public.memory_records result_memory
+                WHERE result_memory.workspace_id = p_workspace_id
+                  AND app.effective_memory_project_id(result_memory.id) = p_project_id
+                  AND result_memory.id::text = coalesce(
+                    nullif(o.payload->>'memoryId', ''),
+                    nullif(o.payload->>'memory_id', '')
+                  )
+              )
+            )
+        )
+      )
       OR (
         o.aggregate_type = 'memory'
         AND EXISTS (
@@ -1880,7 +1958,37 @@ BEGIN
           OR (o.aggregate_type = 'project' AND o.aggregate_id = p_project_id)
           OR (
             o.aggregate_type = 'processing_job'
-            AND o.aggregate_id = ANY(v_dead_letter_ids)
+            AND EXISTS (
+              SELECT 1 FROM public.processing_jobs linked_job
+              WHERE linked_job.id = o.aggregate_id
+                AND linked_job.workspace_id = p_workspace_id
+                AND (
+                  EXISTS (
+                    SELECT 1 FROM public.source_events source
+                    WHERE source.id = linked_job.source_event_id
+                      AND source.project_id = p_project_id
+                  )
+                  OR EXISTS (
+                    SELECT 1 FROM public.project_notifications notification
+                    WHERE notification.source_job_id = linked_job.id
+                      AND notification.project_id = p_project_id
+                  )
+                  OR EXISTS (
+                    SELECT 1 FROM public.approval_checkpoints checkpoint
+                    WHERE checkpoint.source_job_id = linked_job.id
+                      AND checkpoint.project_id = p_project_id
+                  )
+                  OR EXISTS (
+                    SELECT 1 FROM public.memory_records result_memory
+                    WHERE result_memory.workspace_id = p_workspace_id
+                      AND app.effective_memory_project_id(result_memory.id) = p_project_id
+                      AND result_memory.id::text = coalesce(
+                        nullif(o.payload->>'memoryId', ''),
+                        nullif(o.payload->>'memory_id', '')
+                      )
+                  )
+                )
+            )
           )
           OR (
             o.aggregate_type = 'memory'

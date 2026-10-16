@@ -74,6 +74,8 @@ DECLARE
   v_shared_retention_artifact constant uuid := '99999999-0000-4000-8000-000000000460';
   v_shared_retention_chunk constant uuid := '99999999-0000-4000-8000-000000000461';
   v_shared_retention_memory constant uuid := '99999999-0000-4000-8000-000000000462';
+  v_retention_success_job constant uuid := '99999999-0000-4000-8000-000000000463';
+  v_retention_success_outbox constant uuid := '99999999-0000-4000-8000-000000000464';
   v_marker constant text := 'M20_PRIVACY_SECRET_MARKER_6f9fd9';
   v_vault_ref constant text := 'vault:test/m20/privacy-connector';
   v_created jsonb;
@@ -715,12 +717,14 @@ BEGIN
     v_legacy_connection_source, 'm20-privacy/legacy-connector-job'
   );
   INSERT INTO public.outbox_events (
-    id, workspace_id, aggregate_type, aggregate_id, event_type, payload
+    id, workspace_id, aggregate_type, aggregate_id, event_type, payload,
+    published_at
   ) VALUES (
     v_connection_outbox, v_workspace, 'connector_account', v_connection,
     'connector.sync.requested', jsonb_build_object(
-      'connectionId', v_connection, 'jobId', v_connection_job
-    )
+      'connectionId', v_connection, 'jobId', v_connection_job,
+      'vaultRef', v_vault_ref, 'displayName', v_marker
+    ), now() - interval '1 day'
   );
   INSERT INTO public.outbox_events (
     id, workspace_id, aggregate_type, aggregate_id, event_type, payload
@@ -766,10 +770,16 @@ BEGIN
     WHERE j.id = v_legacy_connection_job AND j.status = 'dead_letter'
   ) OR NOT EXISTS (
     SELECT 1 FROM public.outbox_events o
-    WHERE o.id = v_connection_outbox AND o.published_at IS NOT NULL
+    WHERE o.id = v_connection_outbox
+      AND o.published_at IS NOT NULL
+      AND o.payload->>'privacyRedacted' = 'true'
+      AND o.payload::text NOT LIKE '%' || v_marker || '%'
+      AND o.payload::text NOT LIKE '%' || v_vault_ref || '%'
   ) OR NOT EXISTS (
     SELECT 1 FROM public.outbox_events o
-    WHERE o.id = v_legacy_connection_outbox AND o.published_at IS NOT NULL
+    WHERE o.id = v_legacy_connection_outbox
+      AND o.published_at IS NOT NULL
+      AND o.payload->>'privacyRedacted' = 'true'
   ) OR NOT EXISTS (
     SELECT 1 FROM public.memory_records m
     WHERE m.id = v_connection_memory AND m.status = 'deleted'
@@ -819,6 +829,23 @@ BEGIN
     v_retention_notification_job, v_workspace, 'roma_project_health',
     'succeeded', v_retention_source, 'm20-privacy/retention-notification-job',
     v_marker
+  );
+  INSERT INTO public.processing_jobs (
+    id, workspace_id, job_type, status, source_event_id, idempotency_key,
+    created_at, updated_at
+  ) VALUES (
+    v_retention_success_job, v_workspace, 'ingest', 'succeeded',
+    v_retention_source, 'm20-privacy/retention-success-job',
+    now() - interval '31 days', now() - interval '31 days'
+  );
+  INSERT INTO public.outbox_events (
+    id, workspace_id, aggregate_type, aggregate_id, event_type, payload,
+    created_at, published_at
+  ) VALUES (
+    v_retention_success_outbox, v_workspace, 'processing_job',
+    v_retention_success_job, 'ingest.succeeded',
+    jsonb_build_object('memory_id', v_retention_recent_consumer),
+    now() - interval '31 days', now() - interval '31 days'
   );
   INSERT INTO public.project_notifications (
     id, workspace_id, project_id, recipient_subject_id, notification_type,
@@ -1007,9 +1034,9 @@ BEGIN
   v_result := public.api_apply_retention_policy(
     v_secret, v_owner, v_workspace, v_project, now(), true
   );
-  IF (v_result->>'candidateMemories')::integer < 1
+  IF (v_result->>'candidateMemories')::integer < 2
      OR (v_result->>'quarantineArtifacts')::integer < 1
-     OR (v_result->>'publishedOutboxEvents')::integer < 1
+     OR (v_result->>'publishedOutboxEvents')::integer < 2
      OR (v_result->>'deadLetterJobs')::integer < 1
      OR (v_result->>'auditEvents')::integer < 1 THEN
     RAISE EXCEPTION 'retention preview omitted expired fixtures: %', v_result;
@@ -1050,6 +1077,8 @@ BEGIN
     SELECT 1 FROM public.artifact_chunks WHERE id = v_retention_chunk
   ) OR EXISTS (
     SELECT 1 FROM public.outbox_events WHERE id = v_retention_outbox
+  ) OR EXISTS (
+    SELECT 1 FROM public.outbox_events WHERE id = v_retention_success_outbox
   ) OR EXISTS (
     SELECT 1 FROM public.processing_jobs WHERE id = v_retention_job
   ) OR EXISTS (

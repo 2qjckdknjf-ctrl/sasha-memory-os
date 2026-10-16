@@ -38,7 +38,7 @@ and defaults to `dry_run=true`. Policy version: `m20-s04-v1`.
 | Active / verified memories | Indefinite until owner correction, retraction, or deletion |
 | Candidate memories | 90 days, then body/metadata/vector tombstone and derived-record cleanup |
 | Quarantine artifacts | 180 days, then chunks, storage refs, checksums, metadata and related source payloads are sanitized |
-| Published outbox events | 30 days after `published_at`, then deleted |
+| Published outbox events | 30 days after `published_at`, then deleted; successful-job rows are attributed through source, notification, checkpoint, or result-memory provenance |
 | Dead-letter jobs | 90 days after last update, then deleted |
 | OAuth vault secrets | Until connection revoke; source-account privacy deletion removes KMS/local vault payloads, refs and cursors |
 | Audit log | 365 days; privacy execution also redacts historic snapshots tied to erased objects |
@@ -51,6 +51,9 @@ export payloads into audit/operational telemetry. Project retention deletes
 outbox, dead-letter and audit rows only when their source, aggregate, payload or
 linked object positively attributes them to the requested project; ambiguous
 workspace-level rows are preserved.
+The dry-run expands quarantined sources to the same active/verified
+same-project memory consumers as apply, so its candidate counts describe the
+actual destructive scope.
 Destructive apply first locks source-linked jobs, waits for in-flight ingest,
 then locks/revalidates mutable eligibility and re-scans source consumers. A
 quarantined source with an active consumer in another effective project is
@@ -66,7 +69,9 @@ from recreating or removing data across the retention boundary.
   `exportId` plus `snapshotAt` and aggregates only the requested page; it never
   returns connector secrets or vault refs. Export and erasure serialize on the
   workspace so no pre-erasure snapshot remains resumable after completion.
-- Request: `POST /v1/privacy/requests` creates an idempotent owner request.
+- Request: `POST /v1/privacy/requests` creates an idempotent owner request;
+  concurrent retries are resolved by the database uniqueness constraint and
+  validated against the winning request before reuse.
 - Execution: `POST /v1/privacy/requests/:id/execute` performs correction,
   retraction, memory deletion, or connector-source revocation.
 - Retention: `POST /v1/privacy/retention/run` previews or applies the policy;

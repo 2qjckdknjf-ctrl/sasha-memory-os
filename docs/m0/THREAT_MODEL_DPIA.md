@@ -40,7 +40,7 @@ The authoritative data map and enforced retention windows are in
 | T3 | Cross-subject/project disclosure | RLS, ACL, explicit project, sensitivity checks, 200-case retrieval gate with zero leakage |
 | T4 | SSRF or credentialed URL capture | DNS/private-address and credentialed-URL rejection |
 | T5 | Agent over-share or unsafe write | Seven bounded tools, per-actor ACL, candidate/review policy, no retrieval-side writes |
-| T6 | Retry, stale job, or outbox duplication | Idempotent capture, advisory locking, bounded retry/dead-letter/replay and restore drills |
+| T6 | Retry, stale job, or outbox duplication | Idempotent capture and conflict-safe privacy-request creation, advisory locking, bounded retry/dead-letter/replay and restore drills |
 | T7 | AI-provider transfer | External embedding/transcription is optional, bounded and documented; local fallback exists |
 | T8 | Wrong Supabase/project routing | Dedicated project ref, immutable project IDs, fail-closed routing and no default fallback |
 | T9 | Incomplete erasure through derived data | M20.4 deletes evidence/revisions/chunks across workspace consumers of shared provenance, clears vectors, removes graph projections and sanitizes source/artifact/notification/outbox/audit snapshots |
@@ -53,8 +53,8 @@ The authoritative data map and enforced retention windows are in
 | Access / portability | Owner-only fully paginated `GET /v1/export/privacy`, pinned to an immutable row-wise `exportId`/`snapshotAt` snapshot and including revision history, routed provenance and connector-derived records |
 | Correction | Idempotent privacy request plus owner execution; prior memory becomes superseded |
 | Retraction | Owner execution marks the target retracted with metadata-only audit |
-| Erasure | Target memory and all workspace consumers/derivatives of its shared source are tombstoned before provenance is sanitized; source-account request also resolves legacy payload identity, revokes the workspace-wide connector, vault, cursor, source-linked jobs and outbox, and erases its derived records across projects |
-| Retention | Owner dry-run/apply route implementing the published 30/90/180/365-day windows; apply locks source jobs, waits for ingest, re-scans same-project source consumers, skips quarantined sources shared with another effective project, locks/revalidates candidates, artifacts, dead-letter jobs and published outbox rows, redacts async derivatives, and retains shared entities in redacted form |
+| Erasure | Target memory and all workspace consumers/derivatives of its shared source are tombstoned before provenance is sanitized; source-account request also resolves legacy payload identity, revokes the workspace-wide connector, vault, cursor and source-linked jobs, redacts published and unpublished associated outbox payloads, and erases its derived records across projects |
+| Retention | Owner dry-run/apply route implementing the published 30/90/180/365-day windows; preview includes same-project source consumers, while apply locks source jobs, waits for ingest, re-scans those consumers, skips quarantined sources shared with another effective project, locks/revalidates candidates, artifacts, dead-letter jobs and published outbox rows (including successfully processed job events), redacts async derivatives, and retains shared entities in redacted form |
 
 ## Residual risks and decisions
 
