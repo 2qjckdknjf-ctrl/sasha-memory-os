@@ -5,6 +5,23 @@
 -- back so the suite is repeatable on restored and disposable databases.
 BEGIN;
 
+CREATE OR REPLACE FUNCTION app.m20_test_force_privacy_execution_failure()
+RETURNS trigger
+LANGUAGE plpgsql
+AS $$
+BEGIN
+  IF NEW.id = '99999999-0000-4000-8000-000000000465'::uuid
+     AND NEW.status = 'retracted' THEN
+    RAISE EXCEPTION 'forced privacy execution failure' USING ERRCODE = 'P0001';
+  END IF;
+  RETURN NEW;
+END;
+$$;
+
+CREATE TRIGGER trg_m20_test_force_privacy_execution_failure
+BEFORE UPDATE ON public.memory_records
+FOR EACH ROW EXECUTE FUNCTION app.m20_test_force_privacy_execution_failure();
+
 DO $$
 DECLARE
   v_secret constant text := 'ci-ephemeral-secret';
@@ -76,6 +93,7 @@ DECLARE
   v_shared_retention_memory constant uuid := '99999999-0000-4000-8000-000000000462';
   v_retention_success_job constant uuid := '99999999-0000-4000-8000-000000000463';
   v_retention_success_outbox constant uuid := '99999999-0000-4000-8000-000000000464';
+  v_failed_retraction_memory constant uuid := '99999999-0000-4000-8000-000000000465';
   v_marker constant text := 'M20_PRIVACY_SECRET_MARKER_6f9fd9';
   v_vault_ref constant text := 'vault:test/m20/privacy-connector';
   v_created jsonb;
@@ -557,6 +575,49 @@ BEGIN
     WHERE r.id = v_legacy_request AND r.status = 'submitted'
   ) THEN
     RAISE EXCEPTION 'invalid legacy request was mutated before validation';
+  END IF;
+
+  -- Operational errors roll back their entire mutation savepoint but still
+  -- persist a metadata-only failed terminal state in the outer transaction.
+  INSERT INTO public.memory_records (
+    id, workspace_id, project_id, memory_type, title, content, status,
+    created_by_subject
+  ) VALUES (
+    v_failed_retraction_memory, v_workspace, v_project, 'fact',
+    'failure fixture', 'failure fixture body', 'active', v_owner
+  );
+  v_created := public.api_create_privacy_request_v2(
+    v_secret, v_owner, v_workspace, v_project, 'retraction',
+    v_failed_retraction_memory, NULL, 'force execution rollback', NULL,
+    'm20-privacy/failed-execution'
+  );
+  v_result := public.api_execute_privacy_request(
+    v_secret, v_owner, (v_created->>'id')::uuid
+  );
+  IF v_result->>'status' <> 'failed'
+     OR v_result->>'failureCode' <> 'execution_failed_p0001'
+     OR NOT EXISTS (
+       SELECT 1 FROM public.memory_records m
+       WHERE m.id = v_failed_retraction_memory AND m.status = 'active'
+     ) OR NOT EXISTS (
+       SELECT 1 FROM public.privacy_requests r
+       WHERE r.id = (v_created->>'id')::uuid
+         AND r.status = 'failed'
+         AND r.failure_code = 'execution_failed_p0001'
+         AND r.reason = '[redacted after failed execution]'
+         AND r.correction_text IS NULL
+     ) THEN
+    RAISE EXCEPTION 'privacy execution failure was not atomic and durable: %', v_result;
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1
+    FROM pg_trigger t
+    WHERE t.tgrelid = 'public.project_routing_corrections'::regclass
+      AND t.tgname = 'trg_guard_project_routing_correction_mutation'
+      AND NOT t.tgisinternal
+  ) THEN
+    RAISE EXCEPTION 'routing correction workspace serialization trigger missing';
   END IF;
 
   INSERT INTO public.memory_records (

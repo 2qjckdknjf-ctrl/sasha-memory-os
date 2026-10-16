@@ -97,6 +97,47 @@ SELECT cron.schedule(
   'SELECT app.purge_expired_privacy_export_snapshots()'
 );
 
+-- Project routing is mutable state used by destructive project-scoped
+-- retention. Serialize every ledger mutation on the same workspace row that
+-- retention/export/erasure lock, then reject a route that lost the race to a
+-- tombstone. Retention re-evaluates effective routing only after this lock.
+CREATE OR REPLACE FUNCTION app.guard_project_routing_correction_mutation()
+RETURNS trigger
+LANGUAGE plpgsql
+VOLATILE
+SECURITY DEFINER
+SET search_path = public, app
+AS $$
+DECLARE
+  v_memory_status text;
+BEGIN
+  PERFORM 1
+  FROM public.workspaces workspace
+  WHERE workspace.id = NEW.workspace_id
+  FOR UPDATE OF workspace;
+
+  SELECT memory.status INTO v_memory_status
+  FROM public.memory_records memory
+  WHERE memory.id = NEW.memory_id
+    AND memory.workspace_id = NEW.workspace_id;
+
+  IF NOT FOUND OR v_memory_status = 'deleted' THEN
+    RAISE EXCEPTION 'cannot route a missing or deleted memory'
+      USING ERRCODE = '55000';
+  END IF;
+  RETURN NEW;
+END;
+$$;
+
+REVOKE ALL ON FUNCTION app.guard_project_routing_correction_mutation()
+  FROM PUBLIC, anon, authenticated;
+
+DROP TRIGGER IF EXISTS trg_guard_project_routing_correction_mutation
+  ON public.project_routing_corrections;
+CREATE TRIGGER trg_guard_project_routing_correction_mutation
+BEFORE INSERT OR UPDATE ON public.project_routing_corrections
+FOR EACH ROW EXECUTE FUNCTION app.guard_project_routing_correction_mutation();
+
 CREATE OR REPLACE FUNCTION app.api_create_privacy_request_v2(
   p_secret text,
   p_subject_id uuid,
@@ -863,6 +904,7 @@ DECLARE
   v_stopped_job_count integer := 0;
   v_previous_affected_count integer := -1;
   v_previous_source_count integer := -1;
+  v_failure_sqlstate text;
 BEGIN
   PERFORM app.assert_api_secret(p_secret);
   PERFORM app.with_subject(p_subject_id);
@@ -933,9 +975,13 @@ BEGIN
   DELETE FROM public.privacy_export_snapshots snapshot
   WHERE snapshot.workspace_id = v_request.workspace_id;
 
-  UPDATE public.privacy_requests
-  SET status = 'processing', failure_code = NULL
-  WHERE id = v_request.id;
+  -- The inner block is a database savepoint. Any operational failure rolls
+  -- back all partial privacy mutations, after which the exception handler can
+  -- commit a metadata-only terminal failure in this outer transaction.
+  BEGIN
+    UPDATE public.privacy_requests
+    SET status = 'processing', failure_code = NULL
+    WHERE id = v_request.id;
 
   IF v_request.request_type = 'correction' THEN
     v_result := app.api_correct_memory(
@@ -1471,13 +1517,52 @@ BEGIN
     v_result
   );
 
-  RETURN jsonb_build_object(
-    'id', v_request.id,
-    'status', 'completed',
-    'completedAt', now(),
-    'resultSummary', v_result,
-    'idempotent', false
-  );
+    RETURN jsonb_build_object(
+      'id', v_request.id,
+      'status', 'completed',
+      'completedAt', now(),
+      'resultSummary', v_result,
+      'failureCode', NULL,
+      'idempotent', false
+    );
+  EXCEPTION WHEN OTHERS THEN
+    GET STACKED DIAGNOSTICS v_failure_sqlstate = RETURNED_SQLSTATE;
+    v_result := jsonb_build_object('operation', v_request.request_type);
+    UPDATE public.privacy_requests
+    SET status = 'failed',
+        completed_at = now(),
+        result_summary = v_result,
+        failure_code = 'execution_failed_' || lower(v_failure_sqlstate),
+        reason = '[redacted after failed execution]',
+        correction_text = NULL
+    WHERE id = v_request.id;
+
+    -- A telemetry failure must not make the terminal request state unreachable.
+    BEGIN
+      INSERT INTO public.audit_log (
+        workspace_id, actor_subject_id, action, object_type, object_id, reason,
+        after_state
+      ) VALUES (
+        v_request.workspace_id, p_subject_id, 'privacy.request.failed',
+        'privacy_request', v_request.id, 'privacy request execution failed',
+        jsonb_build_object(
+          'operation', v_request.request_type,
+          'failureCode', 'execution_failed_' || lower(v_failure_sqlstate)
+        )
+      );
+    EXCEPTION WHEN OTHERS THEN
+      NULL;
+    END;
+
+    RETURN jsonb_build_object(
+      'id', v_request.id,
+      'status', 'failed',
+      'completedAt', now(),
+      'resultSummary', v_result,
+      'failureCode', 'execution_failed_' || lower(v_failure_sqlstate),
+      'idempotent', false
+    );
+  END;
 END;
 $$;
 

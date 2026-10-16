@@ -40,7 +40,7 @@ The authoritative data map and enforced retention windows are in
 | T3 | Cross-subject/project disclosure | RLS, ACL, explicit project, sensitivity checks, 200-case retrieval gate with zero leakage |
 | T4 | SSRF or credentialed URL capture | DNS/private-address and credentialed-URL rejection |
 | T5 | Agent over-share or unsafe write | Seven bounded tools, per-actor ACL, candidate/review policy, no retrieval-side writes |
-| T6 | Retry, stale job, or outbox duplication | Idempotent capture and conflict-safe privacy-request creation, advisory locking, bounded retry/dead-letter/replay and restore drills |
+| T6 | Retry, stale job, routing race, or outbox duplication | Idempotent capture and conflict-safe privacy-request creation, workspace serialization for routing/retention, atomic privacy-execution rollback with a durable redacted failure state, advisory locking, bounded retry/dead-letter/replay and restore drills |
 | T7 | AI-provider transfer | External embedding/transcription is optional, bounded and documented; local fallback exists |
 | T8 | Wrong Supabase/project routing | Dedicated project ref, immutable project IDs, fail-closed routing and no default fallback |
 | T9 | Incomplete erasure through derived data | M20.4 deletes evidence/revisions/chunks across workspace consumers of shared provenance, clears vectors, removes graph projections and sanitizes source/artifact/notification/outbox/audit snapshots |

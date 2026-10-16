@@ -58,8 +58,9 @@ stack, proves:
    unaffected memories;
 3. connector revocation deletes vault/cursor state, stops queued work and
    reaches connector-derived records across project boundaries;
-4. request creation is conflict-safe under concurrent retries and execution
-   replay is idempotent;
+4. request creation is conflict-safe under concurrent retries, execution
+   replay is idempotent, and a failed execution rolls back partial mutation
+   while persisting a redacted terminal failure;
 5. privacy free text never survives in audit/ops state;
 6. retention preview is non-mutating and reports the same same-project source
    consumers that apply will tombstone; apply expires only quarantined artifacts,
@@ -89,7 +90,9 @@ stack, proves:
     of later export traffic, while erasure invalidates remaining workspace
     snapshots synchronously;
 12. portability includes stored memory revision snapshots and their owner-visible
-    reasons.
+    reasons;
+13. routing corrections and retention serialize on the workspace boundary, so
+    effective-project changes cannot race destructive project-scoped cleanup.
 
 The TypeScript gate also freezes route names, retention windows, UI hygiene,
 schema validation, CI wiring, DPIA/data-map freshness and the exact seven-tool

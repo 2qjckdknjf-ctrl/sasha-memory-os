@@ -61,6 +61,7 @@ describe('M20.4 privacy and compliance gate', () => {
         requestCreationIsConcurrentlyIdempotent: true,
         futureRetentionCutoffsRejected: true,
         retentionLocksCandidatesBeforeMutation: true,
+        routingCorrectionsSerializeWithRetention: true,
         retentionLocksArtifactsBeforeMutation: true,
         retentionLocksJobsAndOutboxBeforeMutation: true,
         retentionLocksSourceJobsBeforeMutation: true,
@@ -72,6 +73,7 @@ describe('M20.4 privacy and compliance gate', () => {
         retentionOnlyExpiresQuarantinedArtifacts: true,
         retentionRedactsSharedEntities: true,
         retentionIsProjectScoped: true,
+        failedExecutionIsAtomicAndDurable: true,
         auditContainsMetadataOnly: true,
         logsContainSensitiveBodies: false,
         modeAToolCount: 7,
@@ -139,6 +141,8 @@ describe('M20.4 privacy and compliance gate', () => {
     expect(migration).toContain('api_execute_privacy_request');
     expect(migration).toContain('api_apply_retention_policy');
     expect(migration).toContain('ON CONFLICT (workspace_id, idempotency_key) DO NOTHING');
+    expect(migration).toContain('trg_guard_project_routing_correction_mutation');
+    expect(migration).toContain("failure_code = 'execution_failed_' || lower(v_failure_sqlstate)");
     expect(migration).toContain("'nextOffset'");
     expect(migration).toContain("'snapshotAt'");
     expect(migration).toContain("'exportId'");
@@ -201,6 +205,7 @@ describe('M20.4 privacy and compliance gate', () => {
     expect(sql).toContain('notification, outbox, or job retained erased memory data');
     expect(sql).toContain('Retention-redacted notification');
     expect(sql).toContain("'ingest.succeeded'");
+    expect(sql).toContain('privacy execution failure was not atomic and durable');
     expect(ephemeral).toContain('m20_privacy_compliance_cases.sql');
     expect(dataMap).toContain('POST /v1/privacy/retention/run');
     expect(dpia).toContain('V1 GA technical review refreshed 2026-10-15');

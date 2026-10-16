@@ -621,9 +621,10 @@ export class SupabaseMemoryGateway {
     if (error) throw error;
     return data as {
       id: string;
-      status: 'completed';
-      completedAt: string;
+      status: 'completed' | 'failed';
+      completedAt: string | null;
       resultSummary: Record<string, unknown>;
+      failureCode: string | null;
       idempotent: boolean;
     };
   }

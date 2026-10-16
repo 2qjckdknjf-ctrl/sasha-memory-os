@@ -160,9 +160,10 @@ export function PrivacyPage({
     try {
       const result = await apiPost<{
         id: string;
-        status: 'completed';
-        completedAt: string;
+        status: 'completed' | 'failed';
+        completedAt: string | null;
         resultSummary: Record<string, unknown>;
+        failureCode: string | null;
       }>(
         `/v1/privacy/requests/${request.id}/execute`,
         subjectId,
@@ -177,7 +178,7 @@ export function PrivacyPage({
                 status: result.status,
                 completedAt: result.completedAt,
                 resultSummary: result.resultSummary,
-                failureCode: null,
+                failureCode: result.failureCode,
               }
             : item,
         ),

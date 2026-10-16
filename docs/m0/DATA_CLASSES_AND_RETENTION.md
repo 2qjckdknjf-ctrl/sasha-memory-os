@@ -58,7 +58,9 @@ Destructive apply first locks source-linked jobs, waits for in-flight ingest,
 then locks/revalidates mutable eligibility and re-scans source consumers. A
 quarantined source with an active consumer in another effective project is
 retained. This prevents ingest, replay, delivery, or project-scoped retention
-from recreating or removing data across the retention boundary.
+from recreating or removing data across the retention boundary. Routing-ledger
+updates use the same workspace lock, so an effective-project change cannot race
+the final retention revalidation.
 
 ## Rights and operational surfaces
 
@@ -73,7 +75,9 @@ from recreating or removing data across the retention boundary.
   concurrent retries are resolved by the database uniqueness constraint and
   validated against the winning request before reuse.
 - Execution: `POST /v1/privacy/requests/:id/execute` performs correction,
-  retraction, memory deletion, or connector-source revocation.
+  retraction, memory deletion, or connector-source revocation. Operational
+  failure rolls back the complete mutation savepoint and persists only a
+  redacted terminal failure code.
 - Retention: `POST /v1/privacy/retention/run` previews or applies the policy;
   null or future cutoffs are rejected before mutation.
 
