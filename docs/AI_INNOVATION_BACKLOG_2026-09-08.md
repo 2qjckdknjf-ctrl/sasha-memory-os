@@ -150,7 +150,7 @@ Repository/default branch: `2qjckdknjf-ctrl/sasha-memory-os`, protected `main`, 
 
 ### AI Scout deduplication and news boundaries
 
-Read actual diffs and states: [#101 / 15 Oct](https://github.com/2qjckdknjf-ctrl/sasha-memory-os/pull/101), [#119 / 18 Oct](https://github.com/2qjckdknjf-ctrl/sasha-memory-os/pull/119), [#120 / 20 Oct](https://github.com/2qjckdknjf-ctrl/sasha-memory-os/pull/120) are **OPEN DRAFT**, documentation proposals only. Their overlapping content is mapped below; do not merge three parallel task lists. Keep their history until this consolidation is reviewed; closure was not performed.
+Read actual diffs and states: [#101 / 15 Oct](https://github.com/2qjckdknjf-ctrl/sasha-memory-os/pull/101), [#119 / 18 Oct](https://github.com/2qjckdknjf-ctrl/sasha-memory-os/pull/119), [#120 / 20 Oct](https://github.com/2qjckdknjf-ctrl/sasha-memory-os/pull/120) were **OPEN DRAFT** at the initial inspection. After verified replacement [PR122](https://github.com/2qjckdknjf-ctrl/sasha-memory-os/pull/122), all three were **CLOSED, NOT MERGED / SUPERSEDED** on 23 October; branches/history preserved. All unique recommendations are mapped below. PR122 remains a draft proposal requiring review and explicit confirmation before merge; no implementation claim follows from closing duplicates.
 
 | Input | Existing canonical IDs / disposition |
 |---|---|
@@ -187,7 +187,7 @@ Safe order: review this documentation → finish the existing M20.4 slice and P0
 
 ### Open blockers and evidence drift
 
-- #118 and #121 are open PRs, not merged features. Three current Vite Dependabot alerts (one high, two medium) are confirmed; the high finding blocks release until remediated with evidence. Refresh exact-head checks before review; merge/deploy require the user's confirmation.
+- #118 and #121 are open PRs, not merged features. Three current Vite Dependabot alerts (one high, two medium) are confirmed. Separately, this consolidation PR's [smoke audit job120429460396](https://github.com/2qjckdknjf-ctrl/sasha-memory-os/actions/runs/39958266244/job/120429460396) on head `236e021c8815c67dee8a85ec8eb93aaad5503901` failed on the unchanged lockfile: **8 advisories (1 high, 6 moderate, 1 low)** including Vite and `@vitest/mocker`; dependent live checks were skipped. The high finding is a P0 release/CI blocker. Remediate through #121 and a bounded companion only if needed; verify the entire lockfile, not only the proposed Vite version. No suppressions or lowered gate. Refresh exact-head checks before review; merge/deploy require the user's confirmation.
 - Real provider OAuth consent/credentials, Apple device E2E, nonterminal publisher policy and management-token automation receipt remain unresolved in current recorded evidence; no freshness assumption from old counts.
 - CURRENT_STATE and historical README/M13 digest ordering lag M20.3 live receipt; reconcile via existing #118 and post-merge read-after-write. This PR deliberately does not advance manifest timestamps/operational statuses without that implementation gate.
 - Personal assignees, cross-product event schema/version, retention SLA for new media refs and benchmark budgets need explicit assignment/ratification before implementation. New external provider/account eligibility is unproven.
