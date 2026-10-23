@@ -1,5 +1,8 @@
 # Memory OS Сверка функций из AI разборов
 
+> Historical snapshot only. [23 October consolidation](AI_INNOVATION_BACKLOG_2026-09-08.md#consolidated-execution-queue--2026-10-23) supersedes the shared-memory/M17.4 freeze and old blocker ordering below using later main and verified live receipts. Do not restart completed work from this document.
+
+
 Дата фиксации: **2026-10-13**. Это сверка и уточнение действующих задач, не второй master plan. Статусы относятся к коду и планам на указанном SHA; production и устройства этим проходом не сертифицированы.
 
 Baseline origin/main: `e11260b81ea9c21e6d83270c63a07fc884ea1b60`. Проверены дерево main, существующий roadmap, открытые issues/PR и относящиеся к функциям реализации/тесты. CODE_PRESENT означает наличие реализации, а не свежий runtime PASS; PR_ONLY означает несведённую работу. При отсутствии полного доказательства статус PARTIAL или NOT_FOUND_IN_CHECKED_SCOPE.

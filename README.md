@@ -14,12 +14,15 @@
 - [Demo slice](docs/engineering/DEMO_SLICE.md)
 - [M6 ChatGPT production closeout](docs/engineering/M6_CHATGPT_PRODUCTION.md)
 - [CURRENT_STATE manifest](docs/engineering/CURRENT_STATE.json)
+- [Consolidated development queue, 2026-10-23](docs/AI_INNOVATION_BACKLOG_2026-09-08.md#consolidated-execution-queue--2026-10-23)
 - [M14.1 baseline reconciliation](docs/engineering/M14_1_BASELINE.md)
 - [M19 Control Center governance](docs/engineering/M19_CONTROL_CENTER_GOVERNANCE.md)
 - [M20.2 reliability and DR gate](docs/engineering/M20_SLICE_02_RELIABILITY_DR.md)
 - [M20.3 performance and retrieval gate](docs/engineering/M20_SLICE_03_PERFORMANCE_RETRIEVAL.md)
 
 ## Статус
+
+**Planning reconciliation 2026-10-23:** main `63b643a0b2fe5aed7638c9258bf531e369f4ebb9` includes M20.3; live Memory receipt `1e618a29-8ba6-4da4-871a-d6530863cf2a` records its Oct15 acceptance. Next: existing [M20.4 PR118](https://github.com/2qjckdknjf-ctrl/sasha-memory-os/pull/118), then M20.5/M20.6. The detailed manifest/status below is the retained Oct15 snapshot and is awaiting reconciliation in that PR; it is not a fresh deployment check. [One prioritized queue](docs/AI_INNOVATION_BACKLOG_2026-09-08.md#consolidated-execution-queue--2026-10-23) maps Scout #101/#119/#120 to existing IDs and preserves remaining live/GA blockers.
 
 **Dedicated Supabase live** — project `sasha-memory-os` (`vpxblcxsvlylqyldiuwr`, `eu-central-1`). Details: [docs/engineering/SUPABASE.md](docs/engineering/SUPABASE.md).
 
@@ -145,4 +148,4 @@ Canonical order (do not skip): see [M14_1_BASELINE.md](docs/engineering/M14_1_BA
 
 ## AI разборы 2026-10-13
 
-[Сверка рекомендаций с существующими функциями](docs/AI_DIGEST_RECONCILIATION_2026-10-13.md) и [действующий innovation backlog](docs/AI_INNOVATION_BACKLOG_2026-09-08.md). Снача M15 production runtime recovery; новые требования к handoff/redaction/recall quality не снимают current live blockers.
+[Сверка рекомендаций с существующими функциями](docs/AI_DIGEST_RECONCILIATION_2026-10-13.md) и [действующий innovation backlog](docs/AI_INNOVATION_BACKLOG_2026-09-08.md). Исторические указания о M15 runtime recovery / M17.4 freeze superseded by the 23 October queue and later verified receipts. New handoff/provenance acceptance does not close residual live/GA blockers.
