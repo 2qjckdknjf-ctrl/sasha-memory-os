@@ -1,5 +1,7 @@
 # Документация Sasha Memory OS
 
+Current implementation sequence, priorities, dependency gates and evidence: [23 October consolidated queue](AI_INNOVATION_BACKLOG_2026-09-08.md#consolidated-execution-queue--2026-10-23). Historical baseline and prior digest files remain reference evidence, not separate execution queues.
+
 ## Карта
 
 | Путь | Назначение |
