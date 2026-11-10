@@ -80,3 +80,19 @@ idempotency conflict instead of returning a receipt from another project.
 - Production migration applied only after the merged main checks are green.
 - One Memory OS milestone with PR, merge SHA, CI identifiers, Recall@10,
   latency, routing/dedupe evidence, blockers, and read-after-write receipt.
+
+
+## Weekly AI reconciliation — 2026-11-10
+
+**Period:** 2026-11-03 through 2026-11-10. **Status:** planning-only, not implementation or deployment. Existing canonical IDs, P0 gates and historical records take precedence. Reconcile with currently open PRs and exact HEAD before marking any item DONE. Evidence = reproducible tests + independent review + SHA + deployment/device receipt where applicable. Source ideas: OpenAI engineering/CAD and agent safety, GitHub Xcode and review telemetry, AI Engineer talks on durable SDLC, factual numeric provenance, adaptive worker economics, rollback, memory validity, and new Anthropic/Meta model announcements. Vendor benchmarks are not local acceptance evidence.
+
+| Priority | Existing workstream / ID | Incremental action and acceptance |
+|---|---|---|
+| P0 | M20 reliability/privacy/GA | Finish existing M20 security, RLS, disaster recovery, retrieval and production acceptance; preserve verified M19 ChatGPT↔Cursor integration. |
+| P1 | Existing provenance / temporal model | Introduce or verify experience validity: event→outcome→verified lesson, applicability by repo SHA/tool version, expiry/revalidation, superseded/contradicted statuses; do not create a second memory. |
+| P1 | Agent handoff evidence | Persist task/attempt IDs, source SHA, policy revision, permissions, tool actions, reviewer verdict, external-effect reconciliation and compensating action; ACL enforced on retrieval. |
+| P2 | Knowledge comparison | Benchmark retrieval against alternative RAG approaches only after M20, without migrating the canonical store. |
+
+**Implementation order:** close existing P0 first; P1 in bounded non-production pilots; P2 only after evidence-based decision. Owner: project engineering lead (assignment TBD); independent reviewer: ROMA/security or domain QA (assignment TBD). No auto-merge, production writes, payments or live trading from this roadmap update.
+
+**Cross-project dependency:** Grow OS orchestrates; ROMA enforces independent policy/verification in Aistroyka-web; Sasha Memory OS stores permission-scoped evidence. Trading repository/runtime remains unverified; shared trading requirements are point-in-time market data, deterministic calculations, independent risk limits, exchange-state reconciliation, paper trading and kill switch, with no autonomous live orders.
