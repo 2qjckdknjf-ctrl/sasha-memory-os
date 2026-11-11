@@ -96,3 +96,14 @@ idempotency conflict instead of returning a receipt from another project.
 **Implementation order:** close existing P0 first; P1 in bounded non-production pilots; P2 only after evidence-based decision. Owner: project engineering lead (assignment TBD); independent reviewer: ROMA/security or domain QA (assignment TBD). No auto-merge, production writes, payments or live trading from this roadmap update.
 
 **Cross-project dependency:** Grow OS orchestrates; ROMA enforces independent policy/verification in Aistroyka-web; Sasha Memory OS stores permission-scoped evidence. Trading repository/runtime remains unverified; shared trading requirements are point-in-time market data, deterministic calculations, independent risk limits, exchange-state reconciliation, paper trading and kill switch, with no autonomous live orders.
+
+
+### AI feature delta — 2026-11-11
+
+These are **proposed additions to existing workstreams** from the November 11 intelligence review, not claims of shipped functionality or verified vendor capabilities. Validate official release/API/pricing availability before selecting any provider; independent exact-SHA acceptance and existing P0 gates remain mandatory.
+
+- **P1 / training-data trust:** verified agent lessons are not automatically trusted fine-tuning examples; attach source, tool trace, approval, model/harness version, expiry, contamination/backdoor-test result and permission scope before export. Never train on raw untrusted prompt-injection text without review.
+- **P1 / cross-modal continuity:** store consented voice/text/UI task handoffs under one durable ID and policy version; interrupted sessions preserve state without duplicating tool effects. Enforce project ACL and retention.
+- **P2 / retrieval benchmark:** test new model candidates on same temporal/provenance tasks, avoiding claims that model performance replaces source integrity.
+
+**Acceptance rule:** record baseline, owner, independent reviewer, test corpus, security/privacy gates, cost per verified task and explicit decision (adopt / defer / reject). No autonomous production actions or merge authorized by this documentation.
