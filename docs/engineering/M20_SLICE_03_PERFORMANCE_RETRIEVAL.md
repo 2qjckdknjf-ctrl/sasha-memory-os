@@ -107,3 +107,17 @@ These are **proposed additions to existing workstreams** from the November 11 in
 - **P2 / retrieval benchmark:** test new model candidates on same temporal/provenance tasks, avoiding claims that model performance replaces source integrity.
 
 **Acceptance rule:** record baseline, owner, independent reviewer, test corpus, security/privacy gates, cost per verified task and explicit decision (adopt / defer / reject). No autonomous production actions or merge authorized by this documentation.
+
+
+## Gap-only AI roadmap reconciliation — 2026-11-20
+
+**Review period:** 2026-11-12–2026-11-20. Compared this branch with `main` and the existing Nov 10/11 reconciliation. Only incremental acceptance conditions and candidate evaluations are recorded; pre-existing capabilities must not be rebuilt. **PLANNING ONLY / NOT IMPLEMENTED / NOT MERGED.** The owner and independent reviewer remain TBD until assigned. Recheck exact HEAD, CI and production receipts before any DONE status.
+
+| Priority | Existing owner / workstream | Newly identified gap / acceptance evidence |
+|---|---|---|
+| P0 | Existing M20 privacy / reliability / GA | Close outstanding trusted-main production and ACL/DR/performance gates before any new capability; M19 shared ChatGPT↔Cursor memory is already implemented. |
+| P1 | Existing temporal provenance and agent history | Persist append-only task state changes, incident hypotheses, independent counterchecks, post-deploy verification, tool/model/skill version and exact source SHA with bounded retention; store evidence, not agent self-reported success. |
+| P1 | Existing ACL / agent handoff | Validate transitive originator/recipient data restrictions across project/tenant and child-agent retrieval; stale, contradicted and superseded knowledge must not silently become authoritative. |
+| P1 | Existing experience quality | Skill-eval outcomes and verified failure lessons must be versioned and revalidated after tool/model changes; raw external instructions never trusted as training examples. |
+
+**Source references:** [OpenAI Performance Factory](https://openai.com/index/how-openai-performance-factory-keeps-chatgpt-fast/), [Google Mirror Dimension](https://blog.google/security/mirror-dimension-for-agents/), [OpenAI frontier risk controls](https://openai.com/index/managing-frontier-ai-risk/). Other recent model/vendor announcements are *candidates requiring independent availability and price validation*, not approved dependencies. No new runtime privileges, model installation, migrations, payments, deployment, PR merge, or trading orders are authorized by this document.
