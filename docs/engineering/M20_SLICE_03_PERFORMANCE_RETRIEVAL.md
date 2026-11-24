@@ -121,3 +121,14 @@ These are **proposed additions to existing workstreams** from the November 11 in
 | P1 | Existing experience quality | Skill-eval outcomes and verified failure lessons must be versioned and revalidated after tool/model changes; raw external instructions never trusted as training examples. |
 
 **Source references:** [OpenAI Performance Factory](https://openai.com/index/how-openai-performance-factory-keeps-chatgpt-fast/), [Google Mirror Dimension](https://blog.google/security/mirror-dimension-for-agents/), [OpenAI frontier risk controls](https://openai.com/index/managing-frontier-ai-risk/). Other recent model/vendor announcements are *candidates requiring independent availability and price validation*, not approved dependencies. No new runtime privileges, model installation, migrations, payments, deployment, PR merge, or trading orders are authorized by this document.
+
+
+## Codex / Cursor execution delta — 2026-11-24
+
+Planning only. Reconcile current main and active PRs first; preserve M19 shared memory and existing M20 gates. Vendor candidates require upstream verification.
+
+- P0 existing M20 ACL/privacy: redact secrets before persistence and egress, final provider allowlist, retention verification, transitive principal/recipient restrictions, synthetic revocation drill.
+- P1 existing retrieval: evaluate OmniEVIE-4B multimodal retrieval with page/time provenance, Recall@K, latency, ACL negatives and storage cost; no second memory store.
+- P1 existing experience/evidence: version reusable task templates, LoRA/skill/model provenance, requirement-to-test receipts and independent verdict; distinguish NOT_RUN/UNKNOWN/FAIL; no raw untrusted traces as training data.
+
+Codex/Cursor: map gaps to existing IDs, implement only missing functionality on separate branch, preserve tests, report exact SHA, independent verdict, reproducible tests and blockers. No auto-merge or production changes. Owner/reviewer TBD.
