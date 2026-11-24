@@ -107,7 +107,11 @@ jobs:
 
       - uses: supabase/setup-cli@v1
         with:
-          version: latest
+          # Avoid the unauthenticated releases/latest lookup and unreviewed CLI upgrades.
+          version: 2.121.0
+
+      - name: Report Supabase CLI version
+        run: supabase --version
 
       - name: Install
         run: pnpm install --frozen-lockfile
