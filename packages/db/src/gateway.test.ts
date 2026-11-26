@@ -48,6 +48,51 @@ describe('loadMemoryOsEnv', () => {
   });
 });
 
+describe('SupabaseMemoryGateway.runRetentionPolicy', () => {
+  it('does not substitute the API host clock when the cutoff is omitted', async () => {
+    const rpc = vi.fn(async () => ({ data: { dryRun: true }, error: null }));
+    const gateway = new SupabaseMemoryGateway({ rpc } as any, 'test-secret');
+
+    await gateway.runRetentionPolicy({
+      subjectId: '33333333-3333-4333-8333-333333333301',
+      workspaceId: '11111111-1111-4111-8111-111111111111',
+      projectId: '44444444-4444-4444-8444-444444444402',
+      asOf: null,
+      dryRun: true,
+    });
+
+    expect(rpc).toHaveBeenCalledWith('api_apply_retention_policy', {
+      p_secret: 'test-secret',
+      p_subject_id: '33333333-3333-4333-8333-333333333301',
+      p_workspace_id: '11111111-1111-4111-8111-111111111111',
+      p_project_id: '44444444-4444-4444-8444-444444444402',
+      p_as_of: null,
+      p_dry_run: true,
+    });
+  });
+
+  it('passes an explicit retention cutoff through unchanged', async () => {
+    const rpc = vi.fn(async () => ({ data: { dryRun: false }, error: null }));
+    const gateway = new SupabaseMemoryGateway({ rpc } as any, 'test-secret');
+
+    await gateway.runRetentionPolicy({
+      subjectId: '33333333-3333-4333-8333-333333333301',
+      workspaceId: '11111111-1111-4111-8111-111111111111',
+      projectId: '44444444-4444-4444-8444-444444444402',
+      asOf: '2026-01-01T00:00:00.000Z',
+      dryRun: false,
+    });
+
+    expect(rpc).toHaveBeenCalledWith(
+      'api_apply_retention_policy',
+      expect.objectContaining({
+        p_as_of: '2026-01-01T00:00:00.000Z',
+        p_dry_run: false,
+      }),
+    );
+  });
+});
+
 describe('SupabaseMemoryGateway.upsertRomaProjectHealthSchedule', () => {
   it('omits enabled and reason RPC args when they are not provided', async () => {
     const rpc = vi.fn(async () => ({ data: { ok: true }, error: null }));

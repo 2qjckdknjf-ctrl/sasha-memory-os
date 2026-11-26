@@ -1627,7 +1627,12 @@ BEGIN
   ) THEN
     RAISE EXCEPTION 'project not found in workspace' USING ERRCODE = 'P0002';
   END IF;
-  IF p_as_of IS NULL OR p_as_of > statement_timestamp() THEN
+  -- An omitted cutoff is the database statement clock. Callers that send an
+  -- API host timestamp can race ahead of Postgres and fail this check.
+  IF p_as_of IS NULL THEN
+    p_as_of := statement_timestamp();
+  END IF;
+  IF p_as_of > statement_timestamp() THEN
     RAISE EXCEPTION 'as_of must not be null or in the future'
       USING ERRCODE = '22023';
   END IF;

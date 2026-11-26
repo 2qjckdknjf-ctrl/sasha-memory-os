@@ -554,6 +554,11 @@ function isNotFoundError(err: unknown): boolean {
   return /not found|P0002/i.test(message);
 }
 
+function isPrivacyTargetMissingError(err: unknown): boolean {
+  const message = err instanceof Error ? err.message : String(err);
+  return /memory target not found|connector target not found/i.test(message);
+}
+
 function missingProjectResponse(c: { json: (body: { error: string }, status: 400) => Response }) {
   return c.json({ error: 'project_id is required for this write' }, 400);
 }
@@ -4723,8 +4728,9 @@ export function createApp(options?: {
     const rawOffset = Number(c.req.query('offset') ?? '0');
     const offset = Math.max(Number.isFinite(rawOffset) ? Math.trunc(rawOffset) : 0, 0);
     const rawSnapshotAt = c.req.query('snapshot_at');
-    const snapshotAt = rawSnapshotAt ? Date.parse(rawSnapshotAt) : undefined;
-    if (rawSnapshotAt && !Number.isFinite(snapshotAt)) {
+    // PostgreSQL snapshot identity is microsecond timestamptz. Date parsing
+    // keeps only milliseconds and makes every later page fail the snapshot check.
+    if (rawSnapshotAt && !Number.isFinite(Date.parse(rawSnapshotAt))) {
       return c.json({ error: 'invalid_snapshot_at' }, 400);
     }
     const exportId = c.req.query('export_id') ?? undefined;
@@ -4751,7 +4757,7 @@ export function createApp(options?: {
           projectId,
           limit,
           offset,
-          snapshotAt: snapshotAt === undefined ? undefined : new Date(snapshotAt).toISOString(),
+          snapshotAt: rawSnapshotAt,
           exportId,
         }),
       );
@@ -4860,6 +4866,9 @@ export function createApp(options?: {
       );
     } catch (err) {
       if (isForbiddenError(err)) return c.json({ error: 'forbidden' }, 403);
+      if (isPrivacyTargetMissingError(err)) {
+        return c.json({ error: 'privacy_target_not_found' }, 409);
+      }
       if (isNotFoundError(err)) return c.json({ error: 'privacy_request_not_found' }, 404);
       return c.json({ error: (err as Error).message }, 500);
     }

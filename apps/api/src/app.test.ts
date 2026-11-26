@@ -3595,6 +3595,25 @@ describe('memory api demo slice', () => {
     });
   });
 
+  it('preserves privacy export snapshot microseconds', async () => {
+    const gateway = {
+      exportPrivacyBundle: vi.fn(async () => ({
+        format: 'memory-os.privacy-export.v1',
+      })),
+    };
+    const app = createApp({ gateway: gateway as any });
+    const snapshotAt = '2026-10-15T21:00:00.123456+00:00';
+    const response = await app.request(
+      `/v1/export/privacy?workspace_id=${workspaceId}&project_id=${memoryOsProjectId}&snapshot_at=${encodeURIComponent(snapshotAt)}`,
+      { headers: { 'x-subject-id': owner, 'x-actor-key': 'owner' } },
+    );
+
+    expect(response.status).toBe(200);
+    expect(gateway.exportPrivacyBundle).toHaveBeenCalledWith(
+      expect.objectContaining({ snapshotAt }),
+    );
+  });
+
   it('rejects an invalid privacy export snapshot cursor', async () => {
     const gateway = { exportPrivacyBundle: vi.fn() };
     const app = createApp({ gateway: gateway as any });
@@ -3645,6 +3664,90 @@ describe('memory api demo slice', () => {
       error: 'as_of_must_not_be_in_the_future',
     });
     expect(gateway.runRetentionPolicy).not.toHaveBeenCalled();
+  });
+
+  it('passes an omitted retention cutoff through for the database clock', async () => {
+    const gateway = {
+      runRetentionPolicy: vi.fn(async () => ({
+        policyVersion: 'm20-s04-v1',
+        dryRun: true,
+      })),
+    };
+    const app = createApp({ gateway: gateway as any });
+    const response = await app.request('/v1/privacy/retention/run', {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'x-subject-id': owner,
+        'x-actor-key': 'owner',
+      },
+      body: JSON.stringify({
+        workspace_id: workspaceId,
+        project_id: memoryOsProjectId,
+        actor_subject_id: owner,
+        dry_run: true,
+      }),
+    });
+
+    expect(response.status).toBe(200);
+    expect(gateway.runRetentionPolicy).toHaveBeenCalledWith({
+      subjectId: owner,
+      workspaceId,
+      projectId: memoryOsProjectId,
+      asOf: null,
+      dryRun: true,
+    });
+  });
+
+  it('reports a missing privacy target without claiming the request is gone', async () => {
+    const requestId = '99999999-0000-4000-8000-000000000498';
+    for (const message of [
+      'memory target not found in project',
+      'connector target not found in workspace',
+    ]) {
+      const gateway = {
+        executePrivacyRequest: vi.fn(async () => {
+          throw new Error(message);
+        }),
+      };
+      const app = createApp({ gateway: gateway as any });
+      const response = await app.request(`/v1/privacy/requests/${requestId}/execute`, {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          'x-subject-id': owner,
+          'x-actor-key': 'owner',
+        },
+        body: JSON.stringify({ actor_subject_id: owner }),
+      });
+
+      expect(response.status).toBe(409);
+      await expect(response.json()).resolves.toEqual({ error: 'privacy_target_not_found' });
+    }
+  });
+
+  it('still reports a missing privacy request as not found', async () => {
+    const requestId = '99999999-0000-4000-8000-000000000498';
+    const gateway = {
+      executePrivacyRequest: vi.fn(async () => {
+        const error = new Error('privacy request not found');
+        (error as Error & { code?: string }).code = 'P0002';
+        throw error;
+      }),
+    };
+    const app = createApp({ gateway: gateway as any });
+    const response = await app.request(`/v1/privacy/requests/${requestId}/execute`, {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'x-subject-id': owner,
+        'x-actor-key': 'owner',
+      },
+      body: JSON.stringify({ actor_subject_id: owner }),
+    });
+
+    expect(response.status).toBe(404);
+    await expect(response.json()).resolves.toEqual({ error: 'privacy_request_not_found' });
   });
 
   it('requires explicit project_id for privacy requests', async () => {

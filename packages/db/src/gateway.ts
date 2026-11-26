@@ -689,7 +689,9 @@ export class SupabaseMemoryGateway {
       p_subject_id: input.subjectId,
       p_workspace_id: input.workspaceId,
       p_project_id: input.projectId,
-      p_as_of: input.asOf ?? new Date().toISOString(),
+      // Null lets the database use statement_timestamp(). An API host clock
+      // can be ahead of Postgres and is then rejected as a future cutoff.
+      p_as_of: input.asOf ?? null,
       p_dry_run: input.dryRun !== false,
     });
     if (error) throw error;

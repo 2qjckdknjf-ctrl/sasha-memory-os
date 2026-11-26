@@ -1093,6 +1093,20 @@ BEGIN
   END IF;
 
   v_result := public.api_apply_retention_policy(
+    v_secret, v_owner, v_workspace, v_project, NULL, true
+  );
+  IF v_result->>'asOf' IS NULL
+     OR (v_result->>'asOf')::timestamptz > statement_timestamp() THEN
+    RAISE EXCEPTION 'default retention cutoff did not use the database clock: %', v_result;
+  END IF;
+  IF NOT EXISTS (
+    SELECT 1 FROM public.memory_records
+    WHERE id = v_retention_memory AND status = 'candidate'
+  ) THEN
+    RAISE EXCEPTION 'default retention cutoff mutated data';
+  END IF;
+
+  v_result := public.api_apply_retention_policy(
     v_secret, v_owner, v_workspace, v_project, now(), true
   );
   IF (v_result->>'candidateMemories')::integer < 2
