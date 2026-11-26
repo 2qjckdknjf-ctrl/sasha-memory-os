@@ -5,7 +5,14 @@ set -euo pipefail
 
 : "${DB_URL:?DB_URL is required}"
 
-for command in pg_dump pg_restore psql createdb dropdb; do
+restore_container="${MEMORY_OS_RESTORE_CONTAINER:-}"
+required_commands=(psql createdb dropdb)
+if [[ -n "$restore_container" ]]; then
+  required_commands+=(docker node)
+else
+  required_commands+=(pg_dump pg_restore)
+fi
+for command in "${required_commands[@]}"; do
   command -v "$command" >/dev/null 2>&1 || {
     echo "m20_restore_drill=missing_command command=$command" >&2
     exit 1
@@ -16,13 +23,49 @@ task_tmp="$(mktemp -d)"
 target_db="m20_restore_${RANDOM}_${RANDOM}"
 target_url="${DB_URL%/*}/${target_db}"
 started_at="$(date +%s)"
+container_tmp=""
+target_created=false
 
 cleanup() {
-  dropdb --if-exists --force --maintenance-db="$DB_URL" "$target_db" >/dev/null 2>&1 || true
+  if [[ "$target_created" == true ]]; then
+    dropdb --if-exists --force --maintenance-db="$DB_URL" "$target_db" >/dev/null 2>&1 || true
+  fi
+  if [[ -n "$container_tmp" ]]; then
+    docker exec "$restore_container" rm -rf "$container_tmp" >/dev/null 2>&1 || true
+  fi
   rm -rf "$task_tmp"
 }
 trap cleanup EXIT
 chmod 700 "$task_tmp"
+
+dump_client=(pg_dump)
+restore_client=(pg_restore)
+dump_url="$DB_URL"
+restore_url="$target_url"
+if [[ -n "$restore_container" ]]; then
+  # This opt-in mode is only for the disposable local Supabase instance. Running
+  # pg_dump/pg_restore in its DB container keeps both clients on the server's
+  # major version; a newer pg_restore may emit SET transaction_timeout on PG15.
+  dump_url="$(node --input-type=module <<'JS'
+try {
+  const url = new URL(process.env.DB_URL);
+  if (!['localhost', '127.0.0.1', '[::1]'].includes(url.hostname)) throw new Error();
+  url.hostname = '127.0.0.1';
+  url.port = '5432';
+  process.stdout.write(url.href);
+} catch {
+  console.error('m20_restore_drill=container_requires_local_db_url');
+  process.exit(1);
+}
+JS
+)"
+  restore_url="${dump_url%/*}/${target_db}"
+  dump_client=(docker exec -i "$restore_container" pg_dump)
+  restore_client=(docker exec -i "$restore_container" pg_restore)
+  "${dump_client[@]}" --version
+  "${restore_client[@]}" --version
+  container_tmp="$(docker exec "$restore_container" mktemp -d)"
+fi
 
 inventory_sql="select jsonb_build_object(
   'publicTables', (select count(*) from pg_class c join pg_namespace n on n.oid=c.relnamespace where n.nspname='public' and c.relkind in ('r','p')),
@@ -43,16 +86,17 @@ inventory_sql="select jsonb_build_object(
 source_inventory="$(psql "$DB_URL" -X -A -t -v ON_ERROR_STOP=1 -c "$inventory_sql")"
 
 umask 077
-pg_dump "$DB_URL" \
+"${dump_client[@]}" "$dump_url" \
   --format=custom \
   --no-owner \
   --schema=public \
   --schema=app \
   --schema=vault \
   --exclude-table-data='vault.secrets' \
-  --file="$task_tmp/current.dump"
+  > "$task_tmp/current.dump"
 
 createdb --maintenance-db="$DB_URL" --template=template0 "$target_db"
+target_created=true
 
 # Schema-filtered dumps do not include extension definitions or their
 # dependencies. Recreate only the extensions used by the Memory OS schemas,
@@ -88,18 +132,25 @@ psql "$target_url" -X -v ON_ERROR_STOP=1 -f "$task_tmp/extensions.sql"
 # database owner cannot impersonate during a logical restore; extension/bootstrap
 # provisioning recreates those defaults. Exclude only those platform-owned TOC
 # rows. All Memory OS object ACLs, tables, functions, policies, and data remain.
-pg_restore --list "$task_tmp/current.dump" > "$task_tmp/restore.list"
+"${restore_client[@]}" --list < "$task_tmp/current.dump" > "$task_tmp/restore.list"
 awk '
   !/ SCHEMA - (public|vault) / &&
   !/ DEFAULT ACL .* supabase_admin$/
 ' "$task_tmp/restore.list" > "$task_tmp/restore.filtered.list"
 
-pg_restore \
+restore_list="$task_tmp/restore.filtered.list"
+if [[ -n "$restore_container" ]]; then
+  docker exec -i "$restore_container" sh -c 'umask 077; cat > "$1"' \
+    sh "$container_tmp/restore.list" < "$restore_list"
+  restore_list="$container_tmp/restore.list"
+fi
+
+"${restore_client[@]}" \
   --exit-on-error \
   --no-owner \
-  --use-list="$task_tmp/restore.filtered.list" \
-  --dbname="$target_url" \
-  "$task_tmp/current.dump"
+  --use-list="$restore_list" \
+  --dbname="$restore_url" \
+  < "$task_tmp/current.dump"
 
 target_inventory="$(psql "$target_url" -X -A -t -v ON_ERROR_STOP=1 -c "$inventory_sql")"
 if [[ "$source_inventory" != "$target_inventory" ]]; then

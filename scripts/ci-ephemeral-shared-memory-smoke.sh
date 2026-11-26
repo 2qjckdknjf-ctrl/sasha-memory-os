@@ -59,7 +59,10 @@ psql "$DB_URL" -v ON_ERROR_STOP=1 -f tests/security/m19_control_center_governanc
 psql "$DB_URL" -v ON_ERROR_STOP=1 -f tests/security/m20_privacy_compliance_cases.sql
 
 echo "== M20.2 disposable current-schema restore drill"
-DB_URL="$DB_URL" ./scripts/m20-current-schema-restore-drill.sh
+# Use the database container's matching dump/restore clients, not the runner's
+# newer PostgreSQL tools (which emit settings unsupported by PostgreSQL 15).
+DB_URL="$DB_URL" MEMORY_OS_RESTORE_CONTAINER=supabase_db_sasha-memory-os \
+  ./scripts/m20-current-schema-restore-drill.sh
 
 STATUS_JSON="$(supabase status -o json)"
 export MEMORY_OS_SUPABASE_URL="$(node -e 'const j=JSON.parse(process.argv[1]); process.stdout.write(j.API_URL||"")' "$STATUS_JSON")"
