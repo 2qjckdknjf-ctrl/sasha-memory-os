@@ -49,8 +49,8 @@ describe('M18.2 project context pack', () => {
     expect(aclMigration.match(/app\.has_acl\(/g)?.length).toBeGreaterThanOrEqual(6);
     expect(ephemeral).toContain('m18_slice_02_context_acl_cases.sql');
     expect(current).toMatchObject({
-      completedThrough: 'M20.3',
-      nextSlice: 'M20.4_PRIVACY_COMPLIANCE',
+      completedThrough: 'M20.4',
+      nextSlice: 'M20_PRODUCTION_GA_COMPLETE',
       officialPacks: { m18ProjectContext: 'm18-s02-v1' },
       chatgptModeA: { toolCount: 7 },
       m18ProjectContextLiveReceipt: {

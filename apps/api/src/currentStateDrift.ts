@@ -51,9 +51,9 @@ export const CURRENT_STATE_PATH = resolve(
 
 export const OFFICIAL_M14_1_BASELINE_MANIFEST_VERSION = 'm14.1-v1' as const;
 export const CURRENT_OPERATIONAL_MILESTONE =
-  'm20-performance-retrieval-live-pass' as const;
+  'm20-privacy-compliance-live-pass' as const;
 export const CURRENT_NEXT_SLICE =
-  'M20.4_PRIVACY_COMPLIANCE' as const;
+  'M20_PRODUCTION_GA_COMPLETE' as const;
 
 export type CurrentStateManifest = {
   manifestVersion: string;
@@ -251,6 +251,20 @@ export type CurrentStateManifest = {
     steadyStateP95Ms: number;
     readAfterWrite: boolean;
   };
+  m20PrivacyComplianceLiveReceipt: {
+    packVersion: string;
+    memoryId: string;
+    verifiedAt: string;
+    implementationPullRequest: number;
+    mergeSha: string;
+    migration: string;
+    productionMigrationRecord: string;
+    privilegeBoundaryPassed: boolean;
+    retentionDryRunPassed: boolean;
+    exportPagePassed: boolean;
+    exportId: string;
+    readAfterWrite: boolean;
+  };
   projectRouting: {
     allowMemoryOsDefaultProjectIdFallback: boolean;
     allowAistroykaFallback: boolean;
@@ -400,10 +414,10 @@ export function validateCurrentStateDrift(
     });
   }
 
-  if (manifest.completedThrough !== 'M20.3') {
+  if (manifest.completedThrough !== 'M20.4') {
     findings.push({
       code: 'completed-through',
-      message: `expected contractPacks completedThrough M20.3, got ${manifest.completedThrough}`,
+      message: `expected contractPacks completedThrough M20.4, got ${manifest.completedThrough}`,
     });
   }
 
@@ -580,6 +594,32 @@ export function validateCurrentStateDrift(
       code: 'm20-performance-retrieval-live-receipt',
       message:
         'M20.3 live receipt must preserve PR/main, seven-tool, Recall@10, ACL, latency and read-after-write evidence',
+    });
+  }
+
+  const privacyReceipt = manifest.m20PrivacyComplianceLiveReceipt;
+  if (
+    !privacyReceipt ||
+    privacyReceipt.packVersion !==
+      OFFICIAL_M20_PRIVACY_COMPLIANCE_GATE_PACK_VERSION ||
+    privacyReceipt.memoryId !== '8c5a8399-cdd8-4fc4-8e6c-bb50f3b9c574' ||
+    privacyReceipt.implementationPullRequest !== 118 ||
+    privacyReceipt.mergeSha !==
+      '5fc987f116cff5aaf25cdb1a0d73085c8b1901a2' ||
+    privacyReceipt.migration !==
+      '20261015230000_m20_privacy_compliance_operations.sql' ||
+    privacyReceipt.productionMigrationRecord !==
+      '20261126222340_m20_privacy_compliance_operations' ||
+    privacyReceipt.privilegeBoundaryPassed !== true ||
+    privacyReceipt.retentionDryRunPassed !== true ||
+    privacyReceipt.exportPagePassed !== true ||
+    privacyReceipt.exportId !== '0f10ade8-37eb-4b49-af98-c07bcf2afdbf' ||
+    privacyReceipt.readAfterWrite !== true
+  ) {
+    findings.push({
+      code: 'm20-privacy-compliance-live-receipt',
+      message:
+        'M20.4 live receipt must preserve migration apply, privilege boundary, retention dry-run, export page and read-after-write evidence',
     });
   }
 

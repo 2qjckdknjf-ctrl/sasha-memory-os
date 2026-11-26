@@ -209,8 +209,20 @@ describe('M20.4 privacy and compliance gate', () => {
     expect(ephemeral).toContain('m20_privacy_compliance_cases.sql');
     expect(dataMap).toContain('POST /v1/privacy/retention/run');
     expect(dpia).toContain('V1 GA technical review refreshed 2026-10-15');
-    expect(docs).toContain('production acceptance is required after merge');
+    expect(docs).toContain('LIVE PASS on production');
+    expect(docs).toContain('8c5a8399-cdd8-4fc4-8e6c-bb50f3b9c574');
     expect(current.officialPacks.m20PrivacyCompliance).toBe('m20-s04-v1');
+    expect(current.completedThrough).toBe('M20.4');
+    expect(current.nextSlice).toBe('M20_PRODUCTION_GA_COMPLETE');
+    expect(current.m20PrivacyComplianceLiveReceipt).toMatchObject({
+      memoryId: '8c5a8399-cdd8-4fc4-8e6c-bb50f3b9c574',
+      implementationPullRequest: 118,
+      productionMigrationRecord:
+        '20261126222340_m20_privacy_compliance_operations',
+      retentionDryRunPassed: true,
+      exportPagePassed: true,
+      readAfterWrite: true,
+    });
     expect(current.supabase.latestMigration).toBe(
       '20261015230000_m20_privacy_compliance_operations.sql',
     );
