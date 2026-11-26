@@ -153,15 +153,62 @@ export const privacyRequestTypeSchema = z.enum([
   'retraction',
 ]);
 
-export const createPrivacyRequestSchema = z.object({
-  workspace_id: z.string().uuid(),
-  project_id: z.string().uuid().optional(),
+export const createPrivacyRequestSchema = z
+  .object({
+    workspace_id: z.string().uuid(),
+    project_id: z.string().uuid().optional(),
+    actor_subject_id: z.string().uuid(),
+    request_type: privacyRequestTypeSchema,
+    target_memory_id: z.string().uuid().optional(),
+    target_connector_account_id: z.string().uuid().optional(),
+    reason: z.string().trim().min(1).max(2000),
+    correction_text: z.string().trim().max(4000).optional(),
+    idempotency_key: z.string().trim().min(1).max(200),
+  })
+  .superRefine((value, ctx) => {
+    if (
+      value.request_type === 'deletion' &&
+      value.target_memory_id === undefined &&
+      value.target_connector_account_id === undefined
+    ) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'deletion requires a memory or connector target',
+        path: ['target_memory_id'],
+      });
+    }
+    if (
+      value.request_type !== 'deletion' &&
+      value.target_memory_id === undefined
+    ) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: `target_memory_id is required for ${value.request_type}`,
+        path: ['target_memory_id'],
+      });
+    }
+    if (
+      value.request_type === 'correction' &&
+      !value.correction_text
+    ) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'correction_text is required for correction',
+        path: ['correction_text'],
+      });
+    }
+  });
+
+export const executePrivacyRequestSchema = z.object({
   actor_subject_id: z.string().uuid(),
-  request_type: privacyRequestTypeSchema,
-  target_memory_id: z.string().uuid().optional(),
-  reason: z.string().min(1).max(2000),
-  correction_text: z.string().max(4000).optional(),
-  idempotency_key: z.string().min(1).max(200),
+});
+
+export const runRetentionPolicySchema = z.object({
+  workspace_id: z.string().uuid(),
+  project_id: z.string().uuid(),
+  actor_subject_id: z.string().uuid(),
+  as_of: z.string().datetime({ offset: true }).optional(),
+  dry_run: z.boolean().default(true),
 });
 
 export const extractionCandidateSchema = z.object({
@@ -193,4 +240,6 @@ export type SetMemoryPersonalizationInput = z.infer<
 >;
 export type CorrectMemoryInput = z.infer<typeof correctMemorySchema>;
 export type CreatePrivacyRequestInput = z.infer<typeof createPrivacyRequestSchema>;
+export type ExecutePrivacyRequestInput = z.infer<typeof executePrivacyRequestSchema>;
+export type RunRetentionPolicyInput = z.infer<typeof runRetentionPolicySchema>;
 export type ApplyExtractionInput = z.infer<typeof applyExtractionSchema>;

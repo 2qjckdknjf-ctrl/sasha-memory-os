@@ -1614,10 +1614,87 @@ export function App() {
         return;
       }
       const targetProjectId = resolveExplicitWriteProjectId();
-      const dump = await apiGet<{ format?: string; count?: number }>(
-        `/v1/export/memories?workspace_id=${WORKSPACE_ID}&project_id=${encodeURIComponent(targetProjectId)}&limit=200`,
-        subjectId,
-        actor,
+      type PrivacyExportPage = {
+        format?: string;
+        snapshotAt?: string;
+        exportId?: string;
+        counts?: {
+          memories?: number;
+          sourceEvents?: number;
+          artifacts?: number;
+          connectorAccounts?: number;
+          privacyRequests?: number;
+        };
+        pagination?: {
+          limit?: number;
+          offset?: number;
+          nextOffset?: number | null;
+          hasMore?: boolean;
+        };
+        truncated?: Record<string, boolean>;
+        memories?: Array<Record<string, unknown>>;
+        sourceEvents?: Array<Record<string, unknown>>;
+        artifacts?: Array<Record<string, unknown>>;
+        connectorAccounts?: Array<Record<string, unknown>>;
+        privacyRequests?: Array<Record<string, unknown>>;
+        [key: string]: unknown;
+      };
+      let offset = 0;
+      let snapshotAt: string | undefined;
+      let exportId: string | undefined;
+      let dump: PrivacyExportPage | null = null;
+      for (;;) {
+        const snapshotQuery = [
+          snapshotAt ? `snapshot_at=${encodeURIComponent(snapshotAt)}` : '',
+          exportId ? `export_id=${encodeURIComponent(exportId)}` : '',
+        ]
+          .filter(Boolean)
+          .map((value) => `&${value}`)
+          .join('');
+        const page = await apiGet<PrivacyExportPage>(
+          `/v1/export/privacy?workspace_id=${WORKSPACE_ID}&project_id=${encodeURIComponent(targetProjectId)}&limit=500&offset=${offset}${snapshotQuery}`,
+          subjectId,
+          actor,
+        );
+        if (!dump) {
+          if (!page.snapshotAt || !page.exportId) {
+            throw new Error('Privacy export did not provide a stable snapshot');
+          }
+          snapshotAt = page.snapshotAt;
+          exportId = page.exportId;
+          dump = {
+            ...page,
+            memories: [],
+            sourceEvents: [],
+            artifacts: [],
+            connectorAccounts: [],
+            privacyRequests: [],
+          };
+        } else if (page.snapshotAt !== snapshotAt || page.exportId !== exportId) {
+          throw new Error('Privacy export snapshot changed between pages');
+        }
+        dump.memories?.push(...(page.memories ?? []));
+        dump.sourceEvents?.push(...(page.sourceEvents ?? []));
+        dump.artifacts?.push(...(page.artifacts ?? []));
+        dump.connectorAccounts?.push(...(page.connectorAccounts ?? []));
+        dump.privacyRequests?.push(...(page.privacyRequests ?? []));
+
+        if (page.pagination?.hasMore !== true) break;
+        const nextOffset = page.pagination.nextOffset;
+        if (typeof nextOffset !== 'number' || nextOffset <= offset) {
+          throw new Error('Privacy export pagination did not advance');
+        }
+        offset = nextOffset;
+      }
+      if (!dump) throw new Error('Privacy export returned no pages');
+      dump.pagination = {
+        limit: dump.pagination?.limit ?? 500,
+        offset: 0,
+        nextOffset: null,
+        hasMore: false,
+      };
+      dump.truncated = Object.fromEntries(
+        Object.keys(dump.truncated ?? {}).map((key) => [key, false]),
       );
       const blob = new Blob([JSON.stringify(dump, null, 2)], {
         type: 'application/json',
@@ -1625,10 +1702,12 @@ export function App() {
       const url = URL.createObjectURL(blob);
       const anchor = document.createElement('a');
       anchor.href = url;
-      anchor.download = `memory-os-export-${new Date().toISOString().slice(0, 10)}.json`;
+      anchor.download = `memory-os-privacy-export-${new Date().toISOString().slice(0, 10)}.json`;
       anchor.click();
       URL.revokeObjectURL(url);
-      setLastCapture(`exported memories format=${dump.format ?? '?'} count=${dump.count ?? 0}`);
+      setLastCapture(
+        `privacy export format=${dump.format ?? '?'} memories=${dump.counts?.memories ?? 0} sources=${dump.counts?.sourceEvents ?? 0} artifacts=${dump.counts?.artifacts ?? 0}`,
+      );
     } catch (err) {
       setError((err as Error).message);
     }

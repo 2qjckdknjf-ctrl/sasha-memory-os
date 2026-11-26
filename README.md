@@ -18,6 +18,7 @@
 - [M19 Control Center governance](docs/engineering/M19_CONTROL_CENTER_GOVERNANCE.md)
 - [M20.2 reliability and DR gate](docs/engineering/M20_SLICE_02_RELIABILITY_DR.md)
 - [M20.3 performance and retrieval gate](docs/engineering/M20_SLICE_03_PERFORMANCE_RETRIEVAL.md)
+- [M20.4 privacy and compliance operations](docs/engineering/M20_SLICE_04_PRIVACY_COMPLIANCE.md)
 
 ## Статус
 
@@ -38,7 +39,8 @@ Machine-readable snapshot: [docs/engineering/CURRENT_STATE.json](docs/engineerin
 - **M19 production PASS:** owner governance overview, routing inbox, job controls, cursor privacy, privilege boundaries and the server-secret-safe production Chrome gate passed from trusted `main`
 - **M20.1 security implementation merged:** exhaustive RLS/RPC checks and threat model are live; leaked-password protection is enabled, while the stale GitHub Management API token still blocks a green automation receipt
 - **M20.2 reliability/DR implementation:** daily backup inventory plus current-schema isolated restore and transactional retry/DLQ/replay/token-expiry drills are mandatory in CI
-- **M20.3 performance/retrieval implementation:** frozen 200-case Recall@10 gate, M13 regression pack, 60-operation Supabase soak plus five bounded agentic probes, concurrent route/dedupe proof and steady-state read-only live Edge latency are mandatory in CI
+- **M20.3 performance/retrieval production PASS:** frozen 200-case Recall@10 gate, M13 regression pack, 60-operation Supabase soak plus five bounded agentic probes, concurrent route/dedupe proof and steady-state live p95 `1750 ms`; Memory OS receipt `1e618a29-8ba6-4da4-871a-d6530863cf2a`
+- **M20.4 privacy/compliance implementation:** full owner export, idempotent correction/retraction/delete/source revoke, derived-data erasure and executable retention policy are mandatory in CI; production acceptance follows merge
 - Core path live: WP-01…08 RPCs, vault OAuth, hybrid RRF retrieval, embeddings, consolidation/outbox/jobs, MCP, Control Center
 - M10–M13 foundations merged (Drive/Gmail/Calendar policies, ROMA project-health, bounded agentic retrieval / consolidation / ranking)
 - Apple: companion-required personal-source contracts complete; live device E2E still blocked
@@ -141,7 +143,7 @@ Canonical order (do not skip): see [M14_1_BASELINE.md](docs/engineering/M14_1_BA
 26. ~~M18.3 ROMA integration~~ (`m18-s03-v1`) — shared context consumption, audited/deduplicated QA + release-risk outcomes, release evidence and candidate-only production read-after-write PASS; Memory OS receipt `ea0746e7-6557-4c66-b017-005e3c06f157`
 27. ~~M18.4 ChatGPT automatic writeback policy~~ (`m18-s04-v1`) — production Edge v12 create/dedupe/conflict/read-after-write PASS; cross-client M18 exit gate PASS; Memory OS receipt `b664431d-7e33-49f3-bd3b-27dbb24150f0`
 28. ~~M19 Control Center governance completion~~ (`m19-s01-v1`) — production migration, privilege checks, reversible routing probe and trusted-main Chrome E2E PASS; superseding Memory OS receipt `4376487c-d83f-42d1-bc1d-2d900baf2a30`
-29. **M20 security, reliability/DR, performance, privacy, release engineering and final GA evidence** — M20.1/M20.2 landed; M20.3 is in acceptance; final closure remains open
+29. **M20 security, reliability/DR, performance, privacy, release engineering and final GA evidence** — M20.1–M20.3 landed and live-checked; M20.4 is in acceptance; final closure remains open
 
 ## AI разборы 2026-10-13
 

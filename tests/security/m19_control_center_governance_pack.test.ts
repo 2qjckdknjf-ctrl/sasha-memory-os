@@ -73,8 +73,8 @@ describe('M19 Control Center governance pack', () => {
     expect(docs).toContain('/governance#routing-inbox');
     expect(docs).toContain('COMPLETE / TRUSTED-MAIN LIVE PASS');
     expect(current).toMatchObject({
-      completedThrough: 'M19',
-      nextSlice: 'M20_PRODUCTION_GA_CLOSURE',
+      completedThrough: 'M20.3',
+      nextSlice: 'M20.4_PRIVACY_COMPLIANCE',
       officialPacks: { m19ControlCenterGovernance: 'm19-s01-v1' },
       m19ControlCenterGovernanceLiveReceipt: {
         memoryId: '4376487c-d83f-42d1-bc1d-2d900baf2a30',
