@@ -132,3 +132,14 @@ Planning only. Reconcile current main and active PRs first; preserve M19 shared 
 - P1 existing experience/evidence: version reusable task templates, LoRA/skill/model provenance, requirement-to-test receipts and independent verdict; distinguish NOT_RUN/UNKNOWN/FAIL; no raw untrusted traces as training data.
 
 Codex/Cursor: map gaps to existing IDs, implement only missing functionality on separate branch, preserve tests, report exact SHA, independent verdict, reproducible tests and blockers. No auto-merge or production changes. Owner/reviewer TBD.
+
+
+## Cursor execution specification — 2026-11-26
+
+Planning-only delta for 25–26 November. Read current main and active implementation PRs first; map to existing IDs, implement only confirmed gaps. Vendor claims require primary-source verification. Existing P0 gates remain first. Proposed numerical thresholds are initial configurable test defaults, not measured results. No auto-merge, deployment, purchases, ad activation or live trading. Owner/reviewer TBD.
+
+### P1 — existing M20 provenance / retrieval
+Preserve M19 and current M20 gates. Extend existing evidence schema only if missing: skill/model/runtime version and hash, source first-available timestamp, observation timestamp, task/attempt ID, independent verdict, contradictory evidence and supersession. MCP task handoff retains ACL and consent; no secrets or untrusted skill instructions persisted as trusted memory. Test cross-tenant denial, replay, stale/superseded records, historical cutoff leakage and retrieval latency/Recall@K. Store model benchmark receipts from Growth with exact environment and cost; no second memory store.
+
+### Cursor delivery contract
+Work in a separate implementation branch; report gap matrix, changed files, reproducible commands, test receipts, exact commit SHA, independent verdict, rollback and remaining blockers. Never mark DONE from documentation/build alone. Stop on missing authorization, hardware access or provider compatibility; report NOT_RUN rather than fabricate evidence.
