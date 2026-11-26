@@ -1,6 +1,9 @@
 # M20.4 — privacy and compliance operations
 
-Status: implementation complete; production acceptance is required after merge.
+Status: LIVE PASS on production (2026-11-26). Implementation merged in PR #118;
+migration applied as `20261126222340_m20_privacy_compliance_operations`; live
+privilege/export/retention dry-run probes recorded in Memory OS receipt
+`8c5a8399-cdd8-4fc4-8e6c-bb50f3b9c574`.
 
 Official pack: `m20-s04-v1`
 

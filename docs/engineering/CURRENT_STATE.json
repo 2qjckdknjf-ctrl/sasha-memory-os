@@ -1,19 +1,19 @@
 {
   "manifestVersion": "m14.1-v1",
   "schemaVersion": "1.2",
-  "generatedAt": "2026-10-15T21:22:58Z",
+  "generatedAt": "2026-11-26T22:26:00Z",
   "repository": "2qjckdknjf-ctrl/sasha-memory-os",
   "canonicalProjectId": "44444444-4444-4444-8444-444444444402",
   "aistroykaProjectId": "44444444-4444-4444-8444-444444444401",
   "hiairProjectId": "44444444-4444-4444-8444-444444444403",
   "canonicalWorkspaceId": "11111111-1111-4111-8111-111111111111",
-  "reconciledAgainstMainSha": "63b643a0b2fe5aed7638c9258bf531e369f4ebb9",
-  "contractPacksCompletedThrough": "M20.3",
-  "liveOperationalMilestone": "M20_PERFORMANCE_RETRIEVAL_LIVE_PASS",
-  "nextAllowedSlice": "M20.4_PRIVACY_COMPLIANCE",
-  "currentMilestone": "m20-performance-retrieval-live-pass",
-  "completedThrough": "M20.3",
-  "nextSlice": "M20.4_PRIVACY_COMPLIANCE",
+  "reconciledAgainstMainSha": "5fc987f116cff5aaf25cdb1a0d73085c8b1901a2",
+  "contractPacksCompletedThrough": "M20.4",
+  "liveOperationalMilestone": "M20_PRIVACY_COMPLIANCE_LIVE_PASS",
+  "nextAllowedSlice": "M20_PRODUCTION_GA_COMPLETE",
+  "currentMilestone": "m20-privacy-compliance-live-pass",
+  "completedThrough": "M20.4",
+  "nextSlice": "M20_PRODUCTION_GA_COMPLETE",
   "frozenSlices": [],
   "canonicalPlanMemoryTitle": "SASHA MEMORY OS — CANONICAL COMPLETION PLAN TO 100% — 2026-08-21",
   "supabase": {
@@ -320,6 +320,20 @@
     "performanceAdvisors": {
       "unindexedForeignKeys": 75
     }
+  },
+  "m20PrivacyComplianceLiveReceipt": {
+    "packVersion": "m20-s04-v1",
+    "memoryId": "8c5a8399-cdd8-4fc4-8e6c-bb50f3b9c574",
+    "verifiedAt": "2026-11-26T22:25:39.415724Z",
+    "implementationPullRequest": 118,
+    "mergeSha": "5fc987f116cff5aaf25cdb1a0d73085c8b1901a2",
+    "migration": "20261015230000_m20_privacy_compliance_operations.sql",
+    "productionMigrationRecord": "20261126222340_m20_privacy_compliance_operations",
+    "privilegeBoundaryPassed": true,
+    "retentionDryRunPassed": true,
+    "exportPagePassed": true,
+    "exportId": "0f10ade8-37eb-4b49-af98-c07bcf2afdbf",
+    "readAfterWrite": true
   },
   "projectRouting": {
     "allowMemoryOsDefaultProjectIdFallback": false,

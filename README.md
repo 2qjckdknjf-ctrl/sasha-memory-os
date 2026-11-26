@@ -26,8 +26,8 @@
 
 Machine-readable snapshot: [docs/engineering/CURRENT_STATE.json](docs/engineering/CURRENT_STATE.json) (`m14.1-v1` schema, reconciled 2026-10-15).
 
-- **Live operational milestone:** `M19_CONTROL_CENTER_GOVERNANCE_LIVE_PASS`; M20 production/GA closure is the next delivery slice
-- **Contract packs completed through:** M19 (`m19-s01-v1`, owner Control Center governance)
+- **Live operational milestone:** `M20_PRIVACY_COMPLIANCE_LIVE_PASS`; next is `M20_PRODUCTION_GA_COMPLETE` (residual ops blockers only)
+- **Contract packs completed through:** M20.4 (`m20-s04-v1`, privacy/compliance live)
 - **Canonical Memory OS project UUID:** `44444444-4444-4444-8444-444444444402`
 - **M6 ChatGPT Mode A PASS (2026-08-15):** ChatGPT-only; does not close shared-memory E2E
 - **Bidirectional ChatGPT↔Cursor E2E PASS (2026-10-13):** real-session receipts, explicit project isolation, actor attribution verified
@@ -40,7 +40,7 @@ Machine-readable snapshot: [docs/engineering/CURRENT_STATE.json](docs/engineerin
 - **M20.1 security implementation merged:** exhaustive RLS/RPC checks and threat model are live; leaked-password protection is enabled, while the stale GitHub Management API token still blocks a green automation receipt
 - **M20.2 reliability/DR implementation:** daily backup inventory plus current-schema isolated restore and transactional retry/DLQ/replay/token-expiry drills are mandatory in CI
 - **M20.3 performance/retrieval production PASS:** frozen 200-case Recall@10 gate, M13 regression pack, 60-operation Supabase soak plus five bounded agentic probes, concurrent route/dedupe proof and steady-state live p95 `1750 ms`; Memory OS receipt `1e618a29-8ba6-4da4-871a-d6530863cf2a`
-- **M20.4 privacy/compliance implementation:** full owner export, idempotent correction/retraction/delete/source revoke, derived-data erasure and executable retention policy are mandatory in CI; production acceptance follows merge
+- **M20.4 privacy/compliance LIVE PASS:** production migration applied (`20261126222340_m20_privacy_compliance_operations`); privilege boundary, retention dry-run and paginated export probed live; Memory OS receipt `8c5a8399-cdd8-4fc4-8e6c-bb50f3b9c574`
 - Core path live: WP-01…08 RPCs, vault OAuth, hybrid RRF retrieval, embeddings, consolidation/outbox/jobs, MCP, Control Center
 - M10–M13 foundations merged (Drive/Gmail/Calendar policies, ROMA project-health, bounded agentic retrieval / consolidation / ranking)
 - Apple: companion-required personal-source contracts complete; live device E2E still blocked
