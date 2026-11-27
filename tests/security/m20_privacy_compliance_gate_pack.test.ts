@@ -224,7 +224,7 @@ describe('M20.4 privacy and compliance gate', () => {
       readAfterWrite: true,
     });
     expect(current.supabase.latestMigration).toBe(
-      '20261015230000_m20_privacy_compliance_operations.sql',
+      '20261127190000_m20_consolidation_proposal_review.sql',
     );
     expect(current.tests.m20PrivacyComplianceSql).toBe(
       'tests/security/m20_privacy_compliance_cases.sql',
