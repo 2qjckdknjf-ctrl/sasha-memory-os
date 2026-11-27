@@ -529,19 +529,36 @@ AS $$
   );
 $$;
 
+REVOKE EXECUTE ON FUNCTION app.api_upsert_memory_conflict(
+  text, uuid, uuid, uuid, text, text, text, uuid, uuid, jsonb, text, uuid
+) FROM PUBLIC, anon, authenticated;
+REVOKE EXECUTE ON FUNCTION public.api_upsert_memory_conflict(
+  text, uuid, uuid, uuid, text, text, text, uuid, uuid, jsonb, text, uuid
+) FROM PUBLIC, anon, authenticated;
+REVOKE EXECUTE ON FUNCTION app.api_restore_superseded_memory(text, uuid, uuid, text, text)
+  FROM PUBLIC, anon, authenticated;
+REVOKE EXECUTE ON FUNCTION public.api_restore_superseded_memory(text, uuid, uuid, text, text)
+  FROM PUBLIC, anon, authenticated;
+REVOKE EXECUTE ON FUNCTION app.api_decide_memory_conflict(
+  text, uuid, uuid, uuid, text, text, uuid, uuid
+) FROM PUBLIC, anon, authenticated;
+REVOKE EXECUTE ON FUNCTION public.api_decide_memory_conflict(
+  text, uuid, uuid, uuid, text, text, uuid, uuid
+) FROM PUBLIC, anon, authenticated;
+
 GRANT EXECUTE ON FUNCTION app.api_upsert_memory_conflict(
   text, uuid, uuid, uuid, text, text, text, uuid, uuid, jsonb, text, uuid
-) TO anon, authenticated, service_role;
+) TO service_role;
 GRANT EXECUTE ON FUNCTION public.api_upsert_memory_conflict(
   text, uuid, uuid, uuid, text, text, text, uuid, uuid, jsonb, text, uuid
-) TO anon, authenticated, service_role;
+) TO service_role;
 GRANT EXECUTE ON FUNCTION app.api_restore_superseded_memory(text, uuid, uuid, text, text)
-  TO anon, authenticated, service_role;
+  TO service_role;
 GRANT EXECUTE ON FUNCTION public.api_restore_superseded_memory(text, uuid, uuid, text, text)
-  TO anon, authenticated, service_role;
+  TO service_role;
 GRANT EXECUTE ON FUNCTION app.api_decide_memory_conflict(
   text, uuid, uuid, uuid, text, text, uuid, uuid
-) TO anon, authenticated, service_role;
+) TO service_role;
 GRANT EXECUTE ON FUNCTION public.api_decide_memory_conflict(
   text, uuid, uuid, uuid, text, text, uuid, uuid
-) TO anon, authenticated, service_role;
+) TO service_role;
