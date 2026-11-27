@@ -143,3 +143,13 @@ Preserve M19 and current M20 gates. Extend existing evidence schema only if miss
 
 ### Cursor delivery contract
 Work in a separate implementation branch; report gap matrix, changed files, reproducible commands, test receipts, exact commit SHA, independent verdict, rollback and remaining blockers. Never mark DONE from documentation/build alone. Stop on missing authorization, hardware access or provider compatibility; report NOT_RUN rather than fabricate evidence.
+
+
+## Cursor / Codex execution delta — 2026-11-27
+
+Planning-only extension to November 26 specification. Reconcile current main, active PRs and actual code before execution; map to existing IDs, implement only confirmed gaps. P0 blockers first. Vendor claims from daily digest require primary-source verification before adoption. Numerical corpus sizes are proposed test defaults, not measured results. Owner/reviewer TBD.
+
+- P1 existing M20 consolidation: audit current memory lifecycle before implementation. Add proposal-only consolidation to existing pipeline if missing: detect contradictory/stale/repeatedly disproven memories, attach original evidence, propose correction/supersession with reason and scope; independent reviewer approves before trusted retrieval. Preserve audit history subject to retention/deletion policy, ACL, version and rollback; never rewrite security rules or silently elevate unverified traces.
+- Acceptance: fixtures for false memory causing repeated failure, contradictory sources, stale version, cross-tenant denial, rejected proposal, approved supersession and rollback; measure retrieval correctness/Recall@K, latency and repeat failure rate before/after. Store three-run Model Arena receipts with functional/security verdicts and environment provenance. Preserve M19 and current M20 release gates.
+
+Delivery: separate implementation branch, baseline and gap matrix, reproducible tests, exact SHA, independent verdict, rollback and blockers. No automatic merge, production deployment, purchases or live trading. Sources for verification: https://huggingface.co/nvidia/Nemotron-3.5-Parse ; https://onchainbench.ai/methodology ; https://www.perplexity.ai/en-GB/hub/blog/freeze-the-web-with-perplexity-time-machine ; https://openclaw.ai/blog/shellbench ; https://sakana.ai/marlin-update-2/ .
