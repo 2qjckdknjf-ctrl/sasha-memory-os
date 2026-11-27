@@ -1368,6 +1368,7 @@ export function App() {
       const report = await apiPost<{
         planned?: number;
         applied?: unknown[];
+        persistedConflictIds?: string[];
         job?: { jobId?: string } | null;
       }>(
         '/v1/consolidation/run',
@@ -1375,13 +1376,16 @@ export function App() {
         {
           workspace_id: WORKSPACE_ID,
           actor_subject_id: subjectId,
+          ...(readProjectId
+            ? { project_id: readProjectId, proactive: true }
+            : {}),
           apply: false,
           enqueue: true,
         },
         actor,
       );
       setLastCapture(
-        `consolidation planned=${report.planned ?? 0} applied=${report.applied?.length ?? 0}${
+        `consolidation planned=${report.planned ?? 0} proposals=${report.persistedConflictIds?.length ?? 0} applied=${report.applied?.length ?? 0}${
           report.job?.jobId ? ` job=${report.job.jobId}` : ''
         }`,
       );

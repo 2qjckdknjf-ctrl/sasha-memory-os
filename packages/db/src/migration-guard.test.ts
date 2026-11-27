@@ -394,6 +394,12 @@ describe('m8 slice 03 migration guards', () => {
       `reviewer cannot self-approve consolidation proposals`,
     );
     expect(consolidationProposalReviewSql).toContain(`p_detected_by_subject`);
+    expect(consolidationProposalReviewSql).toContain(
+      `WHEN memory_conflicts.status = 'candidate' THEN EXCLUDED.title`,
+    );
+    expect(consolidationProposalReviewSql).not.toContain(`resolution = NULL`);
+    expect(consolidationProposalReviewSql).toContain(`l.recorded_at`);
+    expect(consolidationProposalReviewSql).toContain(`'validTo', m.valid_to`);
     expect(consolidationProposalReviewSql).not.toContain(
       `'44444444-4444-4444-8444-444444444401'`,
     );

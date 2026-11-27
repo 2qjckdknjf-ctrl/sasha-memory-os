@@ -21,6 +21,19 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
+/** Newer recordedAt wins; equal timestamps keep the UUID-sorted left id. */
+function newerRecordedPair(
+  memories: Map<string, MemoryRecord>,
+  memoryIds: [string, string],
+): { keeperId: string; duplicateId: string } {
+  const [leftId, rightId] = memoryIds;
+  const leftAt = memories.get(leftId)?.recordedAt ?? '';
+  const rightAt = memories.get(rightId)?.recordedAt ?? '';
+  const keeperId = leftAt >= rightAt ? leftId : rightId;
+  const duplicateId = keeperId === leftId ? rightId : leftId;
+  return { keeperId, duplicateId };
+}
+
 function memoryPersonalizationAuditState(
   record: MemoryPersonalizationRecord,
 ): Record<string, unknown> {
@@ -273,13 +286,15 @@ export class MemoryStore {
       if (!existing) {
         throw new Error('memory conflict index corrupt');
       }
+      const open = existing.status === 'candidate';
       const next: MemoryConflictRecord = {
         ...existing,
-        title: input.title,
-        reason: input.reason,
-        memoryIds: input.memoryIds,
-        evidence: input.evidence,
-        detectorVersion: input.detectorVersion,
+        title: open ? input.title : existing.title,
+        reason: open ? input.reason : existing.reason,
+        memoryIds: open ? input.memoryIds : existing.memoryIds,
+        evidence: open ? input.evidence : existing.evidence,
+        detectorVersion: open ? input.detectorVersion : existing.detectorVersion,
+        createdBySubject: open ? input.actorSubjectId : existing.createdBySubject,
         detectionCount: existing.detectionCount + 1,
         lastDetectedAt: detectedAt,
       };
@@ -380,8 +395,17 @@ export class MemoryStore {
       if (existing.status !== 'candidate') {
         throw new Error('only candidate conflicts can be approved');
       }
-      const keeperId = input.keeperId ?? existing.memoryIds[0];
-      const duplicateId = input.duplicateId ?? existing.memoryIds[1];
+      const [leftId, rightId] = existing.memoryIds;
+      const survivor = newerRecordedPair(this.memories, existing.memoryIds);
+      const keeperId =
+        input.keeperId ??
+        (input.duplicateId
+          ? input.duplicateId === leftId
+            ? rightId
+            : leftId
+          : survivor.keeperId);
+      const duplicateId =
+        input.duplicateId ?? (keeperId === leftId ? rightId : leftId);
       if (keeperId === duplicateId) {
         throw new Error('keeper and duplicate must differ');
       }

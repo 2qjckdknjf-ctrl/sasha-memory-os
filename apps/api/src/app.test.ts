@@ -4376,6 +4376,96 @@ describe('memory api demo slice', () => {
     expect((await rolledBack.json()).status).toBe('candidate');
   });
 
+  it('persists near-duplicate proposals on the default non-proactive run', async () => {
+    const app = createApp({});
+    const ownerId = '33333333-3333-4333-8333-333333333301';
+    const first = await app.request('/v1/capture/text', {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'x-subject-id': chatgpt,
+      },
+      body: JSON.stringify({
+        workspace_id: workspaceId,
+        project_id: projectId,
+        actor_subject_id: chatgpt,
+        title: 'Default run twin',
+        text: 'same body',
+        idempotency_key: `default-run-a-${Date.now()}`,
+      }),
+    });
+    const second = await app.request('/v1/capture/text', {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'x-subject-id': chatgpt,
+      },
+      body: JSON.stringify({
+        workspace_id: workspaceId,
+        project_id: projectId,
+        actor_subject_id: chatgpt,
+        title: 'default run twin',
+        text: 'same body',
+        idempotency_key: `default-run-b-${Date.now()}`,
+      }),
+    });
+    const firstBody = (await first.json()) as { memoryId: string };
+    const secondBody = (await second.json()) as { memoryId: string };
+
+    const planned = await app.request('/v1/consolidation/run', {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'x-subject-id': ownerId,
+        'x-actor-key': 'owner',
+      },
+      body: JSON.stringify({
+        workspace_id: workspaceId,
+        actor_subject_id: ownerId,
+      }),
+    });
+    expect(planned.status).toBe(200);
+    const plannedBody = await planned.json();
+    expect(plannedBody.proposalOnly).toBe(true);
+    expect(plannedBody.applied).toEqual([]);
+    expect(plannedBody.persistedConflictIds.length).toBeGreaterThanOrEqual(1);
+    expect(plannedBody.planned).toBeGreaterThanOrEqual(1);
+
+    const approved = await app.request(
+      `/v1/consolidation/conflicts/${plannedBody.persistedConflictIds[0]}/decide`,
+      {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          'x-subject-id': ownerId,
+          'x-actor-key': 'owner',
+        },
+        body: JSON.stringify({
+          workspace_id: workspaceId,
+          actor_subject_id: ownerId,
+          decision: 'approve',
+          reason: 'default-run proposal is independently reviewable',
+        }),
+      },
+    );
+    expect(approved.status).toBe(200);
+    const approvedBody = await approved.json();
+    expect(approvedBody.status).toBe('resolved');
+    const keptId =
+      approvedBody.resolution?.keeperId === firstBody.memoryId
+        ? firstBody.memoryId
+        : secondBody.memoryId;
+    const retiredId = keptId === firstBody.memoryId ? secondBody.memoryId : firstBody.memoryId;
+    const kept = await app.request(`/v1/memories/${keptId}`, {
+      headers: { 'x-subject-id': ownerId, 'x-actor-key': 'owner' },
+    });
+    const retired = await app.request(`/v1/memories/${retiredId}`, {
+      headers: { 'x-subject-id': ownerId, 'x-actor-key': 'owner' },
+    });
+    expect((await kept.json()).memory.status).not.toBe('superseded');
+    expect((await retired.json()).memory.status).toBe('superseded');
+  });
+
   it('keeps consolidation proposals project-scoped and supports reject', async () => {
     const app = createApp({});
     const ownerId = '33333333-3333-4333-8333-333333333301';

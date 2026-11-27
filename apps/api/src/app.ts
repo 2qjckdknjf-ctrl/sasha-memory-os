@@ -5368,17 +5368,40 @@ export function createApp(options?: {
           status: 'candidate',
           limit: body.limit ?? 100,
         });
-        const planned = await planCandidateConsolidations(
-          rows.map((row) => ({
-            id: row.id,
-            title: row.title,
-            content: row.content,
-            status: row.status,
-            recordedAt: row.recordedAt,
-            embedding: Array.isArray(row.embedding) ? row.embedding : null,
-            projectId: row.projectId,
-          })),
-        );
+        const candidateRows = rows.map((row) => ({
+          id: row.id,
+          title: row.title,
+          content: row.content,
+          status: row.status,
+          recordedAt: row.recordedAt,
+          validTo: row.validTo ?? null,
+          embedding: Array.isArray(row.embedding) ? row.embedding : null,
+          projectId: row.projectId,
+        }));
+        const planned = await planCandidateConsolidations(candidateRows);
+        const proposals = collectConsolidationProposals({
+          candidates: candidateRows,
+          mergeCandidates: planned,
+          detectedConflicts: [],
+          proposalOnly,
+        });
+        const persistedConflictIds: string[] = [];
+        for (const conflict of proposals) {
+          if (!conflict.projectId) continue;
+          const persisted = await gw.upsertMemoryConflict({
+            subjectId: actorSubjectId,
+            workspaceId,
+            projectId: conflict.projectId,
+            conflictKey: conflict.key,
+            title: conflict.title,
+            reason: conflict.reason,
+            memoryIds: conflict.memoryIds,
+            evidence: conflict.evidence,
+            detectorVersion: PROACTIVE_CONSOLIDATION_RULES_VERSION,
+            detectedBySubject: CONSOLIDATION_PROPOSAL_DETECTOR_SUBJECT,
+          });
+          persistedConflictIds.push(persisted.id);
+        }
         const applied = [];
         const failed = [];
         if (apply) {
@@ -5427,6 +5450,7 @@ export function createApp(options?: {
           applied,
           failed,
           proposalOnly,
+          persistedConflictIds,
           backend: 'supabase',
           job: jobMeta,
         });
@@ -5441,9 +5465,32 @@ export function createApp(options?: {
           content: m.content,
           status: m.status,
           recordedAt: m.recordedAt,
-            projectId: m.projectId,
+          validTo: m.validTo ?? null,
+          projectId: m.projectId,
         }));
       const planned = await planCandidateConsolidations(candidates);
+      const proposals = collectConsolidationProposals({
+        candidates,
+        mergeCandidates: planned,
+        detectedConflicts: [],
+        proposalOnly,
+      });
+      const persistedConflictIds: string[] = [];
+      for (const conflict of proposals) {
+        if (!conflict.projectId) continue;
+        const persisted = storeLocal.upsertMemoryConflict({
+          workspaceId,
+          projectId: conflict.projectId,
+          conflictKey: conflict.key,
+          title: conflict.title,
+          reason: conflict.reason,
+          memoryIds: conflict.memoryIds,
+          evidence: conflict.evidence,
+          detectorVersion: PROACTIVE_CONSOLIDATION_RULES_VERSION,
+          actorSubjectId: CONSOLIDATION_PROPOSAL_DETECTOR_SUBJECT,
+        });
+        persistedConflictIds.push(persisted.id);
+      }
       const applied = [];
       if (apply) {
         for (const pair of planned) {
@@ -5464,6 +5511,7 @@ export function createApp(options?: {
         applied,
         failed: [],
         proposalOnly,
+        persistedConflictIds,
         backend: 'memory-store',
       });
     } catch (err) {

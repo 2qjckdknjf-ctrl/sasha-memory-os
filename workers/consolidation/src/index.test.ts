@@ -1,4 +1,5 @@
 import { MemoryStore } from '@memory-os/domain';
+import { CONSOLIDATION_PROPOSAL_DETECTOR_SUBJECT } from '@memory-os/retrieval';
 import { describe, expect, it } from 'vitest';
 import {
   consolidateLocalStore,
@@ -283,6 +284,7 @@ describe('runProactiveConsolidationLocalStore', () => {
     const conflicts = store.listMemoryConflicts(workspaceId, projectId);
     expect(conflicts).toHaveLength(1);
     expect(conflicts[0]?.reason).toBe('corrected-current-fact');
+    expect(conflicts[0]?.createdBySubject).toBe(CONSOLIDATION_PROPOSAL_DETECTOR_SUBJECT);
     expect(conflicts[0]?.evidence).toEqual(
       expect.arrayContaining([
         { memoryId: corrected.id, title: 'API region' },
@@ -294,5 +296,60 @@ describe('runProactiveConsolidationLocalStore', () => {
     expect(
       store.auditLog.some((entry) => entry.action === 'memory_conflict.detected'),
     ).toBe(true);
+  });
+
+  it('proposes stale versions when validTo is expired and lets the owner approve', async () => {
+    const store = new MemoryStore();
+    const workspaceId = '11111111-1111-4111-8111-111111111111';
+    const projectId = '44444444-4444-4444-8444-444444444401';
+    const owner = '33333333-3333-4333-8333-333333333301';
+    const expired = store.captureText({
+      workspaceId,
+      projectId,
+      title: 'Stale price',
+      text: 'Price is 10.',
+      actorSubjectId: owner,
+      idempotencyKey: 'proactive/stale-old',
+    });
+    const current = store.captureText({
+      workspaceId,
+      projectId,
+      title: 'stale price',
+      text: 'Price is 12.',
+      actorSubjectId: owner,
+      idempotencyKey: 'proactive/stale-new',
+    });
+    const expiredRecord = store.memories.get(expired.memoryId);
+    const currentRecord = store.memories.get(current.memoryId);
+    if (!expiredRecord || !currentRecord) throw new Error('memories missing');
+    expiredRecord.recordedAt = '2020-01-01T00:00:00.000Z';
+    expiredRecord.validTo = '2020-06-01T00:00:00.000Z';
+    currentRecord.recordedAt = '2024-01-01T00:00:00.000Z';
+    currentRecord.validTo = null;
+
+    const report = await runProactiveConsolidationLocalStore({
+      store,
+      workspaceId,
+      subjectId: owner,
+      projectId,
+      apply: false,
+    });
+
+    expect(
+      report.detectedConflicts.some((conflict) => conflict.reason === 'stale-version'),
+    ).toBe(true);
+    const conflict = store
+      .listMemoryConflicts(workspaceId, projectId)
+      .find((entry) => entry.reason === 'stale-version');
+    expect(conflict?.createdBySubject).toBe(CONSOLIDATION_PROPOSAL_DETECTOR_SUBJECT);
+    const approved = store.decideMemoryConflict({
+      conflictId: conflict?.id ?? '',
+      decision: 'approve',
+      reason: 'owner accepts the current price',
+      actorSubjectId: owner,
+    });
+    expect(approved.resolution?.keeperId).toBe(current.memoryId);
+    expect(store.memories.get(expired.memoryId)?.status).toBe('superseded');
+    expect(store.memories.get(current.memoryId)?.status).not.toBe('superseded');
   });
 });

@@ -9,6 +9,7 @@ import {
   planProactiveConsolidation,
   buildProactiveConsolidationReason,
   collectConsolidationProposals,
+  CONSOLIDATION_PROPOSAL_DETECTOR_SUBJECT,
   type ConsolidationPair,
   type ProactiveConsolidationConflict,
   type ProactiveDetectedConflict,
@@ -259,6 +260,7 @@ async function runPlannedProactiveConsolidation(input: {
     content: string;
     status: string;
     recordedAt?: string;
+    validTo?: string | null;
     embedding?: number[] | null;
     projectId?: string | null;
     metadata?: Record<string, unknown>;
@@ -555,6 +557,7 @@ export async function runProactiveConsolidationTick(options: {
       content: row.content,
       status: row.status,
       recordedAt: row.recordedAt,
+      validTo: row.validTo ?? null,
       embedding: Array.isArray(row.embedding) ? row.embedding : null,
       projectId: row.projectId,
       metadata: row.metadata,
@@ -601,6 +604,7 @@ export async function runProactiveConsolidationTick(options: {
         memoryIds,
         evidence,
         detectorVersion: PROACTIVE_CONSOLIDATION_RULES_VERSION,
+        detectedBySubject: CONSOLIDATION_PROPOSAL_DETECTOR_SUBJECT,
       }),
     backend: 'supabase',
   });
@@ -628,6 +632,7 @@ export async function runProactiveConsolidationLocalStore(input: {
       content: memory.content,
       status: memory.status,
       recordedAt: memory.recordedAt,
+      validTo: memory.validTo ?? null,
       projectId: memory.projectId,
       metadata: memory.metadata,
     }));
@@ -663,7 +668,7 @@ export async function runProactiveConsolidationLocalStore(input: {
           memoryIds,
           evidence,
           detectorVersion: PROACTIVE_CONSOLIDATION_RULES_VERSION,
-          actorSubjectId: input.subjectId,
+          actorSubjectId: CONSOLIDATION_PROPOSAL_DETECTOR_SUBJECT,
         }),
       ),
     backend: 'memory-store',

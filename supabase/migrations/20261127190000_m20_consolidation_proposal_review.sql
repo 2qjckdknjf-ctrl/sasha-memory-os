@@ -136,19 +136,36 @@ BEGIN
   )
   ON CONFLICT (workspace_id, project_id, conflict_key) DO UPDATE
   SET
-    status = 'candidate',
-    title = EXCLUDED.title,
-    reason = EXCLUDED.reason,
-    left_memory_id = EXCLUDED.left_memory_id,
-    right_memory_id = EXCLUDED.right_memory_id,
-    evidence_refs = EXCLUDED.evidence_refs,
-    detector_version = EXCLUDED.detector_version,
-    detected_by_subject = EXCLUDED.detected_by_subject,
+    title = CASE
+      WHEN memory_conflicts.status = 'candidate' THEN EXCLUDED.title
+      ELSE memory_conflicts.title
+    END,
+    reason = CASE
+      WHEN memory_conflicts.status = 'candidate' THEN EXCLUDED.reason
+      ELSE memory_conflicts.reason
+    END,
+    left_memory_id = CASE
+      WHEN memory_conflicts.status = 'candidate' THEN EXCLUDED.left_memory_id
+      ELSE memory_conflicts.left_memory_id
+    END,
+    right_memory_id = CASE
+      WHEN memory_conflicts.status = 'candidate' THEN EXCLUDED.right_memory_id
+      ELSE memory_conflicts.right_memory_id
+    END,
+    evidence_refs = CASE
+      WHEN memory_conflicts.status = 'candidate' THEN EXCLUDED.evidence_refs
+      ELSE memory_conflicts.evidence_refs
+    END,
+    detector_version = CASE
+      WHEN memory_conflicts.status = 'candidate' THEN EXCLUDED.detector_version
+      ELSE memory_conflicts.detector_version
+    END,
+    detected_by_subject = CASE
+      WHEN memory_conflicts.status = 'candidate' THEN EXCLUDED.detected_by_subject
+      ELSE memory_conflicts.detected_by_subject
+    END,
     last_detected_at = now(),
-    detection_count = memory_conflicts.detection_count + 1,
-    resolved_at = NULL,
-    resolved_by_subject = NULL,
-    resolution = NULL
+    detection_count = memory_conflicts.detection_count + 1
   RETURNING * INTO v_conflict;
 
   RETURN jsonb_build_object(
@@ -391,8 +408,43 @@ BEGIN
     IF v_conflict.status <> 'candidate' THEN
       RAISE EXCEPTION 'only candidate conflicts can be approved';
     END IF;
-    v_keeper := coalesce(p_keeper_id, v_conflict.right_memory_id);
-    v_duplicate := coalesce(p_duplicate_id, v_conflict.left_memory_id);
+    -- Bare approve keeps the newer recorded fact (detector proposedKeeperId).
+    -- left/right are UUID-sorted, so column order is not a survivor order.
+    SELECT
+      CASE
+        WHEN coalesce(l.recorded_at, '-infinity'::timestamptz)
+             >= coalesce(r.recorded_at, '-infinity'::timestamptz)
+          THEN v_conflict.left_memory_id
+        ELSE v_conflict.right_memory_id
+      END,
+      CASE
+        WHEN coalesce(l.recorded_at, '-infinity'::timestamptz)
+             >= coalesce(r.recorded_at, '-infinity'::timestamptz)
+          THEN v_conflict.right_memory_id
+        ELSE v_conflict.left_memory_id
+      END
+    INTO v_keeper, v_duplicate
+    FROM memory_records l
+    JOIN memory_records r ON r.id = v_conflict.right_memory_id
+    WHERE l.id = v_conflict.left_memory_id;
+
+    IF p_keeper_id IS NOT NULL THEN
+      v_keeper := p_keeper_id;
+      IF p_duplicate_id IS NOT NULL THEN
+        v_duplicate := p_duplicate_id;
+      ELSE
+        v_duplicate := CASE
+          WHEN p_keeper_id = v_conflict.left_memory_id THEN v_conflict.right_memory_id
+          ELSE v_conflict.left_memory_id
+        END;
+      END IF;
+    ELSIF p_duplicate_id IS NOT NULL THEN
+      v_duplicate := p_duplicate_id;
+      v_keeper := CASE
+        WHEN p_duplicate_id = v_conflict.left_memory_id THEN v_conflict.right_memory_id
+        ELSE v_conflict.left_memory_id
+      END;
+    END IF;
     IF v_keeper = v_duplicate THEN
       RAISE EXCEPTION 'keeper and duplicate must differ';
     END IF;
@@ -544,4 +596,124 @@ GRANT EXECUTE ON FUNCTION app.api_decide_memory_conflict(
 ) TO anon, authenticated, service_role;
 GRANT EXECUTE ON FUNCTION public.api_decide_memory_conflict(
   text, uuid, uuid, uuid, text, text, uuid, uuid
+) TO anon, authenticated, service_role;
+
+-- Stale-version detection reads validTo. api_list_memories previously omitted it.
+CREATE OR REPLACE FUNCTION app.api_list_memories(
+  p_secret text,
+  p_subject_id uuid,
+  p_workspace_id uuid,
+  p_project_id uuid DEFAULT NULL,
+  p_status text DEFAULT NULL,
+  p_limit integer DEFAULT 50,
+  p_recorded_after timestamptz DEFAULT NULL,
+  p_recorded_before timestamptz DEFAULT NULL
+)
+RETURNS jsonb
+LANGUAGE plpgsql
+VOLATILE
+SECURITY DEFINER
+SET search_path = public, app
+AS $$
+DECLARE
+  v_limit integer := greatest(1, least(coalesce(p_limit, 50), 500));
+BEGIN
+  PERFORM app.assert_api_secret(p_secret);
+  PERFORM app.with_subject(p_subject_id);
+
+  IF NOT app.is_workspace_member(p_workspace_id) THEN
+    RAISE EXCEPTION 'forbidden' USING ERRCODE = '42501';
+  END IF;
+
+  IF p_status IS NOT NULL AND btrim(p_status) <> '' AND p_status NOT IN (
+    'candidate', 'active', 'verified', 'disputed', 'superseded', 'retracted', 'deleted'
+  ) THEN
+    RAISE EXCEPTION 'invalid status: %', p_status;
+  END IF;
+
+  IF p_recorded_after IS NOT NULL
+     AND p_recorded_before IS NOT NULL
+     AND p_recorded_after > p_recorded_before THEN
+    RAISE EXCEPTION 'recorded_after must be <= recorded_before';
+  END IF;
+
+  RETURN COALESCE((
+    SELECT jsonb_agg(jsonb_build_object(
+      'id', m.id,
+      'title', m.title,
+      'content', left(m.content, 500),
+      'status', m.status,
+      'sensitivity', m.sensitivity,
+      'memoryType', m.memory_type,
+      'projectId', m.effective_project_id,
+      'storedProjectId', m.project_id,
+      'effectiveProjectId', m.effective_project_id,
+      'recordedAt', m.recorded_at,
+      'validTo', m.valid_to,
+      'metadata', m.metadata,
+      'embedding', m.embedding,
+      'embeddingEngine', m.embedding_engine,
+      'embeddingDims', m.embedding_dims
+    ) ORDER BY m.recorded_at DESC)
+    FROM (
+      SELECT m.*, effective_project.effective_project_id
+      FROM memory_records m
+      CROSS JOIN LATERAL (
+        SELECT app.effective_memory_project_id(m.id) AS effective_project_id
+      ) effective_project
+      WHERE m.workspace_id = p_workspace_id
+        AND (
+          p_project_id IS NULL
+          OR effective_project.effective_project_id = p_project_id
+        )
+        AND (p_status IS NULL OR btrim(p_status) = '' OR m.status = p_status)
+        AND (p_recorded_after IS NULL OR m.recorded_at >= p_recorded_after)
+        AND (p_recorded_before IS NULL OR m.recorded_at <= p_recorded_before)
+        AND app.has_acl(
+          m.workspace_id,
+          'memory',
+          'read',
+          effective_project.effective_project_id,
+          m.sensitivity
+        )
+      ORDER BY m.recorded_at DESC
+      LIMIT v_limit
+    ) m
+  ), '[]'::jsonb);
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION public.api_list_memories(
+  p_secret text,
+  p_subject_id uuid,
+  p_workspace_id uuid,
+  p_project_id uuid DEFAULT NULL,
+  p_status text DEFAULT NULL,
+  p_limit integer DEFAULT 50,
+  p_recorded_after timestamptz DEFAULT NULL,
+  p_recorded_before timestamptz DEFAULT NULL
+)
+RETURNS jsonb
+LANGUAGE sql
+VOLATILE
+SECURITY DEFINER
+SET search_path = public, app
+AS $$
+  SELECT app.api_list_memories(
+    p_secret,
+    p_subject_id,
+    p_workspace_id,
+    p_project_id,
+    p_status,
+    p_limit,
+    p_recorded_after,
+    p_recorded_before
+  );
+$$;
+
+GRANT EXECUTE ON FUNCTION app.api_list_memories(
+  text, uuid, uuid, uuid, text, integer, timestamptz, timestamptz
+) TO anon, authenticated, service_role;
+GRANT EXECUTE ON FUNCTION public.api_list_memories(
+  text, uuid, uuid, uuid, text, integer, timestamptz, timestamptz
 ) TO anon, authenticated, service_role;
