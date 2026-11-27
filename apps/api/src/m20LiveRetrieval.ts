@@ -9,6 +9,16 @@ type LiveRetrievalClient = {
   ): Promise<Response>;
 };
 
+export type M20LiveRetrievalFailure = {
+  /** Zero is the warm-up; measured samples are numbered from one. */
+  sampleIndex: number;
+  phase: 'request' | 'response_body' | 'response_contract';
+  failureClass: 'timeout' | 'aborted' | 'transport_error' | 'http_error' |
+    'invalid_json' | 'rpc_error' | 'tool_error' | 'invalid_response';
+  httpStatus: number | null;
+  durationMs: number;
+};
+
 export type M20LiveRetrievalReport = {
   warmupMs: number | null;
   samples: number;
@@ -16,7 +26,19 @@ export type M20LiveRetrievalReport = {
   p95Ms: number;
   thresholdMs: number;
   ok: boolean;
+  failures: M20LiveRetrievalFailure[];
 };
+
+/** Explicit metadata allowlist: never serialize errors, headers, URLs, or payloads. */
+export function formatM20LiveRetrievalFailure(failure: M20LiveRetrievalFailure): string {
+  return `m20_live_retrieval_failure=${JSON.stringify({
+    sampleIndex: failure.sampleIndex,
+    phase: failure.phase,
+    failureClass: failure.failureClass,
+    httpStatus: failure.httpStatus,
+    durationMs: failure.durationMs,
+  })}`;
+}
 
 function percentile95(values: readonly number[]): number {
   const sorted = [...values].sort((left, right) => left - right);
@@ -66,10 +88,25 @@ export async function runM20LiveReadOnlyRetrieval(input: {
 
   const endpoint = `${input.baseUrl.replace(/\/+$/g, '')}/mcp`;
   const durations: number[] = [];
-  let failed = 0;
+  const failures: M20LiveRetrievalFailure[] = [];
   const executeSample = async (sample: number): Promise<number | null> => {
     const startedAt = performance.now();
+    let phase: M20LiveRetrievalFailure['phase'] = 'request';
+    let httpStatus: number | null = null;
+    let httpOk: boolean | undefined;
+    let signal: AbortSignal | undefined;
+    const fail = (failureClass: M20LiveRetrievalFailure['failureClass']): null => {
+      failures.push({
+        sampleIndex: sample,
+        phase,
+        failureClass,
+        httpStatus,
+        durationMs: Math.max(0, Math.round(performance.now() - startedAt)),
+      });
+      return null;
+    };
     try {
+      signal = AbortSignal.timeout(timeoutMs);
       const response = await input.client.request(endpoint, {
         method: 'POST',
         headers: {
@@ -90,20 +127,33 @@ export async function runM20LiveReadOnlyRetrieval(input: {
             },
           },
         }),
-        signal: AbortSignal.timeout(timeoutMs),
+        signal,
       });
+      httpStatus = response.status;
+      httpOk = response.ok;
+      phase = 'response_body';
       const body = (await response.json()) as {
         error?: unknown;
         result?: { isError?: boolean };
-      };
-      if (!response.ok || body.error || !body.result || body.result.isError === true) {
-        failed += 1;
-        return null;
-      }
+      } | null;
+      phase = 'response_contract';
+      if (!httpOk) return fail('http_error');
+      if (body?.error) return fail('rpc_error');
+      if (!body?.result) return fail('invalid_response');
+      if (body.result.isError === true) return fail('tool_error');
       return Math.max(0, Math.round(performance.now() - startedAt));
-    } catch {
-      failed += 1;
-      return null;
+    } catch (error) {
+      // Keep HTTP failures recognizable even when their consumed body is not JSON.
+      if (httpOk === false) return fail('http_error');
+      // Names select fixed categories; no exception message/name/cause is emitted.
+      const name = error instanceof Error ? error.name : undefined;
+      if (name === 'TimeoutError' ||
+        (name === 'AbortError' && signal?.aborted && signal.reason?.name === 'TimeoutError')) {
+        return fail('timeout');
+      }
+      if (name === 'AbortError') return fail('aborted');
+      if (phase === 'response_body' && name === 'SyntaxError') return fail('invalid_json');
+      return fail('transport_error');
     }
   };
 
@@ -120,6 +170,7 @@ export async function runM20LiveReadOnlyRetrieval(input: {
   );
 
   const p95Ms = percentile95(durations);
+  const failed = failures.length;
   const ok =
     failed === 0 &&
     durations.length === samples &&
@@ -131,5 +182,6 @@ export async function runM20LiveReadOnlyRetrieval(input: {
     p95Ms,
     thresholdMs: HYBRID_P95_THRESHOLD_MS,
     ok,
+    failures: failures.sort((left, right) => left.sampleIndex - right.sampleIndex),
   };
 }

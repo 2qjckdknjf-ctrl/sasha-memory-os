@@ -56,6 +56,30 @@ Official pack: `m20-s03-v1`
   Recall@10 headroom while preventing unbounded memory bodies and vectors from
   crossing the database/Edge boundary.
 
+## Failure diagnostics — 2026-11-27
+
+The live runner now emits one bounded `m20_live_retrieval_failure` JSON record
+per failed attempt, followed by the existing failing summary and nonzero exit.
+Only five fields are allowed: `sampleIndex`, `phase`, `failureClass`,
+`httpStatus`, and `durationMs`. Index zero identifies the warm-up; indices
+1–12 identify the default measured attempts. Phases distinguish a request that
+did not return headers, response-body consumption, and response-contract checks.
+Failure classes distinguish deadline timeout, other abort, transport error,
+HTTP error, invalid JSON, JSON-RPC error, MCP tool error, and missing result.
+HTTP status is null until headers have been received. No endpoint, project ID,
+query, header, exception message/cause, or response content enters these records.
+
+The defaults remain one warm-up plus 12 sequential samples, a 4,000 ms request
+deadline and a 2,000 ms steady-state p95 limit. Any failed attempt, including
+the warm-up, still fails the gate even if the successful samples meet p95.
+There is no automatic retry or change to retrieval, ACL, SQL, or deployment.
+
+The earlier run [45985923386](https://github.com/2qjckdknjf-ctrl/sasha-memory-os/actions/runs/45985923386)
+reported 11 successful measured samples, one failure and p95 1,751 ms, but did
+not retain the failure category. A transport timeout is only a hypothesis for
+that historical event. These diagnostics make future failures actionable;
+they do not establish that the service incident has been repaired.
+
 ## Idempotency hardening
 
 Migration `20261015220000_m20_capture_idempotency_scope_guard.sql` serializes

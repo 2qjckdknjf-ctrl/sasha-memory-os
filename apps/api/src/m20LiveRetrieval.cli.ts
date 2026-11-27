@@ -1,4 +1,4 @@
-import { runM20LiveReadOnlyRetrieval } from './m20LiveRetrieval.js';
+import { formatM20LiveRetrievalFailure, runM20LiveReadOnlyRetrieval } from './m20LiveRetrieval.js';
 
 async function main(): Promise<void> {
   const report = await runM20LiveReadOnlyRetrieval({
@@ -8,6 +8,9 @@ async function main(): Promise<void> {
     projectId: process.env.MEMORY_OS_PROJECT_ID ?? '',
   });
   if (!report.ok) {
+    for (const failure of report.failures) {
+      console.error(formatM20LiveRetrievalFailure(failure));
+    }
     throw new Error(
       `live retrieval gate failed samples=${report.samples} failed=${report.failed} p95_ms=${report.p95Ms} threshold_ms=${report.thresholdMs}`,
     );
