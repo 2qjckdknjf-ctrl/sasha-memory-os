@@ -1,6 +1,33 @@
 import { describe, expect, it, vi } from 'vitest';
 import { loadMemoryOsEnv, SupabaseMemoryGateway } from './gateway.js';
 
+describe('privacy retention database time', () => {
+  it.each([undefined, null])('uses the database default when asOf is %s', async (asOf) => {
+    const rpc = vi.fn(async (_name: string, args: Record<string, unknown>) => ({
+      data: { dryRun: true },
+      error: 'p_as_of' in args ? new Error('API clock is ahead of the database') : null,
+    }));
+    const gateway = new SupabaseMemoryGateway({ rpc } as any, 'test-secret');
+    await expect(gateway.runRetentionPolicy({
+      subjectId: 'owner', workspaceId: 'workspace', projectId: 'project', asOf,
+    })).resolves.toEqual({ dryRun: true });
+    expect(rpc.mock.calls[0]?.[1]).not.toHaveProperty('p_as_of');
+    expect(rpc.mock.calls[0]?.[1]).toMatchObject({ p_dry_run: true });
+  });
+
+  it('preserves an explicit cutoff and apply choice', async () => {
+    const rpc = vi.fn(async () => ({ data: { dryRun: false }, error: null }));
+    const gateway = new SupabaseMemoryGateway({ rpc } as any, 'test-secret');
+    const asOf = '2026-11-26T22:00:00.123456+00:00';
+    await gateway.runRetentionPolicy({
+      subjectId: 'owner', workspaceId: 'workspace', projectId: 'project', asOf, dryRun: false,
+    });
+    expect(rpc).toHaveBeenCalledWith('api_apply_retention_policy', expect.objectContaining({
+      p_as_of: asOf, p_dry_run: false,
+    }));
+  });
+});
+
 describe('loadMemoryOsEnv', () => {
   const base = {
     MEMORY_OS_SUPABASE_URL: 'https://memory.example.test',
