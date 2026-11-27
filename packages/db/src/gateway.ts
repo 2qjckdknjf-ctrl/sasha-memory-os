@@ -366,6 +366,7 @@ export class SupabaseMemoryGateway {
       memoryType: string;
       projectId: string | null;
       recordedAt: string;
+      validTo?: string | null;
       metadata: Record<string, unknown>;
       embedding?: number[] | null;
       embeddingEngine?: string | null;
