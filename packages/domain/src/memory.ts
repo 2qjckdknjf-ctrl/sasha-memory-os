@@ -115,7 +115,7 @@ export interface MemoryConflictRecord {
   workspaceId: string;
   projectId: string;
   conflictKey: string;
-  status: 'candidate';
+  status: 'candidate' | 'resolved' | 'dismissed';
   title: string;
   reason: string;
   memoryIds: [string, string];
@@ -128,6 +128,9 @@ export interface MemoryConflictRecord {
   firstDetectedAt: string;
   lastDetectedAt: string;
   createdBySubject: string | null;
+  resolvedAt?: string | null;
+  resolvedBySubject?: string | null;
+  resolution?: Record<string, unknown> | null;
 }
 
 export interface PrivacyRequest {

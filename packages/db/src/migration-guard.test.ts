@@ -56,6 +56,12 @@ const contradictionDetectionMigrationPath = fileURLToPath(
     import.meta.url,
   ),
 );
+const consolidationProposalReviewMigrationPath = fileURLToPath(
+  new URL(
+    '../../../supabase/migrations/20261127190000_m20_consolidation_proposal_review.sql',
+    import.meta.url,
+  ),
+);
 const personalizedImportanceMigrationPath = fileURLToPath(
   new URL(
     '../../../supabase/migrations/20260820050100_m13_slice_05_personalized_importance.sql',
@@ -124,6 +130,10 @@ describe('m8 slice 03 migration guards', () => {
   );
   const contradictionDetectionSql = readFileSync(
     contradictionDetectionMigrationPath,
+    'utf8',
+  );
+  const consolidationProposalReviewSql = readFileSync(
+    consolidationProposalReviewMigrationPath,
     'utf8',
   );
   const personalizedImportanceSql = readFileSync(
@@ -368,6 +378,25 @@ describe('m8 slice 03 migration guards', () => {
     expect(contradictionDetectionSql).toContain(`'memoryId'`);
     expect(contradictionDetectionSql).toContain(`'title'`);
     expect(contradictionDetectionSql).not.toContain(`'content'`);
+  });
+
+  it('adds proposal-only consolidation review with independent approve and rollback', () => {
+    expect(consolidationProposalReviewSql).toContain(`'stale-version'`);
+    expect(consolidationProposalReviewSql).toContain(`'repeatedly-disproven'`);
+    expect(consolidationProposalReviewSql).toContain(`'near-duplicate-merge'`);
+    expect(consolidationProposalReviewSql).toContain(
+      `CREATE OR REPLACE FUNCTION app.api_decide_memory_conflict`,
+    );
+    expect(consolidationProposalReviewSql).toContain(
+      `CREATE OR REPLACE FUNCTION app.api_restore_superseded_memory`,
+    );
+    expect(consolidationProposalReviewSql).toContain(
+      `reviewer cannot self-approve consolidation proposals`,
+    );
+    expect(consolidationProposalReviewSql).toContain(`p_detected_by_subject`);
+    expect(consolidationProposalReviewSql).not.toContain(
+      `'44444444-4444-4444-8444-444444444401'`,
+    );
   });
 
   it('adds project-scoped personalized importance without defaulting to AISTROYKA', () => {

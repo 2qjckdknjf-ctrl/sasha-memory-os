@@ -102,9 +102,12 @@ import {
   createEmbeddingAdapter,
   createExtractionAdapter,
   buildProactiveConsolidationReason,
+  collectConsolidationProposals,
+  CONSOLIDATION_PROPOSAL_DETECTOR_SUBJECT,
   embedMemoryText,
   type HybridHitLike,
   inRecordedWindow,
+  isProposalOnlyApplyFlag,
   packSearchContext,
   planCandidateConsolidations,
   planProactiveConsolidation,
@@ -5013,7 +5016,9 @@ export function createApp(options?: {
     if (authz.subjectId !== actorSubjectId) {
       return c.json({ error: 'forbidden' }, 403);
     }
-    const apply = body.apply !== false;
+    // Proposal-only by default: trusted supersession requires explicit apply or review decide.
+    const apply = body.apply === true;
+    const proposalOnly = isProposalOnlyApplyFlag(body.apply);
     const proactive = body.proactive === true;
     const gw = c.get('gateway');
     try {
@@ -5047,26 +5052,31 @@ export function createApp(options?: {
             projectId,
             limit: scanLimit,
           });
-          const plan = await planProactiveConsolidation(
-            rows.map((row) => ({
-              id: row.id,
-              title: row.title,
-              content: row.content,
-              status: row.status,
-              recordedAt: row.recordedAt,
-              embedding: Array.isArray(row.embedding) ? row.embedding : null,
-              projectId: row.projectId,
-              metadata: row.metadata,
-            })),
-            {
-              scanLimit,
-              maxMerges: body.max_merges,
-              maxConflicts: body.max_conflicts,
-              maxTimeMs: body.max_time_ms,
-            },
-          );
+          const candidateRows = rows.map((row) => ({
+            id: row.id,
+            title: row.title,
+            content: row.content,
+            status: row.status,
+            recordedAt: row.recordedAt,
+            validTo: row.validTo ?? null,
+            embedding: Array.isArray(row.embedding) ? row.embedding : null,
+            projectId: row.projectId,
+            metadata: row.metadata,
+          }));
+          const plan = await planProactiveConsolidation(candidateRows, {
+            scanLimit,
+            maxMerges: body.max_merges,
+            maxConflicts: body.max_conflicts,
+            maxTimeMs: body.max_time_ms,
+          });
+          const proposals = collectConsolidationProposals({
+            candidates: candidateRows,
+            mergeCandidates: plan.mergeCandidates,
+            detectedConflicts: plan.detectedConflicts,
+            proposalOnly,
+          });
           const persistedConflictIds: string[] = [];
-          for (const conflict of plan.detectedConflicts) {
+          for (const conflict of proposals) {
             const persisted = await gw.upsertMemoryConflict({
               subjectId: actorSubjectId,
               workspaceId,
@@ -5077,6 +5087,7 @@ export function createApp(options?: {
               memoryIds: conflict.memoryIds,
               evidence: conflict.evidence,
               detectorVersion: PROACTIVE_CONSOLIDATION_RULES_VERSION,
+              detectedBySubject: CONSOLIDATION_PROPOSAL_DETECTOR_SUBJECT,
             });
             persistedConflictIds.push(persisted.id);
             await gw.appendAuditEvent({
@@ -5095,6 +5106,10 @@ export function createApp(options?: {
                 reason: conflict.reason,
                 memoryIds: conflict.memoryIds,
                 evidence: conflict.evidence,
+                proposedKeeperId: conflict.proposedKeeperId ?? null,
+                proposedDuplicateId: conflict.proposedDuplicateId ?? null,
+                proposalOnly,
+                detectedBySubject: CONSOLIDATION_PROPOSAL_DETECTOR_SUBJECT,
               },
             });
           }
@@ -5185,6 +5200,7 @@ export function createApp(options?: {
             persistedConflictIds,
             applied,
             failed,
+            proposalOnly,
             stopReason: plan.stopReason,
             exhausted: plan.exhausted,
             verifiedWrites: 0,
@@ -5204,6 +5220,7 @@ export function createApp(options?: {
             content: m.content,
             status: m.status,
             recordedAt: m.recordedAt,
+            validTo: m.validTo ?? null,
             projectId: m.projectId,
             metadata: m.metadata,
           }));
@@ -5213,8 +5230,14 @@ export function createApp(options?: {
           maxConflicts: body.max_conflicts,
           maxTimeMs: body.max_time_ms,
         });
+        const proposals = collectConsolidationProposals({
+          candidates,
+          mergeCandidates: plan.mergeCandidates,
+          detectedConflicts: plan.detectedConflicts,
+          proposalOnly,
+        });
         const persistedConflictIds: string[] = [];
-        for (const conflict of plan.detectedConflicts) {
+        for (const conflict of proposals) {
           const persisted = storeLocal.upsertMemoryConflict({
             workspaceId,
             projectId,
@@ -5224,7 +5247,7 @@ export function createApp(options?: {
             memoryIds: conflict.memoryIds,
             evidence: conflict.evidence,
             detectorVersion: PROACTIVE_CONSOLIDATION_RULES_VERSION,
-            actorSubjectId,
+            actorSubjectId: CONSOLIDATION_PROPOSAL_DETECTOR_SUBJECT,
           });
           persistedConflictIds.push(persisted.id);
           storeLocal.createAuditEvent({
@@ -5243,6 +5266,10 @@ export function createApp(options?: {
               reason: conflict.reason,
               memoryIds: conflict.memoryIds,
               evidence: conflict.evidence,
+              proposedKeeperId: conflict.proposedKeeperId ?? null,
+              proposedDuplicateId: conflict.proposedDuplicateId ?? null,
+              proposalOnly,
+              detectedBySubject: CONSOLIDATION_PROPOSAL_DETECTOR_SUBJECT,
             },
           });
         }
@@ -5315,6 +5342,7 @@ export function createApp(options?: {
           persistedConflictIds,
           applied,
           failed,
+          proposalOnly,
           stopReason: plan.stopReason,
           exhausted: plan.exhausted,
           verifiedWrites: 0,
@@ -5398,6 +5426,7 @@ export function createApp(options?: {
           pairs: planned,
           applied,
           failed,
+          proposalOnly,
           backend: 'supabase',
           job: jobMeta,
         });
@@ -5434,11 +5463,87 @@ export function createApp(options?: {
         pairs: planned,
         applied,
         failed: [],
+        proposalOnly,
         backend: 'memory-store',
       });
     } catch (err) {
       if (isForbiddenError(err)) return c.json({ error: 'forbidden' }, 403);
       return c.json({ error: (err as Error).message }, 500);
+    }
+  });
+
+  app.post('/v1/consolidation/conflicts/:id/decide', async (c) => {
+    const conflictId = c.req.param('id');
+    const body = (await c.req.json().catch(() => ({}))) as {
+      workspace_id?: string;
+      actor_subject_id?: string;
+      decision?: 'approve' | 'dismiss' | 'rollback';
+      reason?: string;
+      keeper_id?: string;
+      duplicate_id?: string;
+    };
+    const authz = c.get('authz');
+    if (!authz.isOwner) return c.json({ error: 'forbidden' }, 403);
+    const workspaceId = body.workspace_id ?? seedWorkspace;
+    const actorSubjectId = body.actor_subject_id ?? authz.subjectId;
+    if (authz.subjectId !== actorSubjectId) {
+      return c.json({ error: 'forbidden' }, 403);
+    }
+    if (
+      body.decision !== 'approve' &&
+      body.decision !== 'dismiss' &&
+      body.decision !== 'rollback'
+    ) {
+      return c.json({ error: 'decision must be approve, dismiss, or rollback' }, 400);
+    }
+    const reason = body.reason?.trim() || 'consolidation proposal reviewed';
+    const gw = c.get('gateway');
+    try {
+      if (gw) {
+        const decided = await gw.decideMemoryConflict({
+          subjectId: actorSubjectId,
+          workspaceId,
+          conflictId,
+          decision: body.decision,
+          reason,
+          keeperId: body.keeper_id ?? null,
+          duplicateId: body.duplicate_id ?? null,
+        });
+        return c.json({ ...decided, backend: 'supabase' });
+      }
+      const decided = c.get('store').decideMemoryConflict({
+        conflictId,
+        decision: body.decision,
+        reason,
+        actorSubjectId,
+        keeperId: body.keeper_id,
+        duplicateId: body.duplicate_id,
+      });
+      return c.json({
+        id: decided.id,
+        workspaceId: decided.workspaceId,
+        projectId: decided.projectId,
+        conflictKey: decided.conflictKey,
+        status: decided.status,
+        title: decided.title,
+        reason: decided.reason,
+        memoryIds: decided.memoryIds,
+        resolution: decided.resolution ?? null,
+        resolvedAt: decided.resolvedAt ?? null,
+        resolvedBySubject: decided.resolvedBySubject ?? null,
+        detectedBySubject: decided.createdBySubject,
+        backend: 'memory-store',
+      });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      if (message.includes('self-approve')) {
+        return c.json({ error: message }, 403);
+      }
+      if (isForbiddenError(err)) return c.json({ error: 'forbidden' }, 403);
+      if (message.includes('not found')) {
+        return c.json({ error: message }, 404);
+      }
+      return c.json({ error: message }, 400);
     }
   });
 

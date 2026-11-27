@@ -1,13 +1,13 @@
 {
   "manifestVersion": "m14.1-v1",
   "schemaVersion": "1.2",
-  "generatedAt": "2026-11-26T22:26:00Z",
+  "generatedAt": "2026-11-27T19:37:37Z",
   "repository": "2qjckdknjf-ctrl/sasha-memory-os",
   "canonicalProjectId": "44444444-4444-4444-8444-444444444402",
   "aistroykaProjectId": "44444444-4444-4444-8444-444444444401",
   "hiairProjectId": "44444444-4444-4444-8444-444444444403",
   "canonicalWorkspaceId": "11111111-1111-4111-8111-111111111111",
-  "reconciledAgainstMainSha": "5fc987f116cff5aaf25cdb1a0d73085c8b1901a2",
+  "reconciledAgainstMainSha": "47c8361b5b6369934bb4049e241f7afcc51f7630",
   "contractPacksCompletedThrough": "M20.4",
   "liveOperationalMilestone": "M20_PRIVACY_COMPLIANCE_LIVE_PASS",
   "nextAllowedSlice": "M20_PRODUCTION_GA_COMPLETE",
@@ -15,13 +15,13 @@
   "completedThrough": "M20.4",
   "nextSlice": "M20_PRODUCTION_GA_COMPLETE",
   "frozenSlices": [],
-  "canonicalPlanMemoryTitle": "SASHA MEMORY OS — CANONICAL COMPLETION PLAN TO 100% — 2026-08-21",
+  "canonicalPlanMemoryTitle": "SASHA MEMORY OS \u2014 CANONICAL COMPLETION PLAN TO 100% \u2014 2026-08-21",
   "supabase": {
     "projectName": "sasha-memory-os",
     "projectRef": "vpxblcxsvlylqyldiuwr",
     "region": "eu-central-1",
-    "latestMigration": "20261015230000_m20_privacy_compliance_operations.sql",
-    "migrationCount": 78
+    "latestMigration": "20261127190000_m20_consolidation_proposal_review.sql",
+    "migrationCount": 79
   },
   "officialPacks": {
     "m14Slo": "m14-s01-v1",
@@ -62,7 +62,8 @@
     "m20ReliabilityDr": "m20-s02-v1",
     "m20PerformanceRetrieval": "m20-s03-v1",
     "m20PrivacyCompliance": "m20-s04-v1",
-    "p0ProjectIdentity": "p0-project-identity-v1"
+    "p0ProjectIdentity": "p0-project-identity-v1",
+    "m20ConsolidationProposalReview": "m20-s03-proposal-v1"
   },
   "deployments": {
     "flyApi": {
@@ -71,7 +72,10 @@
       "configPath": "fly.toml",
       "note": "Scaffold kept; public Fly API not required while Edge MCP is primary ChatGPT path."
     },
-    "edgeFunctions": ["memory-mcp", "worker-ticks"],
+    "edgeFunctions": [
+      "memory-mcp",
+      "worker-ticks"
+    ],
     "githubActions": [
       "ci.yml",
       "m20-auth-hardening.yml",
@@ -116,7 +120,10 @@
     "packVersion": "m18-s02-v1",
     "memoryId": "9ac3fb2e-95de-42aa-aa34-e9954dc0228c",
     "verifiedAt": "2026-10-15T14:19:26.681Z",
-    "pullRequests": [100, 102],
+    "pullRequests": [
+      100,
+      102
+    ],
     "mergeShas": [
       "d9325ae838f4f9e538b732af1f5dc88092e44412",
       "c9a8281d57495734b5822ed9cd7c4c4f1994533b"
@@ -146,7 +153,11 @@
     "packVersion": "m18-s03-v1",
     "memoryId": "ea0746e7-6557-4c66-b017-005e3c06f157",
     "verifiedAt": "2026-10-15T15:57:55.610885Z",
-    "pullRequests": [104, 105, 106],
+    "pullRequests": [
+      104,
+      105,
+      106
+    ],
     "mergeShas": [
       "50a89d0adf24b8aa4dfd201e93a4b33bfbd7462f",
       "d8bab09295d6437b500fb9bcb11e7d49c0561679",
@@ -219,7 +230,11 @@
     "persistedProvenanceReturned": true,
     "auditOutcomeCount": 3,
     "crossClientExitGate": true,
-    "sameCanonicalStateActors": ["chatgpt", "cursor", "roma"],
+    "sameCanonicalStateActors": [
+      "chatgpt",
+      "cursor",
+      "roma"
+    ],
     "sameCanonicalStateMemoryId": "5375c33d-1a98-47af-9554-d9b90c6449aa",
     "freshnessSlaPassed": true,
     "securityAdvisors": {
@@ -296,7 +311,11 @@
     "packVersion": "m20-s03-v1",
     "memoryId": "1e618a29-8ba6-4da4-871a-d6530863cf2a",
     "verifiedAt": "2026-10-15T20:45:00Z",
-    "pullRequests": [115, 116, 117],
+    "pullRequests": [
+      115,
+      116,
+      117
+    ],
     "mergeShas": [
       "6ebd433fe34371a3b6b2767d360b223f094f7b5a",
       "dd55feaa78a445315fd7131e50a361427df73e55",
@@ -354,7 +373,11 @@
   },
   "repositorySecurity": {
     "mainProtected": true,
-    "strictRequiredChecks": ["smoke", "ephemeral-contract", "live-edge-smoke"],
+    "strictRequiredChecks": [
+      "smoke",
+      "ephemeral-contract",
+      "live-edge-smoke"
+    ],
     "forcePushAllowed": false,
     "branchDeletionAllowed": false,
     "secretScanning": "enabled",
@@ -439,5 +462,39 @@
   "readmeMustNotClaimAsCurrentTip": [
     "**M7 started:**",
     "M17.4-entity-migration-backfill"
-  ]
+  ],
+  "m20ConsolidationProposalReview": {
+    "packVersion": "m20-s03-proposal-v1",
+    "status": "LIVE_MIGRATION_APPLIED_PENDING_PR",
+    "sourceDelta": "Cursor / Codex execution delta \u2014 2026-11-27",
+    "baseMainSha": "47c8361b5b6369934bb4049e241f7afcc51f7630",
+    "p0Merged": {
+      "privacyAuth": {
+        "pr": 130,
+        "sha": "029cba5"
+      },
+      "retrievalDiagnostics": {
+        "pr": 131,
+        "sha": "47c8361b5b6369934bb4049e241f7afcc51f7630"
+      }
+    },
+    "migration": "20261127190000_m20_consolidation_proposal_review.sql",
+    "endpoints": [
+      "POST /v1/consolidation/run (proposal-only default)",
+      "POST /v1/consolidation/conflicts/:id/decide"
+    ],
+    "tests": {
+      "retrievalConsolidate": "11 passed",
+      "domainProposalReview": "1 passed",
+      "apiConsolidationFilter": "6 passed",
+      "migrationGuard": "51 passed",
+      "workerConsolidation": "10 passed"
+    },
+    "notRun": [
+      "live decide E2E against production API secret path",
+      "model arena three-run receipts"
+    ],
+    "liveMigrationProject": "vpxblcxsvlylqyldiuwr",
+    "liveMigrationName": "m20_consolidation_proposal_review"
+  }
 }

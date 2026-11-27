@@ -7,6 +7,7 @@ export type ConsolidateCandidate = {
   content: string;
   status: string;
   recordedAt?: string;
+  validTo?: string | null;
   embedding?: number[] | null;
   projectId?: string | null;
   metadata?: Record<string, unknown>;
@@ -19,7 +20,35 @@ export type ConsolidationPair = {
   reason: string;
 };
 
-export const PROACTIVE_CONSOLIDATION_RULES_VERSION = 'm13-s04-v1';
+/** M20.3 proposal-only consolidation rules (extends M13.4 detectors). */
+export const PROACTIVE_CONSOLIDATION_RULES_VERSION = 'm20-s03-proposal-v1';
+
+/** Automation detector identity (ROMA) so workspace owner can independently approve. */
+export const CONSOLIDATION_PROPOSAL_DETECTOR_SUBJECT =
+  '33333333-3333-4333-8333-333333333304';
+
+export function collectConsolidationProposals(input: {
+  candidates: ProactiveConsolidationCandidate[];
+  mergeCandidates: ConsolidationPair[];
+  detectedConflicts: ProactiveDetectedConflict[];
+  proposalOnly: boolean;
+}): ProactiveDetectedConflict[] {
+  const byKey = new Map<string, ProactiveDetectedConflict>();
+  for (const conflict of input.detectedConflicts) {
+    byKey.set(conflict.key, conflict);
+  }
+  if (input.proposalOnly) {
+    for (const proposal of buildMergeProposalConflicts(
+      input.candidates,
+      input.mergeCandidates,
+    )) {
+      if (!byKey.has(proposal.key)) {
+        byKey.set(proposal.key, proposal);
+      }
+    }
+  }
+  return [...byKey.values()].sort((left, right) => left.key.localeCompare(right.key));
+}
 
 export type ProactiveConsolidationCandidate = ConsolidateCandidate & {
   projectId?: string | null;
@@ -40,7 +69,10 @@ export type ProactiveDetectedConflictReason =
   | 'disputed-current-fact'
   | 'superseded-current-fact'
   | 'retracted-current-fact'
-  | 'corrected-current-fact';
+  | 'corrected-current-fact'
+  | 'stale-version'
+  | 'repeatedly-disproven'
+  | 'near-duplicate-merge';
 
 export type ProactiveDetectedConflict = {
   key: string;
@@ -52,6 +84,9 @@ export type ProactiveDetectedConflict = {
     { memoryId: string; title: string },
     { memoryId: string; title: string },
   ];
+  proposedKeeperId?: string;
+  proposedDuplicateId?: string;
+  proposalScope?: 'project';
 };
 
 export type ProactiveConsolidationStopReason =
@@ -123,6 +158,31 @@ function correctedByOf(candidate: { metadata?: Record<string, unknown> }): strin
   return typeof correctedBy === 'string' && correctedBy.trim() ? correctedBy : null;
 }
 
+function numericMetadataField(
+  candidate: { metadata?: Record<string, unknown> },
+  key: string,
+): number {
+  const metadata = asRecord(candidate.metadata);
+  const value = metadata?.[key];
+  return typeof value === 'number' && Number.isFinite(value) ? value : 0;
+}
+
+function isRepeatedlyDisproven(candidate: ProactiveConsolidationCandidate): boolean {
+  return (
+    numericMetadataField(candidate, 'disproven_count') >= 2 ||
+    numericMetadataField(candidate, 'repeated_failure_count') >= 3 ||
+    numericMetadataField(candidate, 'failure_count') >= 3
+  );
+}
+
+function isExpiredValidTo(
+  candidate: ProactiveConsolidationCandidate,
+  nowIso: string,
+): boolean {
+  const validTo = candidate.validTo?.trim();
+  return Boolean(validTo && validTo < nowIso);
+}
+
 function isHistoricalConflictStatus(status: string): boolean {
   return CONFLICTING_MEMORY_STATUSES.has(status) && !isCurrentishStatus(status);
 }
@@ -138,6 +198,7 @@ function pairConflictKey(
 function inferPairConflictReason(
   left: ProactiveConsolidationCandidate,
   right: ProactiveConsolidationCandidate,
+  nowIso: string,
 ): ProactiveDetectedConflictReason | null {
   const leftCurrentish = isCurrentishStatus(left.status);
   const rightCurrentish = isCurrentishStatus(right.status);
@@ -172,9 +233,21 @@ function inferPairConflictReason(
   }
 
   if (leftCurrentish && rightCurrentish) {
-    return normalizeContent(left.content) !== normalizeContent(right.content)
-      ? 'same-title-divergent-content'
-      : null;
+    const divergent =
+      normalizeContent(left.content) !== normalizeContent(right.content);
+    if (
+      divergent &&
+      (isRepeatedlyDisproven(left) || isRepeatedlyDisproven(right))
+    ) {
+      return 'repeatedly-disproven';
+    }
+    if (
+      divergent &&
+      (isExpiredValidTo(left, nowIso) || isExpiredValidTo(right, nowIso))
+    ) {
+      return 'stale-version';
+    }
+    return divergent ? 'same-title-divergent-content' : null;
   }
 
   return null;
@@ -256,6 +329,7 @@ function buildConflictCandidates(
 function buildDetectedConflicts(
   candidates: ProactiveConsolidationCandidate[],
   mergePairs: ConsolidationPair[],
+  nowIso: string,
 ): ProactiveDetectedConflict[] {
   const mergeMemoryIds = new Set<string>();
   for (const pair of mergePairs) {
@@ -280,7 +354,7 @@ function buildDetectedConflicts(
       const left = sorted[index]!;
       for (let nextIndex = index + 1; nextIndex < sorted.length; nextIndex += 1) {
         const right = sorted[nextIndex]!;
-        const reason = inferPairConflictReason(left, right);
+        const reason = inferPairConflictReason(left, right, nowIso);
         if (!reason) {
           continue;
         }
@@ -302,6 +376,9 @@ function buildDetectedConflicts(
           ProactiveConsolidationCandidate,
           ProactiveConsolidationCandidate,
         ];
+        const newer =
+          (pair[0].recordedAt ?? '') >= (pair[1].recordedAt ?? '') ? pair[0] : pair[1];
+        const older = newer.id === pair[0].id ? pair[1] : pair[0];
         detected.set(key, {
           key,
           title: pair[0].title || pair[1].title || 'untitled',
@@ -312,6 +389,9 @@ function buildDetectedConflicts(
             { memoryId: pair[0].id, title: pair[0].title || 'untitled' },
             { memoryId: pair[1].id, title: pair[1].title || 'untitled' },
           ],
+          proposedKeeperId: newer.id,
+          proposedDuplicateId: older.id,
+          proposalScope: 'project',
         });
       }
     }
@@ -324,6 +404,46 @@ function buildDetectedConflicts(
     if (byTitle !== 0) return byTitle;
     return left.key.localeCompare(right.key);
   });
+}
+
+/**
+ * Turn near-duplicate merge pairs into durable review proposals.
+ * Used when consolidation runs in proposal-only mode (default).
+ */
+export function buildMergeProposalConflicts(
+  candidates: ProactiveConsolidationCandidate[],
+  mergePairs: ConsolidationPair[],
+): ProactiveDetectedConflict[] {
+  const byId = new Map(candidates.map((candidate) => [candidate.id, candidate]));
+  const proposals: ProactiveDetectedConflict[] = [];
+  for (const pair of mergePairs) {
+    const keeper = byId.get(pair.keeperId);
+    const duplicate = byId.get(pair.duplicateId);
+    if (!keeper || !duplicate) continue;
+    const ordered = [keeper, duplicate].sort((a, b) => a.id.localeCompare(b.id)) as [
+      ProactiveConsolidationCandidate,
+      ProactiveConsolidationCandidate,
+    ];
+    proposals.push({
+      key: pairConflictKey(pair.keeperId, pair.duplicateId, 'near-duplicate-merge'),
+      title: keeper.title || duplicate.title || 'untitled',
+      projectId: keeper.projectId ?? duplicate.projectId ?? null,
+      reason: 'near-duplicate-merge',
+      memoryIds: [ordered[0].id, ordered[1].id],
+      evidence: [
+        { memoryId: ordered[0].id, title: ordered[0].title || 'untitled' },
+        { memoryId: ordered[1].id, title: ordered[1].title || 'untitled' },
+      ],
+      proposedKeeperId: pair.keeperId,
+      proposedDuplicateId: pair.duplicateId,
+      proposalScope: 'project',
+    });
+  }
+  return proposals.sort((left, right) => left.key.localeCompare(right.key));
+}
+
+export function isProposalOnlyApplyFlag(apply: boolean | undefined | null): boolean {
+  return apply !== true;
 }
 
 function proactiveStopResult(input: {
@@ -497,8 +617,13 @@ export async function planProactiveConsolidation(
     });
   }
 
+  const nowIso = new Date(now()).toISOString();
   const candidateConflictsAll = buildConflictCandidates(scannedPool, mergeCandidatesAll);
-  const detectedConflictsAll = buildDetectedConflicts(scannedPool, mergeCandidatesAll);
+  const detectedConflictsAll = buildDetectedConflicts(
+    scannedPool,
+    mergeCandidatesAll,
+    nowIso,
+  );
 
   if (now() - startedAt > maxTimeMs) {
     return proactiveStopResult({

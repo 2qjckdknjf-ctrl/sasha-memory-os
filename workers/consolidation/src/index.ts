@@ -8,6 +8,7 @@ import {
   planCandidateConsolidations,
   planProactiveConsolidation,
   buildProactiveConsolidationReason,
+  collectConsolidationProposals,
   type ConsolidationPair,
   type ProactiveConsolidationConflict,
   type ProactiveDetectedConflict,
@@ -297,7 +298,7 @@ async function runPlannedProactiveConsolidation(input: {
   }) => Promise<{ id: string }>;
   backend: 'memory-store' | 'supabase';
 }): Promise<ProactiveConsolidationReport> {
-  const apply = input.apply !== false;
+  const apply = input.apply === true;
   const runId = randomUUID();
   const jobMeta = input.enqueue ? await input.enqueueJob?.() : null;
   const plan = await planProactiveConsolidation(input.candidates, {
@@ -311,8 +312,14 @@ async function runPlannedProactiveConsolidation(input: {
   const applied: ConsolidationPair[] = [];
   const failed: Array<{ pair: ConsolidationPair; error: string }> = [];
   const persistedConflictIds: string[] = [];
+  const proposals = collectConsolidationProposals({
+    candidates: input.candidates,
+    mergeCandidates: plan.mergeCandidates,
+    detectedConflicts: plan.detectedConflicts,
+    proposalOnly: !apply,
+  });
 
-  for (const conflict of plan.detectedConflicts) {
+  for (const conflict of proposals) {
     const persisted = await input.upsertConflict({
       conflictKey: conflict.key,
       title: conflict.title,
@@ -335,6 +342,7 @@ async function runPlannedProactiveConsolidation(input: {
         reason: conflict.reason,
         memoryIds: conflict.memoryIds,
         evidence: conflict.evidence,
+        proposalOnly: !apply,
       },
     });
   }
@@ -704,7 +712,8 @@ export async function startConsolidationLoop(
           subjectId: proactive.subjectId,
           workspaceId: WORKSPACE_ID,
           enqueue: true,
-          apply: true,
+          // Proposal-only by default; set MEMORY_OS_CONSOLIDATION_APPLY=1 to auto-apply.
+          apply: env.MEMORY_OS_CONSOLIDATION_APPLY === '1',
         })
       : await runConsolidationTick();
     console.log(JSON.stringify({ ok: true, ...report }));
@@ -726,7 +735,11 @@ export async function startConsolidationLoop(
   }, intervalMs);
 }
 
-const isDirectRun = process.argv[1]?.includes('consolidation');
+const entrypoint = process.argv[1] ?? '';
+const isDirectRun =
+  /(?:^|[/\\])(?:index\.(?:ts|js)|consolidation)$/.test(entrypoint) &&
+  !entrypoint.includes('.test.') &&
+  !process.env.VITEST;
 if (isDirectRun) {
   void startConsolidationLoop()
     .then(() => {

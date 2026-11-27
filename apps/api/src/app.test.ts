@@ -4281,6 +4281,200 @@ describe('memory api demo slice', () => {
     ).toBe(true);
   });
 
+
+  it('defaults consolidation to proposal-only and requires explicit apply', async () => {
+    const app = createApp({});
+    const ownerId = '33333333-3333-4333-8333-333333333301';
+    await app.request('/v1/capture/text', {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'x-subject-id': chatgpt,
+      },
+      body: JSON.stringify({
+        workspace_id: workspaceId,
+        project_id: projectId,
+        actor_subject_id: chatgpt,
+        title: 'Proposal only twin',
+        text: 'same body',
+        idempotency_key: `proposal-only-a-${Date.now()}`,
+      }),
+    });
+    await app.request('/v1/capture/text', {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'x-subject-id': chatgpt,
+      },
+      body: JSON.stringify({
+        workspace_id: workspaceId,
+        project_id: projectId,
+        actor_subject_id: chatgpt,
+        title: 'proposal only twin',
+        text: 'same body',
+        idempotency_key: `proposal-only-b-${Date.now()}`,
+      }),
+    });
+
+    const planned = await app.request('/v1/consolidation/run', {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'x-subject-id': ownerId,
+        'x-actor-key': 'owner',
+      },
+      body: JSON.stringify({
+        workspace_id: workspaceId,
+        actor_subject_id: ownerId,
+        project_id: projectId,
+        proactive: true,
+      }),
+    });
+    expect(planned.status).toBe(200);
+    const plannedBody = await planned.json();
+    expect(plannedBody.proposalOnly ?? true).toBe(true);
+    expect(plannedBody.applied).toEqual([]);
+    expect(plannedBody.persistedConflictIds.length).toBeGreaterThanOrEqual(1);
+    expect(plannedBody.planned).toBeGreaterThanOrEqual(1);
+
+    const conflictId = plannedBody.persistedConflictIds[0] as string;
+    const approved = await app.request(`/v1/consolidation/conflicts/${conflictId}/decide`, {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'x-subject-id': ownerId,
+        'x-actor-key': 'owner',
+      },
+      body: JSON.stringify({
+        workspace_id: workspaceId,
+        actor_subject_id: ownerId,
+        decision: 'approve',
+        reason: 'independent owner review of near-duplicate proposal',
+        keeper_id: plannedBody.pairs[0]?.keeperId,
+        duplicate_id: plannedBody.pairs[0]?.duplicateId,
+      }),
+    });
+    expect(approved.status).toBe(200);
+    const approvedBody = await approved.json();
+    expect(approvedBody.status).toBe('resolved');
+
+    const rolledBack = await app.request(`/v1/consolidation/conflicts/${conflictId}/decide`, {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'x-subject-id': ownerId,
+        'x-actor-key': 'owner',
+      },
+      body: JSON.stringify({
+        workspace_id: workspaceId,
+        actor_subject_id: ownerId,
+        decision: 'rollback',
+        reason: 'rollback approved supersession for fixture',
+      }),
+    });
+    expect(rolledBack.status).toBe(200);
+    expect((await rolledBack.json()).status).toBe('candidate');
+  });
+
+  it('keeps consolidation proposals project-scoped and supports reject', async () => {
+    const app = createApp({});
+    const ownerId = '33333333-3333-4333-8333-333333333301';
+    await app.request('/v1/capture/text', {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'x-subject-id': chatgpt,
+      },
+      body: JSON.stringify({
+        workspace_id: workspaceId,
+        project_id: projectId,
+        actor_subject_id: chatgpt,
+        title: 'Reject proposal gate',
+        text: 'alpha',
+        idempotency_key: `reject-a-${Date.now()}`,
+      }),
+    });
+    await app.request('/v1/capture/text', {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'x-subject-id': chatgpt,
+      },
+      body: JSON.stringify({
+        workspace_id: workspaceId,
+        project_id: projectId,
+        actor_subject_id: chatgpt,
+        title: 'reject proposal gate',
+        text: 'beta',
+        idempotency_key: `reject-b-${Date.now()}`,
+      }),
+    });
+    const planned = await app.request('/v1/consolidation/run', {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'x-subject-id': ownerId,
+        'x-actor-key': 'owner',
+      },
+      body: JSON.stringify({
+        workspace_id: workspaceId,
+        actor_subject_id: ownerId,
+        project_id: projectId,
+        proactive: true,
+      }),
+    });
+    expect(planned.status).toBe(200);
+    const plannedBody = await planned.json();
+    expect(plannedBody.persistedConflictIds.length).toBeGreaterThanOrEqual(1);
+
+    const other = await app.request('/v1/consolidation/run', {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'x-subject-id': ownerId,
+        'x-actor-key': 'owner',
+      },
+      body: JSON.stringify({
+        workspace_id: workspaceId,
+        actor_subject_id: ownerId,
+        project_id: otherProjectId,
+        proactive: true,
+      }),
+    });
+    expect(other.status).toBe(200);
+    const otherBody = await other.json();
+    const plannedIds = new Set(
+      (plannedBody.detectedConflicts ?? []).flatMap(
+        (entry: { memoryIds: string[] }) => entry.memoryIds,
+      ),
+    );
+    for (const entry of otherBody.detectedConflicts ?? []) {
+      for (const memoryId of entry.memoryIds as string[]) {
+        expect(plannedIds.has(memoryId)).toBe(false);
+      }
+    }
+
+    const dismissed = await app.request(
+      `/v1/consolidation/conflicts/${plannedBody.persistedConflictIds[0]}/decide`,
+      {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          'x-subject-id': ownerId,
+          'x-actor-key': 'owner',
+        },
+        body: JSON.stringify({
+          workspace_id: workspaceId,
+          actor_subject_id: ownerId,
+          decision: 'dismiss',
+          reason: 'rejected contradictory proposal',
+        }),
+      },
+    );
+    expect(dismissed.status).toBe(200);
+    expect((await dismissed.json()).status).toBe('dismissed');
+  });
+
   it('idempotently ingests events', async () => {
     const app = createApp({});
     const payload = {
