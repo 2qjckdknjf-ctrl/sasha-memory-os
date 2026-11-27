@@ -488,6 +488,7 @@ export class SupabaseMemoryGateway {
       { memoryId: string; title: string },
     ];
     detectorVersion: string;
+    detectedBySubject?: string | null;
   }) {
     const { data, error } = await this.client.rpc('api_upsert_memory_conflict', {
       p_secret: this.apiSecret,
@@ -501,6 +502,7 @@ export class SupabaseMemoryGateway {
       p_right_memory_id: input.memoryIds[1],
       p_evidence_refs: input.evidence,
       p_detector_version: input.detectorVersion,
+      p_detected_by_subject: input.detectedBySubject ?? null,
     });
     if (error) throw error;
     return data as {
@@ -518,6 +520,43 @@ export class SupabaseMemoryGateway {
       ];
       detectorVersion: string;
       detectionCount: number;
+      detectedBySubject?: string | null;
+    };
+  }
+
+  async decideMemoryConflict(input: {
+    subjectId: string;
+    workspaceId: string;
+    conflictId: string;
+    decision: 'approve' | 'dismiss' | 'rollback';
+    reason: string;
+    keeperId?: string | null;
+    duplicateId?: string | null;
+  }) {
+    const { data, error } = await this.client.rpc('api_decide_memory_conflict', {
+      p_secret: this.apiSecret,
+      p_subject_id: input.subjectId,
+      p_workspace_id: input.workspaceId,
+      p_conflict_id: input.conflictId,
+      p_decision: input.decision,
+      p_reason: input.reason,
+      p_keeper_id: input.keeperId ?? null,
+      p_duplicate_id: input.duplicateId ?? null,
+    });
+    if (error) throw error;
+    return data as {
+      id: string;
+      workspaceId: string;
+      projectId: string;
+      conflictKey: string;
+      status: string;
+      title: string;
+      reason: string;
+      memoryIds: [string, string];
+      resolution: Record<string, unknown> | null;
+      resolvedAt: string | null;
+      resolvedBySubject: string | null;
+      detectedBySubject: string | null;
     };
   }
 

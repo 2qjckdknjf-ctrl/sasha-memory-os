@@ -1375,7 +1375,7 @@ export function App() {
         {
           workspace_id: WORKSPACE_ID,
           actor_subject_id: subjectId,
-          apply: true,
+          apply: false,
           enqueue: true,
         },
         actor,

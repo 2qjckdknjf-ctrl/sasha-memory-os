@@ -1,0 +1,41 @@
+{
+  "packVersion": "m20-s03-proposal-v1",
+  "sourceDelta": "Cursor / Codex execution delta — 2026-11-27",
+  "fixtures": [
+    {
+      "id": "false-memory-repeated-failure",
+      "reason": "repeatedly-disproven",
+      "expect": "proposal-only; approve supersedes false memory after independent review"
+    },
+    {
+      "id": "contradictory-sources",
+      "reason": "same-title-divergent-content",
+      "expect": "persisted candidate conflict; reject leaves both memories unchanged"
+    },
+    {
+      "id": "stale-version",
+      "reason": "stale-version",
+      "expect": "expired validTo currentish memory proposed for supersession"
+    },
+    {
+      "id": "cross-tenant-denial",
+      "reason": "project-scope",
+      "expect": "no conflict pairs across project_id boundaries"
+    },
+    {
+      "id": "rejected-proposal",
+      "reason": "dismiss",
+      "expect": "status=dismissed; no supersession"
+    },
+    {
+      "id": "approved-supersession",
+      "reason": "approve",
+      "expect": "status=resolved; duplicate superseded"
+    },
+    {
+      "id": "rollback",
+      "reason": "rollback",
+      "expect": "restores prior duplicate status; conflict returns to candidate"
+    }
+  ]
+}

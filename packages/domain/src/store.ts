@@ -11,6 +11,7 @@ import {
   type MemoryRecord,
   type ProjectStateVersion,
 } from './memory.js';
+import type { MemoryStatus } from './types.js';
 
 function newId(): string {
   return globalThis.crypto.randomUUID();
@@ -313,6 +314,184 @@ export class MemoryStore {
     return [...this.memoryConflicts.values()]
       .filter((record) => record.workspaceId === workspaceId && record.projectId === projectId)
       .sort((left, right) => right.lastDetectedAt.localeCompare(left.lastDetectedAt));
+  }
+
+  getMemoryConflict(conflictId: string): MemoryConflictRecord | null {
+    return this.memoryConflicts.get(conflictId) ?? null;
+  }
+
+  /**
+   * Independent reviewer gate for consolidation proposals.
+   * Self-approval (reviewer === detector) is rejected for approve/rollback.
+   */
+  decideMemoryConflict(input: {
+    conflictId: string;
+    decision: 'approve' | 'dismiss' | 'rollback';
+    reason: string;
+    actorSubjectId: string;
+    keeperId?: string;
+    duplicateId?: string;
+  }): MemoryConflictRecord {
+    const existing = this.memoryConflicts.get(input.conflictId);
+    if (!existing) {
+      throw new Error('memory conflict not found');
+    }
+    if (
+      (input.decision === 'approve' || input.decision === 'rollback') &&
+      existing.createdBySubject &&
+      existing.createdBySubject === input.actorSubjectId
+    ) {
+      throw new Error('reviewer cannot self-approve consolidation proposals');
+    }
+
+    const decidedAt = new Date().toISOString();
+
+    if (input.decision === 'dismiss') {
+      if (existing.status !== 'candidate') {
+        throw new Error('only candidate conflicts can be dismissed');
+      }
+      const dismissed: MemoryConflictRecord = {
+        ...existing,
+        status: 'dismissed',
+        resolvedAt: decidedAt,
+        resolvedBySubject: input.actorSubjectId,
+        resolution: {
+          decision: 'dismiss',
+          reason: input.reason,
+        },
+      };
+      this.memoryConflicts.set(dismissed.id, dismissed);
+      this.createAuditEvent({
+        workspaceId: existing.workspaceId,
+        actorSubjectId: input.actorSubjectId,
+        action: 'memory_conflict.dismissed',
+        objectType: 'memory_conflict',
+        objectId: existing.id,
+        reason: input.reason,
+        afterState: {
+          conflictId: existing.id,
+          decision: 'dismiss',
+        },
+      });
+      return dismissed;
+    }
+
+    if (input.decision === 'approve') {
+      if (existing.status !== 'candidate') {
+        throw new Error('only candidate conflicts can be approved');
+      }
+      const keeperId = input.keeperId ?? existing.memoryIds[0];
+      const duplicateId = input.duplicateId ?? existing.memoryIds[1];
+      if (keeperId === duplicateId) {
+        throw new Error('keeper and duplicate must differ');
+      }
+      const duplicateBefore = this.memories.get(duplicateId);
+      if (!duplicateBefore) {
+        throw new Error('memory not found');
+      }
+      this.supersedeMemory({
+        duplicateId,
+        keeperId,
+        reason: input.reason,
+        actorSubjectId: input.actorSubjectId,
+      });
+      const resolved: MemoryConflictRecord = {
+        ...existing,
+        status: 'resolved',
+        resolvedAt: decidedAt,
+        resolvedBySubject: input.actorSubjectId,
+        resolution: {
+          decision: 'approve',
+          reason: input.reason,
+          keeperId,
+          duplicateId,
+          priorDuplicateStatus: duplicateBefore.status,
+          priorSupersededBy: duplicateBefore.supersededBy,
+        },
+      };
+      this.memoryConflicts.set(resolved.id, resolved);
+      this.createAuditEvent({
+        workspaceId: existing.workspaceId,
+        actorSubjectId: input.actorSubjectId,
+        action: 'memory_conflict.approved',
+        objectType: 'memory_conflict',
+        objectId: existing.id,
+        reason: input.reason,
+        afterState: {
+          conflictId: existing.id,
+          decision: 'approve',
+          keeperId,
+          duplicateId,
+        },
+      });
+      return resolved;
+    }
+
+    if (input.decision === 'rollback') {
+      if (existing.status !== 'resolved') {
+        throw new Error('only resolved conflicts can be rolled back');
+      }
+      const resolution = existing.resolution ?? {};
+      const duplicateId =
+        typeof resolution.duplicateId === 'string'
+          ? resolution.duplicateId
+          : existing.memoryIds[1];
+      const priorStatus =
+        typeof resolution.priorDuplicateStatus === 'string'
+          ? resolution.priorDuplicateStatus
+          : 'candidate';
+      const duplicate = this.memories.get(duplicateId);
+      if (!duplicate) {
+        throw new Error('memory not found');
+      }
+      const restored: typeof duplicate = {
+        ...duplicate,
+        status: priorStatus as MemoryStatus,
+        supersededBy:
+          typeof resolution.priorSupersededBy === 'string'
+            ? resolution.priorSupersededBy
+            : null,
+        metadata: {
+          ...duplicate.metadata,
+          status_reason: input.reason,
+          status_actor: input.actorSubjectId,
+          status_at: decidedAt,
+          consolidation_rollback_of: existing.id,
+        },
+      };
+      this.memories.set(restored.id, restored);
+      const rolledBack: MemoryConflictRecord = {
+        ...existing,
+        status: 'candidate',
+        resolvedAt: null,
+        resolvedBySubject: null,
+        resolution: {
+          ...resolution,
+          rolledBackAt: decidedAt,
+          rolledBackBy: input.actorSubjectId,
+          rollbackReason: input.reason,
+        },
+      };
+      this.memoryConflicts.set(rolledBack.id, rolledBack);
+      this.createAuditEvent({
+        workspaceId: existing.workspaceId,
+        actorSubjectId: input.actorSubjectId,
+        action: 'memory_conflict.rolled_back',
+        objectType: 'memory_conflict',
+        objectId: existing.id,
+        reason: input.reason,
+        afterState: {
+          conflictId: existing.id,
+          decision: 'rollback',
+          duplicateId,
+          restoredStatus: priorStatus,
+        },
+      });
+      return rolledBack;
+    }
+
+    const _exhaustive: never = input.decision;
+    throw new Error(`unsupported conflict decision: ${String(_exhaustive)}`);
   }
 
   getProjectState(projectId: string): ProjectStateVersion | null {

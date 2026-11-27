@@ -27,8 +27,11 @@ import {
   createEmbeddingAdapter,
   createExtractionAdapter,
   buildProactiveConsolidationReason,
+  collectConsolidationProposals,
+  CONSOLIDATION_PROPOSAL_DETECTOR_SUBJECT,
   embedMemoryText,
   type HybridHitLike,
+  isProposalOnlyApplyFlag,
   packSearchContext,
   planCandidateConsolidations,
   planProactiveConsolidation,
@@ -2040,7 +2043,10 @@ export function createMcpHandlers(options?: {
         case 'consolidation.run': {
           const subjectId = String(args.actor_subject_id);
           const workspaceId = String(args.workspace_id);
-          const apply = args.apply !== false;
+          const apply = args.apply === true;
+          const proposalOnly = isProposalOnlyApplyFlag(
+            typeof args.apply === 'boolean' ? args.apply : undefined,
+          );
           const proactive = args.proactive === true;
           if (proactive) {
             const resolvedProjectId = await resolveExplicitConsolidationProjectId(
@@ -2064,6 +2070,7 @@ export function createMcpHandlers(options?: {
                   content: m.content,
                   status: m.status,
                   recordedAt: m.recordedAt,
+                  validTo: m.validTo ?? null,
                   projectId: m.projectId,
                   metadata: m.metadata,
                 }));
@@ -2078,8 +2085,14 @@ export function createMcpHandlers(options?: {
                 maxTimeMs:
                   typeof args.max_time_ms === 'number' ? args.max_time_ms : undefined,
               });
+              const proposals = collectConsolidationProposals({
+                candidates,
+                mergeCandidates: plan.mergeCandidates,
+                detectedConflicts: plan.detectedConflicts,
+                proposalOnly,
+              });
               const persistedConflictIds: string[] = [];
-              for (const conflict of plan.detectedConflicts) {
+              for (const conflict of proposals) {
                 const persisted = store.upsertMemoryConflict({
                   workspaceId,
                   projectId: resolvedProjectId,
@@ -2089,7 +2102,7 @@ export function createMcpHandlers(options?: {
                   memoryIds: conflict.memoryIds,
                   evidence: conflict.evidence,
                   detectorVersion: PROACTIVE_CONSOLIDATION_RULES_VERSION,
-                  actorSubjectId: subjectId,
+                  actorSubjectId: CONSOLIDATION_PROPOSAL_DETECTOR_SUBJECT,
                 });
                 persistedConflictIds.push(persisted.id);
                 store.createAuditEvent({
@@ -2108,6 +2121,8 @@ export function createMcpHandlers(options?: {
                     reason: conflict.reason,
                     memoryIds: conflict.memoryIds,
                     evidence: conflict.evidence,
+                    proposalOnly,
+                    detectedBySubject: CONSOLIDATION_PROPOSAL_DETECTOR_SUBJECT,
                   },
                 });
               }
@@ -2209,31 +2224,36 @@ export function createMcpHandlers(options?: {
               projectId: resolvedProjectId,
               limit: scanLimit,
             });
-            const plan = await planProactiveConsolidation(
-              rows.map((row) => ({
-                id: row.id,
-                title: row.title,
-                content: row.content,
-                status: row.status,
-                recordedAt: row.recordedAt,
-                embedding: Array.isArray(row.embedding) ? row.embedding : null,
-                projectId: row.projectId,
-                metadata: row.metadata,
-              })),
-              {
-                scanLimit,
-                maxMerges:
-                  typeof args.max_merges === 'number' ? args.max_merges : undefined,
-                maxConflicts:
-                  typeof args.max_conflicts === 'number'
-                    ? args.max_conflicts
-                    : undefined,
-                maxTimeMs:
-                  typeof args.max_time_ms === 'number' ? args.max_time_ms : undefined,
-              },
-            );
+            const candidateRows = rows.map((row) => ({
+              id: row.id,
+              title: row.title,
+              content: row.content,
+              status: row.status,
+              recordedAt: row.recordedAt,
+              validTo: row.validTo ?? null,
+              embedding: Array.isArray(row.embedding) ? row.embedding : null,
+              projectId: row.projectId,
+              metadata: row.metadata,
+            }));
+            const plan = await planProactiveConsolidation(candidateRows, {
+              scanLimit,
+              maxMerges:
+                typeof args.max_merges === 'number' ? args.max_merges : undefined,
+              maxConflicts:
+                typeof args.max_conflicts === 'number'
+                  ? args.max_conflicts
+                  : undefined,
+              maxTimeMs:
+                typeof args.max_time_ms === 'number' ? args.max_time_ms : undefined,
+            });
+            const proposals = collectConsolidationProposals({
+              candidates: candidateRows,
+              mergeCandidates: plan.mergeCandidates,
+              detectedConflicts: plan.detectedConflicts,
+              proposalOnly,
+            });
             const persistedConflictIds: string[] = [];
-            for (const conflict of plan.detectedConflicts) {
+            for (const conflict of proposals) {
               const persisted = await gateway.upsertMemoryConflict({
                 subjectId,
                 workspaceId,
@@ -2244,6 +2264,7 @@ export function createMcpHandlers(options?: {
                 memoryIds: conflict.memoryIds,
                 evidence: conflict.evidence,
                 detectorVersion: PROACTIVE_CONSOLIDATION_RULES_VERSION,
+                detectedBySubject: CONSOLIDATION_PROPOSAL_DETECTOR_SUBJECT,
               });
               persistedConflictIds.push(persisted.id);
               await gateway.appendAuditEvent({
@@ -2262,6 +2283,8 @@ export function createMcpHandlers(options?: {
                   reason: conflict.reason,
                   memoryIds: conflict.memoryIds,
                   evidence: conflict.evidence,
+                  proposalOnly,
+                  detectedBySubject: CONSOLIDATION_PROPOSAL_DETECTOR_SUBJECT,
                 },
               });
             }

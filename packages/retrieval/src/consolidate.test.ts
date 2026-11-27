@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import {
+  buildMergeProposalConflicts,
   buildProactiveConsolidationReason,
+  collectConsolidationProposals,
+  isProposalOnlyApplyFlag,
   planCandidateConsolidations,
   planProactiveConsolidation,
   PROACTIVE_CONSOLIDATION_RULES_VERSION,
@@ -280,5 +283,109 @@ describe('buildProactiveConsolidationReason', () => {
     ).toBe(
       `consolidation.proactive ${PROACTIVE_CONSOLIDATION_RULES_VERSION} run run-123: exact-title`,
     );
+  });
+});
+
+describe('M20.3 proposal detectors', () => {
+  it('flags stale-version when an expired currentish memory diverges from a newer fact', async () => {
+    const plan = await planProactiveConsolidation([
+      {
+        id: 'stale-old',
+        projectId: 'project-a',
+        title: 'Deploy region',
+        content: 'Use us-east-1.',
+        status: 'active',
+        recordedAt: '2026-08-01T00:00:00.000Z',
+        validTo: '2026-08-15T00:00:00.000Z',
+      },
+      {
+        id: 'fresh-new',
+        projectId: 'project-a',
+        title: 'deploy region',
+        content: 'Use eu-central-1.',
+        status: 'verified',
+        recordedAt: '2026-08-20T00:00:00.000Z',
+      },
+    ]);
+
+    expect(plan.detectedConflicts).toEqual([
+      expect.objectContaining({
+        reason: 'stale-version',
+        proposedKeeperId: 'fresh-new',
+        proposedDuplicateId: 'stale-old',
+      }),
+    ]);
+  });
+
+  it('flags repeatedly-disproven false memories that keep causing divergent truth', async () => {
+    const plan = await planProactiveConsolidation([
+      {
+        id: 'false-memory',
+        projectId: 'project-a',
+        title: 'Billing currency',
+        content: 'Always charge USD.',
+        status: 'candidate',
+        recordedAt: '2026-08-20T01:00:00.000Z',
+        metadata: { disproven_count: 3, repeated_failure_count: 4 },
+      },
+      {
+        id: 'authority',
+        projectId: 'project-a',
+        title: 'billing currency',
+        content: 'Charge EUR for EU customers.',
+        status: 'verified',
+        recordedAt: '2026-08-20T02:00:00.000Z',
+      },
+    ]);
+
+    expect(plan.detectedConflicts).toEqual([
+      expect.objectContaining({
+        reason: 'repeatedly-disproven',
+        memoryIds: ['authority', 'false-memory'],
+      }),
+    ]);
+  });
+
+  it('builds near-duplicate merge proposals without applying them', async () => {
+    const candidates = [
+      {
+        id: 'dup-old',
+        projectId: 'project-a',
+        title: 'Pilot note',
+        content: 'same body',
+        status: 'candidate' as const,
+        recordedAt: '2026-08-20T01:00:00.000Z',
+      },
+      {
+        id: 'dup-new',
+        projectId: 'project-a',
+        title: 'pilot note',
+        content: 'same body',
+        status: 'candidate' as const,
+        recordedAt: '2026-08-20T02:00:00.000Z',
+      },
+    ];
+    const plan = await planProactiveConsolidation(candidates);
+
+    expect(isProposalOnlyApplyFlag(undefined)).toBe(true);
+    expect(isProposalOnlyApplyFlag(false)).toBe(true);
+    expect(isProposalOnlyApplyFlag(true)).toBe(false);
+    expect(buildMergeProposalConflicts(candidates, plan.mergeCandidates)).toEqual([
+      expect.objectContaining({
+        reason: 'near-duplicate-merge',
+        proposedKeeperId: 'dup-new',
+        proposedDuplicateId: 'dup-old',
+      }),
+    ]);
+    expect(
+      collectConsolidationProposals({
+        candidates,
+        mergeCandidates: plan.mergeCandidates,
+        detectedConflicts: plan.detectedConflicts,
+        proposalOnly: true,
+      }),
+    ).toEqual([
+      expect.objectContaining({ reason: 'near-duplicate-merge' }),
+    ]);
   });
 });

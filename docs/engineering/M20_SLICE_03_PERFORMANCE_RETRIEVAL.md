@@ -1,9 +1,6 @@
 # M20 Slice 03 — performance and retrieval quality gate
 
-Status: **production PASS 2026-10-15**. PRs `#115`–`#117`, trusted-main CI
-and CodeQL are green; exact seven-tool live MCP read-after-write passed with
-steady-state p95 `1750 ms`. Memory OS receipt:
-`1e618a29-8ba6-4da4-871a-d6530863cf2a`.
+Status: implementation and mandatory CI acceptance in progress.
 
 Official pack: `m20-s03-v1`
 
@@ -56,30 +53,6 @@ Official pack: `m20-s03-v1`
   Recall@10 headroom while preventing unbounded memory bodies and vectors from
   crossing the database/Edge boundary.
 
-## Failure diagnostics — 2026-11-27
-
-The live runner now emits one bounded `m20_live_retrieval_failure` JSON record
-per failed attempt, followed by the existing failing summary and nonzero exit.
-Only five fields are allowed: `sampleIndex`, `phase`, `failureClass`,
-`httpStatus`, and `durationMs`. Index zero identifies the warm-up; indices
-1–12 identify the default measured attempts. Phases distinguish a request that
-did not return headers, response-body consumption, and response-contract checks.
-Failure classes distinguish deadline timeout, other abort, transport error,
-HTTP error, invalid JSON, JSON-RPC error, MCP tool error, and missing result.
-HTTP status is null until headers have been received. No endpoint, project ID,
-query, header, exception message/cause, or response content enters these records.
-
-The defaults remain one warm-up plus 12 sequential samples, a 4,000 ms request
-deadline and a 2,000 ms steady-state p95 limit. Any failed attempt, including
-the warm-up, still fails the gate even if the successful samples meet p95.
-There is no automatic retry or change to retrieval, ACL, SQL, or deployment.
-
-The earlier run [45985923386](https://github.com/2qjckdknjf-ctrl/sasha-memory-os/actions/runs/45985923386)
-reported 11 successful measured samples, one failure and p95 1,751 ms, but did
-not retain the failure category. A transport timeout is only a hypothesis for
-that historical event. These diagnostics make future failures actionable;
-they do not establish that the service incident has been repaired.
-
 ## Idempotency hardening
 
 Migration `20261015220000_m20_capture_idempotency_scope_guard.sql` serializes
@@ -107,3 +80,112 @@ idempotency conflict instead of returning a receipt from another project.
 - Production migration applied only after the merged main checks are green.
 - One Memory OS milestone with PR, merge SHA, CI identifiers, Recall@10,
   latency, routing/dedupe evidence, blockers, and read-after-write receipt.
+
+
+## Weekly AI reconciliation — 2026-11-10
+
+**Period:** 2026-11-03 through 2026-11-10. **Status:** planning-only, not implementation or deployment. Existing canonical IDs, P0 gates and historical records take precedence. Reconcile with currently open PRs and exact HEAD before marking any item DONE. Evidence = reproducible tests + independent review + SHA + deployment/device receipt where applicable. Source ideas: OpenAI engineering/CAD and agent safety, GitHub Xcode and review telemetry, AI Engineer talks on durable SDLC, factual numeric provenance, adaptive worker economics, rollback, memory validity, and new Anthropic/Meta model announcements. Vendor benchmarks are not local acceptance evidence.
+
+| Priority | Existing workstream / ID | Incremental action and acceptance |
+|---|---|---|
+| P0 | M20 reliability/privacy/GA | Finish existing M20 security, RLS, disaster recovery, retrieval and production acceptance; preserve verified M19 ChatGPT↔Cursor integration. |
+| P1 | Existing provenance / temporal model | Introduce or verify experience validity: event→outcome→verified lesson, applicability by repo SHA/tool version, expiry/revalidation, superseded/contradicted statuses; do not create a second memory. |
+| P1 | Agent handoff evidence | Persist task/attempt IDs, source SHA, policy revision, permissions, tool actions, reviewer verdict, external-effect reconciliation and compensating action; ACL enforced on retrieval. |
+| P2 | Knowledge comparison | Benchmark retrieval against alternative RAG approaches only after M20, without migrating the canonical store. |
+
+**Implementation order:** close existing P0 first; P1 in bounded non-production pilots; P2 only after evidence-based decision. Owner: project engineering lead (assignment TBD); independent reviewer: ROMA/security or domain QA (assignment TBD). No auto-merge, production writes, payments or live trading from this roadmap update.
+
+**Cross-project dependency:** Grow OS orchestrates; ROMA enforces independent policy/verification in Aistroyka-web; Sasha Memory OS stores permission-scoped evidence. Trading repository/runtime remains unverified; shared trading requirements are point-in-time market data, deterministic calculations, independent risk limits, exchange-state reconciliation, paper trading and kill switch, with no autonomous live orders.
+
+
+### AI feature delta — 2026-11-11
+
+These are **proposed additions to existing workstreams** from the November 11 intelligence review, not claims of shipped functionality or verified vendor capabilities. Validate official release/API/pricing availability before selecting any provider; independent exact-SHA acceptance and existing P0 gates remain mandatory.
+
+- **P1 / training-data trust:** verified agent lessons are not automatically trusted fine-tuning examples; attach source, tool trace, approval, model/harness version, expiry, contamination/backdoor-test result and permission scope before export. Never train on raw untrusted prompt-injection text without review.
+- **P1 / cross-modal continuity:** store consented voice/text/UI task handoffs under one durable ID and policy version; interrupted sessions preserve state without duplicating tool effects. Enforce project ACL and retention.
+- **P2 / retrieval benchmark:** test new model candidates on same temporal/provenance tasks, avoiding claims that model performance replaces source integrity.
+
+**Acceptance rule:** record baseline, owner, independent reviewer, test corpus, security/privacy gates, cost per verified task and explicit decision (adopt / defer / reject). No autonomous production actions or merge authorized by this documentation.
+
+
+## Gap-only AI roadmap reconciliation — 2026-11-20
+
+**Review period:** 2026-11-12–2026-11-20. Compared this branch with `main` and the existing Nov 10/11 reconciliation. Only incremental acceptance conditions and candidate evaluations are recorded; pre-existing capabilities must not be rebuilt. **PLANNING ONLY / NOT IMPLEMENTED / NOT MERGED.** The owner and independent reviewer remain TBD until assigned. Recheck exact HEAD, CI and production receipts before any DONE status.
+
+| Priority | Existing owner / workstream | Newly identified gap / acceptance evidence |
+|---|---|---|
+| P0 | Existing M20 privacy / reliability / GA | Close outstanding trusted-main production and ACL/DR/performance gates before any new capability; M19 shared ChatGPT↔Cursor memory is already implemented. |
+| P1 | Existing temporal provenance and agent history | Persist append-only task state changes, incident hypotheses, independent counterchecks, post-deploy verification, tool/model/skill version and exact source SHA with bounded retention; store evidence, not agent self-reported success. |
+| P1 | Existing ACL / agent handoff | Validate transitive originator/recipient data restrictions across project/tenant and child-agent retrieval; stale, contradicted and superseded knowledge must not silently become authoritative. |
+| P1 | Existing experience quality | Skill-eval outcomes and verified failure lessons must be versioned and revalidated after tool/model changes; raw external instructions never trusted as training examples. |
+
+**Source references:** [OpenAI Performance Factory](https://openai.com/index/how-openai-performance-factory-keeps-chatgpt-fast/), [Google Mirror Dimension](https://blog.google/security/mirror-dimension-for-agents/), [OpenAI frontier risk controls](https://openai.com/index/managing-frontier-ai-risk/). Other recent model/vendor announcements are *candidates requiring independent availability and price validation*, not approved dependencies. No new runtime privileges, model installation, migrations, payments, deployment, PR merge, or trading orders are authorized by this document.
+
+
+## Codex / Cursor execution delta — 2026-11-24
+
+Planning only. Reconcile current main and active PRs first; preserve M19 shared memory and existing M20 gates. Vendor candidates require upstream verification.
+
+- P0 existing M20 ACL/privacy: redact secrets before persistence and egress, final provider allowlist, retention verification, transitive principal/recipient restrictions, synthetic revocation drill.
+- P1 existing retrieval: evaluate OmniEVIE-4B multimodal retrieval with page/time provenance, Recall@K, latency, ACL negatives and storage cost; no second memory store.
+- P1 existing experience/evidence: version reusable task templates, LoRA/skill/model provenance, requirement-to-test receipts and independent verdict; distinguish NOT_RUN/UNKNOWN/FAIL; no raw untrusted traces as training data.
+
+Codex/Cursor: map gaps to existing IDs, implement only missing functionality on separate branch, preserve tests, report exact SHA, independent verdict, reproducible tests and blockers. No auto-merge or production changes. Owner/reviewer TBD.
+
+
+## Cursor execution specification — 2026-11-26
+
+Planning-only delta for 25–26 November. Read current main and active implementation PRs first; map to existing IDs, implement only confirmed gaps. Vendor claims require primary-source verification. Existing P0 gates remain first. Proposed numerical thresholds are initial configurable test defaults, not measured results. No auto-merge, deployment, purchases, ad activation or live trading. Owner/reviewer TBD.
+
+### P1 — existing M20 provenance / retrieval
+Preserve M19 and current M20 gates. Extend existing evidence schema only if missing: skill/model/runtime version and hash, source first-available timestamp, observation timestamp, task/attempt ID, independent verdict, contradictory evidence and supersession. MCP task handoff retains ACL and consent; no secrets or untrusted skill instructions persisted as trusted memory. Test cross-tenant denial, replay, stale/superseded records, historical cutoff leakage and retrieval latency/Recall@K. Store model benchmark receipts from Growth with exact environment and cost; no second memory store.
+
+### Cursor delivery contract
+Work in a separate implementation branch; report gap matrix, changed files, reproducible commands, test receipts, exact commit SHA, independent verdict, rollback and remaining blockers. Never mark DONE from documentation/build alone. Stop on missing authorization, hardware access or provider compatibility; report NOT_RUN rather than fabricate evidence.
+
+
+## Cursor / Codex execution delta — 2026-11-27
+
+Planning-only extension to November 26 specification. Reconcile current main, active PRs and actual code before execution; map to existing IDs, implement only confirmed gaps. P0 blockers first. Vendor claims from daily digest require primary-source verification before adoption. Numerical corpus sizes are proposed test defaults, not measured results. Owner/reviewer TBD.
+
+- P1 existing M20 consolidation: audit current memory lifecycle before implementation. Add proposal-only consolidation to existing pipeline if missing: detect contradictory/stale/repeatedly disproven memories, attach original evidence, propose correction/supersession with reason and scope; independent reviewer approves before trusted retrieval. Preserve audit history subject to retention/deletion policy, ACL, version and rollback; never rewrite security rules or silently elevate unverified traces.
+- Acceptance: fixtures for false memory causing repeated failure, contradictory sources, stale version, cross-tenant denial, rejected proposal, approved supersession and rollback; measure retrieval correctness/Recall@K, latency and repeat failure rate before/after. Store three-run Model Arena receipts with functional/security verdicts and environment provenance. Preserve M19 and current M20 release gates.
+
+Delivery: separate implementation branch, baseline and gap matrix, reproducible tests, exact SHA, independent verdict, rollback and blockers. No automatic merge, production deployment, purchases or live trading. Sources for verification: https://huggingface.co/nvidia/Nemotron-3.5-Parse ; https://onchainbench.ai/methodology ; https://www.perplexity.ai/en-GB/hub/blog/freeze-the-web-with-perplexity-time-machine ; https://openclaw.ai/blog/shellbench ; https://sakana.ai/marlin-update-2/ .
+
+## Execution results — 2026-11-27 (proposal-only consolidation)
+
+**Status:** implemented on branch `feat/m20-consolidation-proposal-only` (pending independent PR review). Not production-deployed by this note.
+
+### Gap matrix (reconciled vs main `47c8361` after P0 #130/#131)
+
+| Requirement | Before | After |
+|---|---|---|
+| Proposal-only default | `apply !== false` auto-superseded | `apply === true` required; default proposals only |
+| Contradictory detection | M13.4 `memory_conflicts` | preserved + review decide API |
+| Stale / repeatedly-disproven | missing | detectors `stale-version`, `repeatedly-disproven` |
+| Near-duplicate as proposal | auto-apply path | `near-duplicate-merge` persisted when proposal-only |
+| Independent reviewer | missing | self-approval banned; detector=ROMA, owner decides |
+| Approve / reject / rollback | missing | `POST /v1/consolidation/conflicts/:id/decide` + SQL RPCs |
+| Fixtures | partial | `tests/fixtures/m20_consolidation_proposal_acceptance.json` + unit/API/domain tests |
+
+### Tests (local, reproducible)
+
+- `@memory-os/retrieval` `consolidate.test.ts` — 11 passed
+- `@memory-os/domain` `consolidation-proposal.test.ts` — 1 passed
+- `@memory-os/api` consolidation/proposal/proactive filters — 6 passed
+- `@memory-os/db` `migration-guard.test.ts` — 51 passed
+- `@memory-os/worker-consolidation` — 10 passed
+
+### Explicit NOT_RUN / residual blockers
+
+- Live Supabase migration apply + live E2E decide path: requires operator confirm / service credentials in CI secrets path
+- Three-run Model Arena receipts: deferred (Growth/provider); not blocking consolidation gate
+- OAuth, outbox publisher, Apple E2E, vector-in-public, Fly API: unchanged residual ops blockers
+- No auto-merge / no live trading / no purchases authorized by this slice
+
+### Rollback
+
+- Code: revert PR / redeploy previous SHA
+- Data: `decision=rollback` restores prior duplicate status when resolution provenance exists; migration is additive (new reasons + RPCs)
