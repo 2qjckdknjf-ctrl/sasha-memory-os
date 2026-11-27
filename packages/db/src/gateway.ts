@@ -689,7 +689,9 @@ export class SupabaseMemoryGateway {
       p_subject_id: input.subjectId,
       p_workspace_id: input.workspaceId,
       p_project_id: input.projectId,
-      p_as_of: input.asOf ?? new Date().toISOString(),
+      // Omit an absent cutoff so PostgreSQL uses its own now() default; explicit
+      // null is rejected by the RPC and an API-host timestamp can run ahead of it.
+      ...(input.asOf == null ? {} : { p_as_of: input.asOf }),
       p_dry_run: input.dryRun !== false,
     });
     if (error) throw error;
