@@ -415,32 +415,31 @@ export function buildMergeProposalConflicts(
   mergePairs: ConsolidationPair[],
 ): ProactiveDetectedConflict[] {
   const byId = new Map(candidates.map((candidate) => [candidate.id, candidate]));
-  return mergePairs
-    .map((pair) => {
-      const keeper = byId.get(pair.keeperId);
-      const duplicate = byId.get(pair.duplicateId);
-      if (!keeper || !duplicate) return null;
-      const ordered = [keeper, duplicate].sort((a, b) => a.id.localeCompare(b.id)) as [
-        ProactiveConsolidationCandidate,
-        ProactiveConsolidationCandidate,
-      ];
-      return {
-        key: pairConflictKey(pair.keeperId, pair.duplicateId, 'near-duplicate-merge'),
-        title: keeper.title || duplicate.title || 'untitled',
-        projectId: keeper.projectId ?? duplicate.projectId ?? null,
-        reason: 'near-duplicate-merge' as const,
-        memoryIds: [ordered[0].id, ordered[1].id],
-        evidence: [
-          { memoryId: ordered[0].id, title: ordered[0].title || 'untitled' },
-          { memoryId: ordered[1].id, title: ordered[1].title || 'untitled' },
-        ],
-        proposedKeeperId: pair.keeperId,
-        proposedDuplicateId: pair.duplicateId,
-        proposalScope: 'project' as const,
-      } satisfies ProactiveDetectedConflict;
-    })
-    .filter((entry): entry is ProactiveDetectedConflict => entry !== null)
-    .sort((left, right) => left.key.localeCompare(right.key));
+  const proposals: ProactiveDetectedConflict[] = [];
+  for (const pair of mergePairs) {
+    const keeper = byId.get(pair.keeperId);
+    const duplicate = byId.get(pair.duplicateId);
+    if (!keeper || !duplicate) continue;
+    const ordered = [keeper, duplicate].sort((a, b) => a.id.localeCompare(b.id)) as [
+      ProactiveConsolidationCandidate,
+      ProactiveConsolidationCandidate,
+    ];
+    proposals.push({
+      key: pairConflictKey(pair.keeperId, pair.duplicateId, 'near-duplicate-merge'),
+      title: keeper.title || duplicate.title || 'untitled',
+      projectId: keeper.projectId ?? duplicate.projectId ?? null,
+      reason: 'near-duplicate-merge',
+      memoryIds: [ordered[0].id, ordered[1].id],
+      evidence: [
+        { memoryId: ordered[0].id, title: ordered[0].title || 'untitled' },
+        { memoryId: ordered[1].id, title: ordered[1].title || 'untitled' },
+      ],
+      proposedKeeperId: pair.keeperId,
+      proposedDuplicateId: pair.duplicateId,
+      proposalScope: 'project',
+    });
+  }
+  return proposals.sort((left, right) => left.key.localeCompare(right.key));
 }
 
 export function isProposalOnlyApplyFlag(apply: boolean | undefined | null): boolean {
