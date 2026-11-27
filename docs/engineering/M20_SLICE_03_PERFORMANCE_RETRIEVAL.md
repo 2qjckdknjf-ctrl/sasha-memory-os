@@ -83,3 +83,76 @@ idempotency conflict instead of returning a receipt from another project.
 - Production migration applied only after the merged main checks are green.
 - One Memory OS milestone with PR, merge SHA, CI identifiers, Recall@10,
   latency, routing/dedupe evidence, blockers, and read-after-write receipt.
+
+
+## Weekly AI reconciliation — 2026-11-10
+
+**Period:** 2026-11-03 through 2026-11-10. **Status:** planning-only, not implementation or deployment. Existing canonical IDs, P0 gates and historical records take precedence. Reconcile with currently open PRs and exact HEAD before marking any item DONE. Evidence = reproducible tests + independent review + SHA + deployment/device receipt where applicable. Source ideas: OpenAI engineering/CAD and agent safety, GitHub Xcode and review telemetry, AI Engineer talks on durable SDLC, factual numeric provenance, adaptive worker economics, rollback, memory validity, and new Anthropic/Meta model announcements. Vendor benchmarks are not local acceptance evidence.
+
+| Priority | Existing workstream / ID | Incremental action and acceptance |
+|---|---|---|
+| P0 | M20 reliability/privacy/GA | Finish existing M20 security, RLS, disaster recovery, retrieval and production acceptance; preserve verified M19 ChatGPT↔Cursor integration. |
+| P1 | Existing provenance / temporal model | Introduce or verify experience validity: event→outcome→verified lesson, applicability by repo SHA/tool version, expiry/revalidation, superseded/contradicted statuses; do not create a second memory. |
+| P1 | Agent handoff evidence | Persist task/attempt IDs, source SHA, policy revision, permissions, tool actions, reviewer verdict, external-effect reconciliation and compensating action; ACL enforced on retrieval. |
+| P2 | Knowledge comparison | Benchmark retrieval against alternative RAG approaches only after M20, without migrating the canonical store. |
+
+**Implementation order:** close existing P0 first; P1 in bounded non-production pilots; P2 only after evidence-based decision. Owner: project engineering lead (assignment TBD); independent reviewer: ROMA/security or domain QA (assignment TBD). No auto-merge, production writes, payments or live trading from this roadmap update.
+
+**Cross-project dependency:** Grow OS orchestrates; ROMA enforces independent policy/verification in Aistroyka-web; Sasha Memory OS stores permission-scoped evidence. Trading repository/runtime remains unverified; shared trading requirements are point-in-time market data, deterministic calculations, independent risk limits, exchange-state reconciliation, paper trading and kill switch, with no autonomous live orders.
+
+
+### AI feature delta — 2026-11-11
+
+These are **proposed additions to existing workstreams** from the November 11 intelligence review, not claims of shipped functionality or verified vendor capabilities. Validate official release/API/pricing availability before selecting any provider; independent exact-SHA acceptance and existing P0 gates remain mandatory.
+
+- **P1 / training-data trust:** verified agent lessons are not automatically trusted fine-tuning examples; attach source, tool trace, approval, model/harness version, expiry, contamination/backdoor-test result and permission scope before export. Never train on raw untrusted prompt-injection text without review.
+- **P1 / cross-modal continuity:** store consented voice/text/UI task handoffs under one durable ID and policy version; interrupted sessions preserve state without duplicating tool effects. Enforce project ACL and retention.
+- **P2 / retrieval benchmark:** test new model candidates on same temporal/provenance tasks, avoiding claims that model performance replaces source integrity.
+
+**Acceptance rule:** record baseline, owner, independent reviewer, test corpus, security/privacy gates, cost per verified task and explicit decision (adopt / defer / reject). No autonomous production actions or merge authorized by this documentation.
+
+
+## Gap-only AI roadmap reconciliation — 2026-11-20
+
+**Review period:** 2026-11-12–2026-11-20. Compared this branch with `main` and the existing Nov 10/11 reconciliation. Only incremental acceptance conditions and candidate evaluations are recorded; pre-existing capabilities must not be rebuilt. **PLANNING ONLY / NOT IMPLEMENTED / NOT MERGED.** The owner and independent reviewer remain TBD until assigned. Recheck exact HEAD, CI and production receipts before any DONE status.
+
+| Priority | Existing owner / workstream | Newly identified gap / acceptance evidence |
+|---|---|---|
+| P0 | Existing M20 privacy / reliability / GA | Close outstanding trusted-main production and ACL/DR/performance gates before any new capability; M19 shared ChatGPT↔Cursor memory is already implemented. |
+| P1 | Existing temporal provenance and agent history | Persist append-only task state changes, incident hypotheses, independent counterchecks, post-deploy verification, tool/model/skill version and exact source SHA with bounded retention; store evidence, not agent self-reported success. |
+| P1 | Existing ACL / agent handoff | Validate transitive originator/recipient data restrictions across project/tenant and child-agent retrieval; stale, contradicted and superseded knowledge must not silently become authoritative. |
+| P1 | Existing experience quality | Skill-eval outcomes and verified failure lessons must be versioned and revalidated after tool/model changes; raw external instructions never trusted as training examples. |
+
+**Source references:** [OpenAI Performance Factory](https://openai.com/index/how-openai-performance-factory-keeps-chatgpt-fast/), [Google Mirror Dimension](https://blog.google/security/mirror-dimension-for-agents/), [OpenAI frontier risk controls](https://openai.com/index/managing-frontier-ai-risk/). Other recent model/vendor announcements are *candidates requiring independent availability and price validation*, not approved dependencies. No new runtime privileges, model installation, migrations, payments, deployment, PR merge, or trading orders are authorized by this document.
+
+
+## Codex / Cursor execution delta — 2026-11-24
+
+Planning only. Reconcile current main and active PRs first; preserve M19 shared memory and existing M20 gates. Vendor candidates require upstream verification.
+
+- P0 existing M20 ACL/privacy: redact secrets before persistence and egress, final provider allowlist, retention verification, transitive principal/recipient restrictions, synthetic revocation drill.
+- P1 existing retrieval: evaluate OmniEVIE-4B multimodal retrieval with page/time provenance, Recall@K, latency, ACL negatives and storage cost; no second memory store.
+- P1 existing experience/evidence: version reusable task templates, LoRA/skill/model provenance, requirement-to-test receipts and independent verdict; distinguish NOT_RUN/UNKNOWN/FAIL; no raw untrusted traces as training data.
+
+Codex/Cursor: map gaps to existing IDs, implement only missing functionality on separate branch, preserve tests, report exact SHA, independent verdict, reproducible tests and blockers. No auto-merge or production changes. Owner/reviewer TBD.
+
+
+## Cursor execution specification — 2026-11-26
+
+Planning-only delta for 25–26 November. Read current main and active implementation PRs first; map to existing IDs, implement only confirmed gaps. Vendor claims require primary-source verification. Existing P0 gates remain first. Proposed numerical thresholds are initial configurable test defaults, not measured results. No auto-merge, deployment, purchases, ad activation or live trading. Owner/reviewer TBD.
+
+### P1 — existing M20 provenance / retrieval
+Preserve M19 and current M20 gates. Extend existing evidence schema only if missing: skill/model/runtime version and hash, source first-available timestamp, observation timestamp, task/attempt ID, independent verdict, contradictory evidence and supersession. MCP task handoff retains ACL and consent; no secrets or untrusted skill instructions persisted as trusted memory. Test cross-tenant denial, replay, stale/superseded records, historical cutoff leakage and retrieval latency/Recall@K. Store model benchmark receipts from Growth with exact environment and cost; no second memory store.
+
+### Cursor delivery contract
+Work in a separate implementation branch; report gap matrix, changed files, reproducible commands, test receipts, exact commit SHA, independent verdict, rollback and remaining blockers. Never mark DONE from documentation/build alone. Stop on missing authorization, hardware access or provider compatibility; report NOT_RUN rather than fabricate evidence.
+
+
+## Cursor / Codex execution delta — 2026-11-27
+
+Planning-only extension to November 26 specification. Reconcile current main, active PRs and actual code before execution; map to existing IDs, implement only confirmed gaps. P0 blockers first. Vendor claims from daily digest require primary-source verification before adoption. Numerical corpus sizes are proposed test defaults, not measured results. Owner/reviewer TBD.
+
+- P1 existing M20 consolidation: audit current memory lifecycle before implementation. Add proposal-only consolidation to existing pipeline if missing: detect contradictory/stale/repeatedly disproven memories, attach original evidence, propose correction/supersession with reason and scope; independent reviewer approves before trusted retrieval. Preserve audit history subject to retention/deletion policy, ACL, version and rollback; never rewrite security rules or silently elevate unverified traces.
+- Acceptance: fixtures for false memory causing repeated failure, contradictory sources, stale version, cross-tenant denial, rejected proposal, approved supersession and rollback; measure retrieval correctness/Recall@K, latency and repeat failure rate before/after. Store three-run Model Arena receipts with functional/security verdicts and environment provenance. Preserve M19 and current M20 release gates.
+
+Delivery: separate implementation branch, baseline and gap matrix, reproducible tests, exact SHA, independent verdict, rollback and blockers. No automatic merge, production deployment, purchases or live trading. Sources for verification: https://huggingface.co/nvidia/Nemotron-3.5-Parse ; https://onchainbench.ai/methodology ; https://www.perplexity.ai/en-GB/hub/blog/freeze-the-web-with-perplexity-time-machine ; https://openclaw.ai/blog/shellbench ; https://sakana.ai/marlin-update-2/ .
