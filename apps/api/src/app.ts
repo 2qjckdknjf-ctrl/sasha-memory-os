@@ -2122,6 +2122,7 @@ export function createApp(options?: {
   app.use('/v1/roma/qa-findings', requireHttpApiSecret);
   app.use('/v1/roma/project-health/schedules', requireHttpApiSecret);
   app.use('/v1/export/*', requireHttpApiSecret);
+  app.use('/v1/privacy/*', requireHttpApiSecret);
 
   app.post('/v1/webhooks/:connectorId', async (c) => {
     const connectorId = c.req.param('connectorId');
@@ -4722,9 +4723,9 @@ export function createApp(options?: {
     const limit = Math.min(Math.max(Number.isFinite(rawLimit) ? rawLimit : 500, 1), 500);
     const rawOffset = Number(c.req.query('offset') ?? '0');
     const offset = Math.max(Number.isFinite(rawOffset) ? Math.trunc(rawOffset) : 0, 0);
-    const rawSnapshotAt = c.req.query('snapshot_at');
-    const snapshotAt = rawSnapshotAt ? Date.parse(rawSnapshotAt) : undefined;
-    if (rawSnapshotAt && !Number.isFinite(snapshotAt)) {
+    // Validate the cursor without rounding PostgreSQL microseconds to JS milliseconds.
+    const snapshotAt = c.req.query('snapshot_at') || undefined;
+    if (snapshotAt && !Number.isFinite(Date.parse(snapshotAt))) {
       return c.json({ error: 'invalid_snapshot_at' }, 400);
     }
     const exportId = c.req.query('export_id') ?? undefined;
@@ -4751,7 +4752,7 @@ export function createApp(options?: {
           projectId,
           limit,
           offset,
-          snapshotAt: snapshotAt === undefined ? undefined : new Date(snapshotAt).toISOString(),
+          snapshotAt,
           exportId,
         }),
       );
@@ -4860,7 +4861,14 @@ export function createApp(options?: {
       );
     } catch (err) {
       if (isForbiddenError(err)) return c.json({ error: 'forbidden' }, 403);
-      if (isNotFoundError(err)) return c.json({ error: 'privacy_request_not_found' }, 404);
+      // Supabase RPC failures can be plain objects, and P0002 also denotes a missing target.
+      const message = (err as Error).message;
+      if (message === 'privacy request not found') {
+        return c.json({ error: 'privacy_request_not_found' }, 404);
+      }
+      if (message === 'memory target not found in project' || message === 'connector target not found in workspace') {
+        return c.json({ error: 'privacy_request_target_not_found' }, 409);
+      }
       return c.json({ error: (err as Error).message }, 500);
     }
   });
